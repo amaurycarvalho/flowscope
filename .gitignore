@@ -31,6 +31,7 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!b3-selic-pre.spec
 
 # Installer logs
 pip-log.txt
@@ -216,3 +217,36 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# CocoIndex
+.cocoindex/
+.cocoindex_code/
+
+# Embedding caches
+*.faiss
+*.ann
+*.index
+*.embeddings
+
+# Local semantic databases
+*.sqlite
+*.sqlite3
+
+# Python cache
+__pycache__/
+*.pyc
+
+# MCP local runtime
+.mcp/
+
+# Ollama local models
+.ollama/
+
+# Temporary AI caches
+.ai-cache/
+.semantic-cache/
+
+# VSCode local MCP config
+.vscode/mcp.json
+# CocoIndex Code (ccc)
+/.cocoindex_code/
