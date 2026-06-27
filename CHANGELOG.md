@@ -70,3 +70,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **VWAP Histogram**: Substituído por violin plot horizontal com perfil de volume, errorbar (VWAP, MinPric, MaxPric) e scatter (LastPric da data mais recente)
 - **AnalyzeTickersUseCase**: Incluídos dados diários adicionais (FinInstrmQty, MinPric, MaxPric, LastPric) necessários ao novo gráfico
 - **Tooltip do Radiobutton VWAP**: Atualizada com descrição completa do novo gráfico
+
+### [improve-button-behavior](openspec/changes/archive/2026-06-27-improve-button-behavior) Hoje carrega dados automaticamente; persistência da última pasta nos diálogos de ticker
+
+#### Added
+
+- Preferência `last_ticker_dir` em `~/.flowscope/config.json` para persistir o último diretório usado nos diálogos de ticker
+
+#### Changed
+
+- Botão "Hoje" agora também executa carregamento automático de dados (antes apenas resetava a data)
+- Botões "Hoje" e "Carregar" desabilitados durante o carregamento (loading guard estendido)
+- `TickerList._save()` e `TickerList._load()` usam `initialdir` a partir da preferência persistida
+- `TickerList` recebe parâmetros `initialdir` e `on_dir_changed` callback (baixo acoplamento)

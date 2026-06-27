@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
     "last_chart": "vwap",
     "window_geometry": None,
     "sash_positions": None,
+    "last_ticker_dir": None,
 }
 
 
@@ -213,7 +214,12 @@ class FlowScopeGUI(tk.Tk):
 
         ticker_frame = tk.Frame(right_pw)
         right_pw.add(ticker_frame, stretch="always")
-        self._ticker_list = TickerList(ticker_frame, on_change=self._on_ticker_edit)
+        self._ticker_list = TickerList(
+            ticker_frame,
+            on_change=self._on_ticker_edit,
+            initialdir=self._prefs.get("last_ticker_dir"),
+            on_dir_changed=self._on_ticker_dir_changed,
+        )
         self._ticker_list.frame.pack(fill=tk.BOTH, expand=True)
 
         analysis_frame = tk.Frame(right_pw)
@@ -294,6 +300,7 @@ class FlowScopeGUI(tk.Tk):
 
     def _enter_loading_state(self):
         self._load_button.config(state=tk.DISABLED)
+        self._today_button.config(state=tk.DISABLED)
         self._date_entry.config(state=tk.DISABLED)
         self.config(cursor="watch")
         self.update_idletasks()
@@ -301,6 +308,7 @@ class FlowScopeGUI(tk.Tk):
 
     def _exit_loading_state(self):
         self._load_button.config(state=tk.NORMAL)
+        self._today_button.config(state=tk.NORMAL)
         self._date_entry.config(state="normal")
         self.config(cursor="")
         if self._loading_after_id:
@@ -325,6 +333,7 @@ class FlowScopeGUI(tk.Tk):
 
     def _on_today(self):
         self._date_entry.set_date(date.today())
+        self._on_load_data()
 
     def _on_load_data(self):
         self._enter_loading_state()
@@ -384,6 +393,10 @@ class FlowScopeGUI(tk.Tk):
             "cvd": self._cvd_chart,
             "scatter": self._scatter_chart,
         }[selected].frame.pack(fill=tk.BOTH, expand=True)
+
+    def _on_ticker_dir_changed(self, directory: Path) -> None:
+        self._prefs["last_ticker_dir"] = str(directory)
+        save_preferences(self._prefs)
 
     def _on_ticker_edit(self):
         tickers = self._ticker_list.get_tickers()

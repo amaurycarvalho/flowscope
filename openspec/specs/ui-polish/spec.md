@@ -5,15 +5,15 @@ Define UI polish improvements for FlowScope's main window, covering loading stat
 ## Requirements
 
 ### Requirement: Loading guard
-O sistema DEVE desabilitar o botão "Carregar" e o campo DateEntry durante a execução de `_on_load_data()`, e alterar o cursor para "watch". Ao final (inclusive em caso de erro), DEVE restaurar todos os controles.
+O sistema DEVE desabilitar os botões "Carregar" e "Hoje" e o campo DateEntry durante a execução de `_on_load_data()`, e alterar o cursor para "watch". Ao final (inclusive em caso de erro), DEVE restaurar todos os controles.
 
-#### Scenario: Botão desabilitado durante carregamento
-- **WHEN** o usuário clica em "Carregar"
-- **THEN** o botão DEVE ser desabilitado e o cursor DEVE mudar para "watch" imediatamente
+#### Scenario: Botões desabilitados durante carregamento
+- **WHEN** o usuário clica em "Carregar" ou "Hoje"
+- **THEN** ambos os botões DEVEM ser desabilitados e o cursor DEVE mudar para "watch" imediatamente
 
 #### Scenario: Controles restaurados após carregamento
 - **WHEN** o carregamento termina (com ou sem erro)
-- **THEN** o botão DEVE ser reabilitado e o cursor DEVE voltar ao normal
+- **THEN** os botões DEVEM ser reabilitados e o cursor DEVE voltar ao normal
 
 ### Requirement: Statusbar com ícones de estado
 A barra de status DEVE exibir um ícone Unicode antes da mensagem, variando conforme o contexto: ✓ (sucesso), ⏳ (carregando), ⚠ (erro/aviso), ℹ (informativo).
@@ -138,11 +138,23 @@ O campo de tickers DEVE ter um menu de contexto (botão direito) com opções: C
 - **THEN** um menu DEVE aparecer com as opções disponíveis
 
 ### Requirement: Preferências persistentes
-O sistema DEVE salvar e restaurar a última data selecionada, último gráfico, geometria da janela e posição do divisor do PanedWindow em `~/.flowscope/config.json`.
+O sistema DEVE salvar e restaurar a última data selecionada, último gráfico, geometria da janela, posição do divisor do PanedWindow e último diretório dos diálogos de ticker em `~/.flowscope/config.json`.
 
 #### Scenario: Restauração de preferências
 - **WHEN** o aplicativo inicia
-- **THEN** a janela DEVE restaurar sua geometria e data da última sessão
+- **THEN** a janela DEVE restaurar sua geometria, data, e `last_ticker_dir` da última sessão
+
+#### Scenario: Último diretório salvo após salvar tickers
+- **WHEN** o usuário clica em "Salvar Tickers" e seleciona um arquivo em `/home/user/dados/tickers.txt`
+- **THEN** o diretório `/home/user/dados/` DEVE ser salvo como `last_ticker_dir` em `~/.flowscope/config.json`
+
+#### Scenario: Último diretório salvo após carregar tickers
+- **WHEN** o usuário clica em "Carregar Tickers" e seleciona um arquivo em `/home/user/dados/tickers.txt`
+- **THEN** o diretório `/home/user/dados/` DEVE ser salvo como `last_ticker_dir` em `~/.flowscope/config.json`
+
+#### Scenario: Diálogo abre no último diretório
+- **WHEN** o usuário clica em "Salvar Tickers" ou "Carregar Tickers" e existe `last_ticker_dir` nas preferências
+- **THEN** o diálogo DEVE abrir com `initialdir` apontando para `last_ticker_dir`
 
 ### Requirement: Ícone da aplicação
 O sistema DEVE definir o ícone da janela para aparecer na barra de tarefas, buscando o arquivo apropriado em `src/flowscope/icons/`.

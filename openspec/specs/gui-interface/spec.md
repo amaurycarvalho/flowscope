@@ -83,6 +83,14 @@ O sistema DEVE carregar e exibir o ícone da aplicação na barra de título e b
 - **WHEN** o aplicativo inicia no Windows e `flowscope.ico` existe em `src/flowscope/icons/`
 - **THEN** a janela DEVE usar `self.iconbitmap(path)`
 
+### Requirement: Botão "Hoje" carrega dados automaticamente
+
+O sistema DEVE, ao clicar no botão "Hoje", atualizar o DateEntry para a data atual E executar imediatamente o carregamento de dados (mesma ação do botão "Carregar"), como se o usuário tivesse clicado em "Carregar" em sequência.
+
+#### Scenario: Clique no botão Hoje carrega dados do dia
+- **WHEN** o usuário clica no botão "Hoje"
+- **THEN** o DateEntry DEVE ser atualizado para a data atual E os dados DEVEM ser carregados para essa data, com o mesmo comportamento (loading state, statusbar, gráficos) do botão "Carregar"
+
 ### Requirement: Preenchimento automático com IDIV quando filtro vazio
 
 O sistema DEVE, quando o campo de filtro de tickers estiver vazio e o usuário pressionar "Carregar" ou "Filtrar", buscar automaticamente a carteira do IDIV e preencher o campo com os tickers do índice. O carregamento de dados DEVE então prosseguir usando essa lista como filtro.

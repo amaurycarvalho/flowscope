@@ -4,9 +4,11 @@ from pathlib import Path
 
 
 class TickerList:
-    def __init__(self, parent: tk.Widget, on_change: callable = None):
+    def __init__(self, parent: tk.Widget, on_change: callable = None, initialdir: str = None, on_dir_changed: callable = None):
         self.frame = tk.Frame(parent)
         self._on_change = on_change
+        self._initialdir = initialdir
+        self._on_dir_changed = on_dir_changed
 
         top_frame = tk.Frame(self.frame)
         top_frame.pack(fill=tk.X)
@@ -101,11 +103,14 @@ class TickerList:
 
     def _save(self) -> None:
         path = filedialog.asksaveasfilename(
+            initialdir=self._initialdir,
             defaultextension=".txt",
             filetypes=[("Arquivo de tickers", "*.txt"), ("Todos", "*.*")],
         )
         if path:
             Path(path).write_text("\n".join(self.get_tickers()), encoding="utf-8")
+            if self._on_dir_changed:
+                self._on_dir_changed(Path(path).parent)
 
     def _filter(self) -> None:
         if self._on_change:
@@ -113,9 +118,12 @@ class TickerList:
 
     def _load(self) -> None:
         path = filedialog.askopenfilename(
+            initialdir=self._initialdir,
             filetypes=[("Arquivo de tickers", "*.txt"), ("Todos", "*.*")],
         )
         if path and Path(path).exists():
             content = Path(path).read_text(encoding="utf-8")
             self._text.delete("1.0", tk.END)
             self._text.insert("1.0", content)
+            if self._on_dir_changed:
+                self._on_dir_changed(Path(path).parent)
