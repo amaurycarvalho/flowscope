@@ -14,13 +14,14 @@ class TestCalculateVWAP:
         result = calculate_vwap(petr4_trades)
         assert "PETR4" in result
         vwap_val = result["PETR4"]["period_vwap"]
-        total_price_vol = (
-            Decimal("28.80") * Decimal("432000")
-            + Decimal("28.40") * Decimal("340800")
+        total_price_qty = (
+            Decimal("28.80") * Decimal("15000")
+            + Decimal("28.40") * Decimal("12000")
         )
-        total_vol = Decimal("432000") + Decimal("340800")
-        expected = total_price_vol / total_vol
+        total_qty = Decimal("15000") + Decimal("12000")
+        expected = total_price_qty / total_qty
         assert vwap_val == expected
+        assert result["PETR4"]["total_fin_instr_qty"] == 27000
 
     def test_multi_ticker(self, mock_trades):
         result = calculate_vwap(mock_trades)

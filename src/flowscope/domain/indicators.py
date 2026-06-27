@@ -7,26 +7,26 @@ from flowscope.domain.entities import TradeDay
 
 def calculate_vwap(trades: list[TradeDay]) -> dict[str, dict]:
     daily: dict[str, dict[date, Decimal]] = defaultdict(dict)
-    fin_vol_total: dict[str, Decimal] = defaultdict(Decimal)
+    qty_total: dict[str, int] = defaultdict(int)
     vwap_sum: dict[str, Decimal] = defaultdict(Decimal)
 
     for t in trades:
         ticker = t.ticker.value
-        if t.fin_vol <= 0:
+        if t.fin_instr_qty <= 0:
             continue
-        fin_vol = t.fin_vol
-        daily_vwap = (t.avg_price.value * fin_vol) / fin_vol
+        qty = t.fin_instr_qty
+        daily_vwap = t.avg_price.value
         daily[ticker][t.date] = daily_vwap
-        vwap_sum[ticker] += t.avg_price.value * fin_vol
-        fin_vol_total[ticker] += fin_vol
+        vwap_sum[ticker] += t.avg_price.value * Decimal(str(qty))
+        qty_total[ticker] += qty
 
     result = {}
     for ticker in vwap_sum:
-        period_vwap = vwap_sum[ticker] / fin_vol_total[ticker]
+        period_vwap = vwap_sum[ticker] / Decimal(str(qty_total[ticker]))
         result[ticker] = {
             "period_vwap": period_vwap,
             "daily_vwap": dict(daily[ticker]),
-            "total_fin_vol": fin_vol_total[ticker],
+            "total_fin_instr_qty": qty_total[ticker],
         }
     return result
 

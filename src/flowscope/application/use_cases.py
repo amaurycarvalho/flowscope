@@ -30,12 +30,27 @@ class AnalyzeTickersUseCase:
         cvd = calculate_cvd(filtered)
         vp = calculate_volume_profile(filtered, 0.01)
 
+        daily_data: dict[str, list[dict]] = {}
+        for t in filtered:
+            ticker = t.ticker.value
+            if ticker not in daily_data:
+                daily_data[ticker] = []
+            daily_data[ticker].append({
+                "date": t.date,
+                "avg_price": t.avg_price.value,
+                "min_price": t.min_price.value,
+                "max_price": t.max_price.value,
+                "last_price": t.last_price.value,
+                "fin_instr_qty": t.fin_instr_qty,
+            })
+
         result = {}
         for ticker in tickers:
             result[ticker] = {
                 "vwap": vwap.get(ticker),
                 "cvd": cvd.get(ticker),
                 "volume_profile": vp.get(ticker, {}),
+                "daily_data": daily_data.get(ticker, []),
             }
         return result
 

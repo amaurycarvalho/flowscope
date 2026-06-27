@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
 ## [0.1.0] — 2026-06-27
 
 ### Added
@@ -50,5 +52,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Filtro automático ao digitar no campo de tickers (substituído por botão "Filtrar" manual)
 
+### [chart-interactivity](openspec/changes/archive/2026-06-27-chart-interactivity) Toolbox com zoom/pan/reset/save, hover tooltips com coordenadas X/Y e botão de navegação rápida Hoje
 
+#### Added
 
+- **Botão "Hoje"**: Resetar DateEntry para a data atual com um clique
+- **Toolbox com zoom/pan/reset/save**: NavigationToolbar2Tk em cada chart com labels em português
+- **Hover tooltip no scatter plot**: Ticker, VWAP, CVD e volume ao passar o mouse
+- **Hover tooltip no CVD histogram**: Valor exato do CVD por barra
+- **Hover tooltip no VWAP histogram**: Faixa de preço e volume do bucket
+
+### [vwap-enhancement](openspec/changes/archive/2026-06-27-vwap-enhancement) VWAP recalculado com peso por quantidade de instrumentos e gráfico substituído por violin plot com perfil de volume
+
+#### Changed
+
+- **BREAKING**: VWAP geral calculado como Σ(TradAvrgPric × FinInstrmQty) / Σ(FinInstrmQty) — peso por quantidade de instrumentos, não por volume financeiro
+- **VWAP Histogram**: Substituído por violin plot horizontal com perfil de volume, errorbar (VWAP, MinPric, MaxPric) e scatter (LastPric da data mais recente)
+- **AnalyzeTickersUseCase**: Incluídos dados diários adicionais (FinInstrmQty, MinPric, MaxPric, LastPric) necessários ao novo gráfico
+- **Tooltip do Radiobutton VWAP**: Atualizada com descrição completa do novo gráfico

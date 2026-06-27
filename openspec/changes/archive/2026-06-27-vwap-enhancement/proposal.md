@@ -22,6 +22,7 @@ _(Nenhuma — as alterações modificam capacidades existentes)_
 
 ## Impact
 
+- **Target**: Release 0.1.0
 - `src/flowscope/domain/indicators.py`: `calculate_vwap()` — alterar peso de `fin_vol` para `fin_instr_qty`
 - `src/flowscope/domain/entities.py`: Sem alterações (os campos já existem)
 - `src/flowscope/application/use_cases.py`: `AnalyzeTickersUseCase.execute()` — incluir `daily_data` (avg_price, fin_instr_qty, min_price, max_price, last_price por data) no resultado

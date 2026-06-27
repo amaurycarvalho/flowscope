@@ -8,15 +8,19 @@ O sistema DEVE calcular o Cumulative Volume Delta para cada ticker a partir dos 
 - **THEN** o sistema DEVE produzir um valor de CVD acumulado representando o delta de volume no período
 
 ### Requirement: Cálculo do Volume Weighted Average Price (VWAP)
-O sistema DEVE calcular o Volume Weighted Average Price para cada ticker usando a fórmula VWAP = Σ(PreçoMédio × VolumeFinanceiro) / Σ(VolumeFinanceiro) por dia, e VWAP do período como média ponderada dos VWAPs diários.
+O sistema DEVE calcular o Volume Weighted Average Price para cada ticker usando a fórmula VWAP = Σ(TradAvrgPric × FinInstrmQty) / Σ(FinInstrmQty) por ticker, agregando todos os dias da janela Fibonacci. O VWAP de cada ticker representa o preço médio ponderado pela quantidade de instrumentos negociados no período.
 
 #### Scenario: Cálculo de VWAP para um ticker com múltiplos dias
-- **WHEN** um ticker possui dados em 5 dias da janela
-- **THEN** o sistema DEVE calcular o VWAP diário para cada dia e o VWAP consolidado do período como média ponderada pelo NtlFinVol
+- **WHEN** um ticker possui dados em 5 dias da janela, com diferentes valores de TradAvrgPric e FinInstrmQty
+- **THEN** o sistema DEVE calcular o VWAP do período como Σ(TradAvrgPric × FinInstrmQty) / Σ(FinInstrmQty), utilizando FinInstrmQty como peso
 
 #### Scenario: Ticker com apenas um dia de dados
 - **WHEN** um ticker aparece em apenas 1 dia da janela
-- **THEN** o VWAP do período DEVE ser igual ao VWAP daquele único dia (TradAvrgPric)
+- **THEN** o VWAP do período DEVE ser igual ao TradAvrgPric daquele único dia
+
+#### Scenario: Ticker com FinInstrmQty zero
+- **WHEN** um ticker possui FinInstrmQty = 0 em um dia da janela
+- **THEN** aquele dia DEVE ser ignorado no cálculo (peso zero), mas os demais dias DEVEM ser considerados
 
 ### Requirement: Cálculo do Volume Profile
 O sistema DEVE calcular o Volume Profile para cada ticker distribuindo o volume financeiro (NtlFinVol) em buckets de preço definidos pelo tick size do ativo, entre MinPric e MaxPric de cada dia.

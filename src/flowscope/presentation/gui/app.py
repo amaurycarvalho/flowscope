@@ -137,6 +137,10 @@ class FlowScopeGUI(tk.Tk):
             maxdate=date.today(),
         )
         self._date_entry.pack(side=tk.LEFT, padx=PAD_SMALL)
+        self._today_button = tk.Button(
+            top, text="Hoje", command=self._on_today, cursor="hand2"
+        )
+        self._today_button.pack(side=tk.LEFT, padx=(0, PAD_SMALL))
         self._load_button = tk.Button(
             top, text="Carregar", command=self._on_load_data, cursor="hand2"
         )
@@ -144,6 +148,7 @@ class FlowScopeGUI(tk.Tk):
 
         self._date_label = tk.Label(top, text="", fg="gray")
         self._date_label.pack(side=tk.LEFT, padx=PAD)
+        ToolTip(self._today_button, "Voltar para a data atual")
         ToolTip(self._load_button, "Carregar dados da data selecionada")
         ToolTip(self._date_entry, "Data de referência para carregamento")
 
@@ -162,7 +167,7 @@ class FlowScopeGUI(tk.Tk):
         left_pw.add(selector_frame, stretch="never")
         self._chart_var = tk.StringVar(value=self._prefs.get("last_chart", "vwap"))
         tooltips = {
-            "VWAP": "Preço médio ponderado por volume",
+            "VWAP": "Preço médio ponderado pela quantidade de ativos negociados. Mostra distribuição de preços no período.",
             "CVD": "Cumulative Volume Delta",
             "Dispersão": "Correlação entre VWAP e CVD",
         }
@@ -181,7 +186,7 @@ class FlowScopeGUI(tk.Tk):
         self._chart_container = tk.Frame(left_pw)
         left_pw.add(self._chart_container, stretch="always")
 
-        self._chart_title_var = tk.StringVar(value="VWAP Histogram")
+        self._chart_title_var = tk.StringVar(value="VWAP — Distribuição de Preços")
         self._chart_title = tk.Label(
             self._chart_container,
             textvariable=self._chart_title_var,
@@ -318,6 +323,9 @@ class FlowScopeGUI(tk.Tk):
             tickers = idiv
         return tickers
 
+    def _on_today(self):
+        self._date_entry.set_date(date.today())
+
     def _on_load_data(self):
         self._enter_loading_state()
         ref_date = self._date_entry.get_date()
@@ -366,7 +374,7 @@ class FlowScopeGUI(tk.Tk):
             c.frame.pack_forget()
         selected = self._chart_var.get()
         titles = {
-            "vwap": "VWAP Histogram",
+            "vwap": "VWAP — Distribuição de Preços",
             "cvd": "CVD Histogram",
             "scatter": "VWAP × CVD — Dispersão",
         }
