@@ -308,10 +308,28 @@ class FlowScopeGUI(tk.Tk):
         self._set_status(frames[self._loading_idx], "⏳")
         self._loading_after_id = self.after(400, self._animate_loading)
 
+    def _ensure_tickers(self) -> list[str]:
+        tickers = self._ticker_list.get_tickers()
+        if not tickers:
+            idiv = self._repo.get_idiv_tickers()
+            if not idiv:
+                return []
+            self._ticker_list.set_tickers(idiv)
+            tickers = idiv
+        return tickers
+
     def _on_load_data(self):
         self._enter_loading_state()
         ref_date = self._date_entry.get_date()
         try:
+            tickers = self._ensure_tickers()
+            if not tickers:
+                self._set_status(
+                    "Filtro vazio e não foi possível carregar a carteira IDIV.",
+                    "⚠",
+                )
+                return
+            self._tickers = tickers
             self._current_data = self._use_case.execute(ref_date, self._tickers or None)
             self._tickers = list(self._current_data.keys())
             self._all_tickers = list(self._tickers)
@@ -324,7 +342,7 @@ class FlowScopeGUI(tk.Tk):
                 f"{n} ticker{'s' if n != 1 else ''} carregado{'s' if n != 1 else ''} para {ref_date}.",
                 "✓",
             )
-            self.title(f"{TITLE_PREFIX} — {ref_date} — {n} ativos")
+            self.title(f"FlowScope — {ref_date} — {n} ativos")
         except Exception as e:
             self._set_status(f"Não foi possível carregar os dados. {e}", "⚠")
         finally:
@@ -360,6 +378,14 @@ class FlowScopeGUI(tk.Tk):
         }[selected].frame.pack(fill=tk.BOTH, expand=True)
 
     def _on_ticker_edit(self):
+        tickers = self._ticker_list.get_tickers()
+        if not tickers:
+            idiv = self._repo.get_idiv_tickers()
+            if idiv:
+                self._ticker_list.set_tickers(idiv)
+            else:
+                self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
+                return
         self._update_charts()
         self._update_ticker_counter()
         self._update_title()

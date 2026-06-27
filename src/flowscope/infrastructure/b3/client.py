@@ -1,11 +1,17 @@
 from datetime import date
 from typing import Any
 
+from flowscope.infrastructure.b3.parser import parse_idiv_csv
 from flowscope.infrastructure.cache import CacheManager
 
 
 class B3Client:
     _BASE_URL = "https://arquivos.b3.com.br"
+    _IDIV_URL = (
+        "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/"
+        "GetDownloadPortfolioDay/"
+        "eyJpbmRleCI6IklESVYiLCJsYW5ndWFnZSI6InB0LWJyIn0="
+    )
 
     def __init__(self, cache: CacheManager | None = None):
         self._cache = cache or CacheManager()
@@ -40,3 +46,19 @@ class B3Client:
         content = self._download_csv(token)
         self._cache.put(date_key, content)
         return content
+
+    def fetch_idiv_portfolio(self) -> list[str]:
+        def _fetch():
+            import requests
+
+            resp = requests.get(self._IDIV_URL, timeout=30)
+            resp.raise_for_status()
+            resp.encoding = resp.apparent_encoding or "utf-8"
+            tickers = parse_idiv_csv(resp.text)
+            return {"tickers": tickers}
+
+        try:
+            data = self._cache.get_or_fetch("idiv_portfolio", ttl_days=7, fetch_fn=_fetch)
+            return data["tickers"]
+        except Exception:
+            return []

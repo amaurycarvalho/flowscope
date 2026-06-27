@@ -17,7 +17,7 @@ class ParseError(Exception):
     pass
 
 
-def parse_csv(content: str) -> list[TradeDay]:
+def parse_csv(content: str, segment_filter: str | None = "CASH") -> list[TradeDay]:
     lines = content.splitlines()
     data_start = 1 if lines and not lines[0].startswith("RptDt") else 0
     reader = csv.DictReader(lines[data_start:], delimiter=";")
@@ -34,6 +34,10 @@ def parse_csv(content: str) -> list[TradeDay]:
     trades: list[TradeDay] = []
     for row_num, row in enumerate(reader, start=2):
         try:
+            segment = row.get("SgmtNm", "").strip()
+            if segment_filter is not None and segment != segment_filter:
+                continue
+
             ticker_str = row.get("TckrSymb", "").strip()
             if not ticker_str:
                 continue
@@ -47,7 +51,7 @@ def parse_csv(content: str) -> list[TradeDay]:
             trade = TradeDay(
                 date=_parse_date(row.get("RptDt", ""), row_num),
                 ticker=Ticker(ticker_str),
-                segment=row.get("SgmtNm", "").strip(),
+                segment=segment,
                 min_price=Price(_parse_decimal(row.get("MinPric", "0"), row_num)),
                 max_price=Price(_parse_decimal(row.get("MaxPric", "0"), row_num)),
                 avg_price=Price(_parse_decimal(avg_price_str, row_num)),
@@ -60,6 +64,22 @@ def parse_csv(content: str) -> list[TradeDay]:
         except (ValueError, InvalidOperation, ParseError):
             continue
     return trades
+
+
+_IDIV_HEADER = "Código"
+
+
+def parse_idiv_csv(content: str) -> list[str]:
+    tickers: list[str] = []
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("IDIV") or "Código" in line:
+            continue
+        parts = line.split(";")
+        ticker = parts[0].strip()
+        if ticker and not ticker.startswith("Quantidade") and not ticker.startswith("Redutor"):
+            tickers.append(ticker)
+    return tickers
 
 
 def _parse_date(value: str, row_num: int) -> date:

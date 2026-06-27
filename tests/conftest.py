@@ -21,6 +21,24 @@ SAMPLE_CSV_WITH_EMPTY = (
     "2026-06-25;VALE3;CASH;62,10;63,50;62,80;62,50;8000;502400;8000\n"
 )
 
+SAMPLE_CSV_MIXED_SEGMENTS = (
+    "RptDt;TckrSymb;SgmtNm;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;NtlFinVol;FinInstrmQty\n"
+    "2026-06-25;PETR4;CASH;28,50;29,10;28,80;28,90;15000;432000;15000\n"
+    "2026-06-25;WINZ5;BMF;100;101;100,50;100,50;5000;502500;5000\n"
+    "2026-06-25;VALE3;CASH;62,10;63,50;62,80;62,50;8000;502400;8000\n"
+    "2026-06-25;DOLZ5;FUTURE;5,20;5,30;5,25;5,25;10000;52500;10000\n"
+)
+
+SAMPLE_IDIV_CSV = (
+    "IDIV - Carteira do Dia 29/06/26\n"
+    "Código;Ação;Tipo;Qtde. Teórica;Part. (%)\n"
+    "ABCB4;ABC BRASIL;PN      N2;94.194.244;0,443;\n"
+    "ALOS3;ALLOS;ON      NM;590.258.296;3,091;\n"
+    "BBSE3;BBSEGURIDADE;ON      NM;760.086.076;5,560;\n"
+    "PETR4;PETROBRAS;PN      N2;634.203.386;4,508;\n"
+    "Quantidade Teórica Total;;;25.884.437.336;100,000\n"
+)
+
 
 @pytest.fixture
 def sample_csv() -> str:
@@ -30,6 +48,16 @@ def sample_csv() -> str:
 @pytest.fixture
 def sample_csv_with_empty() -> str:
     return SAMPLE_CSV_WITH_EMPTY
+
+
+@pytest.fixture
+def sample_csv_mixed_segments() -> str:
+    return SAMPLE_CSV_MIXED_SEGMENTS
+
+
+@pytest.fixture
+def sample_idiv_csv() -> str:
+    return SAMPLE_IDIV_CSV
 
 
 @pytest.fixture
