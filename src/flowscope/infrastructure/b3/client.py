@@ -5,7 +5,7 @@ from flowscope.infrastructure.cache import CacheManager
 
 
 class B3Client:
-    _BASE_URL = "https://sistemaswebb3-listados.b3.com.br"
+    _BASE_URL = "https://arquivos.b3.com.br"
 
     def __init__(self, cache: CacheManager | None = None):
         self._cache = cache or CacheManager()
@@ -14,11 +14,11 @@ class B3Client:
         import requests
 
         url = f"{self._BASE_URL}/api/download/requestname"
-        payload = {
+        params = {
             "fileName": file_name,
             "date": ref_date.strftime("%Y-%m-%d"),
         }
-        resp = requests.post(url, json=payload, timeout=30)
+        resp = requests.get(url, params=params, timeout=30)
         resp.raise_for_status()
         return resp.json()
 

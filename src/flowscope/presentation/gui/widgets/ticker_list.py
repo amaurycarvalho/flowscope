@@ -19,16 +19,11 @@ class TickerList:
         self._text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self._text.bind("<KeyRelease>", self._on_key_release)
-
         btn_frame = tk.Frame(self.frame)
         btn_frame.pack(fill=tk.X, pady=(5, 0))
         tk.Button(btn_frame, text="Salvar Tickers", command=self._save).pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Carregar Tickers", command=self._load).pack(side=tk.LEFT, padx=2)
-
-    def _on_key_release(self, event=None):
-        if self._on_change:
-            self._on_change()
+        tk.Button(btn_frame, text="Filtrar", command=self._filter).pack(side=tk.LEFT, padx=2)
 
     def set_tickers(self, tickers: list[str]) -> None:
         self._text.delete("1.0", tk.END)
@@ -46,6 +41,10 @@ class TickerList:
         if path:
             Path(path).write_text("\n".join(self.get_tickers()), encoding="utf-8")
 
+    def _filter(self) -> None:
+        if self._on_change:
+            self._on_change()
+
     def _load(self) -> None:
         path = filedialog.askopenfilename(
             filetypes=[("Arquivo de tickers", "*.txt"), ("Todos", "*.*")],
@@ -54,5 +53,3 @@ class TickerList:
             content = Path(path).read_text(encoding="utf-8")
             self._text.delete("1.0", tk.END)
             self._text.insert("1.0", content)
-            if self._on_change:
-                self._on_change()

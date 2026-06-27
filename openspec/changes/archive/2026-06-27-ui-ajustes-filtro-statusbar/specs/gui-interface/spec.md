@@ -1,15 +1,4 @@
-## Purpose
-
-Define the graphical user interface for FlowScope, including the Tkinter main window, chart widgets (VWAP histogram, CVD histogram, scatter plot with temporal arrows), ticker list management, and clipboard export.
-
-## Requirements
-
-### Requirement: Gráfico de dispersão VWAP × CVD
-O sistema DEVE exibir um scatter plot com VWAP no eixo X e CVD no eixo Y, onde cada ponto representa um ticker. O tamanho dos marcadores DEVE variar conforme o volume financeiro (NtlFinVol) e a cor por quadrante. O checkbox "Exibir setas temporais" DEVE desenhar setas conectando a posição de cada ticker no dia anterior (d-1) à sua posição no dia atual (d), indicando a trajetória temporal.
-
-#### Scenario: Checkbox quiver temporal marcado
-- **WHEN** o usuário marca o checkbox "Exibir setas temporais"
-- **THEN** setas DEVEM ser desenhadas no scatter plot conectando a posição (VWAP, CVD) de cada ticker em d-1 à sua posição em d, com setas indicando a direção
+## MODIFIED Requirements
 
 ### Requirement: Campo multilinha de seleção de tickers
 O sistema DEVE fornecer um campo de texto multilinha onde o usuário pode editar a lista de tickers (um por linha). O sistema DEVE fornecer um botão "Filtrar" ao lado de "Salvar Tickers" e "Carregar Tickers". As alterações no campo de texto NÃO DEVEM atualizar os gráficos automaticamente. O filtro DEVE ser aplicado apenas quando o botão "Filtrar" for pressionado manualmente. O botão "Carregar Tickers" DEVE preencher o campo sem aplicar o filtro automaticamente.

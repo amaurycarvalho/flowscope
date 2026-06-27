@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Download de arquivos consolidados via API B3 two-step
-O sistema DEVE baixar arquivos TradeInformationConsolidated da B3 usando o fluxo two-step: (1) POST para `api/download/requestname` com `fileName` e `date` obtendo token e URL de redirect, (2) GET para `api/download/?token=` para download efetivo do CSV.
+O sistema DEVE baixar arquivos TradeInformationConsolidated da B3 usando o fluxo two-step: (1) GET para `api/download/requestname?fileName=...&date=...` obtendo token, (2) GET para `api/download/?token=` para download efetivo do CSV.
 
 #### Scenario: Download bem-sucedido de um arquivo
 - **WHEN** o sistema solicita o arquivo da data `2026-06-25` com nome `TradeInformationConsolidated`
@@ -16,7 +16,7 @@ O sistema DEVE calcular as datas de download usando offsets de Fibonacci a parti
 
 #### Scenario: Cálculo da janela a partir de uma data de referência
 - **WHEN** a data de referência é `2026-06-26` (sexta-feira)
-- **THEN** as datas calculadas DEVEM ser: 2026-06-25, 2026-06-24, 2026-06-23, 2026-06-19, 2026-06-16, 2026-06-11, 2026-06-04 (considerando apenas dias úteis)
+- **THEN** as datas calculadas DEVEM ser: 2026-06-25, 2026-06-24, 2026-06-23, 2026-06-22, 2026-06-18, 2026-06-15, 2026-06-05 (considerando apenas dias úteis)
 
 #### Scenario: Data calculada cai em fim de semana
 - **WHEN** um offset produz uma data que é sábado ou domingo

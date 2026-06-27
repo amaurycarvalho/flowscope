@@ -1,13 +1,15 @@
+import tkinter as tk
+
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 
 class CVDHistChart:
     def __init__(self, parent):
-        self.frame = parent
+        self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 3), dpi=100)
         self._axes = self._figure.add_subplot(111)
-        self._canvas = FigureCanvasTkAgg(self._figure, master=parent)
+        self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
 
     def update(self, data: dict) -> None:

@@ -18,7 +18,9 @@ class ParseError(Exception):
 
 
 def parse_csv(content: str) -> list[TradeDay]:
-    reader = csv.DictReader(io.StringIO(content), delimiter=";")
+    lines = content.splitlines()
+    data_start = 1 if lines and not lines[0].startswith("RptDt") else 0
+    reader = csv.DictReader(lines[data_start:], delimiter=";")
     if reader.fieldnames is None:
         raise ParseError("CSV sem cabeçalho")
 

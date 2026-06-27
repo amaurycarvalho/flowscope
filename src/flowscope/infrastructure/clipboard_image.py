@@ -5,6 +5,10 @@ from pathlib import Path
 from matplotlib.figure import Figure
 
 
+class ClipboardError(Exception):
+    pass
+
+
 def copy_image_to_clipboard(figure: Figure) -> None:
     system = platform.system()
     tmp_path = Path("/tmp") / "flowscope_chart.png"
@@ -18,9 +22,8 @@ def copy_image_to_clipboard(figure: Figure) -> None:
     elif system == "Darwin":
         _copy_macos(tmp_path)
     else:
-        print(
-            f"Clipboard de imagem não suportado em {system}",
-            file=sys.stderr,
+        raise ClipboardError(
+            f"Clipboard de imagem não suportado em {system}"
         )
 
 
@@ -31,12 +34,11 @@ def _copy_linux(path: Path) -> None:
             check=True,
         )
     except FileNotFoundError:
-        print(
-            "Erro: xclip não encontrado. Instale com: sudo apt install xclip",
-            file=sys.stderr,
+        raise ClipboardError(
+            "xclip não encontrado. Instale com: sudo apt install xclip"
         )
     except subprocess.CalledProcessError as e:
-        print(f"Erro ao copiar imagem: {e}", file=sys.stderr)
+        raise ClipboardError(f"Erro ao copiar imagem: {e}")
 
 
 def _copy_windows(path: Path) -> None:
@@ -58,7 +60,7 @@ def _copy_windows(path: Path) -> None:
     except ImportError:
         _fallback_powershell(path)
     except Exception as e:
-        print(f"Erro ao copiar imagem: {e}", file=sys.stderr)
+        raise ClipboardError(f"Erro ao copiar imagem: {e}")
 
 
 def _fallback_powershell(path: Path) -> None:
@@ -73,7 +75,7 @@ def _fallback_powershell(path: Path) -> None:
             check=True,
         )
     except Exception as e:
-        print(f"Erro ao copiar imagem via PowerShell: {e}", file=sys.stderr)
+        raise ClipboardError(f"Erro ao copiar imagem via PowerShell: {e}")
 
 
 def _copy_macos(path: Path) -> None:
@@ -88,12 +90,10 @@ def _copy_macos(path: Path) -> None:
             text=True,
         )
         if result.returncode != 0:
-            print(
-                f"Erro ao copiar imagem no macOS: {result.stderr}",
-                file=sys.stderr,
+            raise ClipboardError(
+                f"Erro ao copiar imagem no macOS: {result.stderr}"
             )
     except FileNotFoundError:
-        print(
-            "Erro: osascript não encontrado no macOS.",
-            file=sys.stderr,
+        raise ClipboardError(
+            "osascript não encontrado no macOS."
         )

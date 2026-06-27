@@ -72,10 +72,6 @@ dist/flowscope --version                 # exibir versão
 
 Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 
-### Interface desktop
-
-#### Como usar
-
 
 
 ### Testes

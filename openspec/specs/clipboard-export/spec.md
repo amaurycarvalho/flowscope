@@ -15,6 +15,10 @@ O sistema DEVE copiar os dados dos indicadores formatados como CSV para o clipbo
 - **WHEN** o usuário solicita cópia de dados no macOS
 - **THEN** pyxclip DEVE transferir o texto CSV para o clipboard via `pbcopy`
 
+#### Scenario: Fallback Tkinter quando pyxclip não está disponível
+- **WHEN** pyxclip não está instalado (ImportError ao importar pyxclip)
+- **THEN** o sistema DEVE usar o clipboard nativo do Tkinter (`self.clipboard_clear()` + `self.clipboard_append()`) e exibir mensagem na barra de status indicando o fallback
+
 ### Requirement: Cópia de gráfico como imagem PNG para clipboard
 O sistema DEVE copiar o gráfico matplotlib atual como imagem PNG para o clipboard usando ctypes e comandos nativos da plataforma.
 
@@ -32,4 +36,8 @@ O sistema DEVE copiar o gráfico matplotlib atual como imagem PNG para o clipboa
 
 #### Scenario: Falha na cópia de imagem
 - **WHEN** o comando nativo de clipboard falha (ex: `xclip` não instalado no Linux)
-- **THEN** o sistema DEVE exibir mensagem de erro descritiva informando o comando faltante
+- **THEN** o sistema DEVE exibir mensagem de erro descritiva na barra de status da GUI informando o comando faltante
+
+#### Scenario: Cópia de gráfico bem-sucedida com feedback na statusbar
+- **WHEN** o gráfico é copiado com sucesso
+- **THEN** a barra de status DEVE exibir "Gráfico copiado para a área de transferência."
