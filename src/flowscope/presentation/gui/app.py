@@ -15,6 +15,9 @@ from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.widgets.analysis_text import AnalysisText
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
+from flowscope import __version__
+
+TITLE_PREFIX = f"FlowScope v{__version__}"
 
 PAD_SMALL = 4
 PAD = 8
@@ -52,7 +55,7 @@ def save_preferences(data: dict) -> None:
 class FlowScopeGUI(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("FlowScope")
+        self.title(TITLE_PREFIX)
         self._prefs = load_preferences()
 
         if self._prefs.get("window_geometry"):
@@ -321,7 +324,7 @@ class FlowScopeGUI(tk.Tk):
                 f"{n} ticker{'s' if n != 1 else ''} carregado{'s' if n != 1 else ''} para {ref_date}.",
                 "✓",
             )
-            self.title(f"FlowScope — {ref_date} — {n} ativos")
+            self.title(f"{TITLE_PREFIX} — {ref_date} — {n} ativos")
         except Exception as e:
             self._set_status(f"Não foi possível carregar os dados. {e}", "⚠")
         finally:
@@ -399,11 +402,11 @@ class FlowScopeGUI(tk.Tk):
         n_filtered = len(active)
         ref_date = self._date_entry.get_date()
         if n_filtered < n_total and n_total > 0:
-            self.title(f"FlowScope — {ref_date} — {n_filtered} de {n_total} ativos")
+            self.title(f"{TITLE_PREFIX} — {ref_date} — {n_filtered} de {n_total} ativos")
         elif n_total > 0:
-            self.title(f"FlowScope — {ref_date} — {n_total} ativos")
+            self.title(f"{TITLE_PREFIX} — {ref_date} — {n_total} ativos")
         else:
-            self.title("FlowScope")
+            self.title(TITLE_PREFIX)
 
     def _copy_data(self):
         try:
