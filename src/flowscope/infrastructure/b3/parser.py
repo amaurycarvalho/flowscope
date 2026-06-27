@@ -73,12 +73,17 @@ def parse_idiv_csv(content: str) -> list[str]:
     tickers: list[str] = []
     for line in content.splitlines():
         line = line.strip()
-        if not line or line.startswith("IDIV") or "Código" in line:
+        if not line or line.startswith("IDIV -"):
             continue
         parts = line.split(";")
         ticker = parts[0].strip()
-        if ticker and not ticker.startswith("Quantidade") and not ticker.startswith("Redutor"):
-            tickers.append(ticker)
+        if not ticker:
+            continue
+        if ticker in ("Código", "C\u00f3digo"):
+            continue
+        if ticker.startswith("Quantidade") or ticker.startswith("Redutor"):
+            continue
+        tickers.append(ticker)
     return tickers
 
 

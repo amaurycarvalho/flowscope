@@ -1,3 +1,4 @@
+import base64
 from datetime import date
 from typing import Any
 
@@ -53,12 +54,16 @@ class B3Client:
 
             resp = requests.get(self._IDIV_URL, timeout=30)
             resp.raise_for_status()
-            resp.encoding = resp.apparent_encoding or "utf-8"
-            tickers = parse_idiv_csv(resp.text)
+            raw = resp.text.strip()
+            try:
+                decoded = base64.b64decode(raw).decode("latin-1")
+            except Exception:
+                decoded = raw
+            tickers = parse_idiv_csv(decoded)
             return {"tickers": tickers}
 
         try:
-            data = self._cache.get_or_fetch("idiv_portfolio", ttl_days=7, fetch_fn=_fetch)
+            data = self._cache.get_or_fetch("idiv_portfolio_v2", ttl_days=7, fetch_fn=_fetch)
             return data["tickers"]
         except Exception:
             return []
