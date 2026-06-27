@@ -1,0 +1,4 @@
+matplotlib>=3.5
+Pillow>=9.0
+pyxclip>=0.2
+tkcalendar>=1.6

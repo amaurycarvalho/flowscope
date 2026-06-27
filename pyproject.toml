@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowscope"
+version = "0.1.0"
+description = "Plataforma de análise quantitativa de fluxo de ordens"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+dependencies = [
+    "matplotlib>=3.5",
+    "Pillow>=9.0",
+    "pyxclip>=0.2",
+    "tkcalendar>=1.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[project.scripts]
+flowscope = "flowscope.presentation.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

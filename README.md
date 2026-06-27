@@ -12,12 +12,12 @@ FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ord
 ### 1. Manual (código fonte)
 
 ```bash
-pip install -r requirements.txt
+pip install -e .
 ```
 
 Requisitos:
 - Python 3.10+
-- matplotlib, Pillow e pyxclip (veja `requirements.txt`)
+- matplotlib, Pillow, pyxclip e tkcalendar (veja `pyproject.toml`)
 
 ### 2. Via Makefile (build local)
 
@@ -43,11 +43,11 @@ Baixe o binário da plataforma desejada na [página de releases](https://github.
 ### A partir do código fonte
 
 ```bash
-python3 flowscope.py                     # consultar dados
-python3 flowscope.py --gui               # interface gráfica
-python3 flowscope.py --create-shortcut   # criar atalho no desktop (Linux)
-python3 flowscope.py --help              # exibir ajuda com todos os parâmetros
-python3 flowscope.py --version           # exibir versão
+python3 -m flowscope                     # consultar dados
+python3 -m flowscope --gui               # interface gráfica
+python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
+python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
+python3 -m flowscope --version           # exibir versão
 ```
 
 ### A partir do executável gerado pelo Makefile
