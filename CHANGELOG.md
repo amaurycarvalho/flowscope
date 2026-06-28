@@ -152,6 +152,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Frame `Exportação` (LabelFrame + botões + separador) do `self._left_pw`
 - Dependência do `_vwap_chart.get_figure()` em `_copy_chart()`
 
+### [normalize-vwap-y-axis](openspec/changes/archive/2026-06-28-normalize-vwap-y-axis) Eixo Y do VWAP normalizado para desvio percentual com baseline em 0%
+
+#### Changed
+
+- **Eixo Y do VWAP**: Substituído preço absoluto (R$) por `(preço - VWAP) / VWAP × 100`
+- **Baseline VWAP**: Linha horizontal tracejada em Y = 0% adicionada como referência visual
+- **Violin plot, errorbar e scatter**: Todos os elementos visuais usam escala normalizada (%)
+- **Errorbar → vlines**: Barra MinPric–MaxPric trocada para `ax.vlines()` + scatter em 0 (mais robusto em casos extremos)
+- **Bucket size**: Heurística adaptada para ranges percentuais (0.01%–0.50%)
+- **Tooltip hover**: Agora exibe delta percentual (Δ Máx/Mín) + LastPric % + VWAP absoluto (R$)
+- **Rótulo do eixo Y**: Alterado para "Diferença do VWAP (%)"
+- **Limites do eixo Y**: Configurados simetricamente em torno de 0%
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.1.1...HEAD
 [0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0
 

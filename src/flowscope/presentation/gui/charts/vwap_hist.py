@@ -19,6 +19,7 @@ class VWAPHistChart:
         self._hover_tickers: list[str] = []
         self._hover_vwaps: list[float] = []
         self._hover_buckets: list[list[tuple[float, float]]] = []
+        self._hover_last_pct: list[float] = []
         self._violin_polygons: list[tuple[int, object]] = []
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
@@ -27,11 +28,16 @@ class VWAPHistChart:
         )
         self._canvas.mpl_connect("motion_notify_event", self._on_hover)
 
+    @staticmethod
+    def _to_pct(price: float, vwap: float) -> float:
+        return (price - vwap) / vwap * 100
+
     def update(self, data: dict) -> None:
         self._axes.clear()
         self._hover_tickers.clear()
         self._hover_vwaps.clear()
         self._hover_buckets.clear()
+        self._hover_last_pct.clear()
         self._violin_polygons.clear()
         if not data:
             self._axes.set_title("VWAP — Distribuição de Preços")
@@ -40,29 +46,37 @@ class VWAPHistChart:
 
         tickers = []
         violin_data = []
-        vwap_values = []
-        min_prices = []
-        max_prices = []
-        last_prices = []
+        vwap_values_abs = []
+        min_prices_pct = []
+        max_prices_pct = []
+        last_prices_pct = []
 
         for ticker, info in data.items():
             daily = info.get("daily_data", [])
             if not daily:
                 continue
-            tickers.append(ticker)
-
-            prices = [float(d["avg_price"]) for d in daily]
-            qtys = [d["fin_instr_qty"] for d in daily]
-            violin_data.append((prices, qtys))
 
             vwap_info = info.get("vwap", {})
-            vwap_values.append(float(vwap_info.get("period_vwap", 0)))
+            vwap_abs = float(vwap_info.get("period_vwap", 0))
+            if vwap_abs == 0:
+                continue
 
-            min_prices.append(float(min(d["min_price"] for d in daily)))
-            max_prices.append(float(max(d["max_price"] for d in daily)))
+            tickers.append(ticker)
+            vwap_values_abs.append(vwap_abs)
+
+            prices_pct = [self._to_pct(float(d["avg_price"]), vwap_abs) for d in daily]
+            qtys = [d["fin_instr_qty"] for d in daily]
+            violin_data.append((prices_pct, qtys))
+
+            min_prices_pct.append(
+                self._to_pct(float(min(d["min_price"] for d in daily)), vwap_abs)
+            )
+            max_prices_pct.append(
+                self._to_pct(float(max(d["max_price"] for d in daily)), vwap_abs)
+            )
 
             last_day = max(daily, key=lambda d: d["date"])
-            last_prices.append(float(last_day["last_price"]))
+            last_prices_pct.append(self._to_pct(float(last_day["last_price"]), vwap_abs))
 
         if not tickers:
             self._axes.set_title("VWAP — Distribuição de Preços")
@@ -74,9 +88,9 @@ class VWAPHistChart:
         max_vol = 1
         violin_shapes = []
 
-        for prices, qtys in violin_data:
+        for prices_pct, qtys in violin_data:
             buckets = defaultdict(float)
-            for p, q in zip(prices, qtys):
+            for p, q in zip(prices_pct, qtys):
                 bucket = round(p / bucket_size) * bucket_size
                 buckets[bucket] += q
             sorted_buckets = sorted(buckets.items())
@@ -105,28 +119,43 @@ class VWAPHistChart:
                 self._violin_polygons.append((idx, fills[0]))
 
         self._hover_tickers = tickers
-        self._hover_vwaps = vwap_values
+        self._hover_vwaps = vwap_values_abs
         self._hover_buckets = [[(y, v) for y, v in zip(ys, vs)] for ys, vs in violin_shapes]
+        self._hover_last_pct = last_prices_pct
 
-        yerr_lower = [v - mp for v, mp in zip(vwap_values, min_prices)]
-        yerr_upper = [mx - v for v, mx in zip(vwap_values, max_prices)]
-        self._axes.errorbar(
-            x_positions, vwap_values,
-            yerr=[yerr_lower, yerr_upper],
-            fmt="o", color="black", capsize=4, capthick=1.5, markersize=6,
-            zorder=5,
+        self._axes.axhline(y=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
+
+        self._axes.vlines(
+            x_positions, min_prices_pct, max_prices_pct,
+            colors="black", linewidth=1.5, zorder=4,
         )
 
         self._axes.scatter(
-            x_positions, last_prices,
+            x_positions, [0] * len(tickers),
+            color="black", marker="o", s=40, zorder=5,
+        )
+
+        self._axes.scatter(
+            x_positions, last_prices_pct,
             color="red", marker="D", s=40, zorder=6, label="Último preço",
         )
 
         self._axes.set_xticks(x_positions)
         self._axes.set_xticklabels(tickers, rotation=45)
         self._axes.set_title("VWAP — Distribuição de Preços")
-        self._axes.set_ylabel("Preço (R$)")
+        self._axes.set_ylabel("Diferença do VWAP (%)")
         self._axes.legend(loc="best")
+
+        all_y = []
+        for y_vals, _ in violin_shapes:
+            all_y.extend(y_vals)
+        all_y.extend(min_prices_pct)
+        all_y.extend(max_prices_pct)
+        all_y.extend(last_prices_pct)
+        if all_y:
+            max_abs = max(abs(min(all_y)), abs(max(all_y)))
+            self._axes.set_ylim(-max_abs * 1.1, max_abs * 1.1)
+
         self._figure.tight_layout()
 
         self._annot = self._axes.annotate(
@@ -145,22 +174,25 @@ class VWAPHistChart:
         for idx, poly in self._violin_polygons:
             if poly.contains(event)[0]:
                 ticker = self._hover_tickers[idx]
-                vwap = self._hover_vwaps[idx]
+                vwap_abs = self._hover_vwaps[idx]
                 buckets = self._hover_buckets[idx]
                 if buckets:
-                    prices = [b[0] for b in buckets]
+                    prices_pct = [b[0] for b in buckets]
                     vols = [b[1] for b in buckets]
-                    price_range = f"R$ {min(prices):.2f} — R$ {max(prices):.2f}"
+                    min_pct = min(prices_pct)
+                    max_pct = max(prices_pct)
                     total_vol = sum(vols)
                     vol_str = f"{total_vol:.0f}" if total_vol < 1e6 else f"{total_vol / 1e6:.1f}M"
+                    last_pct = self._hover_last_pct[idx]
                     self._annot.set_text(
                         f"{ticker}\n"
-                        f"VWAP: R$ {vwap:.2f}\n"
-                        f"Faixa: {price_range}\n"
+                        f"VWAP: R$ {vwap_abs:.2f}\n"
+                        f"Δ Máx: {max_pct:+.2f}% / Δ Mín: {min_pct:+.2f}%\n"
+                        f"LastPric: {last_pct:+.2f}%\n"
                         f"Volume: {vol_str}"
                     )
                 else:
-                    self._annot.set_text(f"{ticker}\nVWAP: R$ {vwap:.2f}")
+                    self._annot.set_text(f"{ticker}\nVWAP: R$ {vwap_abs:.2f}")
                 self._annot.xy = (event.xdata, event.ydata)
                 self._annot.set_visible(True)
                 self._canvas.draw_idle()
@@ -174,16 +206,16 @@ class VWAPHistChart:
         for prices, _ in violin_data:
             all_prices.extend(prices)
         if not all_prices:
-            return 0.10
-        price_range = max(all_prices) - min(all_prices)
-        if price_range <= 1:
             return 0.01
+        price_range = max(all_prices) - min(all_prices)
+        if price_range <= 0.5:
+            return 0.01
+        elif price_range <= 2:
+            return 0.05
         elif price_range <= 10:
-            return 0.10
-        elif price_range <= 100:
-            return 1.0
+            return 0.25
         else:
-            return 10.0
+            return 0.50
 
     def get_figure(self):
         return self._figure
