@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **UI/UX — Proteção de carga**: Controles desabilitados durante carregamento, cursor "watch", indicador animado com pontos (`Carregando.` → `Carregando..` → `Carregando...`)
 - **UI/UX — Feedback visual**: Statusbar com ícones Unicode (✓ ⏳ ⚠ ℹ), mensagens temporárias com auto-limpeza (2.5s), confirmação em ações de cópia
-- **UI/UX — Atalhos de teclado**: Enter aciona "Carregar", Ctrl+C copia dados, F5 recarrega
+- **UI/UX — Atalhos de teclado**: Enter aciona "Carregar", Ctrl+Shift+C copia dados, F5 recarrega
 - **UI/UX — Tooltips**: Em todos os controles interativos (botões, radio buttons, campos)
 - **UI/UX — Contagem de tickers**: Label "Tickers (N)" e "Exibindo M de N ativos"
 - **UI/UX — Layout**: Padding consistente (PAD_SMALL=4, PAD=8, PAD_LARGE=12), LabelFrame em "Visualização" e "Exportação", separador entre botões

@@ -75,6 +75,9 @@ def _create_desktop_shortcut() -> None:
 
 
 def _open_gui() -> None:
+    import logging
+    logging.basicConfig(handlers=[logging.NullHandler()], force=True)
+
     from flowscope.presentation.gui.app import FlowScopeGUI
 
     app = FlowScopeGUI()

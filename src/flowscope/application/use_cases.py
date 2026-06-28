@@ -1,19 +1,19 @@
 from collections.abc import Iterable
 from datetime import date
-from decimal import Decimal
 
 from flowscope.application.ports import DataRepository
-from flowscope.domain.indicators import (
-    calculate_cvd,
-    calculate_volume_profile,
-    calculate_vwap,
-    select_top_tickers,
-)
+from flowscope.domain.engine import IndicatorEngine
+from flowscope.domain.indicators import default_engine
 
 
 class AnalyzeTickersUseCase:
-    def __init__(self, repository: DataRepository):
+    def __init__(
+        self,
+        repository: DataRepository,
+        engine: IndicatorEngine | None = None,
+    ):
         self._repository = repository
+        self._engine = engine if engine is not None else default_engine()
 
     def execute(
         self, ref_date: date, tickers: list[str] | None = None
@@ -22,13 +22,12 @@ class AnalyzeTickersUseCase:
         trades = self._repository.fetch_trades(dates, tickers)
 
         if not tickers:
-            tickers = select_top_tickers(trades)
+            top = self._engine.execute(trades)
+            tickers = top.get("top_tickers", {}).get("_all", [])
 
         filtered = [t for t in trades if t.ticker.value in tickers]
 
-        vwap = calculate_vwap(filtered)
-        cvd = calculate_cvd(filtered)
-        vp = calculate_volume_profile(filtered, 0.01)
+        results = self._engine.execute(filtered)
 
         daily_data: dict[str, list[dict]] = {}
         for t in filtered:
@@ -47,17 +46,26 @@ class AnalyzeTickersUseCase:
         result = {}
         for ticker in tickers:
             result[ticker] = {
-                "vwap": vwap.get(ticker),
-                "cvd": cvd.get(ticker),
-                "volume_profile": vp.get(ticker, {}),
+                "vwap": results.get("vwap", {}).get(ticker),
+                "volume_profile": results.get("volume_profile", {}).get(ticker, {}),
                 "daily_data": daily_data.get(ticker, []),
+                "money_flow_volume": results.get("money_flow_volume", {}).get(ticker),
+                "all_indicators": {
+                    k: v.get(ticker) for k, v in results.items()
+                    if k not in ("vwap", "volume_profile", "top_tickers")
+                },
             }
         return result
 
 
 class ExportVWAPUseCase:
-    def __init__(self, repository: DataRepository):
+    def __init__(
+        self,
+        repository: DataRepository,
+        engine: IndicatorEngine | None = None,
+    ):
         self._repository = repository
+        self._engine = engine if engine is not None else default_engine()
 
     def execute(
         self, ref_date: date, tickers: list[str] | None = None,
@@ -69,20 +77,21 @@ class ExportVWAPUseCase:
         if ticker_filter:
             trades = [t for t in trades if t.ticker.value in ticker_filter]
 
-        vwap = calculate_vwap(trades)
+        results = self._engine.execute(trades)
+        vwap = results.get("vwap", {})
         all_dates = sorted({
             d for info in vwap.values()
+            if info
             for d in info.get("daily_vwap", {})
         })
         date_headers = ";".join(d.isoformat() for d in all_dates)
         lines = [f"Ticker;VWAP_Periodo;{date_headers}"]
         for ticker, data in vwap.items():
+            if data is None:
+                continue
             daily = data.get("daily_vwap", {})
             vals = ";".join(
                 str(daily.get(d, "")) for d in all_dates
             )
-            lines.append(f"{ticker};{data['period_vwap']};{vals}")
+            lines.append(f"{ticker};{data.get('period_vwap', '')};{vals}")
         return "\n".join(lines)
-
-
-

@@ -146,11 +146,18 @@ class FlowScopeGUI(tk.Tk):
         )
         self._load_button.pack(side=tk.LEFT, padx=PAD_SMALL)
 
+        self._copy_data_btn = tk.Button(
+            top, text="Copiar Dados", command=self._copy_data,
+            state=tk.DISABLED, cursor="hand2", padx=PAD,
+        )
+        self._copy_data_btn.pack(side=tk.LEFT, padx=PAD_SMALL)
+
         self._date_label = tk.Label(top, text="", fg="gray")
         self._date_label.pack(side=tk.LEFT, padx=PAD)
         ToolTip(self._today_button, "Voltar para a data atual")
         ToolTip(self._load_button, "Carregar dados da data selecionada")
         ToolTip(self._date_entry, "Data de referência para carregamento")
+        ToolTip(self._copy_data_btn, "Copiar dados CSV para a área de transferência")
 
     def _build_main_area(self):
         self._main_pw = tk.PanedWindow(
@@ -158,13 +165,13 @@ class FlowScopeGUI(tk.Tk):
         )
         self._main_pw.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=PAD_LARGE, pady=PAD_SMALL)
 
-        left_pw = tk.PanedWindow(
+        self._left_pw = tk.PanedWindow(
             self._main_pw, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=6
         )
-        self._main_pw.add(left_pw, stretch="always")
+        self._main_pw.add(self._left_pw, stretch="always")
 
-        self._main_notebook = ttk.Notebook(left_pw)
-        left_pw.add(self._main_notebook, stretch="always")
+        self._main_notebook = ttk.Notebook(self._left_pw)
+        self._left_pw.add(self._main_notebook, stretch="always")
 
         general_frame = ttk.Frame(self._main_notebook)
         self._main_notebook.add(general_frame, text="Análise Geral")
@@ -174,7 +181,7 @@ class FlowScopeGUI(tk.Tk):
 
         general_vwap_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_vwap_frame, text="VWAP")
-        self._vwap_chart = VWAPHistChart(general_vwap_frame)
+        self._vwap_chart = VWAPHistChart(general_vwap_frame, copy_chart_callback=self._copy_chart)
         self._vwap_chart.frame.pack(fill=tk.BOTH, expand=True)
 
         general_quadrantes_frame = ttk.Frame(self._general_notebook)
@@ -195,20 +202,21 @@ class FlowScopeGUI(tk.Tk):
         self._ticker_notebook = ttk.Notebook(ticker_main_frame)
         self._ticker_notebook.pack(fill=tk.BOTH, expand=True)
 
-        tab_names = [
-            "Dominância do Pregão",
-            "Fluxo Financeiro",
-            "Participação Institucional",
-            "Eficiência do Movimento",
-            "Resumo Geral",
+        tab_configs = [
+            ("Dominância do Pregão", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
+            ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume", "buying_pressure", "selling_pressure"),
+            ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
+            ("Eficiência do Movimento", "daily_efficiency"),
+            ("Resumo Geral", None),
         ]
-        for name in tab_names:
+        self._ticker_indicator_frames = {}
+        for name, *keys in tab_configs:
             frame = ttk.Frame(self._ticker_notebook)
             self._ticker_notebook.add(frame, text=name)
-            ttk.Label(
-                frame, text="Em desenvolvimento.",
-                font=("TkDefaultFont", 12), foreground="gray",
-            ).pack(expand=True)
+            text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
+                                  padx=8, pady=8, relief=tk.FLAT, state=tk.DISABLED)
+            text_widget.pack(fill=tk.BOTH, expand=True)
+            self._ticker_indicator_frames[name] = {"frame": frame, "text": text_widget, "keys": keys}
 
         self._tab_content = {
             ("Análise Geral", "VWAP"): (
@@ -224,24 +232,41 @@ class FlowScopeGUI(tk.Tk):
                 "Em desenvolvimento. Este painel classificará os ativos em quadrantes com base em indicadores de fluxo e preço."
             ),
             ("Análise do Ticker", "Dominância do Pregão"): (
-                "Dominância do Pregão",
-                "Em desenvolvimento. Este painel analisará a participação relativa do ticker no volume total do pregão."
+                "Dominância do Pregão — Indicadores de Preço",
+                "Objetivo: Analisar a amplitude e posição do preço no período.\n\n"
+                "Indicadores envolvidos: Range (amplitude), Range% (amplitude relativa ao preço médio), Typical Price, Median Price, Weighted Close.\n\n"
+                "Como interpretar: Range mostra a volatilidade absoluta do dia. Range% relativiza pelo preço médio. Typical/Median/Weighted Close "
+                "são diferentes formas de resumir o preço do pregão, cada uma com viés diferente (fechamento tem mais peso no Weighted Close)."
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
-                "Fluxo Financeiro",
-                "Em desenvolvimento. Este painel exibirá o fluxo de capital (compras vs vendas) ao longo do pregão."
+                "Fluxo Financeiro — CLV e Money Flow",
+                "Objetivo: Medir o viés comprador ou vendedor do pregão.\n\n"
+                "Indicadores envolvidos: CLV (Close Location Value), Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure.\n\n"
+                "Como interpretar: CLV varia de -1 (fechamento na mínima) a +1 (fechamento na máxima). Money Flow Volume = CLV × Volume Financeiro, "
+                "acumulado no período. Positivo indica predomínio comprador; negativo, vendedor. Buying + Selling Pressure = 1."
             ),
             ("Análise do Ticker", "Participação Institucional"): (
-                "Participação Institucional",
-                "Em desenvolvimento. Este painel estimará a atividade institucional com base no volume e no delta acumulado."
+                "Participação Institucional — Tamanho dos Negócios",
+                "Objetivo: Estimar o perfil dos participantes com base no tamanho médio das negociações.\n\n"
+                "Indicadores envolvidos: Average Trade Size (ações por negócio), Average Financial Ticket (valor por negócio).\n\n"
+                "Como interpretar: Tickets médios mais altos sugerem participação institucional (grandes blocos). Tickets baixos sugerem "
+                "predomínio de pessoa física. Acompanhar a evolução ao longo dos dias revela mudanças na composição do fluxo."
             ),
             ("Análise do Ticker", "Eficiência do Movimento"): (
                 "Eficiência do Movimento",
-                "Em desenvolvimento. Este painel avaliará quão eficiente foi o movimento de preço em relação ao volume consumido."
+                "Objetivo: Medir quanto do range diário resultou em deslocamento efetivo do preço.\n\n"
+                "Indicadores envolvidos: Daily Efficiency = |Fechamento − Preço Médio| / Range.\n\n"
+                "Como interpretar: Próximo de 0 → pregão lateral (preço andou mas voltou). Próximo de 1 → movimento direcional "
+                "(o range inteiro resultou em deslocamento). Valores baixos indicam indecisão; altos, convicção."
             ),
             ("Análise do Ticker", "Resumo Geral"): (
-                "Resumo Geral",
-                "Em desenvolvimento. Este painel consolidará os demais indicadores em um resumo qualitativo único por ticker."
+                "Resumo Geral — Todos os Indicadores",
+                "Objetivo: Consolidar todos os indicadores do ticker em uma única visualização.\n\n"
+                "Indicadores envolvidos: Range, Range%, Typical Price, Median Price, Weighted Close, CLV, "
+                "Money Flow Multiplier, Money Flow Volume, Buying/Selling Pressure, Average Trade Size, "
+                "Average Financial Ticket, Daily Efficiency, Financial Density, Trade Density, Volume Density.\n\n"
+                "Como interpretar: Use este painel para uma visão panorâmica de todos os indicadores disponíveis "
+                "para o ticker selecionado."
             ),
         }
 
@@ -301,42 +326,13 @@ class FlowScopeGUI(tk.Tk):
         try:
             if len(positions) >= 2:
                 self._main_pw.sash_place(0, positions[0], 0)
+            if len(positions) >= 4 and hasattr(self, "_left_pw"):
+                self._left_pw.sash_place(0, 0, positions[1])
         except Exception:
             pass
 
     def _build_action_buttons(self):
-        bottom = tk.Frame(self)
-        bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=PAD_LARGE, pady=PAD_SMALL)
-
-        export_frame = ttk.LabelFrame(bottom, text="Exportação")
-        export_frame.pack(fill=tk.X)
-
-        btn_container = tk.Frame(export_frame)
-        btn_container.pack(fill=tk.X, padx=PAD_SMALL, pady=PAD_SMALL)
-
-        self._copy_data_btn = tk.Button(
-            btn_container,
-            text="Copiar Dados",
-            command=self._copy_data,
-            cursor="hand2",
-            padx=PAD,
-        )
-        self._copy_data_btn.pack(side=tk.LEFT, ipadx=PAD_SMALL, ipady=PAD_SMALL)
-        ToolTip(self._copy_data_btn, "Copiar dados CSV para a área de transferência")
-
-        ttk.Separator(btn_container, orient=tk.VERTICAL).pack(
-            side=tk.LEFT, fill=tk.Y, padx=PAD
-        )
-
-        self._copy_chart_btn = tk.Button(
-            btn_container,
-            text="Copiar Gráfico",
-            command=self._copy_chart,
-            cursor="hand2",
-            padx=PAD,
-        )
-        self._copy_chart_btn.pack(side=tk.LEFT, ipadx=PAD_SMALL, ipady=PAD_SMALL)
-        ToolTip(self._copy_chart_btn, "Copiar gráfico como imagem para a área de transferência")
+        pass
 
     def _build_statusbar(self):
         self._status_var = tk.StringVar()
@@ -417,7 +413,9 @@ class FlowScopeGUI(tk.Tk):
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
             self._update_charts()
+            self._update_ticker_indicator_tabs()
             n = len(self._tickers)
+            self._copy_data_btn.config(state=tk.NORMAL)
             self._set_status(
                 f"{n} ticker{'s' if n != 1 else ''} carregado{'s' if n != 1 else ''} para {ref_date}.",
                 "✓",
@@ -428,6 +426,73 @@ class FlowScopeGUI(tk.Tk):
         finally:
             self._exit_loading_state()
 
+    def _update_ticker_indicator_tabs(self):
+        ticker = self._ticker_combo.get()
+        data = self._current_data.get(ticker) if ticker else None
+        for name, info in self._ticker_indicator_frames.items():
+            text_w = info["text"]
+            text_w.config(state=tk.NORMAL)
+            text_w.delete("1.0", tk.END)
+            if not data:
+                text_w.insert(tk.END, "Selecione um ticker e carregue os dados.")
+                text_w.config(state=tk.DISABLED)
+                continue
+            if info["keys"][0] is None:
+                self._format_all_indicators(text_w, ticker, data)
+            else:
+                self._format_selected_indicators(text_w, ticker, data, info["keys"])
+            text_w.config(state=tk.DISABLED)
+
+    def _format_selected_indicators(self, text_w, ticker, data, keys):
+        all_inds = data.get("all_indicators", {})
+        for key in keys:
+            val = all_inds.get(key, {}).get(ticker) if isinstance(all_inds.get(key), dict) else all_inds.get(key)
+            label = key.replace("_", " ").title()
+            if val is None:
+                text_w.insert(tk.END, f"{label}: --\n")
+            elif isinstance(val, dict):
+                if val:
+                    last_date = max(val.keys())
+                    display = val[last_date]
+                    if display is None:
+                        text_w.insert(tk.END, f"{label}: --\n")
+                    else:
+                        text_w.insert(tk.END, f"{label} ({last_date}): {display}\n")
+                else:
+                    text_w.insert(tk.END, f"{label}: (sem dados)\n")
+            else:
+                text_w.insert(tk.END, f"{label}: {val}\n")
+
+    def _format_all_indicators(self, text_w, ticker, data):
+        all_inds = data.get("all_indicators", {})
+        indicators = []
+        for key in ("range", "range_percentual", "typical_price", "median_price",
+                     "weighted_close", "clv", "money_flow_multiplier",
+                     "money_flow_volume", "buying_pressure", "selling_pressure",
+                     "average_trade_size", "average_financial_ticket",
+                     "daily_efficiency", "financial_density", "trade_density",
+                     "volume_density"):
+            val = all_inds.get(key)
+            label = key.replace("_", " ").title()
+            if val is None:
+                indicators.append(f"{label}: --")
+            elif isinstance(val, dict):
+                if val:
+                    last_date = max(val.keys())
+                    display = val[last_date]
+                    indicators.append(f"{label}: {display if display is not None else '--'}")
+                else:
+                    indicators.append(f"{label}: (sem dados)")
+            else:
+                indicators.append(f"{label}: {val}")
+        text_w.insert(tk.END, "\n".join(indicators) + "\n")
+        vwap_val = data.get("vwap", {}).get("period_vwap") if data.get("vwap") else None
+        mfv = data.get("money_flow_volume")
+        if vwap_val is not None:
+            text_w.insert(tk.END, f"\nVwap Periodo: {vwap_val}")
+        if mfv is not None:
+            text_w.insert(tk.END, f"\nMoney Flow Volume (acum.): {mfv}")
+
     def _on_tab_changed(self, event=None):
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
@@ -435,6 +500,8 @@ class FlowScopeGUI(tk.Tk):
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
                 sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
+                if self._current_data:
+                    self._update_ticker_indicator_tabs()
         except Exception:
             return
 
@@ -460,6 +527,7 @@ class FlowScopeGUI(tk.Tk):
                 return
         self._ticker_combo["values"] = tickers
         self._update_charts()
+        self._update_ticker_indicator_tabs()
         self._update_ticker_counter()
         self._update_title()
         self._flash_status("Filtro aplicado!", "ℹ")
@@ -507,43 +575,40 @@ class FlowScopeGUI(tk.Tk):
     def _copy_data(self):
         try:
             import pyxclip
-            import pyxclip.main as pyxclip_main
 
-            lines = ["Ticker;VWAP;CVD"]
+            lines = ["Ticker;VWAP;MoneyFlowVolume"]
             for ticker, data in self._current_data.items():
                 vwap = data.get("vwap", {}).get("period_vwap", "")
-                cvd = data.get("cvd", {}).get("accumulated_cvd", "")
-                lines.append(f"{ticker};{vwap};{cvd}")
+                mfv = data.get("money_flow_volume", "")
+                lines.append(f"{ticker};{vwap};{mfv}")
             text = "\n".join(lines)
-            pyxclip_main.copy(text)
+            pyxclip.copy(text)
             self._flash_status("Dados copiados!")
         except Exception:
             self._fallback_clipboard_text()
 
     def _fallback_clipboard_text(self):
         self.clipboard_clear()
-        lines = ["Ticker;VWAP;CVD"]
+        lines = ["Ticker;VWAP;MoneyFlowVolume"]
         for ticker, data in self._current_data.items():
             vwap = data.get("vwap", {}).get("period_vwap", "")
-            cvd = data.get("cvd", {}).get("accumulated_cvd", "")
-            lines.append(f"{ticker};{vwap};{cvd}")
+            mfv = data.get("money_flow_volume", "")
+            lines.append(f"{ticker};{vwap};{mfv}")
         self.clipboard_append("\n".join(lines))
         self._flash_status("Dados copiados! (fallback)")
 
-    def _copy_chart(self):
+    def _copy_chart(self, figure):
         from flowscope.infrastructure.clipboard_image import ClipboardError, copy_image_to_clipboard
 
-        figure = self._vwap_chart.get_figure()
-        if figure is not None:
-            try:
-                copy_image_to_clipboard(figure)
-                self._flash_status("Gráfico copiado!")
-            except ClipboardError as e:
-                self._set_status(f"Erro: {e}", "⚠")
+        try:
+            copy_image_to_clipboard(figure)
+            self._flash_status("Gráfico copiado!")
+        except ClipboardError as e:
+            self._set_status(f"Erro: {e}", "⚠")
 
     def _bind_shortcuts(self):
         self._date_entry.bind("<Return>", lambda e: self._on_load_data())
-        self.bind_all("<Control-c>", lambda e: self._copy_data())
+        self.bind_all("<Control-Shift-c>", lambda e: self._copy_data())
         self.bind_all("<F5>", lambda e: self._on_load_data())
 
     def _on_close(self):
@@ -552,8 +617,14 @@ class FlowScopeGUI(tk.Tk):
         self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
         self._prefs["last_subtab"] = self._prefs.get("last_subtab", "VWAP")
         try:
-            pos0 = self._main_pw.sash_coord(0) if hasattr(self, "_main_pw") else None
-            self._prefs["sash_positions"] = list(pos0) if pos0 else None
+            positions = []
+            if hasattr(self, "_main_pw"):
+                pos = self._main_pw.sash_coord(0)
+                positions.extend([pos[0], pos[1]])
+            if hasattr(self, "_left_pw"):
+                pos = self._left_pw.sash_coord(0)
+                positions.extend([pos[0], pos[1]])
+            self._prefs["sash_positions"] = positions if positions else None
         except Exception:
             pass
         save_preferences(self._prefs)

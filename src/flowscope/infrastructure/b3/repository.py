@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Iterable
 from datetime import date
 
@@ -6,6 +7,8 @@ from flowscope.domain.entities import TradeDay
 from flowscope.infrastructure.b3.calendar import fibonacci_dates
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.parser import parse_csv, ParseError
+
+logger = logging.getLogger(__name__)
 
 
 class B3DataRepository(DataRepository):
@@ -32,12 +35,11 @@ class B3DataRepository(DataRepository):
                     ]
                 all_trades.extend(trades)
             except ParseError as e:
-                print(f"Erro ao processar CSV da data {d}: {e}")
+                logger.warning("Erro ao processar CSV da data %s: %s", d, e)
                 continue
             except Exception as e:
-                print(
-                    f"Erro ao baixar dados da data {d}: "
-                    f"{e}. Pulando esta data."
+                logger.warning(
+                    "Erro ao baixar dados da data %s: %s. Pulando esta data.", d, e
                 )
                 continue
         return all_trades

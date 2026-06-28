@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -19,10 +19,4 @@ class TradeDay:
     fin_instr_qty: int
 
 
-@dataclass
-class AggregatedMetrics:
-    ticker: Ticker
-    cvd: float
-    vwap: Decimal
-    volume_profile: dict[Decimal, Decimal]
-    daily_breakdown: dict[date, dict[str, Decimal | int | float]] = field(default_factory=dict)
+

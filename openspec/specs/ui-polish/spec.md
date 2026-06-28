@@ -52,7 +52,7 @@ O sistema DEVE exibir a data de referência atualmente carregada em algum lugar 
 - **THEN** a interface DEVE mostrar "Dados: 2026-06-25"
 
 ### Requirement: Atalhos de teclado
-O sistema DEVE fornecer atalhos de teclado: Enter para Carregar, Ctrl+C para Copiar Dados, F5 para Recarregar. Os atalhos NÃO DEVEM conflitar com atalhos padrão do sistema operacional.
+O sistema DEVE fornecer atalhos de teclado: Enter para Carregar, Ctrl+Shift+C para Copiar Dados, F5 para Recarregar. Os atalhos NÃO DEVEM conflitar com atalhos padrão do sistema operacional.
 
 #### Scenario: Enter aciona Carregar
 - **WHEN** o usuário pressiona Enter com o DateEntry focado
@@ -63,7 +63,7 @@ O sistema DEVE fornecer atalhos de teclado: Enter para Carregar, Ctrl+C para Cop
 - **THEN** o sistema DEVE recarregar os dados da data atualmente selecionada
 
 #### Scenario: Ctrl+C copia dados
-- **WHEN** o usuário pressiona Ctrl+C
+- **WHEN** o usuário pressiona Ctrl+Shift+C
 - **THEN** o sistema DEVE copiar os dados CSV para o clipboard
 
 ### Requirement: Tooltips nos controles

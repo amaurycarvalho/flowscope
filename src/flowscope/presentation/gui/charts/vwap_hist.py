@@ -8,13 +8,13 @@ from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
 
 class VWAPHistChart:
-    def __init__(self, parent):
+    def __init__(self, parent, *, copy_chart_callback=None):
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 3), dpi=100)
         self._axes = self._figure.add_subplot(111)
         self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
-        self._toolbar = ToolbarBR(self._canvas, self.frame)
+        self._toolbar = ToolbarBR(self._canvas, self.frame, copy_chart_callback=copy_chart_callback)
 
         self._hover_tickers: list[str] = []
         self._hover_vwaps: list[float] = []

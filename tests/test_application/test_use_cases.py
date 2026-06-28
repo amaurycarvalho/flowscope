@@ -85,4 +85,3 @@ class TestExportVWAPUseCase:
         assert "2026-06-24" in header
         assert "2026-06-25" in header
         assert len(lines) >= 2
-

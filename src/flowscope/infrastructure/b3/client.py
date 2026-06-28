@@ -26,7 +26,12 @@ class B3Client:
             "date": ref_date.strftime("%Y-%m-%d"),
         }
         resp = requests.get(url, params=params, timeout=30)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            raise RuntimeError(
+                f"Erro HTTP {resp.status_code} ao obter token para {file_name} em {ref_date}"
+            ) from e
         return resp.json()
 
     def _download_csv(self, token: str) -> str:
@@ -34,7 +39,12 @@ class B3Client:
 
         url = f"{self._BASE_URL}/api/download/"
         resp = requests.get(url, params={"token": token}, timeout=60)
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            raise RuntimeError(
+                f"Erro HTTP {resp.status_code} ao baixar CSV"
+            ) from e
         resp.encoding = resp.apparent_encoding or "utf-8"
         return resp.text
 
