@@ -1,10 +1,7 @@
-from pathlib import Path
-
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 
 from flowscope.presentation.gui.widgets.tooltip import ToolTip as FsToolTip
-
-_ICON_DIR = Path(__file__).resolve().parent.parent.parent.parent / "icons"
+from flowscope.presentation.main import _resolve_icon_path
 
 
 class ToolbarBR(NavigationToolbar2Tk):
@@ -25,7 +22,7 @@ class ToolbarBR(NavigationToolbar2Tk):
         self._add_copy_chart_button()
 
     def _add_copy_chart_button(self):
-        icon = str(_ICON_DIR / "copy.png")
+        icon = str(_resolve_icon_path("copy.png"))
         btn = self._Button("Copiar Gráfico", icon, False, self.copy_chart)
         FsToolTip(btn, "Copiar gráfico como imagem para a área de transferência")
 

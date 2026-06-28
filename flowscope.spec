@@ -19,7 +19,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('src/flowscope/icons/flowscope.png', 'icons'),
+        ('src/flowscope/icons', 'icons'),
     ],
     hiddenimports=[
         'tkinter',

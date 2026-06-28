@@ -1,21 +1,7 @@
-## Purpose
-
-Define the desktop shortcut creation behavior for FlowScope on Linux, and the error-handling behavior on other platforms.
-
-## Requirements
-
-### Requirement: --create-shortcut restrito ao Linux
-O flag `--create-shortcut` DEVE funcionar apenas no Linux. Em outras plataformas, DEVE exibir mensagem informativa e encerrar sem erro (código de saída 0).
-
-#### Scenario: --create-shortcut no Windows
-- **WHEN** o usuário executa `flowscope --create-shortcut` no Windows
-- **THEN** o sistema DEVE exibir "Funcionalidade disponível apenas no Linux." e encerrar com código de saída 0 (sem erro)
-
-#### Scenario: --create-shortcut no macOS
-- **WHEN** o usuário executa `flowscope --create-shortcut` no macOS
-- **THEN** o sistema DEVE exibir "Funcionalidade disponível apenas no Linux." e encerrar com código de saída 0 (sem erro)
+## ADDED Requirements
 
 ### Requirement: Exec com caminho absoluto
+
 O sistema DEVE usar o caminho absoluto do executável no campo `Exec` do arquivo `.desktop`, resolvido via `Path(sys.argv[0]).resolve()`, e DEVE incluir a flag `--gui`.
 
 #### Scenario: Exec contém caminho absoluto e --gui
@@ -23,6 +9,7 @@ O sistema DEVE usar o caminho absoluto do executável no campo `Exec` do arquivo
 - **THEN** o campo `Exec` no `.desktop` DEVE conter o caminho absoluto do executável seguido de ` --gui`
 
 ### Requirement: Icon copiado para diretório permanente
+
 O sistema DEVE copiar o ícone `flowscope.png` para `~/.local/share/icons/flowscope.png` (criando o diretório se necessário) e usar esse caminho permanente no campo `Icon` do `.desktop`. A resolução do ícone fonte DEVE funcionar tanto em modo desenvolvimento (via `__file__`) quanto em frozen build PyInstaller (via `sys._MEIPASS`).
 
 #### Scenario: Icon resolvido e copiado no Linux
@@ -30,6 +17,7 @@ O sistema DEVE copiar o ícone `flowscope.png` para `~/.local/share/icons/flowsc
 - **THEN** o ícone DEVE ser copiado para `~/.local/share/icons/flowscope.png` e o campo `Icon` no `.desktop` DEVE apontar para esse arquivo
 
 ### Requirement: Atalho com StartupNotify
+
 O sistema DEVE incluir `StartupNotify=true` no arquivo `.desktop` gerado.
 
 #### Scenario: .desktop contém StartupNotify

@@ -165,6 +165,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Rótulo do eixo Y**: Alterado para "Diferença do VWAP (%)"
 - **Limites do eixo Y**: Configurados simetricamente em torno de 0%
 
+### [fix-desktop-shortcut](openspec/changes/archive/2026-06-28-fix-desktop-shortcut) Atalho .desktop com caminho absoluto, ícone permanente e botão na GUI
+
+#### Added
+
+- Botão "Criar atalho no desktop" na barra superior da GUI (Linux) quando nenhum atalho existe, some após criar com sucesso
+- Função compartilhada `_resolve_icon_path()` para resolução de ícone em modo dev e frozen (PyInstaller)
+- `StartupNotify=true` e flag `--gui` no arquivo .desktop
+
+#### Fixed
+
+- `Exec` no .desktop agora usa caminho absoluto (`Path(sys.argv[0]).resolve()`), antes era relativo (`./flowscope`)
+- Ícone no .desktop copiado para `~/.local/share/icons/flowscope.png` (permanente), antes resolvia para `/tmp/...` que sumia após fechar o app
+- Resolução de ícone do toolbar (copy.png) corrigida para builds PyInstaller
+
+#### Changed
+
+- `_create_desktop_shortcut()` retorna `bool` em vez de chamar `sys.exit()` (reutilizável pela GUI)
+- CLI `--create-shortcut` passou a verificar plataforma no `main()` e retornar exit code 0 em não-Linux
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.1.1...HEAD
 [0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0
 

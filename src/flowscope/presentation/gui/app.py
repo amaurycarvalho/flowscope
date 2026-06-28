@@ -14,6 +14,11 @@ from flowscope.presentation.gui.widgets.orientation_panel import OrientationPane
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
 from flowscope import __version__
+from flowscope.presentation.main import (
+    _create_desktop_shortcut,
+    _desktop_shortcut_exists,
+    _resolve_icon_path,
+)
 
 TITLE_PREFIX = f"FlowScope v{__version__}"
 
@@ -104,10 +109,9 @@ class FlowScopeGUI(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _set_icon(self):
-        icon_dir = Path(__file__).resolve().parent.parent.parent / "icons"
         system = platform.system()
         if system == "Linux":
-            png = icon_dir / "flowscope.png"
+            png = _resolve_icon_path("flowscope.png")
             if png.exists():
                 try:
                     img = tk.PhotoImage(file=str(png))
@@ -115,7 +119,7 @@ class FlowScopeGUI(tk.Tk):
                 except tk.TclError:
                     pass
         elif system == "Windows":
-            ico = icon_dir / "flowscope.ico"
+            ico = _resolve_icon_path("flowscope.ico")
             if ico.exists():
                 try:
                     self.iconbitmap(str(ico))
@@ -151,6 +155,14 @@ class FlowScopeGUI(tk.Tk):
             state=tk.DISABLED, cursor="hand2", padx=PAD,
         )
         self._copy_data_btn.pack(side=tk.LEFT, padx=PAD_SMALL)
+
+        self._shortcut_btn = None
+        if platform.system() == "Linux" and not _desktop_shortcut_exists():
+            self._shortcut_btn = tk.Button(
+                top, text="Criar atalho no desktop",
+                command=self._on_create_shortcut, cursor="hand2",
+            )
+            self._shortcut_btn.pack(side=tk.LEFT, padx=PAD_SMALL)
 
         self._date_label = tk.Label(top, text="", fg="gray")
         self._date_label.pack(side=tk.LEFT, padx=PAD)
@@ -596,6 +608,17 @@ class FlowScopeGUI(tk.Tk):
             lines.append(f"{ticker};{vwap};{mfv}")
         self.clipboard_append("\n".join(lines))
         self._flash_status("Dados copiados! (fallback)")
+
+    def _on_create_shortcut(self):
+        if not platform.system() == "Linux":
+            return
+        if _create_desktop_shortcut():
+            self._flash_status("Atalho criado!")
+            if self._shortcut_btn:
+                self._shortcut_btn.pack_forget()
+                self._shortcut_btn = None
+        else:
+            self._set_status("Erro ao criar atalho.", "⚠")
 
     def _copy_chart(self, figure):
         from flowscope.infrastructure.clipboard_image import ClipboardError, copy_image_to_clipboard
