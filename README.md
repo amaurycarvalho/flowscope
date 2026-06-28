@@ -1,11 +1,16 @@
 # flowscope
-Plataforma de análise quantitativa de fluxo de ordens a partir dos dados consolidados de negociações da bolsa, com indicadores como CVD, VWAP e Volume Profile, visualização gráfica, exportação de dados e identificação automática de estratégias de fluxo institucional.
+
+Plataforma de análise quantitativa de fluxo de ordens a partir dos dados consolidados de negociações da bolsa, com indicadores, visualização gráfica, exportação de dados e identificação automática de estratégias de fluxo institucional.
 
 [![Spec-Driven Development](https://img.shields.io/badge/SDD-OpenSpec-yellow)](openspec/specs/project-constitution/spec.md)
 
 ## Descrição
 
-FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens (Order Flow Analytics) baseada nos dados públicos consolidados de negociações disponibilizados pelas bolsas de valores. A aplicação permite calcular indicadores como Cumulative Volume Delta (CVD), Volume Weighted Average Price (VWAP) e Volume Profile, visualizar gráficos interativos, exportar resultados em CSV e identificar automaticamente padrões de atuação institucional, como Trend Continuation (Institutional Trend Re-entry) e Absorption Reversal. Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI), com suporte multiplataforma para Linux, Windows e macOS.
+FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens baseada nos dados públicos consolidados de negociações disponibilizados pelas bolsas de valores. A
+
+A principal diretriz do FlowScope é explicar o mercado, não apenas exibir indicadores. Cada painel busca responder a uma única pergunta em linguagem simples, com um gráfico limpo, uma classificação qualitativa e um breve resumo textual. O foco da interface é traduzir os indicadores envolvidos em respostas claras sobre quem dominou o pregão, quanto capital foi necessário para mover o preço, se há sinais de atuação institucional e quão convincente foi o movimento.
+
+Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI), com suporte multiplataforma para Linux, Windows e macOS.
 
 ## Instalação
 
@@ -16,6 +21,7 @@ pip install -e .
 ```
 
 Requisitos:
+
 - Python 3.10+
 - matplotlib, Pillow, pyxclip e tkcalendar (veja `pyproject.toml`)
 
@@ -32,11 +38,11 @@ O executável será gerado em `dist/flowscope` (Linux), `dist/flowscope.exe` (Wi
 
 Baixe o binário da plataforma desejada na [página de releases](https://github.com/amaurycarvalho/flowscope/releases):
 
-| Plataforma | Arquivo |
-|------------|---------|
-| Linux | `flowscope-linux` |
-| Windows | `flowscope-windows.exe` |
-| macOS | `flowscope-macos` |
+| Plataforma | Arquivo                 |
+| ---------- | ----------------------- |
+| Linux      | `flowscope-linux`       |
+| Windows    | `flowscope-windows.exe` |
+| macOS      | `flowscope-macos`       |
 
 ## Como usar
 
@@ -71,8 +77,6 @@ dist/flowscope --version                 # exibir versão
 ```
 
 Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
-
-
 
 ### Testes
 
