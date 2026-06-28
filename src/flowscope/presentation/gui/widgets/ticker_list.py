@@ -33,6 +33,8 @@ class TickerList:
 
         self._text.bind("<Double-Button-1>", self._on_double_click)
         self._text.bind("<Button-3>", self._show_context_menu)
+        self._text.bind("<Control-a>", self._on_select_all)
+        self._text.bind("<Control-A>", self._on_select_all)
 
         self._icon_refs: list[ImageTk.PhotoImage] = []
 
@@ -134,6 +136,10 @@ class TickerList:
 
     def _select_all(self):
         self._text.tag_add(tk.SEL, "1.0", tk.END)
+
+    def _on_select_all(self, event=None):
+        self._select_all()
+        return "break"
 
     def _clear_selection(self):
         self._text.tag_remove(tk.SEL, "1.0", tk.END)

@@ -22,6 +22,7 @@ from flowscope.domain.strategies.volume import (
     VolumeProfileStrategy,
     TopTickersStrategy,
 )
+from flowscope.domain.strategies.vwap_distance import VWAPDistanceStrategy
 from flowscope.domain.strategies.efficiency import DailyEfficiencyStrategy
 from flowscope.domain.strategies.density import (
     FinancialDensityStrategy,
@@ -50,4 +51,5 @@ __all__ = [
     "FinancialDensityStrategy",
     "TradeDensityStrategy",
     "VolumeDensityStrategy",
+    "VWAPDistanceStrategy",
 ]

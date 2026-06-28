@@ -10,6 +10,7 @@ from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
+from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
@@ -207,15 +208,19 @@ class FlowScopeGUI(tk.Tk):
 
         general_vwap_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_vwap_frame, text="VWAP")
+        self._vwap_ticker_combo = self._build_ticker_selector(general_vwap_frame)
         self._vwap_chart = VWAPHistChart(general_vwap_frame, copy_chart_callback=self._copy_chart)
         self._vwap_chart.frame.pack(fill=tk.BOTH, expand=True)
 
         general_quadrantes_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_quadrantes_frame, text="Quadrantes")
-        ttk.Label(
-            general_quadrantes_frame, text="Em desenvolvimento.",
-            font=("TkDefaultFont", 12), foreground="gray",
-        ).pack(expand=True)
+        self._quadrant_ticker_combo = self._build_ticker_selector(general_quadrantes_frame)
+        self._quadrant_chart = QuadrantChart(
+            general_quadrantes_frame,
+            copy_chart_callback=self._copy_chart,
+            summary_callback=self._on_quadrant_summary,
+        )
+        self._quadrant_chart.frame.pack(fill=tk.BOTH, expand=True)
 
         ticker_main_frame = ttk.Frame(self._main_notebook)
         self._main_notebook.add(ticker_main_frame, text="Análise do Ticker")
@@ -230,7 +235,7 @@ class FlowScopeGUI(tk.Tk):
 
         tab_configs = [
             ("Dominância do Pregão", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
-            ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume", "buying_pressure", "selling_pressure"),
+            ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume", "buying_pressure", "selling_pressure", "vwap_distance"),
             ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
             ("Eficiência do Movimento", "daily_efficiency"),
             ("Resumo Geral", None),
@@ -254,8 +259,17 @@ class FlowScopeGUI(tk.Tk):
                 "O último preço (losango vermelho) em relação ao VWAP indica se o fechamento reforça ou contradiz a tendência do período."
             ),
             ("Análise Geral", "Quadrantes"): (
-                "Quadrantes",
-                "Em desenvolvimento. Este painel classificará os ativos em quadrantes com base em indicadores de fluxo e preço."
+                "Quadrantes — CLV vs VWAP Distance",
+                "Objetivo: Classificar ativos em quatro quadrantes com base no CLV (eixo X) e no desvio do VWAP (eixo Y), "
+                "revelando a interação entre fluxo comprador/vendedor e posição relativa ao preço justo.\n\n"
+                "Indicadores envolvidos: CLV (Close Location Value), VWAP Distance (desvio percentual do último preço "
+                "em relação ao VWAP diário), Volume (FinInstrmQty como tamanho da bolha).\n\n"
+                "Como interpretar:\n"
+                "• Q1 (CLV > 0, acima do VWAP): compra forte confirmada — fechamento na metade superior do range e acima do VWAP.\n"
+                "• Q2 (CLV < 0, acima do VWAP): venda relativa — ativo acima do VWAP mas perdeu força no fechamento (possível realização).\n"
+                "• Q3 (CLV < 0, abaixo do VWAP): venda forte confirmada — vendedores dominaram o dia.\n"
+                "• Q4 (CLV > 0, abaixo do VWAP): compra em desconto — reação compradora insuficiente para recuperar o VWAP.\n\n"
+                "As setas cinzas mostram a trajetória dos dias anteriores, evidenciando a evolução temporal de cada ativo."
             ),
             ("Análise do Ticker", "Dominância do Pregão"): (
                 "Dominância do Pregão — Indicadores de Preço",
@@ -450,6 +464,7 @@ class FlowScopeGUI(tk.Tk):
             self._all_tickers = list(self._tickers)
             self._ticker_list.set_tickers(self._tickers)
             self._ticker_combo["values"] = self._tickers
+            self._update_ticker_selectors()
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
             self._update_charts()
@@ -460,7 +475,6 @@ class FlowScopeGUI(tk.Tk):
                 f"{n} ticker{'s' if n != 1 else ''} carregado{'s' if n != 1 else ''} para {ref_date}.",
                 "✓",
             )
-            self.title(f"FlowScope — {ref_date} — {n} ativos")
         except Exception as e:
             self._set_status(f"Não foi possível carregar os dados. {e}", "⚠")
         finally:
@@ -510,8 +524,8 @@ class FlowScopeGUI(tk.Tk):
                      "weighted_close", "clv", "money_flow_multiplier",
                      "money_flow_volume", "buying_pressure", "selling_pressure",
                      "average_trade_size", "average_financial_ticket",
-                     "daily_efficiency", "financial_density", "trade_density",
-                     "volume_density"):
+            "daily_efficiency", "financial_density", "trade_density",
+            "volume_density", "vwap_distance"):
             val = all_inds.get(key)
             label = key.replace("_", " ").title()
             if val is None:
@@ -564,11 +578,12 @@ class FlowScopeGUI(tk.Tk):
             if not tickers:
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
+        self._tickers = tickers
         self._ticker_combo["values"] = tickers
+        self._update_ticker_selectors()
         self._update_charts()
         self._update_ticker_indicator_tabs()
         self._update_ticker_counter()
-        self._update_title()
         self._flash_status("Filtro aplicado!", "ℹ")
 
     def _on_date_change(self):
@@ -579,6 +594,36 @@ class FlowScopeGUI(tk.Tk):
         self._ticker_list.set_tickers(self._tickers)
         self._update_charts()
 
+    def _build_ticker_selector(self, parent) -> ttk.Combobox:
+        combo = ttk.Combobox(parent, state="readonly", values=["Todos"])
+        combo.current(0)
+        combo.pack(fill=tk.X, padx=PAD_SMALL, pady=(PAD_SMALL, 0))
+        combo.bind("<<ComboboxSelected>>", lambda e: self._update_charts())
+        return combo
+
+    def _update_ticker_selectors(self) -> None:
+        values = ["Todos"] + self._tickers
+        for combo in (self._vwap_ticker_combo, self._quadrant_ticker_combo):
+            current = combo.get()
+            combo["values"] = values
+            if current in values:
+                combo.set(current)
+            else:
+                combo.current(0)
+
+    def _on_quadrant_summary(self, summary: str) -> None:
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
+            if main_tab == "Análise Geral" and sub_tab == "Quadrantes":
+                body = self._tab_content.get(("Análise Geral", "Quadrantes"), ("", ""))[1]
+                self._orientation_panel.set_content(
+                    "Quadrantes — CLV vs VWAP Distance",
+                    f"{body}\n\n---\n\n{summary}",
+                )
+        except Exception:
+            pass
+
     def _update_charts(self):
         import matplotlib
 
@@ -586,7 +631,20 @@ class FlowScopeGUI(tk.Tk):
 
         tickers = self._ticker_list.get_tickers()
         filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
-        self._vwap_chart.update(filtered)
+
+        vwap_sel = self._vwap_ticker_combo.get()
+        if vwap_sel and vwap_sel != "Todos":
+            filtered_vwap = {t: v for t, v in filtered.items() if t == vwap_sel}
+        else:
+            filtered_vwap = filtered
+        self._vwap_chart.update(filtered_vwap)
+
+        quadrant_sel = self._quadrant_ticker_combo.get()
+        if quadrant_sel and quadrant_sel != "Todos":
+            filtered_quadrant = {t: v for t, v in filtered.items() if t == quadrant_sel}
+        else:
+            filtered_quadrant = filtered
+        self._quadrant_chart.update(filtered_quadrant)
 
     def _update_ticker_counter(self):
         filtered = self._ticker_list.get_tickers()
@@ -597,19 +655,6 @@ class FlowScopeGUI(tk.Tk):
             self._ticker_list.set_counter(f"Exibindo {n_filtered} de {n_total} ativos")
         elif n_total > 0:
             self._ticker_list.set_counter(f"Tickers ({n_total})")
-
-    def _update_title(self):
-        filtered = self._ticker_list.get_tickers()
-        active = [t for t in filtered if t in self._current_data]
-        n_total = len(self._all_tickers)
-        n_filtered = len(active)
-        ref_date = self._date_entry.get_date()
-        if n_filtered < n_total and n_total > 0:
-            self.title(f"{TITLE_PREFIX} — {ref_date} — {n_filtered} de {n_total} ativos")
-        elif n_total > 0:
-            self.title(f"{TITLE_PREFIX} — {ref_date} — {n_total} ativos")
-        else:
-            self.title(TITLE_PREFIX)
 
     def _copy_data(self):
         try:

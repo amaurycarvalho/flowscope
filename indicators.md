@@ -92,6 +92,13 @@
 - **Fórmula:** `Σ(PreçoMédio × Quantidade) / Σ(Quantidade)`
 - **Aplicabilidade:** Referência de preço justo (fair value) do período. Utilizado como linha de suporte/resistência dinâmica. Desvios do VWAP indicam regiões de sobrecompra/sobrevenda intradiária.
 
+### VWAP Distance (Desvio do VWAP)
+- **ID:** `vwap_distance`
+- **Descrição:** Desvio percentual do último preço negociado em relação ao VWAP diário (TradAvrgPric).
+- **Fórmula:** `(LastPric − TradAvrgPric) / TradAvrgPric`
+- **Dependência:** Depende do indicador `vwap` (utiliza o `daily_vwap` de cada data como denominador).
+- **Aplicabilidade:** Mede se o fechamento de cada dia ocorreu acima (valor positivo) ou abaixo (valor negativo) do preço médio ponderado negociado naquele dia. Valores positivos indicam viés comprador no fechamento; negativos, viés vendedor. Útil como coordenada Y no gráfico de quadrantes e para identificar distorções de preço relativas ao valor justo do dia.
+
 ### Volume Profile (Perfil de Volume)
 - **ID:** `volume_profile`
 - **Descrição:** Distribuição do volume financeiro em buckets de preço (tick a tick) entre mínima e máxima do ativo.

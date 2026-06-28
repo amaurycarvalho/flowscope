@@ -19,6 +19,7 @@ from flowscope.domain.strategies import (
     FinancialDensityStrategy,
     TradeDensityStrategy,
     VolumeDensityStrategy,
+    VWAPDistanceStrategy,
 )
 from flowscope.domain.engine import IndicatorEngine
 
@@ -42,6 +43,7 @@ def default_engine(tick_size: float = 0.01, top_n: int = 15) -> IndicatorEngine:
         FinancialDensityStrategy(),
         TradeDensityStrategy(),
         VolumeDensityStrategy(),
+        VWAPDistanceStrategy(),
         VWAPStrategy(),
         VolumeProfileStrategy(tick_size),
         TopTickersStrategy(top_n),

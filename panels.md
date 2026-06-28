@@ -58,10 +58,21 @@ A interface é dividida em três grandes regiões:
   - Passe o mouse sobre cada violino para ver detalhes: ticker, VWAP em R$, desvios máximo/mínimo, último preço e volume total.
 
 ### Sub-aba: Quadrantes
-- **Estado:** Em desenvolvimento.
-- **Objetivo:** Classificar ativos em quadrantes com base em indicadores de fluxo e preço para rápida identificação de oportunidades.
-- **Indicadores previstos:** A definir.
-- **Como interpretar:** A implementar.
+- **Visualização:** Gráfico de dispersão bidimensional (bubble chart) utilizando Matplotlib, com setas de trajetória temporal (quiver) e barra de ferramentas para zoom, pan, salvar e copiar imagem.
+- **Objetivo:** Representar simultaneamente a direção do fluxo comprador/vendedor (CLV), a posição do fechamento em relação ao preço justo (VWAP Distance) e a intensidade da participação (volume de instrumentos).
+- **Indicadores envolvidos:**
+  - **Eixo X:** CLV (Close Location Value) — varia de −1 (fechamento na mínima) a +1 (fechamento na máxima).
+  - **Eixo Y:** VWAP Distance — desvio percentual do último preço em relação ao VWAP diário: `(LastPric − TradAvrgPric) / TradAvrgPric`.
+  - **Tamanho da bolha:** Raiz quadrada do `FinInstrmQty` (quantidade de instrumentos negociados), normalizado.
+  - **Cor da bolha:** Colormap divergente RdYlGn — verde para CLV positivo (pressão compradora), vermelho para CLV negativo (pressão vendedora).
+- **Como interpretar:**
+  - As bolhas representam o **último dia** de cada ativo. As setas cinzas mostram a trajetória dos dias anteriores.
+  - **Q1 (CLV > 0, acima do VWAP):** Compradores dominaram o pregão e o fechamento ficou acima do preço médio. Movimento consistente.
+  - **Q2 (CLV < 0, acima do VWAP):** O ativo permaneceu acima do VWAP, mas perdeu força no fechamento. Possível realização de lucros.
+  - **Q3 (CLV < 0, abaixo do VWAP):** Vendedores dominaram durante todo o pregão. Fechamento abaixo do preço justo. Pressão vendedora consistente.
+  - **Q4 (CLV > 0, abaixo do VWAP):** Reação compradora no final, mas insuficiente para recuperar o preço médio. Possível início de acumulação.
+  - Passe o mouse sobre cada bolha para ver detalhes: ticker, data, CLV, VWAP Distance e quantidade de instrumentos.
+  - O painel de orientação exibe um resumo textual automático da distribuição dos ativos entre os quadrantes.
 
 ---
 
