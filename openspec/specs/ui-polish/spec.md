@@ -85,15 +85,19 @@ Botões e controles interativos DEVEM usar o cursor "hand2".
 - **THEN** o cursor DEVE mudar para uma mão
 
 ### Requirement: LabelFrame para agrupamento visual
-O seletor de gráfico DEVE ser agrupado em um `LabelFrame` com título "Visualização". Os botões de ação DEVEM ser agrupados em um `LabelFrame` com título "Exportação".
+O seletor de gráfico DEVE ser agrupado em um `LabelFrame` com título "Visualização". Os botões de ação agora estão em locais separados: "Copiar Gráfico" no toolbar do chart, "Copiar Dados" na barra superior ao lado de "Carregar".
 
 #### Scenario: Seletor agrupado
 - **WHEN** a interface é renderizada
 - **THEN** os radio buttons DEVEM estar dentro de um LabelFrame "Visualização"
 
-#### Scenario: Ações agrupadas
-- **WHEN** a interface é renderizada
-- **THEN** os botões "Copiar Dados" e "Copiar Gráfico" DEVEM estar dentro de um LabelFrame "Exportação"
+#### Scenario: Botão Copiar Dados na barra superior
+- **WHEN** a interface é renderizada sem dados carregados
+- **THEN** o botão "Copiar Dados" DEVE estar na barra superior, ao lado de "Carregar", no estado desabilitado
+
+#### Scenario: Botão Copiar Gráfico no toolbar
+- **WHEN** um chart é renderizado
+- **THEN** o toolbar DEVE conter um botão "Copiar Gráfico" para copiar a imagem do chart
 
 ### Requirement: Padding consistente
 O sistema DEVE usar constantes de padding centralizadas (PAD_SMALL=4, PAD=8, PAD_LARGE=12) em vez de valores numéricos isolados.
@@ -188,9 +192,3 @@ Ao dar duplo clique em um ticker na lista, o sistema DEVE aplicar o filtro para 
 - **WHEN** o usuário dá duplo clique em "PETR4"
 - **THEN** o filtro DEVE ser aplicado para mostrar apenas PETR4
 
-### Requirement: Separação visual entre botões de ação
-Os botões "Copiar Dados" e "Copiar Gráfico" DEVEM ter um padding interno de `ipadx=8, ipady=2` e um `ttk.Separator` entre eles.
-
-#### Scenario: Botões com padding
-- **WHEN** os botões são renderizados
-- **THEN** eles DEVEM ter padding interno e um separador entre si

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-28
+
+### [move-copy-buttons](openspec/changes/archive/2026-06-28-move-copy-buttons) Botões Copiar Dados/Gráfico realocados e frame Exportação eliminado
+
+#### Added
+
+- Botão "Copiar Gráfico" adicionado ao toolbar nativo do matplotlib (`ToolbarBR`), disponível em todos os charts
+- Botão "Copiar Dados" na barra superior ao lado de "Carregar", iniciando desabilitado até o primeiro carregamento de dados
+
+#### Changed
+
+- `_copy_chart()` agora recebe o `Figure` como parâmetro (desacoplado do VWAP chart específico)
+- `ToolbarBR` aceita `copy_chart_callback` via construtor (callback opcional)
+
+#### Fixed
+
+- `pyxclip` import corrigido (`pyxclip.main` não existe; usa `pyxclip.copy()` direto)
+- `print()` substituído por `logging.warning()` com NullHandler na GUI para evitar vazamento de erros da API B3 no terminal
+- URLs da API B3 removidas de mensagens de erro (sanitizadas no `B3Client`)
+
+#### Removed
+
+- Frame `Exportação` (LabelFrame + botões + separador) do `self._left_pw`
+- Dependência do `_vwap_chart.get_figure()` em `_copy_chart()`
+
 ## [0.1.0] — 2026-06-28
 
 ### Added
@@ -110,3 +135,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING**: `--cvd` CLI flag and `export_cvd_csv()`
 - **BREAKING**: `ExportCVDUseCase` from application layer
 - `AnalysisText` widget (replaced by `OrientationPanel`)
+
+### [implementacao-indicadores-especificacao](openspec/changes/archive/2026-06-28-implementacao-indicadores-especificacao) Motor de cálculo DAG e 15 novos indicadores
+
+#### Added
+
+- Motor de cálculo baseado em DAG: cada indicador é uma estratégia independente que declara dependências; o engine resolve ordem de execução automaticamente e cacheia resultados
+- 15 novos indicadores da especificação FS001–FS403: Range, Range%, Typical Price, Median Price, Weighted Close, CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure, Daily Efficiency, Financial Density, Trade Density, Volume Density, Average Trade Size, Average Financial Ticket
+- Abas "Dominância do Pregão", "Fluxo Financeiro", "Participação Institucional", "Eficiência do Movimento" e "Resumo Geral" populadas com valores reais dos indicadores
+- OrientationPanel com textos explicativos para cada grupo de indicadores
+
+#### Changed
+
+- Indicadores existentes (VWAP, Volume Profile, Top Tickers) refatorados para o novo padrão `IndicatorStrategy`
+- **BREAKING**: Preço Referência definido como `avg_price` (desambigua Range% e Daily Efficiency)
+
+#### Removed
+
+- **BREAKING**: Indicador CVD (substituído por Money Flow Volume, que usa CLV contínuo em vez de sinal binário)
+
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.1
+[0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0
+
+See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.

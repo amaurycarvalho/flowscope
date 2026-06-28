@@ -20,7 +20,7 @@ O sistema DEVE copiar os dados dos indicadores formatados como CSV para o clipbo
 - **THEN** o sistema DEVE usar o clipboard nativo do Tkinter (`self.clipboard_clear()` + `self.clipboard_append()`) e exibir mensagem na barra de status indicando o fallback
 
 ### Requirement: Cópia de gráfico como imagem PNG para clipboard
-O sistema DEVE copiar o gráfico matplotlib atual como imagem PNG para o clipboard usando ctypes e comandos nativos da plataforma.
+O sistema DEVE copiar o gráfico matplotlib atual como imagem PNG para o clipboard. O botão "Copiar Gráfico" está localizado no toolbar nativo do chart (`ToolbarBR`), disponível para qualquer chart que utilize o toolbar.
 
 #### Scenario: Copiar gráfico para clipboard no Linux
 - **WHEN** o usuário solicita cópia do gráfico no Linux

@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the per-ticker analysis interface, including a combobox for ticker selection and placeholder sub-tabs for future development of price dominance, financial flow, institutional participation, movement efficiency, and a general summary.
+Define the per-ticker analysis interface, including a combobox for ticker selection and sub-tabs for price dominance, financial flow, institutional participation, movement efficiency, and a general summary.
 
 ## Requirements
 
@@ -20,45 +20,45 @@ O sistema DEVE fornecer um combobox na aba "Análise do Ticker" para selecionar 
 
 ### Requirement: Placeholder para Dominância do Pregão
 
-O sistema DEVE exibir uma sub-aba "Dominância do Pregão" vazia na aba "Análise do Ticker", reservada para desenvolvimento futuro de indicadores de dominância de preço por ticker.
+A sub-aba "Dominância do Pregão" DEVE exibir os indicadores de preço: Range, Range%, Typical Price, Median Price, Weighted Close.
 
-#### Scenario: Exibição da sub-aba placeholder
+#### Scenario: Exibição dos indicadores de preço
 
 - **WHEN** o usuário seleciona a sub-aba "Dominância do Pregão"
-- **THEN** o sistema DEVE exibir uma mensagem "Em desenvolvimento" no espaço do gráfico
+- **THEN** o sistema DEVE exibir uma tabela ou painel com Range, Range%, Typical Price, Median Price e Weighted Close para o ticker selecionado
 
 ### Requirement: Placeholder para Fluxo Financeiro
 
-O sistema DEVE exibir uma sub-aba "Fluxo Financeiro" vazia na aba "Análise do Ticker", reservada para desenvolvimento futuro de indicadores de fluxo de capital.
+A sub-aba "Fluxo Financeiro" DEVE exibir os indicadores de fluxo: CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure Index, Selling Pressure Index.
 
-#### Scenario: Exibição da sub-aba placeholder
+#### Scenario: Exibição dos indicadores de fluxo
 
 - **WHEN** o usuário seleciona a sub-aba "Fluxo Financeiro"
-- **THEN** o sistema DEVE exibir uma mensagem "Em desenvolvimento" no espaço do gráfico
+- **THEN** o sistema DEVE exibir CLV, MFM, MFV acumulado, Buying Pressure e Selling Pressure para o ticker selecionado, em formato textual ou visual
 
 ### Requirement: Placeholder para Participação Institucional
 
-O sistema DEVE exibir uma sub-aba "Participação Institucional" vazia na aba "Análise do Ticker", reservada para desenvolvimento futuro de indicadores de atividade institucional.
+A sub-aba "Participação Institucional" DEVE exibir os indicadores de tamanho de negócio: Average Trade Size e Average Financial Ticket.
 
-#### Scenario: Exibição da sub-aba placeholder
+#### Scenario: Exibição dos indicadores de tamanho de negócio
 
 - **WHEN** o usuário seleciona a sub-aba "Participação Institucional"
-- **THEN** o sistema DEVE exibir uma mensagem "Em desenvolvimento" no espaço do gráfico
+- **THEN** o sistema DEVE exibir Average Trade Size e Average Financial Ticket para o ticker selecionado
 
 ### Requirement: Placeholder para Eficiência do Movimento
 
-O sistema DEVE exibir uma sub-aba "Eficiência do Movimento" vazia na aba "Análise do Ticker", reservada para desenvolvimento futuro de indicadores de eficiência de preço.
+A sub-aba "Eficiência do Movimento" DEVE exibir o indicador Daily Efficiency.
 
-#### Scenario: Exibição da sub-aba placeholder
+#### Scenario: Exibição do Daily Efficiency
 
 - **WHEN** o usuário seleciona a sub-aba "Eficiência do Movimento"
-- **THEN** o sistema DEVE exibir uma mensagem "Em desenvolvimento" no espaço do gráfico
+- **THEN** o sistema DEVE exibir o Daily Efficiency para o ticker selecionado
 
 ### Requirement: Placeholder para Resumo Geral
 
-O sistema DEVE exibir uma sub-aba "Resumo Geral" vazia na aba "Análise do Ticker", reservada para desenvolvimento futuro de um sumário consolidado por ticker.
+A sub-aba "Resumo Geral" DEVE consolidar todos os indicadores do ticker em uma única visualização.
 
-#### Scenario: Exibição da sub-aba placeholder
+#### Scenario: Exibição do resumo consolidado
 
 - **WHEN** o usuário seleciona a sub-aba "Resumo Geral"
-- **THEN** o sistema DEVE exibir uma mensagem "Em desenvolvimento" no espaço do gráfico
+- **THEN** o sistema DEVE exibir todos os indicadores disponíveis para o ticker selecionado em formato consolidado (tabela ou painel)
