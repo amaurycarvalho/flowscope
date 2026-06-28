@@ -24,7 +24,7 @@ Update all changelog-related files from a specific change.
 
 1.2. **Read the change's proposal.md** at `openspec/changes/<change-name>/proposal.md` (or `openspec/changes/archive/<change-name>/proposal.md`). Search for the target release in the Impact section by looking for a line matching `- **Target**: Release <version>` or `- **Release**: <version>`. Extract the version string (e.g., `1.5.0`).
 
-1.3. **If no release is specified** in the proposal, default to the **current release** from `b3_selic_pre.py` (extract the value of `__version__`, e.g., `"1.1.0"`).
+1.3. **If no release is specified** in the proposal, default to the **current release** from `src/flowscope/__init__.py` (extract the value of `__version__`, e.g., `"0.1.0"`).
 
 1.4. **Ask the user to confirm the release version** and allow them to edit it. Present the detected release as the default suggestion.
 
@@ -32,7 +32,7 @@ Update all changelog-related files from a specific change.
 
 ### 2. Determine change classification and CHANGELOG strategy
 
-2.1. **Read `b3_selic_pre.py`** to get the current release version from `__version__`. This is the **latest published release**.
+2.1. **Read `src/flowscope/__init__.py`** to get the current release version from `__version__`. This is the **latest published release**.
 
 2.2. **Check if the confirmed release matches the current release** in `b3_selic_pre.py`:
    - **Same version**: The change targets the current release.
@@ -79,7 +79,7 @@ If an entry for the confirmed release **already exists** in `CHANGELOG.md`:
 
 If an entry for the confirmed release **does NOT exist** in `CHANGELOG.md`:
 
-4.1. **Find the current release entry** in `CHANGELOG.md` (the entry matching `__version__` from `b3_selic_pre.py`). Move its entire content (from `## [<current-version>] -` to the next `## [` heading or end of file) into `CHANGELOG-ARCHIVE.md`:
+4.1. **Find the current release entry** in `CHANGELOG.md` (the entry matching `__version__` from `src/flowscope/__init__.py`). Move its entire content (from `## [<current-version>] -` to the next `## [` heading or end of file) into `CHANGELOG-ARCHIVE.md`:
    - Read `CHANGELOG-ARCHIVE.md`.
    - Insert the moved content right after the header (after the intro paragraph and before the first `## [` entry), preserving archive ordering.
    - Write the updated `CHANGELOG-ARCHIVE.md`.
@@ -118,9 +118,9 @@ If an entry for the confirmed release **does NOT exist** in `CHANGELOG.md`:
     ...
     ## [<version>] - YYYY-MM-DD
     ...
-    [Unreleased]: https://github.com/amaurycarvalho/b3-selic-pre/compare/v<version>...HEAD
-    [<version>]: https://github.com/amaurycarvalho/b3-selic-pre/releases/tag/v<version>
-    
+    [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v<version>...HEAD
+
+    [<version>]: https://github.com/amaurycarvalho/flowscope/releases/tag/v<version>
     See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
     ```
 
@@ -161,7 +161,7 @@ If an entry for the confirmed release **does NOT exist** in `CHANGELOG.md`:
     ```markdown
     # Changelog Archive
     ...
-    [<version>]: https://github.com/amaurycarvalho/b3-selic-pre/releases/tag/v<version>
+    [<version>]: https://github.com/amaurycarvalho/flowscope/releases/tag/v<version>
     
     See main [CHANGELOG](CHANGELOG.md) for newer releases.
     ```

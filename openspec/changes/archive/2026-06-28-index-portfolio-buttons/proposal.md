@@ -22,6 +22,8 @@ Atualmente o sistema só consegue baixar a carteira do IDIV para preenchimento a
 
 ## Impact
 
+- **Target**: Release 0.2.0
+
 - `src/flowscope/infrastructure/b3/client.py` — substituir `fetch_idiv_portfolio()` por `fetch_portfolio(index)`
 - `src/flowscope/infrastructure/b3/parser.py` — substituir `parse_idiv_csv()` por `parse_index_csv()`
 - `src/flowscope/infrastructure/b3/repository.py` — substituir `get_idiv_tickers()` por `get_index_tickers(index)`
