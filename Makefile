@@ -17,7 +17,7 @@ endif
 install: $(ACTIVATE)
 $(ACTIVATE): pyproject.toml
 	$(PYTHON_CMD) -m venv $(VENV)
-	$(PIP) install --upgrade pip
+	$(PYTHON) -m pip install --upgrade pip
 	$(PIP) install -e .
 	$(PIP) install -e ".[dev]"
 	touch $(ACTIVATE)
