@@ -17,9 +17,9 @@
 
 ## 4. Verificação
 
-- [ ] 4.1 Testar manualmente: carregar dados, selecionar "Todos" → setas ocultas, scatter visível
-- [ ] 4.2 Testar manualmente: selecionar ticker específico → setas visíveis apenas para ele
-- [ ] 4.3 Testar manualmente: selecionar ticker no Quadrantes → Análise do Ticker sincroniza
-- [ ] 4.4 Testar manualmente: selecionar ticker na Análise do Ticker → Quadrantes sincroniza e gráfico atualiza
-- [ ] 4.5 Testar manualmente: "Todos" no Quadrantes → Análise do Ticker fica vazio
-- [ ] 4.6 Verificar que não há loop infinito de sincronização
+- [x] 4.1 Testar manualmente: carregar dados, selecionar "Todos" → setas ocultas, scatter visível
+- [x] 4.2 Testar manualmente: selecionar ticker específico → setas visíveis apenas para ele
+- [x] 4.3 Testar manualmente: selecionar ticker no Quadrantes → Análise do Ticker sincroniza
+- [x] 4.4 Testar manualmente: selecionar ticker na Análise do Ticker → Quadrantes sincroniza e gráfico atualiza
+- [x] 4.5 Testar manualmente: "Todos" no Quadrantes → Análise do Ticker fica vazio
+- [x] 4.6 Verificar que não há loop infinito de sincronização
