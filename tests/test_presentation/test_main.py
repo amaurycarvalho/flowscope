@@ -115,8 +115,18 @@ class TestDesktopShortcutGuiButton:
         app = MagicMock()
         app._shortcut_btn = btn
 
-        from flowscope.presentation.gui.app import FlowScopeGUI
-        FlowScopeGUI._on_create_shortcut(app)
+        with (
+            patch(
+                "flowscope.presentation.gui.app._create_desktop_shortcut",
+                return_value=True,
+            ),
+            patch(
+                "flowscope.presentation.gui.app.platform.system",
+                return_value="Linux",
+            ),
+        ):
+            from flowscope.presentation.gui.app import FlowScopeGUI
+            FlowScopeGUI._on_create_shortcut(app)
 
         assert app._shortcut_btn is None
         btn.pack_forget.assert_called_once()
