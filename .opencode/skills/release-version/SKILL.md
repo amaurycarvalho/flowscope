@@ -26,9 +26,9 @@ Update the application release version across the codebase and regenerate all ch
      ```
    - Do NOT proceed with any of the steps below.
 
-2. **Update app_version in b3_selic_pre.py**
+2. **Update app_version in src/flowscope/__init__.py**
 
-   Read `b3_selic_pre.py` and find the line containing `__version__ =`.
+   Read `src/flowscope/__init__.py` and find the line containing `__version__ =`.
 
    Replace the current value with the new version string:
 
@@ -36,9 +36,9 @@ Update the application release version across the codebase and regenerate all ch
    __version__ = "<new-version>"
    ```
 
-3. **Update b3-selic-pre.spec**
+3. **Update flowscope.spec**
 
-3.1. Read `b3-selic-pre.spec` and find the `'CFBundleShortVersionString':` field.
+3.1. Read `flowscope.spec` and find the `'CFBundleShortVersionString':` field.
 
    Replace the current version:
 
@@ -46,7 +46,7 @@ Update the application release version across the codebase and regenerate all ch
    'CFBundleShortVersionString': '<new-version>',
    ```
 
-3.1. Read `b3-selic-pre.spec` and find the `'CFBundleVersion':` field.
+3.2. Read `flowscope.spec` and find the `'CFBundleVersion':` field.
 
    Replace the current version:
 
@@ -66,8 +66,8 @@ Update the application release version across the codebase and regenerate all ch
 Release version updated to <version>
 
 Files updated:
-- b3_selic_pre.py (__version__)
-- b3-selic-pre.spec
+- src/flowscope/__init__.py (__version__)
+- flowscope.spec
 
 Commentary: openspec-changelog skill can now be used manually to update the changelog files.
 ```

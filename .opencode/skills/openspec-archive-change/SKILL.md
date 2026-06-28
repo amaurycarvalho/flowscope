@@ -85,13 +85,27 @@ Archive a completed change in the experimental workflow.
    mv "<changeRoot>" "<planningHome.changesDir>/archive/YYYY-MM-DD-<name>"
    ```
 
-6. **Display summary**
+6. **Run changelog update**
+
+   Automatically invoke the openspec-changelog skill for the archived change:
+   ```bash
+   openspec status --change "<YYYY-MM-DD-<name>>" --json 2>/dev/null || true
+   ```
+
+   Use the **Task tool** (subagent_type: "general-purpose") to run the changelog update:
+   ```
+   Use Skill tool to invoke openspec-changelog for archived change '<YYYY-MM-DD-<name>>'.
+   The change is now at '<planningHome.changesDir>/archive/YYYY-MM-DD-<name>'.
+   ```
+
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
    - Schema that was used
    - Archive location
    - Whether specs were synced (if applicable)
+   - Whether changelog was updated
    - Note about any warnings (incomplete artifacts/tasks)
 
 **Output On Success**
@@ -103,6 +117,7 @@ Archive a completed change in the experimental workflow.
 **Schema:** <schema-name>
 **Archived to:** the archive path derived from `planningHome.changesDir`/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs (or "No delta specs" or "Sync skipped")
+**Changelog:** ✓ Updated
 
 All artifacts complete. All tasks complete.
 ```
