@@ -7,31 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.1] — 2026-06-28
-
-### [move-copy-buttons](openspec/changes/archive/2026-06-28-move-copy-buttons) Botões Copiar Dados/Gráfico realocados e frame Exportação eliminado
-
-#### Added
-
-- Botão "Copiar Gráfico" adicionado ao toolbar nativo do matplotlib (`ToolbarBR`), disponível em todos os charts
-- Botão "Copiar Dados" na barra superior ao lado de "Carregar", iniciando desabilitado até o primeiro carregamento de dados
-
-#### Changed
-
-- `_copy_chart()` agora recebe o `Figure` como parâmetro (desacoplado do VWAP chart específico)
-- `ToolbarBR` aceita `copy_chart_callback` via construtor (callback opcional)
-
-#### Fixed
-
-- `pyxclip` import corrigido (`pyxclip.main` não existe; usa `pyxclip.copy()` direto)
-- `print()` substituído por `logging.warning()` com NullHandler na GUI para evitar vazamento de erros da API B3 no terminal
-- URLs da API B3 removidas de mensagens de erro (sanitizadas no `B3Client`)
-
-#### Removed
-
-- Frame `Exportação` (LabelFrame + botões + separador) do `self._left_pw`
-- Dependência do `_vwap_chart.get_figure()` em `_copy_chart()`
-
 ## [0.1.0] — 2026-06-28
 
 ### Added
@@ -154,8 +129,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **BREAKING**: Indicador CVD (substituído por Money Flow Volume, que usa CLV contínuo em vez de sinal binário)
 
+### [move-copy-buttons](openspec/changes/archive/2026-06-28-move-copy-buttons) Botões Copiar Dados/Gráfico realocados e frame Exportação eliminado
+
+#### Added
+
+- Botão "Copiar Gráfico" adicionado ao toolbar nativo do matplotlib (`ToolbarBR`), disponível em todos os charts
+- Botão "Copiar Dados" na barra superior ao lado de "Carregar", iniciando desabilitado até o primeiro carregamento de dados
+
+#### Changed
+
+- `_copy_chart()` agora recebe o `Figure` como parâmetro (desacoplado do VWAP chart específico)
+- `ToolbarBR` aceita `copy_chart_callback` via construtor (callback opcional)
+
+#### Fixed
+
+- `pyxclip` import corrigido (`pyxclip.main` não existe; usa `pyxclip.copy()` direto)
+- `print()` substituído por `logging.warning()` com NullHandler na GUI para evitar vazamento de erros da API B3 no terminal
+- URLs da API B3 removidas de mensagens de erro (sanitizadas no `B3Client`)
+
+#### Removed
+
+- Frame `Exportação` (LabelFrame + botões + separador) do `self._left_pw`
+- Dependência do `_vwap_chart.get_figure()` em `_copy_chart()`
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.1
 [0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
