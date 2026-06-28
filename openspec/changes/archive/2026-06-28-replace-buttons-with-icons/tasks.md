@@ -16,7 +16,7 @@
 
 ## 3. Verificação
 
-- [ ] 3.1 Executar a aplicação em modo GUI e confirmar que todos os botões exibem ícones corretamente
-- [ ] 3.2 Verificar tooltips de todos os botões
-- [ ] 3.3 Verificar que IBOV/IDIV/IFIX estão na mesma linha dos botões de ação
-- [ ] 3.4 Confirmar que `_enter_loading_state`/`_exit_loading_state` continuam funcionando (referenciam `_load_button` e `_today_button` pelo nome do atributo, não pelo texto)
+- [x] 3.1 Executar a aplicação em modo GUI e confirmar que todos os botões exibem ícones corretamente
+- [x] 3.2 Verificar tooltips de todos os botões
+- [x] 3.3 Verificar que IBOV/IDIV/IFIX estão na mesma linha dos botões de ação
+- [x] 3.4 Confirmar que `_enter_loading_state`/`_exit_loading_state` continuam funcionando (referenciam `_load_button` e `_today_button` pelo nome do atributo, não pelo texto)

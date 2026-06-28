@@ -9,9 +9,10 @@ from flowscope.presentation.main import _resolve_icon_path
 
 
 class TickerList:
-    def __init__(self, parent: tk.Widget, on_change: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None):
+    def __init__(self, parent: tk.Widget, on_change: callable = None, on_load: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None):
         self.frame = tk.Frame(parent)
         self._on_change = on_change
+        self._on_load = on_load
         self._initialdir = initialdir
         self._on_dir_changed = on_dir_changed
 
@@ -163,3 +164,5 @@ class TickerList:
             self._text.insert("1.0", content)
             if self._on_dir_changed:
                 self._on_dir_changed(Path(path).parent)
+            if self._on_load:
+                self._on_load()

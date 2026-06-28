@@ -315,6 +315,7 @@ class FlowScopeGUI(tk.Tk):
         self._ticker_list = TickerList(
             ticker_frame,
             on_change=self._on_ticker_edit,
+            on_load=self._on_load_data,
             initialdir=self._prefs.get("last_ticker_dir"),
             on_dir_changed=self._on_ticker_dir_changed,
             on_index_click={
