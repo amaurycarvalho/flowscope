@@ -2,10 +2,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-from flowscope.application.use_cases import (
-    ExportCVDUseCase,
-    ExportVWAPUseCase,
-)
+from flowscope.application.use_cases import ExportVWAPUseCase
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
 
@@ -89,33 +86,3 @@ class TestExportVWAPUseCase:
         assert "2026-06-25" in header
         assert len(lines) >= 2
 
-
-class TestExportCVDUseCase:
-    def test_export_with_ticker_filter(self):
-        repo = _make_mock_repo(_TRADES)
-        use_case = ExportCVDUseCase(repo)
-        result = use_case.execute(
-            ref_date=date(2026, 6, 26),
-            ticker_filter=["VALE3"],
-        )
-        assert "VALE3" in result
-        assert "PETR4" not in result
-
-    def test_export_daily_columns(self):
-        repo = _make_mock_repo(_TRADES)
-        use_case = ExportCVDUseCase(repo)
-        csv = use_case.execute(ref_date=date(2026, 6, 26))
-        lines = csv.split("\n")
-        header = lines[0]
-        assert "CVD_Acumulado" in header
-        assert "2026-06-24" in header
-        assert "2026-06-25" in header
-
-    def test_export_empty_filter(self):
-        repo = _make_mock_repo(_TRADES)
-        use_case = ExportCVDUseCase(repo)
-        result = use_case.execute(
-            ref_date=date(2026, 6, 26),
-            ticker_filter=[],
-        )
-        assert result == "" or "Ticker;CVD_Acumulado" in result

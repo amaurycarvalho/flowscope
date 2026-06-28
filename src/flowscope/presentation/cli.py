@@ -29,11 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Exportar VWAP em CSV",
     )
-    parser.add_argument(
-        "--cvd",
-        action="store_true",
-        help="Exportar CVD em CSV",
-    )
+
     parser.add_argument(
         "--version",
         action="store_true",
@@ -109,18 +105,3 @@ def export_vwap_csv(
         Path(output_path).write_text(content, encoding="utf-8")
     return content
 
-
-def export_cvd_csv(
-    tickers: list[str],
-    metrics: dict,
-    output_path: str | None = None,
-) -> str:
-    lines = ["Ticker;CVD_Acumulado"]
-    for ticker in tickers:
-        data = metrics.get(ticker, {}).get("cvd")
-        if data:
-            lines.append(f"{ticker};{data['accumulated_cvd']}")
-    content = "\n".join(lines)
-    if output_path:
-        Path(output_path).write_text(content, encoding="utf-8")
-    return content

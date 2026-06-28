@@ -22,11 +22,6 @@ class TestBuildParser:
         args = parser.parse_args(["--vwap"])
         assert args.vwap
 
-    def test_parser_has_cvd_flag(self):
-        parser = build_parser()
-        args = parser.parse_args(["--cvd"])
-        assert args.cvd
-
     def test_parser_default_no_args(self):
         parser = build_parser()
         args = parser.parse_args([])

@@ -9,10 +9,8 @@ from tkcalendar import DateEntry
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
-from flowscope.presentation.gui.charts.cvd_hist import CVDHistChart
-from flowscope.presentation.gui.charts.scatter import ScatterChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
-from flowscope.presentation.gui.widgets.analysis_text import AnalysisText
+from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
 from flowscope import __version__
@@ -28,7 +26,8 @@ CONFIG_PATH = CONFIG_DIR / "config.json"
 
 DEFAULT_CONFIG = {
     "last_date": None,
-    "last_chart": "vwap",
+    "last_tab": "Análise Geral",
+    "last_subtab": "VWAP",
     "window_geometry": None,
     "sash_positions": None,
     "last_ticker_dir": None,
@@ -164,48 +163,96 @@ class FlowScopeGUI(tk.Tk):
         )
         self._main_pw.add(left_pw, stretch="always")
 
-        selector_frame = ttk.LabelFrame(left_pw, text="Visualização")
-        left_pw.add(selector_frame, stretch="never")
-        self._chart_var = tk.StringVar(value=self._prefs.get("last_chart", "vwap"))
-        tooltips = {
-            "VWAP": "Preço médio ponderado pela quantidade de ativos negociados. Mostra distribuição de preços no período.",
-            "CVD": "Cumulative Volume Delta",
-            "Dispersão": "Correlação entre VWAP e CVD",
+        self._main_notebook = ttk.Notebook(left_pw)
+        left_pw.add(self._main_notebook, stretch="always")
+
+        general_frame = ttk.Frame(self._main_notebook)
+        self._main_notebook.add(general_frame, text="Análise Geral")
+
+        self._general_notebook = ttk.Notebook(general_frame)
+        self._general_notebook.pack(fill=tk.BOTH, expand=True)
+
+        general_vwap_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_vwap_frame, text="VWAP")
+        self._vwap_chart = VWAPHistChart(general_vwap_frame)
+        self._vwap_chart.frame.pack(fill=tk.BOTH, expand=True)
+
+        general_quadrantes_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_quadrantes_frame, text="Quadrantes")
+        ttk.Label(
+            general_quadrantes_frame, text="Em desenvolvimento.",
+            font=("TkDefaultFont", 12), foreground="gray",
+        ).pack(expand=True)
+
+        ticker_main_frame = ttk.Frame(self._main_notebook)
+        self._main_notebook.add(ticker_main_frame, text="Análise do Ticker")
+
+        self._ticker_combo = ttk.Combobox(
+            ticker_main_frame, state="readonly",
+        )
+        self._ticker_combo.pack(fill=tk.X, padx=PAD_SMALL, pady=PAD_SMALL)
+
+        self._ticker_notebook = ttk.Notebook(ticker_main_frame)
+        self._ticker_notebook.pack(fill=tk.BOTH, expand=True)
+
+        tab_names = [
+            "Dominância do Pregão",
+            "Fluxo Financeiro",
+            "Participação Institucional",
+            "Eficiência do Movimento",
+            "Resumo Geral",
+        ]
+        for name in tab_names:
+            frame = ttk.Frame(self._ticker_notebook)
+            self._ticker_notebook.add(frame, text=name)
+            ttk.Label(
+                frame, text="Em desenvolvimento.",
+                font=("TkDefaultFont", 12), foreground="gray",
+            ).pack(expand=True)
+
+        self._tab_content = {
+            ("Análise Geral", "VWAP"): (
+                "VWAP — Volume Weighted Average Price",
+                "Objetivo: Identificar o preço médio ponderado pelo volume negociado no período, revelando o valor justo da ação sob a ótica do fluxo de ordens.\n\n"
+                "Indicadores envolvidos: VWAP (preço médio ponderado), volume por bucket de preço (volume profile), preço de fechamento (LastPric), preço mínimo e máximo (MinPric, MaxPric).\n\n"
+                "Como interpretar: O VWAP é a referência de preço justo do período. Negociações acima do VWAP indicam viés comprador; abaixo, viés vendedor. "
+                "A largura do violino mostra em quais faixas de preço houve maior concentração de volume. "
+                "O último preço (losango vermelho) em relação ao VWAP indica se o fechamento reforça ou contradiz a tendência do período."
+            ),
+            ("Análise Geral", "Quadrantes"): (
+                "Quadrantes",
+                "Em desenvolvimento. Este painel classificará os ativos em quadrantes com base em indicadores de fluxo e preço."
+            ),
+            ("Análise do Ticker", "Dominância do Pregão"): (
+                "Dominância do Pregão",
+                "Em desenvolvimento. Este painel analisará a participação relativa do ticker no volume total do pregão."
+            ),
+            ("Análise do Ticker", "Fluxo Financeiro"): (
+                "Fluxo Financeiro",
+                "Em desenvolvimento. Este painel exibirá o fluxo de capital (compras vs vendas) ao longo do pregão."
+            ),
+            ("Análise do Ticker", "Participação Institucional"): (
+                "Participação Institucional",
+                "Em desenvolvimento. Este painel estimará a atividade institucional com base no volume e no delta acumulado."
+            ),
+            ("Análise do Ticker", "Eficiência do Movimento"): (
+                "Eficiência do Movimento",
+                "Em desenvolvimento. Este painel avaliará quão eficiente foi o movimento de preço em relação ao volume consumido."
+            ),
+            ("Análise do Ticker", "Resumo Geral"): (
+                "Resumo Geral",
+                "Em desenvolvimento. Este painel consolidará os demais indicadores em um resumo qualitativo único por ticker."
+            ),
         }
-        for text, value in [("VWAP", "vwap"), ("CVD", "cvd"), ("Dispersão", "scatter")]:
-            rb = tk.Radiobutton(
-                selector_frame,
-                text=text,
-                variable=self._chart_var,
-                value=value,
-                command=self._on_chart_select,
-                cursor="hand2",
-            )
-            rb.pack(side=tk.LEFT, padx=PAD_SMALL)
-            ToolTip(rb, tooltips[text])
 
-        self._chart_container = tk.Frame(left_pw)
-        left_pw.add(self._chart_container, stretch="always")
+        self._main_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._general_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._ticker_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
+        self._ticker_combo.bind("<<ComboboxSelected>>", self._on_tab_changed)
 
-        self._chart_title_var = tk.StringVar(value="VWAP — Distribuição de Preços")
-        self._chart_title = tk.Label(
-            self._chart_container,
-            textvariable=self._chart_title_var,
-            font=("TkDefaultFont", 10, "bold"),
-        )
-        self._chart_title.pack(anchor=tk.W)
-
-        self._empty_label = tk.Label(
-            self._chart_container,
-            text="Nenhum ticker corresponde ao filtro.",
-            font=("TkDefaultFont", 12),
-            fg="gray",
-        )
-
-        self._vwap_chart = VWAPHistChart(self._chart_container)
-        self._cvd_chart = CVDHistChart(self._chart_container)
-        self._scatter_chart = ScatterChart(self._chart_container)
-        self._show_current_chart()
+        last_tab = self._prefs.get("last_tab", "Análise Geral")
+        last_subtab = self._prefs.get("last_subtab", "VWAP")
+        self.after(10, lambda: self._restore_tabs(last_tab, last_subtab))
 
         right_pw = tk.PanedWindow(
             self._main_pw, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=6
@@ -224,8 +271,8 @@ class FlowScopeGUI(tk.Tk):
 
         analysis_frame = tk.Frame(right_pw)
         right_pw.add(analysis_frame, stretch="never")
-        self._analysis_text = AnalysisText(analysis_frame)
-        self._analysis_text.frame.pack(fill=tk.X)
+        self._orientation_panel = OrientationPanel(analysis_frame)
+        self._orientation_panel.frame.pack(fill=tk.X)
 
         if self._prefs.get("sash_positions"):
             try:
@@ -234,6 +281,21 @@ class FlowScopeGUI(tk.Tk):
                     self.after(100, lambda: self._restore_sashes(pos))
             except Exception:
                 pass
+
+    def _restore_tabs(self, last_tab, last_subtab):
+        try:
+            for i in range(self._main_notebook.index("end")):
+                if self._main_notebook.tab(i, "text") == last_tab:
+                    self._main_notebook.select(i)
+                    break
+            notebook = self._general_notebook if last_tab == "Análise Geral" else self._ticker_notebook
+            for i in range(notebook.index("end")):
+                if notebook.tab(i, "text") == last_subtab:
+                    notebook.select(i)
+                    break
+        except Exception:
+            pass
+        self._on_tab_changed()
 
     def _restore_sashes(self, positions):
         try:
@@ -351,6 +413,7 @@ class FlowScopeGUI(tk.Tk):
             self._tickers = list(self._current_data.keys())
             self._all_tickers = list(self._tickers)
             self._ticker_list.set_tickers(self._tickers)
+            self._ticker_combo["values"] = self._tickers
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
             self._update_charts()
@@ -365,34 +428,22 @@ class FlowScopeGUI(tk.Tk):
         finally:
             self._exit_loading_state()
 
-    def _on_chart_select(self):
-        self._show_current_chart()
-        self._prefs["last_chart"] = self._chart_var.get()
+    def _on_tab_changed(self, event=None):
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            if main_tab == "Análise Geral":
+                sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
+            else:
+                sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
+        except Exception:
+            return
 
-    def _show_current_chart(self):
-        if hasattr(self, "_ticker_list"):
-            tickers = self._ticker_list.get_tickers()
-            filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
-            if not filtered and self._current_data:
-                self._empty_label.pack(fill=tk.BOTH, expand=True)
-                for c in (self._vwap_chart, self._cvd_chart, self._scatter_chart):
-                    c.frame.pack_forget()
-                return
-        self._empty_label.pack_forget()
-        for c in (self._vwap_chart, self._cvd_chart, self._scatter_chart):
-            c.frame.pack_forget()
-        selected = self._chart_var.get()
-        titles = {
-            "vwap": "VWAP — Distribuição de Preços",
-            "cvd": "CVD Histogram",
-            "scatter": "VWAP × CVD — Dispersão",
-        }
-        self._chart_title_var.set(titles[selected])
-        {
-            "vwap": self._vwap_chart,
-            "cvd": self._cvd_chart,
-            "scatter": self._scatter_chart,
-        }[selected].frame.pack(fill=tk.BOTH, expand=True)
+        content = self._tab_content.get((main_tab, sub_tab))
+        if content:
+            self._orientation_panel.set_content(*content)
+
+        self._prefs["last_tab"] = main_tab
+        self._prefs["last_subtab"] = sub_tab
 
     def _on_ticker_dir_changed(self, directory: Path) -> None:
         self._prefs["last_ticker_dir"] = str(directory)
@@ -407,6 +458,7 @@ class FlowScopeGUI(tk.Tk):
             else:
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
+        self._ticker_combo["values"] = tickers
         self._update_charts()
         self._update_ticker_counter()
         self._update_title()
@@ -428,9 +480,6 @@ class FlowScopeGUI(tk.Tk):
         tickers = self._ticker_list.get_tickers()
         filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
         self._vwap_chart.update(filtered)
-        self._cvd_chart.update(filtered)
-        self._scatter_chart.update(filtered)
-        self._show_current_chart()
 
     def _update_ticker_counter(self):
         filtered = self._ticker_list.get_tickers()
@@ -484,12 +533,7 @@ class FlowScopeGUI(tk.Tk):
     def _copy_chart(self):
         from flowscope.infrastructure.clipboard_image import ClipboardError, copy_image_to_clipboard
 
-        chart = {
-            "vwap": self._vwap_chart,
-            "cvd": self._cvd_chart,
-            "scatter": self._scatter_chart,
-        }[self._chart_var.get()]
-        figure = chart.get_figure()
+        figure = self._vwap_chart.get_figure()
         if figure is not None:
             try:
                 copy_image_to_clipboard(figure)
@@ -505,7 +549,8 @@ class FlowScopeGUI(tk.Tk):
     def _on_close(self):
         self._prefs["window_geometry"] = self.geometry()
         self._prefs["last_date"] = str(self._date_entry.get_date())
-        self._prefs["last_chart"] = self._chart_var.get()
+        self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
+        self._prefs["last_subtab"] = self._prefs.get("last_subtab", "VWAP")
         try:
             pos0 = self._main_pw.sash_coord(0) if hasattr(self, "_main_pw") else None
             self._prefs["sash_positions"] = list(pos0) if pos0 else None

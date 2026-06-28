@@ -29,10 +29,6 @@ def main() -> None:
         _export("vwap", ticker_filter)
         return
 
-    if args.cvd:
-        _export("cvd", ticker_filter)
-        return
-
     run_cli(args)
 
 
@@ -89,22 +85,15 @@ def _export(indicator: str, ticker_filter: list[str] | None = None) -> None:
     from datetime import date
     from pathlib import Path
 
-    from flowscope.application.use_cases import (
-        ExportCVDUseCase,
-        ExportVWAPUseCase,
-    )
+    from flowscope.application.use_cases import ExportVWAPUseCase
     from flowscope.infrastructure.b3.client import B3Client
     from flowscope.infrastructure.b3.repository import B3DataRepository
 
     repo = B3DataRepository(B3Client())
     ref_date = date.today()
 
-    if indicator == "vwap":
-        use_case = ExportVWAPUseCase(repo)
-        content = use_case.execute(ref_date, ticker_filter=ticker_filter)
-    else:
-        use_case = ExportCVDUseCase(repo)
-        content = use_case.execute(ref_date, ticker_filter=ticker_filter)
+    use_case = ExportVWAPUseCase(repo)
+    content = use_case.execute(ref_date, ticker_filter=ticker_filter)
 
     output = f"{indicator}_{ref_date}.csv"
     Path(output).write_text(content, encoding="utf-8")

@@ -85,31 +85,4 @@ class ExportVWAPUseCase:
         return "\n".join(lines)
 
 
-class ExportCVDUseCase:
-    def __init__(self, repository: DataRepository):
-        self._repository = repository
 
-    def execute(
-        self, ref_date: date, tickers: list[str] | None = None,
-        ticker_filter: list[str] | None = None,
-    ) -> str:
-        dates = self._repository.get_available_dates(ref_date)
-        trades = self._repository.fetch_trades(dates, tickers)
-
-        if ticker_filter:
-            trades = [t for t in trades if t.ticker.value in ticker_filter]
-
-        cvd = calculate_cvd(trades)
-        all_dates = sorted({
-            d for info in cvd.values()
-            for d in info.get("daily_cvd", {})
-        })
-        date_headers = ";".join(d.isoformat() for d in all_dates)
-        lines = [f"Ticker;CVD_Acumulado;{date_headers}"]
-        for ticker, data in cvd.items():
-            daily = data.get("daily_cvd", {})
-            vals = ";".join(
-                str(daily.get(d, "")) for d in all_dates
-            )
-            lines.append(f"{ticker};{data['accumulated_cvd']};{vals}")
-        return "\n".join(lines)
