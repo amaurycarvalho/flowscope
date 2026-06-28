@@ -60,6 +60,20 @@ O sistema DEVE selecionar os 15 tickers com maior volume financeiro (NtlFinVol) 
 - **WHEN** o período contém dados de apenas 7 tickers
 - **THEN** o sistema DEVE selecionar todos os 7 tickers disponíveis
 
+### Requirement: Cálculo do VWAP Distance como indicador derivado
+
+O sistema DEVE calcular o VWAP Distance para cada ticker em cada dia como `(LastPric - TradAvrgPric) / TradAvrgPric`. O indicador depende do `vwap` existente, utilizando o `daily_vwap` de cada data como denominador.
+
+#### Scenario: VWAP Distance positivo
+
+- **WHEN** LastPric = 52.50 e TradAvrgPric = 50.00
+- **THEN** VWAP Distance DEVE ser (52.50 - 50.00) / 50.00 = 0.05
+
+#### Scenario: VWAP Distance negativo
+
+- **WHEN** LastPric = 48.00 e TradAvrgPric = 50.00
+- **THEN** VWAP Distance DEVE ser (48.00 - 50.00) / 50.00 = -0.04
+
 ### Requirement: Tratamento de dados ausentes ou inválidos
 
 O sistema DEVE ignorar linhas do CSV onde campos essenciais (TckrSymb, NtlFinVol, TradAvrgPric) estão vazios ou inválidos, sem interromper o processamento.

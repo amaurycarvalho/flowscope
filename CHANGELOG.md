@@ -23,6 +23,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Removed
 - `fetch_idiv_portfolio()` e `parse_idiv_csv()` (substituídos)
 
+### [quadrant-chart-panel](openspec/changes/archive/2026-06-28-quadrant-chart-panel) Painel Quadrantes com CLV × VWAP Distance, quiver de trajetória e resumo automático
+
+#### Added
+- **Novo indicador `vwap_distance`**: derivado do VWAP, calculado como `(last_price - avg_price) / avg_price` por ticker-por-data
+- **Painel "Quadrantes"**: bubble chart (CLV × VWAP Distance) com quiver de trajetória temporal, colormap RdYlGn e bolhas dimensionadas por `fin_instr_qty`
+- **Resumo textual automático**: análise da distribuição das bolhas entre os quadrantes
+- **Seletor de ticker por chart**: Combobox nos gráficos VWAP e Quadrantes (opção "Todos")
+- **Atalho Ctrl+A**: selecionar todos os filtros no TickerList
+
+#### Changed
+- **Documentação**: `panels.md` e `indicators.md` atualizados (descrição do Quadrantes e VWAP Distance)
+- **Título da janela**: removida alteração ao carregar dados (título fixo "FlowScope v0.2.0")
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.2.0...HEAD
 [0.2.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.2.0
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
