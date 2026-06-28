@@ -1,22 +1,32 @@
 .PHONY: install build test clean
 
 VENV = .venv
-PYTHON = $(VENV)/bin/python3
-PIP = $(VENV)/bin/pip
 
-install: $(VENV)/bin/activate
-$(VENV)/bin/activate: pyproject.toml
-	python3 -m venv $(VENV)
+ifeq ($(OS),Windows_NT)
+	PYTHON = $(VENV)/Scripts/python
+	PIP = $(VENV)/Scripts/pip
+	ACTIVATE = $(VENV)/Scripts/activate
+	PYTHON_CMD = python
+else
+	PYTHON = $(VENV)/bin/python3
+	PIP = $(VENV)/bin/pip
+	ACTIVATE = $(VENV)/bin/activate
+	PYTHON_CMD = python3
+endif
+
+install: $(ACTIVATE)
+$(ACTIVATE): pyproject.toml
+	$(PYTHON_CMD) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 	$(PIP) install -e .
 	$(PIP) install -e ".[dev]"
-	touch $(VENV)/bin/activate
+	touch $(ACTIVATE)
 
-build: $(VENV)/bin/activate
+build: $(ACTIVATE)
 	$(PIP) install pyinstaller
 	$(PYTHON) -m PyInstaller flowscope.spec
 
-test: $(VENV)/bin/activate
+test: $(ACTIVATE)
 	$(PYTHON) -m pytest tests/ -v
 
 clean:
