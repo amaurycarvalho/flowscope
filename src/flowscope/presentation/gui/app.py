@@ -92,6 +92,7 @@ class FlowScopeGUI(tk.Tk):
         self._all_tickers: list[str] = []
         self._loading_after_id = None
         self._flash_after_id = None
+        self._syncing_in_progress: bool = False
 
         self._build_top_bar()
         self._build_main_area()
@@ -208,13 +209,17 @@ class FlowScopeGUI(tk.Tk):
 
         general_vwap_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_vwap_frame, text="VWAP")
-        self._vwap_ticker_combo = self._build_ticker_selector(general_vwap_frame)
+        self._vwap_ticker_combo = self._build_ticker_selector(
+            general_vwap_frame, on_select=self._on_vwap_combo_selected
+        )
         self._vwap_chart = VWAPHistChart(general_vwap_frame, copy_chart_callback=self._copy_chart)
         self._vwap_chart.frame.pack(fill=tk.BOTH, expand=True)
 
         general_quadrantes_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_quadrantes_frame, text="Quadrantes")
-        self._quadrant_ticker_combo = self._build_ticker_selector(general_quadrantes_frame)
+        self._quadrant_ticker_combo = self._build_ticker_selector(
+            general_quadrantes_frame, on_select=self._on_quadrant_combo_selected
+        )
         self._quadrant_chart = QuadrantChart(
             general_quadrantes_frame,
             copy_chart_callback=self._copy_chart,
@@ -313,7 +318,7 @@ class FlowScopeGUI(tk.Tk):
         self._main_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._general_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._ticker_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-        self._ticker_combo.bind("<<ComboboxSelected>>", self._on_tab_changed)
+        self._ticker_combo.bind("<<ComboboxSelected>>", self._on_ticker_combo_selected)
 
         last_tab = self._prefs.get("last_tab", "Análise Geral")
         last_subtab = self._prefs.get("last_subtab", "VWAP")
@@ -594,11 +599,12 @@ class FlowScopeGUI(tk.Tk):
         self._ticker_list.set_tickers(self._tickers)
         self._update_charts()
 
-    def _build_ticker_selector(self, parent) -> ttk.Combobox:
+    def _build_ticker_selector(self, parent, *, on_select: callable = None) -> ttk.Combobox:
         combo = ttk.Combobox(parent, state="readonly", values=["Todos"])
         combo.current(0)
         combo.pack(fill=tk.X, padx=PAD_SMALL, pady=(PAD_SMALL, 0))
-        combo.bind("<<ComboboxSelected>>", lambda e: self._update_charts())
+        if on_select:
+            combo.bind("<<ComboboxSelected>>", on_select)
         return combo
 
     def _update_ticker_selectors(self) -> None:
@@ -624,6 +630,49 @@ class FlowScopeGUI(tk.Tk):
         except Exception:
             pass
 
+    def _sync_ticker_selectors(self, source: str) -> None:
+        if self._syncing_in_progress:
+            return
+        self._syncing_in_progress = True
+        if source == "quadrantes":
+            sel = self._quadrant_ticker_combo.get()
+            if sel and sel != "Todos":
+                self._vwap_ticker_combo.set(sel)
+                self._ticker_combo.set(sel)
+            else:
+                self._vwap_ticker_combo.set("Todos")
+                self._ticker_combo.set("")
+        elif source == "vwap":
+            sel = self._vwap_ticker_combo.get()
+            if sel and sel != "Todos":
+                self._quadrant_ticker_combo.set(sel)
+                self._ticker_combo.set(sel)
+            else:
+                self._quadrant_ticker_combo.set("Todos")
+                self._ticker_combo.set("")
+        elif source == "ticker_analysis":
+            sel = self._ticker_combo.get()
+            if sel:
+                self._quadrant_ticker_combo.set(sel)
+                self._vwap_ticker_combo.set(sel)
+        self._syncing_in_progress = False
+
+    def _on_quadrant_combo_selected(self, event=None):
+        self._sync_ticker_selectors("quadrantes")
+        self._update_charts()
+
+    def _on_vwap_combo_selected(self, event=None):
+        self._sync_ticker_selectors("vwap")
+        self._update_charts()
+
+    def _on_ticker_combo_selected(self, event=None):
+        sel = self._ticker_combo.get()
+        if not sel:
+            return
+        self._sync_ticker_selectors("ticker_analysis")
+        self._on_tab_changed()
+        self._update_charts()
+
     def _update_charts(self):
         import matplotlib
 
@@ -644,7 +693,8 @@ class FlowScopeGUI(tk.Tk):
             filtered_quadrant = {t: v for t, v in filtered.items() if t == quadrant_sel}
         else:
             filtered_quadrant = filtered
-        self._quadrant_chart.update(filtered_quadrant)
+        show_arrows = quadrant_sel != "Todos"
+        self._quadrant_chart.update(filtered_quadrant, show_arrows=show_arrows)
 
     def _update_ticker_counter(self):
         filtered = self._ticker_list.get_tickers()

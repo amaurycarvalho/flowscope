@@ -48,19 +48,19 @@ class TickerList:
         btn_frame = tk.Frame(self.frame)
         btn_frame.pack(fill=tk.X, pady=(5, 0))
 
-        btn_save = tk.Button(
-            btn_frame, image=_load_icon("document-save.png"),
-            command=self._save, cursor="hand2", padx=0,
-        )
-        btn_save.pack(side=tk.LEFT, padx=2)
-        ToolTip(btn_save, "Salvar lista de tickers em arquivo")
-
         btn_load = tk.Button(
             btn_frame, image=_load_icon("document-open.png"),
             command=self._load, cursor="hand2", padx=0,
         )
         btn_load.pack(side=tk.LEFT, padx=2)
         ToolTip(btn_load, "Carregar lista de tickers de arquivo")
+
+        btn_save = tk.Button(
+            btn_frame, image=_load_icon("document-save.png"),
+            command=self._save, cursor="hand2", padx=0,
+        )
+        btn_save.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_save, "Salvar lista de tickers em arquivo")
 
         btn_filter = tk.Button(
             btn_frame, image=_load_icon("edit-find.png"),

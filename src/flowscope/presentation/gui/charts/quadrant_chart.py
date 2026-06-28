@@ -31,7 +31,7 @@ class QuadrantChart:
         self._canvas.mpl_connect("pick_event", self._on_pick)
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
-    def update(self, data: dict) -> None:
+    def update(self, data: dict, *, show_arrows: bool = False) -> None:
         self._axes.clear()
         self._hover_data.clear()
         self._scatter = None
@@ -77,15 +77,16 @@ class QuadrantChart:
         all_y: list[float] = []
 
         for points in ticker_trajectories:
-            for i in range(len(points) - 1):
-                p0, p1 = points[i], points[i + 1]
-                self._axes.arrow(
-                    p0["clv"], p0["vwap_dist"],
-                    p1["clv"] - p0["clv"], p1["vwap_dist"] - p0["vwap_dist"],
-                    head_width=0.02, head_length=0.02,
-                    fc="gray", ec="gray", alpha=0.3,
-                    length_includes_head=True, zorder=2,
-                )
+            if show_arrows:
+                for i in range(len(points) - 1):
+                    p0, p1 = points[i], points[i + 1]
+                    self._axes.arrow(
+                        p0["clv"], p0["vwap_dist"],
+                        p1["clv"] - p0["clv"], p1["vwap_dist"] - p0["vwap_dist"],
+                        head_width=0.02, head_length=0.02,
+                        fc="gray", ec="gray", alpha=0.3,
+                        length_includes_head=True, zorder=2,
+                    )
             for p in points:
                 all_x.append(p["clv"])
                 all_y.append(p["vwap_dist"])
