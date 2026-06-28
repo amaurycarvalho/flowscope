@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-APPINFO="$PROJECT_ROOT/b3_selic_pre.py"
+APPINFO="$PROJECT_ROOT/src/flowscope/__init__.py"
 
 if [ ! -f "$APPINFO" ]; then
     echo "ERROR: Could not find $APPINFO" >&2

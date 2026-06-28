@@ -9,7 +9,7 @@ metadata:
 
 Push the current release to the remote repository: create a git tag, push tags, create a release branch, push it, and switch back to master.
 
-The version is read automatically from `__version__` in `b3_selic_pre.py`.
+The version is read automatically from `__version__` in `src/flowscope/__init__.py`.
 
 **Steps**
 
@@ -33,7 +33,7 @@ ERROR: Change <change-name> not archived yet.
 2. **Run the release script**
 
    Execute the bash script located at `.opencode/skills/release-push/release-push.sh`. This script:
-   - Reads the version from `b3_selic_pre.py`
+   - Reads the version from `src/flowscope/__init__.py`
    - Creates the git tag `v<version>`
    - Pushes tags to origin
    - Creates and pushes a `release/v<version>` branch
@@ -54,7 +54,7 @@ ERROR: Change <change-name> not archived yet.
 **Output On Error**
 
 ```
-ERROR: Could not extract version from b3_selic_pre.py.
+ERROR: Could not extract version from src/flowscope/__init__.py.
 ```
 
 **Guardrails**
