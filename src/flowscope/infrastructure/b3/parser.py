@@ -1,5 +1,4 @@
 import csv
-import io
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -66,14 +65,11 @@ def parse_csv(content: str, segment_filter: str | None = "CASH") -> list[TradeDa
     return trades
 
 
-_IDIV_HEADER = "Código"
-
-
-def parse_idiv_csv(content: str) -> list[str]:
+def parse_index_csv(content: str) -> list[str]:
     tickers: list[str] = []
     for line in content.splitlines():
         line = line.strip()
-        if not line or line.startswith("IDIV -"):
+        if not line:
             continue
         parts = line.split(";")
         ticker = parts[0].strip()
@@ -82,6 +78,8 @@ def parse_idiv_csv(content: str) -> list[str]:
         if ticker in ("Código", "C\u00f3digo"):
             continue
         if ticker.startswith("Quantidade") or ticker.startswith("Redutor"):
+            continue
+        if not (ticker.isascii() and ticker.isupper()):
             continue
         tickers.append(ticker)
     return tickers

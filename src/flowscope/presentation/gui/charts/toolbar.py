@@ -22,7 +22,7 @@ class ToolbarBR(NavigationToolbar2Tk):
         self._add_copy_chart_button()
 
     def _add_copy_chart_button(self):
-        icon = str(_resolve_icon_path("copy.png"))
+        icon = str(_resolve_icon_path("edit-copy.png"))
         btn = self._Button("Copiar Gráfico", icon, False, self.copy_chart)
         FsToolTip(btn, "Copiar gráfico como imagem para a área de transferência")
 

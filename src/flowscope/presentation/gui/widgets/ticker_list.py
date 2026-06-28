@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 class TickerList:
-    def __init__(self, parent: tk.Widget, on_change: callable = None, initialdir: str = None, on_dir_changed: callable = None):
+    def __init__(self, parent: tk.Widget, on_change: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None):
         self.frame = tk.Frame(parent)
         self._on_change = on_change
         self._initialdir = initialdir
@@ -33,6 +33,12 @@ class TickerList:
         tk.Button(btn_frame, text="Salvar Tickers", command=self._save, cursor="hand2").pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Carregar Tickers", command=self._load, cursor="hand2").pack(side=tk.LEFT, padx=2)
         tk.Button(btn_frame, text="Filtrar", command=self._filter, cursor="hand2").pack(side=tk.LEFT, padx=2)
+
+        if on_index_click:
+            btn_frame2 = tk.Frame(self.frame)
+            btn_frame2.pack(fill=tk.X, pady=(2, 0))
+            for label, callback in on_index_click.items():
+                tk.Button(btn_frame2, text=label, command=callback, cursor="hand2").pack(side=tk.LEFT, padx=2)
 
         self._context_menu = tk.Menu(self.frame, tearoff=0)
         self._context_menu.add_command(label="Copiar ticker", command=self._copy_selected_ticker)

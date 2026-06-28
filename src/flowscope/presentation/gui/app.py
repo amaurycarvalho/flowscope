@@ -303,6 +303,11 @@ class FlowScopeGUI(tk.Tk):
             on_change=self._on_ticker_edit,
             initialdir=self._prefs.get("last_ticker_dir"),
             on_dir_changed=self._on_ticker_dir_changed,
+            on_index_click={
+                "IBOV": lambda: self._fill_with_index("IBOV"),
+                "IDIV": lambda: self._fill_with_index("IDIV"),
+                "IFIX": lambda: self._fill_with_index("IFIX"),
+            },
         )
         self._ticker_list.frame.pack(fill=tk.BOTH, expand=True)
 
@@ -391,14 +396,19 @@ class FlowScopeGUI(tk.Tk):
         self._set_status(frames[self._loading_idx], "⏳")
         self._loading_after_id = self.after(400, self._animate_loading)
 
+    def _fill_with_index(self, index: str) -> None:
+        tickers = self._repo.get_index_tickers(index)
+        if tickers:
+            self._ticker_list.set_tickers(tickers)
+            self._flash_status(f"Carteira {index} carregada com {len(tickers)} ativos.")
+        else:
+            self._flash_status(f"Não foi possível carregar a carteira {index}.", "⚠")
+
     def _ensure_tickers(self) -> list[str]:
         tickers = self._ticker_list.get_tickers()
         if not tickers:
-            idiv = self._repo.get_idiv_tickers()
-            if not idiv:
-                return []
-            self._ticker_list.set_tickers(idiv)
-            tickers = idiv
+            self._fill_with_index("IDIV")
+            tickers = self._ticker_list.get_tickers()
         return tickers
 
     def _on_today(self):
@@ -531,10 +541,9 @@ class FlowScopeGUI(tk.Tk):
     def _on_ticker_edit(self):
         tickers = self._ticker_list.get_tickers()
         if not tickers:
-            idiv = self._repo.get_idiv_tickers()
-            if idiv:
-                self._ticker_list.set_tickers(idiv)
-            else:
+            self._fill_with_index("IDIV")
+            tickers = self._ticker_list.get_tickers()
+            if not tickers:
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
         self._ticker_combo["values"] = tickers

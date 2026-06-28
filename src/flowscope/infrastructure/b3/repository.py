@@ -18,8 +18,8 @@ class B3DataRepository(DataRepository):
     def get_available_dates(self, ref_date: date) -> list[date]:
         return fibonacci_dates(ref_date)
 
-    def get_idiv_tickers(self) -> list[str]:
-        return self._client.fetch_idiv_portfolio()
+    def get_index_tickers(self, index: str) -> list[str]:
+        return self._client.fetch_portfolio(index)
 
     def fetch_trades(
         self, date_range: Iterable[date], tickers: list[str] | None = None

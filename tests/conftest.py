@@ -39,6 +39,26 @@ SAMPLE_IDIV_CSV = (
     "Quantidade Teórica Total;;;25.884.437.336;100,000\n"
 )
 
+SAMPLE_IBOV_CSV = (
+    "IBOV - Carteira do Dia 28/06/26\n"
+    "Código;Ação;Tipo;Qtde. Teórica;Part. (%)\n"
+    "VALE3;VALE;ON      NM;542.345.678;11,432;\n"
+    "PETR4;PETROBRAS;PN      N2;398.765.432;9,876;\n"
+    "ITUB4;ITAÚ UNIBANCO;PN      N1;287.654.321;7,654;\n"
+    "B3SA3;B3;ON      NM;198.765.432;5,432;\n"
+    "Quantidade Teórica Total;;;1.427.530.863;100,000\n"
+    "Redutor;;;0,99999999;\n"
+)
+
+SAMPLE_IFIX_CSV = (
+    "IFIX - Fundos Listados\n"
+    "Código;Ação;Tipo;Qtde. Teórica;Part. (%)\n"
+    "KINP11;KINEA;FII;12.345.678;2,345;\n"
+    "HGLG11;HG LOGÍSTICA;FII;9.876.543;1,876;\n"
+    "KNRI11;KINEA RENDA;FII;8.765.432;1,654;\n"
+    "Quantidade Teórica Total;;;30.987.653;100,000\n"
+)
+
 
 @pytest.fixture
 def sample_csv() -> str:
@@ -58,6 +78,16 @@ def sample_csv_mixed_segments() -> str:
 @pytest.fixture
 def sample_idiv_csv() -> str:
     return SAMPLE_IDIV_CSV
+
+
+@pytest.fixture
+def sample_ibov_csv() -> str:
+    return SAMPLE_IBOV_CSV
+
+
+@pytest.fixture
+def sample_ifix_csv() -> str:
+    return SAMPLE_IFIX_CSV
 
 
 @pytest.fixture

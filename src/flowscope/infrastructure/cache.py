@@ -46,6 +46,11 @@ class CacheManager:
     def _meta_path_for(self, key: str) -> Path:
         return self._cache_dir / f"{key}.json"
 
+    def invalidate(self, key: str) -> None:
+        meta_path = self._meta_path_for(key)
+        if meta_path.exists():
+            meta_path.unlink()
+
     def get_or_fetch(self, key: str, ttl_days: int, fetch_fn) -> dict:
         meta_path = self._meta_path_for(key)
         if meta_path.exists():
