@@ -1,15 +1,26 @@
 ## Purpose
 
-Define the graphical user interface for FlowScope, including the Tkinter main window, chart widgets (VWAP violin plot, CVD histogram, scatter plot with temporal arrows), ticker list management, and clipboard export.
+Define the graphical user interface for FlowScope, including the Tkinter main window, notebook-based navigation (Análise Geral / Análise do Ticker), VWAP chart widget, ticker list management, OrientationPanel for explanatory content, and clipboard export.
 
 ## Requirements
 
-### Requirement: Gráfico de dispersão VWAP × CVD
-O sistema DEVE exibir um scatter plot com VWAP no eixo X e CVD no eixo Y, onde cada ponto representa um ticker. O tamanho dos marcadores DEVE variar conforme o volume financeiro (NtlFinVol) e a cor por quadrante. O checkbox "Exibir setas temporais" DEVE desenhar setas conectando a posição de cada ticker no dia anterior (d-1) à sua posição no dia atual (d), indicando a trajetória temporal.
+### Requirement: Navegação por notebook de abas
+O sistema DEVE substituir o seletor de visualização por RadioButtons por um ttk.Notebook principal com duas abas: "Análise Geral" e "Análise do Ticker". A aba "Análise Geral" DEVE conter um sub-notebook com as abas "VWAP" (exibe o gráfico de distribuição de preços) e "Quadrantes" (placeholder). A aba "Análise do Ticker" DEVE conter um combobox para seleção de ticker e um sub-notebook com 5 abas placeholder: "Dominância do Pregão", "Fluxo Financeiro", "Participação Institucional", "Eficiência do Movimento" e "Resumo Geral".
 
-#### Scenario: Checkbox quiver temporal marcado
-- **WHEN** o usuário marca o checkbox "Exibir setas temporais"
-- **THEN** setas DEVEM ser desenhadas no scatter plot conectando a posição (VWAP, CVD) de cada ticker em d-1 à sua posição em d, com setas indicando a direção
+#### Scenario: Navegação entre abas principais
+- **WHEN** o usuário clica na aba "Análise Geral"
+- **THEN** o sistema DEVE exibir o sub-notebook com as abas "VWAP" e "Quadrantes"
+
+#### Scenario: Navegação para análise de ticker
+- **WHEN** o usuário clica na aba "Análise do Ticker"
+- **THEN** o sistema DEVE exibir o combobox de seleção de ticker e o sub-notebook com as 5 sub-abas placeholder
+
+### Requirement: OrientationPanel para conteúdo explicativo
+O sistema DEVE exibir um OrientationPanel na barra lateral direita contendo título e texto explicativo fixo associado à sub-aba ativa. Cada sub-aba DEVE ter seu próprio conteúdo explicativo (objetivo, indicadores envolvidos, como interpretá-lo).
+
+#### Scenario: OrientationPanel atualizado ao trocar sub-aba
+- **WHEN** o usuário seleciona a sub-aba "VWAP"
+- **THEN** o OrientationPanel DEVE exibir o título "VWAP — Volume Weighted Average Price" e o texto explicativo correspondente
 
 ### Requirement: Gráfico de distribuição de preços VWAP
 O sistema DEVE exibir um violin plot horizontal com o ticker no eixo X e o valor do TradAvrgPric no eixo Y. A largura do violino em cada faixa de preço DEVE ser proporcional à soma de FinInstrmQty para aquele ticker em todo o período. Sobreposto ao violin plot, DEVE haver:
@@ -17,7 +28,7 @@ O sistema DEVE exibir um violin plot horizontal com o ticker no eixo X e o valor
 - Um scatter plot destacando o LastPric de cada ticker referente à data mais recente do período
 
 #### Scenario: Exibição do violin plot com errorbar e scatter
-- **WHEN** dados de múltiplos tickers são carregados e o gráfico VWAP está selecionado
+- **WHEN** dados de múltiplos tickers são carregados e a sub-aba VWAP está selecionada
 - **THEN** o sistema DEVE exibir um violin plot horizontal com perfil de volume (largura ∝ Σ FinInstrMty por bucket de preço), errorbar (VWAP, MinPric, MaxPric) e scatter (LastPric da data mais recente)
 
 #### Scenario: Ticker com dados de um único dia
@@ -27,39 +38,6 @@ O sistema DEVE exibir um violin plot horizontal com o ticker no eixo X e o valor
 #### Scenario: Sem dados para exibir
 - **WHEN** não há dados carregados ou o filtro resulta em lista vazia
 - **THEN** o sistema DEVE exibir uma mensagem "Nenhum ticker corresponde ao filtro."
-
-### Requirement: Campo multilinha de seleção de tickers
-O sistema DEVE fornecer um campo de texto multilinha onde o usuário pode editar a lista de tickers (um por linha). O sistema DEVE fornecer um botão "Filtrar" ao lado de "Salvar Tickers" e "Carregar Tickers". As alterações no campo de texto NÃO DEVEM atualizar os gráficos automaticamente. O filtro DEVE ser aplicado apenas quando o botão "Filtrar" for pressionado manualmente. O botão "Carregar Tickers" DEVE preencher o campo sem aplicar o filtro automaticamente.
-
-#### Scenario: Filtro manual via botão "Filtrar"
-- **WHEN** o usuário edita a lista de tickers e clica no botão "Filtrar"
-- **THEN** os gráficos DEVEM ser atualizados para refletir apenas os tickers presentes no campo
-
-#### Scenario: Edição manual não atualiza gráficos
-- **WHEN** o usuário digita ou apaga tickers no campo texto
-- **THEN** os gráficos NÃO DEVEM ser atualizados
-
-#### Scenario: Carregar tickers de arquivo não atualiza gráficos
-- **WHEN** o usuário clica em "Carregar Tickers" e seleciona um arquivo
-- **THEN** o campo DEVE ser preenchido com os tickers do arquivo, e os gráficos NÃO DEVEM ser atualizados
-
-### Requirement: Duplo clique filtra ticker
-O sistema DEVE aplicar filtro para mostrar apenas o ticker onde o usuário der duplo clique no campo de texto de tickers.
-
-#### Scenario: Duplo clique em ticker existente
-- **WHEN** o usuário dá duplo clique na palavra "PETR4" no campo de tickers
-- **THEN** o campo DEVE ser atualizado para conter apenas "PETR4" e o filtro DEVE ser aplicado
-
-### Requirement: Menu de contexto no campo de tickers
-O campo de texto de tickers DEVE exibir um menu de contexto ao clicar com o botão direito, com opções: Copiar ticker, Remover do filtro, Selecionar todos, Limpar seleção.
-
-#### Scenario: Menu de contexto com ticker selecionado
-- **WHEN** o usuário seleciona "PETR4" no campo e clica com botão direito em "Copiar ticker"
-- **THEN** o texto "PETR4" DEVE ser copiado para o clipboard
-
-#### Scenario: Menu de contexto "Selecionar todos"
-- **WHEN** o usuário clica com botão direito e escolhe "Selecionar todos"
-- **THEN** todo o texto no campo DEVE ser selecionado
 
 ### Requirement: Contagem de tickers
 O sistema DEVE exibir um label ao lado do campo de tickers indicando a quantidade total carregada "Tickers (N)" e, quando filtrado, "Exibindo M de N ativos".
@@ -93,20 +71,16 @@ O sistema DEVE, ao clicar no botão "Hoje", atualizar o DateEntry para a data at
 
 ### Requirement: Preenchimento automático com IDIV quando filtro vazio
 
-O sistema DEVE, quando o campo de filtro de tickers estiver vazio e o usuário pressionar "Carregar" ou "Filtrar", buscar automaticamente a carteira do IDIV e preencher o campo com os tickers do índice. O carregamento de dados DEVE então prosseguir usando essa lista como filtro.
+O sistema DEVE, quando o campo de filtro de tickers estiver vazio e o usuário pressionar "Carregar", buscar automaticamente a carteira do IDIV e preencher o campo com os tickers do índice. O carregamento de dados DEVE então prosseguir usando essa lista como filtro.
 
 #### Scenario: Carregar com filtro vazio
 - **WHEN** o campo de tickers está vazio e o usuário clica em "Carregar"
 - **THEN** o sistema DEVE buscar a carteira IDIV, preencher o campo de tickers com os tickers obtidos, e carregar os dados filtrando apenas por esses tickers
-
-#### Scenario: Filtrar com filtro vazio
-- **WHEN** o campo de tickers está vazio e o usuário clica em "Filtrar"
-- **THEN** o sistema DEVE buscar a carteira IDIV, preencher o campo de tickers com os tickers obtidos, e aplicar o filtro
 
 #### Scenario: Erro na busca IDIV com filtro vazio
 - **WHEN** o campo de tickers está vazio, o usuário clica em "Carregar", e a busca do IDIV falha
 - **THEN** o sistema DEVE exibir uma mensagem de erro e NÃO DEVE carregar dados
 
 #### Scenario: Filtro já preenchido mantém comportamento atual
-- **WHEN** o campo de tickers contém tickers e o usuário clica em "Carregar" ou "Filtrar"
+- **WHEN** o campo de tickers contém tickers e o usuário clica em "Carregar"
 - **THEN** o sistema DEVE usar os tickers existentes no campo, sem buscar o IDIV

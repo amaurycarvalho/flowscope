@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-06-27
+## [0.1.0] — 2026-06-28
 
 ### Added
 
@@ -83,3 +83,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Botões "Hoje" e "Carregar" desabilitados durante o carregamento (loading guard estendido)
 - `TickerList._save()` e `TickerList._load()` usam `initialdir` a partir da preferência persistida
 - `TickerList` recebe parâmetros `initialdir` e `on_dir_changed` callback (baixo acoplamento)
+
+### [redesign-gui-notebook](openspec/changes/archive/2026-06-28-redesign-gui-notebook) RadioButton chart selector replaced by two-level notebook with general and per-ticker analysis
+
+#### Added
+
+- Main `ttk.Notebook` replacing the "Visualização" RadioButton frame with tabs "Análise Geral" and "Análise do Ticker"
+- Sub-notebook in "Análise Geral" with "VWAP" (existing chart) and "Quadrantes" (placeholder)
+- Sub-notebook in "Análise do Ticker" with 5 placeholder tabs (Dominância, Fluxo, Participação, Eficiência, Resumo)
+- `ttk.Combobox` in "Análise do Ticker" for selecting a single ticker
+- `OrientationPanel` widget with fixed explanatory text per sub-tab
+
+#### Changed
+
+- `_show_current_chart()` adapted to control notebook tabs instead of pack/forget
+- `_update_charts()` simplified to update only VWAP chart
+- `_copy_chart()` simplified to copy only VWAP chart
+- `config.json` persistence: `last_chart` → `last_tab` + `last_subtab`
+- TickerList changes propagate to combobox in "Análise do Ticker"
+
+#### Removed
+
+- **BREAKING**: RadioButton group and "Visualização" frame
+- **BREAKING**: `CVDHistChart` (GUI chart)
+- **BREAKING**: `ScatterChart` (GUI scatter plot)
+- **BREAKING**: `--cvd` CLI flag and `export_cvd_csv()`
+- **BREAKING**: `ExportCVDUseCase` from application layer
+- `AnalysisText` widget (replaced by `OrientationPanel`)

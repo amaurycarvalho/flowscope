@@ -1,6 +1,6 @@
 ## Purpose
 
-Define the command-line interface for FlowScope, including argument parsing, data export (VWAP, CVD CSV), ticker filtering, and desktop shortcut creation.
+Define the command-line interface for FlowScope, including argument parsing, data export (VWAP CSV), ticker filtering, and desktop shortcut creation.
 
 ## Requirements
 
@@ -15,9 +15,3 @@ O sistema DEVE exportar os valores de VWAP dos tickers selecionados em formato C
 - **WHEN** o usuário executa `flowscope --vwap --tickers meus_tickers.txt`
 - **THEN** o CSV gerado DEVE conter apenas os tickers listados no arquivo, e apenas as datas com dados disponíveis para esses tickers
 
-### Requirement: Exportação CSV de CVD via --cvd
-O sistema DEVE exportar os valores de CVD dos tickers selecionados em formato CSV quando a flag `--cvd` é utilizada. O CSV DEVE incluir colunas para cada data da janela Fibonacci, com os CVDs diários de cada ticker. Quando a flag `--tickers` é fornecida, o sistema DEVE filtrar a exportação para conter apenas os tickers listados no arquivo.
-
-#### Scenario: Exportação CVD com colunas diárias
-- **WHEN** o usuário executa `flowscope --cvd`
-- **THEN** o CSV gerado DEVE conter colunas: Ticker, CVD_Acumulado, e uma coluna por data da janela Fibonacci com o CVD diário de cada ticker
