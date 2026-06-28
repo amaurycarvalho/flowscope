@@ -2,6 +2,11 @@ import tkinter as tk
 from tkinter import filedialog
 from pathlib import Path
 
+from PIL import Image, ImageTk
+
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
+from flowscope.presentation.main import _resolve_icon_path
+
 
 class TickerList:
     def __init__(self, parent: tk.Widget, on_change: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None):
@@ -28,17 +33,42 @@ class TickerList:
         self._text.bind("<Double-Button-1>", self._on_double_click)
         self._text.bind("<Button-3>", self._show_context_menu)
 
+        self._icon_refs: list[ImageTk.PhotoImage] = []
+
+        def _load_icon(filename: str, size: tuple = (20, 20)) -> ImageTk.PhotoImage:
+            path = _resolve_icon_path(filename)
+            img = Image.open(path).resize(size, Image.LANCZOS)
+            photo = ImageTk.PhotoImage(img)
+            self._icon_refs.append(photo)
+            return photo
+
         btn_frame = tk.Frame(self.frame)
         btn_frame.pack(fill=tk.X, pady=(5, 0))
-        tk.Button(btn_frame, text="Salvar Tickers", command=self._save, cursor="hand2").pack(side=tk.LEFT, padx=2)
-        tk.Button(btn_frame, text="Carregar Tickers", command=self._load, cursor="hand2").pack(side=tk.LEFT, padx=2)
-        tk.Button(btn_frame, text="Filtrar", command=self._filter, cursor="hand2").pack(side=tk.LEFT, padx=2)
+
+        btn_save = tk.Button(
+            btn_frame, image=_load_icon("document-save.png"),
+            command=self._save, cursor="hand2", padx=0,
+        )
+        btn_save.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_save, "Salvar lista de tickers em arquivo")
+
+        btn_load = tk.Button(
+            btn_frame, image=_load_icon("document-open.png"),
+            command=self._load, cursor="hand2", padx=0,
+        )
+        btn_load.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_load, "Carregar lista de tickers de arquivo")
+
+        btn_filter = tk.Button(
+            btn_frame, image=_load_icon("edit-find.png"),
+            command=self._filter, cursor="hand2", padx=0,
+        )
+        btn_filter.pack(side=tk.LEFT, padx=2)
+        ToolTip(btn_filter, "Filtrar tickers exibidos")
 
         if on_index_click:
-            btn_frame2 = tk.Frame(self.frame)
-            btn_frame2.pack(fill=tk.X, pady=(2, 0))
             for label, callback in on_index_click.items():
-                tk.Button(btn_frame2, text=label, command=callback, cursor="hand2").pack(side=tk.LEFT, padx=2)
+                tk.Button(btn_frame, text=label, command=callback, cursor="hand2").pack(side=tk.LEFT, padx=2)
 
         self._context_menu = tk.Menu(self.frame, tearoff=0)
         self._context_menu.add_command(label="Copiar ticker", command=self._copy_selected_ticker)

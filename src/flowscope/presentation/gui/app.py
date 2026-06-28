@@ -14,6 +14,8 @@ from flowscope.presentation.gui.widgets.orientation_panel import OrientationPane
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
 from flowscope import __version__
+from PIL import Image, ImageTk
+
 from flowscope.presentation.main import (
     _create_desktop_shortcut,
     _desktop_shortcut_exists,
@@ -108,6 +110,15 @@ class FlowScopeGUI(tk.Tk):
         self._set_status("Pronto. Selecione uma data e clique em Carregar.")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _load_icon(self, filename: str, size: tuple = (20, 20)) -> ImageTk.PhotoImage:
+        path = _resolve_icon_path(filename)
+        img = Image.open(path).resize(size, Image.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        if not hasattr(self, "_icon_refs"):
+            self._icon_refs = []
+        self._icon_refs.append(photo)
+        return photo
+
     def _set_icon(self):
         system = platform.system()
         if system == "Linux":
@@ -142,17 +153,20 @@ class FlowScopeGUI(tk.Tk):
         )
         self._date_entry.pack(side=tk.LEFT, padx=PAD_SMALL)
         self._today_button = tk.Button(
-            top, text="Hoje", command=self._on_today, cursor="hand2"
+            top, image=self._load_icon("document-open-recent.png"),
+            command=self._on_today, cursor="hand2", padx=0,
         )
         self._today_button.pack(side=tk.LEFT, padx=(0, PAD_SMALL))
         self._load_button = tk.Button(
-            top, text="Carregar", command=self._on_load_data, cursor="hand2"
+            top, image=self._load_icon("view-refresh.png"),
+            command=self._on_load_data, cursor="hand2", padx=0,
         )
         self._load_button.pack(side=tk.LEFT, padx=PAD_SMALL)
 
         self._copy_data_btn = tk.Button(
-            top, text="Copiar Dados", command=self._copy_data,
-            state=tk.DISABLED, cursor="hand2", padx=PAD,
+            top, image=self._load_icon("edit-copy.png"),
+            command=self._copy_data,
+            state=tk.DISABLED, cursor="hand2", padx=0,
         )
         self._copy_data_btn.pack(side=tk.LEFT, padx=PAD_SMALL)
 
@@ -304,9 +318,9 @@ class FlowScopeGUI(tk.Tk):
             initialdir=self._prefs.get("last_ticker_dir"),
             on_dir_changed=self._on_ticker_dir_changed,
             on_index_click={
-                "IBOV": lambda: self._fill_with_index("IBOV"),
-                "IDIV": lambda: self._fill_with_index("IDIV"),
-                "IFIX": lambda: self._fill_with_index("IFIX"),
+                "IBOV": lambda: self._fill_with_index("IBOV") or self._on_load_data(),
+                "IDIV": lambda: self._fill_with_index("IDIV") or self._on_load_data(),
+                "IFIX": lambda: self._fill_with_index("IFIX") or self._on_load_data(),
             },
         )
         self._ticker_list.frame.pack(fill=tk.BOTH, expand=True)
@@ -374,6 +388,9 @@ class FlowScopeGUI(tk.Tk):
         self._flash_after_id = self.after(clear_ms, lambda: self._set_status("Pronto."))
 
     def _enter_loading_state(self):
+        if self._flash_after_id:
+            self.after_cancel(self._flash_after_id)
+            self._flash_after_id = None
         self._load_button.config(state=tk.DISABLED)
         self._today_button.config(state=tk.DISABLED)
         self._date_entry.config(state=tk.DISABLED)
