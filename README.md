@@ -1,12 +1,10 @@
 # flowscope
 
-Plataforma de análise quantitativa de fluxo de ordens a partir dos dados consolidados de negociações da bolsa, com indicadores, visualização gráfica, exportação de dados e identificação automática de estratégias de fluxo institucional.
+FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens baseada nos dados públicos consolidados de negociações disponibilizados pela bolsa de valores B3.
 
 [![Spec-Driven Development](https://img.shields.io/badge/SDD-OpenSpec-yellow)](openspec/specs/project-constitution/spec.md)
 
 ## Descrição
-
-FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens baseada nos dados públicos consolidados de negociações disponibilizados pelas bolsas de valores. A
 
 A principal diretriz do FlowScope é explicar o mercado, não apenas exibir indicadores. Cada painel busca responder a uma única pergunta em linguagem simples, com um gráfico limpo, uma classificação qualitativa e um breve resumo textual. O foco da interface é traduzir os indicadores envolvidos em respostas claras sobre quem dominou o pregão, quanto capital foi necessário para mover o preço, se há sinais de atuação institucional e quão convincente foi o movimento.
 
