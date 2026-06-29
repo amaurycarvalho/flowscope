@@ -41,7 +41,7 @@ Neste modo, o método `get_tickers()` DEVE retornar todos os tickers presentes n
 
 ### Requirement: Botão toggle "Editar lista de tickers"
 
-O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`) com o ícone `document-properties.png` entre os botões "Salvar lista de tickers" e "Filtrar" na barra de botões do TickerList.
+O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`) com o ícone `document-properties.png` entre os botões "Salvar lista de tickers" e "Selecionar Todos" na barra de botões do TickerList.
 
 - Botão marcado (pressed) = modo edição
 - Botão desmarcado (released) = modo visualização
@@ -58,21 +58,21 @@ O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`)
 
 ### Requirement: Botões "Selecionar Todos" e "Desmarcar Todos" no modo visualização
 
-O sistema DEVE exibir dois botões nativos visíveis apenas no modo visualização:
+O sistema DEVE exibir dois botões nativos na barra superior, imediatamente à direita do botão "Editar lista de tickers", visíveis apenas no modo visualização:
 - "Selecionar Todos" com ícone `edit-select-all.png`: marca todos os tickers do Listbox
-- "Desmarcar Todos" com ícone `list-remove-all.png`: desmarca todos os tickers do Listbox
+- "Desmarcar Todos" com ícone `edit-unselect-all.png`: desmarca todos os tickers do Listbox
 
-Os botões DEVEM estar posicionados entre o label do TickerList e o Listbox.
+Em modo edição, estes botões NÃO DEVEM ser exibidos.
 
 #### Scenario: Selecionar Todos
 
 - **WHEN** o usuário desmarcou 10 de 30 tickers e clica em "Selecionar Todos"
 - **THEN** todos os 30 tickers DEVEM ficar marcados no Listbox
 
-#### Scenario: Desmarcar Todos
+#### Scenario: Desmarcar Todos (apenas desmarca, não dispara callback)
 
 - **WHEN** o usuário clica em "Desmarcar Todos" com 30 tickers carregados
-- **THEN** nenhum ticker DEVE ficar marcado no Listbox
+- **THEN** nenhum ticker DEVE ficar marcado no Listbox, e NENHUM callback de filtro DEVE ser disparado
 
 ### Requirement: Transição do modo edição para visualização com preservação de seleção
 
@@ -94,21 +94,40 @@ Ao sair do modo edição (botão toggle desmarcado), o sistema DEVE:
 - **WHEN** o usuário entra em modo edição, não altera a lista, e volta ao modo visualização
 - **THEN** a lista de tickers no Listbox DEVE permanecer inalterada e NENHUMA recarga de dados DEVE ser disparada
 
-### Requirement: Lazy refresh de gráficos
+### Requirement: Lazy refresh híbrido de gráficos
 
-O sistema DEVE atualizar os gráficos (VWAP, Quadrantes, Dominância do Pregão na Análise Geral; Dominance Timeline e indicadores textuais na Análise do Ticker) apenas quando o usuário selecionar a respectiva aba manualmente. Alterações na seleção de tickers NÃO DEVEM disparar renderização de gráficos.
+O sistema DEVE atualizar os gráficos (VWAP, Quadrantes, Dominância do Pregão na Análise Geral; indicadores textuais na Análise do Ticker) de forma híbrida:
+- **Aba ativa**: renderizada imediatamente após carga de dados ou aplicação de filtro
+- **Demais abas**: renderizadas apenas quando o usuário as seleciona manualmente
 
-#### Scenario: Seleção modificada sem refresh imediato
+O painel de orientação (OrientationPanel) DEVE ser atualizado independentemente do lazy refresh.
 
-- **WHEN** o usuário marca/desmarca tickers no Listbox (modo visualização)
-- **THEN** os gráficos NÃO DEVEM ser atualizados (apenas o estado interno muda)
+#### Scenario: Renderização imediata da aba ativa após carga
 
-#### Scenario: Gráfico atualizado ao selecionar aba da Análise Geral
+- **WHEN** o usuário carrega dados estando na aba "VWAP" da Análise Geral
+- **THEN** o gráfico VWAP DEVE ser renderizado imediatamente com os dados carregados
 
-- **WHEN** o usuário modifica a seleção de tickers e então clica na sub-aba "VWAP" da Análise Geral
-- **THEN** o gráfico VWAP DEVE ser renderizado com a seleção atual de tickers
+#### Scenario: Renderização imediata da aba ativa após filtro
 
-#### Scenario: Indicadores atualizados ao selecionar Análise do Ticker
+- **WHEN** o usuário modifica a seleção de tickers no Listbox estando na aba "Quadrantes"
+- **THEN** o gráfico de quadrantes DEVE ser renderizado imediatamente com a nova seleção
 
-- **WHEN** o usuário modifica a seleção de tickers e então clica na aba "Análise do Ticker"
-- **THEN** o combobox e os indicadores textuais DEVM ser atualizados com a seleção atual
+#### Scenario: Demais abas renderizadas apenas ao selecionar
+
+- **WHEN** o usuário carrega dados estando na aba "VWAP" e então clica na aba "Dominância do Pregão"
+- **THEN** o gráfico de dominância DEVE ser renderizado apenas no momento do clique na aba
+
+#### Scenario: OrientationPanel atualizado sem refresh de gráfico
+
+- **WHEN** o usuário navega entre sub-abas sem modificar a seleção
+- **THEN** o OrientationPanel DEVE exibir o conteúdo explicativo da sub-aba selecionada, mesmo que os gráficos não tenham sido re-renderizados
+
+### Requirement: Botão "Filtrar" removido
+
+O botão "Filtrar" (`edit-find.png`) foi removido. A seleção no Listbox no modo visualização já funciona como filtro automaticamente.
+
+### Requirement: Separadores entre grupos de botões
+
+Dois separadores verticais DEVEM ser exibidos:
+1. Entre "Salvar lista de tickers" e "Editar lista de tickers"
+2. Entre o grupo de seleção (Editar + Selecionar Todos + Desmarcar Todos) e os botões de índice (IBOV, IDIV, IFIX)

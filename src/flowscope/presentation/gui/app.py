@@ -94,7 +94,7 @@ class FlowScopeGUI(tk.Tk):
         self._all_tickers: list[str] = []
         self._loading_after_id = None
         self._flash_after_id = None
-        self._syncing_in_progress: bool = False
+        self._charts_dirty: bool = True
 
         self._build_top_bar()
         self._build_main_area()
@@ -211,17 +211,11 @@ class FlowScopeGUI(tk.Tk):
 
         general_vwap_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_vwap_frame, text="VWAP")
-        self._vwap_ticker_combo = self._build_ticker_selector(
-            general_vwap_frame, on_select=self._on_vwap_combo_selected
-        )
         self._vwap_chart = VWAPHistChart(general_vwap_frame, copy_chart_callback=self._copy_chart)
         self._vwap_chart.frame.pack(fill=tk.BOTH, expand=True)
 
         general_quadrantes_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_quadrantes_frame, text="Quadrantes")
-        self._quadrant_ticker_combo = self._build_ticker_selector(
-            general_quadrantes_frame, on_select=self._on_quadrant_combo_selected
-        )
         self._quadrant_chart = QuadrantChart(
             general_quadrantes_frame,
             copy_chart_callback=self._copy_chart,
@@ -231,9 +225,6 @@ class FlowScopeGUI(tk.Tk):
 
         general_dominance_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_dominance_frame, text="Dominância do Pregão")
-        self._dominance_combo = self._build_ticker_selector(
-            general_dominance_frame, on_select=self._on_dominance_combo_selected
-        )
         self._dominance_ranking = DominanceRankingChart(
             general_dominance_frame, copy_chart_callback=self._copy_chart,
         )
@@ -373,6 +364,7 @@ class FlowScopeGUI(tk.Tk):
             on_load=self._on_load_data,
             initialdir=self._prefs.get("last_ticker_dir"),
             on_dir_changed=self._on_ticker_dir_changed,
+            on_data_needed=self._on_load_data,
             on_index_click={
                 "IBOV": lambda: self._fill_with_index("IBOV") or self._on_load_data(),
                 "IDIV": lambda: self._fill_with_index("IDIV") or self._on_load_data(),
@@ -478,10 +470,10 @@ class FlowScopeGUI(tk.Tk):
             self._flash_status(f"Não foi possível carregar a carteira {index}.", "⚠")
 
     def _ensure_tickers(self) -> list[str]:
-        tickers = self._ticker_list.get_tickers()
+        tickers = self._ticker_list.get_all_listbox_tickers()
         if not tickers:
             self._fill_with_index("IDIV")
-            tickers = self._ticker_list.get_tickers()
+            tickers = self._ticker_list.get_all_listbox_tickers()
         return tickers
 
     def _on_today(self):
@@ -499,17 +491,13 @@ class FlowScopeGUI(tk.Tk):
                     "⚠",
                 )
                 return
-            self._tickers = tickers
+            self._tickers = list(tickers)
             self._current_data = self._use_case.execute(ref_date, self._tickers or None)
-            self._tickers = list(self._current_data.keys())
-            self._all_tickers = list(self._tickers)
-            self._ticker_list.set_tickers(self._tickers)
             self._ticker_combo["values"] = self._tickers
-            self._update_ticker_selectors()
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
-            self._update_charts()
-            self._update_ticker_indicator_tabs()
+            self._charts_dirty = True
+            self._refresh_current_tab()
             n = len(self._tickers)
             self._copy_data_btn.config(state=tk.NORMAL)
             self._set_status(
@@ -592,6 +580,20 @@ class FlowScopeGUI(tk.Tk):
         if mfv is not None:
             text_w.insert(tk.END, f"\nMoney Flow Volume (acum.): {mfv}")
 
+    def _refresh_current_tab(self):
+        if not self._charts_dirty or not self._current_data:
+            return
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+        except Exception:
+            return
+        if main_tab == "Análise Geral":
+            self._update_charts()
+        else:
+            self._update_ticker_indicator_tabs()
+        self._update_ticker_counter()
+        self._charts_dirty = False
+
     def _on_tab_changed(self, event=None):
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
@@ -599,10 +601,17 @@ class FlowScopeGUI(tk.Tk):
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
                 sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
-                if self._current_data:
-                    self._update_ticker_indicator_tabs()
         except Exception:
             return
+
+        if self._charts_dirty and self._current_data:
+            if main_tab == "Análise Geral":
+                self._update_charts()
+                self._update_ticker_counter()
+            else:
+                self._update_ticker_indicator_tabs()
+                self._update_ticker_counter()
+            self._charts_dirty = False
 
         content = self._tab_content.get((main_tab, sub_tab))
         if content:
@@ -623,39 +632,17 @@ class FlowScopeGUI(tk.Tk):
             if not tickers:
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
-        self._tickers = tickers
+        self._tickers = list(tickers)
         self._ticker_combo["values"] = tickers
-        self._update_ticker_selectors()
-        self._update_charts()
-        self._update_ticker_indicator_tabs()
-        self._update_ticker_counter()
+        self._charts_dirty = True
+        self._refresh_current_tab()
         self._flash_status("Filtro aplicado!", "ℹ")
 
     def _on_date_change(self):
         ref_date = self._date_entry.get_date()
         self._current_data = self._use_case.execute(ref_date, self._tickers or None)
-        self._tickers = list(self._current_data.keys())
-        self._all_tickers = list(self._tickers)
-        self._ticker_list.set_tickers(self._tickers)
-        self._update_charts()
-
-    def _build_ticker_selector(self, parent, *, on_select: callable = None) -> ttk.Combobox:
-        combo = ttk.Combobox(parent, state="readonly", values=["Todos"])
-        combo.current(0)
-        combo.pack(fill=tk.X, padx=PAD_SMALL, pady=(PAD_SMALL, 0))
-        if on_select:
-            combo.bind("<<ComboboxSelected>>", on_select)
-        return combo
-
-    def _update_ticker_selectors(self) -> None:
-        values = ["Todos"] + self._tickers
-        for combo in (self._vwap_ticker_combo, self._quadrant_ticker_combo, self._dominance_combo):
-            current = combo.get()
-            combo["values"] = values
-            if current in values:
-                combo.set(current)
-            else:
-                combo.current(0)
+        self._charts_dirty = True
+        self._refresh_current_tab()
 
     def _on_quadrant_summary(self, summary: str) -> None:
         try:
@@ -670,54 +657,12 @@ class FlowScopeGUI(tk.Tk):
         except Exception:
             pass
 
-    def _sync_ticker_selectors(self, source: str) -> None:
-        if self._syncing_in_progress:
-            return
-        self._syncing_in_progress = True
-        if source == "quadrantes":
-            sel = self._quadrant_ticker_combo.get()
-            if sel and sel != "Todos":
-                self._vwap_ticker_combo.set(sel)
-                self._ticker_combo.set(sel)
-            else:
-                self._vwap_ticker_combo.set("Todos")
-                self._ticker_combo.set("")
-        elif source == "dominance":
-            sel = self._dominance_combo.get()
-            if sel and sel != "Todos":
-                self._vwap_ticker_combo.set(sel)
-                self._quadrant_ticker_combo.set(sel)
-                self._ticker_combo.set(sel)
-            else:
-                self._vwap_ticker_combo.set("Todos")
-                self._quadrant_ticker_combo.set("Todos")
-                self._ticker_combo.set("")
-        elif source == "vwap":
-            sel = self._ticker_combo.get()
-            if sel:
-                self._quadrant_ticker_combo.set(sel)
-                self._vwap_ticker_combo.set(sel)
-        self._syncing_in_progress = False
-
-    def _on_quadrant_combo_selected(self, event=None):
-        self._sync_ticker_selectors("quadrantes")
-        self._update_charts()
-
-    def _on_vwap_combo_selected(self, event=None):
-        self._sync_ticker_selectors("vwap")
-        self._update_charts()
-
-    def _on_dominance_combo_selected(self, event=None):
-        self._sync_ticker_selectors("dominance")
-        self._update_charts()
-
     def _on_ticker_combo_selected(self, event=None):
         sel = self._ticker_combo.get()
         if not sel:
             return
-        self._sync_ticker_selectors("ticker_analysis")
+        self._charts_dirty = True
         self._on_tab_changed()
-        self._update_charts()
 
     def _update_charts(self):
         import matplotlib
@@ -727,32 +672,18 @@ class FlowScopeGUI(tk.Tk):
         tickers = self._ticker_list.get_tickers()
         filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
 
-        vwap_sel = self._vwap_ticker_combo.get()
-        if vwap_sel and vwap_sel != "Todos":
-            filtered_vwap = {t: v for t, v in filtered.items() if t == vwap_sel}
-        else:
-            filtered_vwap = filtered
-        self._vwap_chart.update(filtered_vwap)
+        self._vwap_chart.update(filtered)
 
-        quadrant_sel = self._quadrant_ticker_combo.get()
-        if quadrant_sel and quadrant_sel != "Todos":
-            filtered_quadrant = {t: v for t, v in filtered.items() if t == quadrant_sel}
-        else:
-            filtered_quadrant = filtered
-        show_arrows = quadrant_sel != "Todos"
-        self._quadrant_chart.update(filtered_quadrant, show_arrows=show_arrows)
+        show_arrows = len(filtered) == 1
+        self._quadrant_chart.update(filtered, show_arrows=show_arrows)
 
-        dominance_sel = self._dominance_combo.get()
-        if dominance_sel and dominance_sel != "Todos":
-            filtered_dominance = {t: v for t, v in filtered.items() if t == dominance_sel}
-        else:
-            filtered_dominance = filtered
-        self._dominance_ranking.update(filtered_dominance)
+        self._dominance_ranking.update(filtered)
 
     def _update_ticker_counter(self):
+        all_listbox = self._ticker_list.get_all_listbox_tickers()
         filtered = self._ticker_list.get_tickers()
         active = [t for t in filtered if t in self._current_data]
-        n_total = len(self._all_tickers)
+        n_total = len(all_listbox)
         n_filtered = len(active)
         if n_filtered < n_total and n_total > 0:
             self._ticker_list.set_counter(f"Exibindo {n_filtered} de {n_total} ativos")

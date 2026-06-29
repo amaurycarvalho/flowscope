@@ -15,11 +15,12 @@ Não há suporte a seleção visual de múltiplos tickers — para filtrar, o us
 **Goals:**
 - Adicionar modo visualização com Listbox(EXTENDED) no TickerList
 - Botão toggle para alternar entre edição (Text) e visualização (Listbox)
-- Botões Selecionar Todos / Desmarcar Todos no modo visualização
+- Botões Selecionar Todos / Desmarcar Todos na barra superior (visíveis apenas no view mode)
 - Preservação de seleção ao transitar entre modos
 - Disparar recarga de dados ao sair do modo edição se a lista mudou
-- Implementar lazy refresh: gráficos só renderizam quando a aba é selecionada
-- Nenhuma alteração nos comboboxes ou na sincronia entre eles
+- Implementar lazy refresh híbrido: aba ativa renderiza imediatamente, demais ao selecionar
+- Remover comboboxes de ticker da Análise Geral (redundantes com a seleção do Listbox)
+- Carga de dados usa todos os tickers da lista (não apenas os selecionados)
 
 **Non-Goals:**
 - Não alterar o pipeline de dados (`_current_data`, use cases, domain)
@@ -53,9 +54,13 @@ self._edit_toggle = tk.Checkbutton(
 )
 ```
 
-### D3: Botões Select All / Deselect All visíveis apenas no view mode
+### D3: Botões Select All / Deselect All na barra superior, visíveis apenas no view mode
 
-Frame separado `_view_btn_frame` (com os botões Select All / Deselect All) posicionado entre o label e o content frame. Mostrado/escondido junto com o Listbox.
+Posicionados no `btn_frame` (barra superior), imediatamente à direita do toggle de edição, com `pack(before=self._sep)` para garantir posicionamento correto ao re-exibir após edição. Visibilidade alternada em `_set_view_mode()` via `pack()`/`pack_forget()`.
+
+Um separador vertical (`tk.Frame` com `height=2, relief=RIDGE`) separa Salvar de Editar. Outro separador separa o grupo de seleção dos botões de índice (IBOV, IDIV, IFIX).
+
+**Alternativa considerada (anterior)**: `_view_btn_frame` separado entre o label e o content frame. Rejeitada porque consumia espaço vertical desnecessário.
 
 ### D4: Preservação de seleção via snapshot
 
@@ -66,21 +71,20 @@ Ao entrar no modo edição, salvar:
 Ao sair do modo edição:
 - Comparar `set(text_tickers)` com `set(_view_tickers_snapshot)`
 - Nova seleção: `(selection_snapshot ∩ text_tickers) ∪ (text_tickers - snapshot_tickers)`
-- Se `set(text_tickers) != set(snapshot)`: marcar `_list_changed = True`
+- Se `set(text_tickers) != set(snapshot)`: chamar `on_data_needed`
 
 ### D5: Sinal de recarga via callback `on_data_needed`
 
 Adicionar callback `on_data_needed` no TickerList, chamado pelo `FlowScopeGUI` quando a transição edit→view detecta mudança na lista. Este callback executa `_on_load_data()`.
 
-### D6: Lazy refresh via bandeira `_charts_dirty`
+### D6: Lazy refresh híbrido via bandeira `_charts_dirty` + método `_refresh_current_tab()`
 
 Atributo `_charts_dirty: bool` no `FlowScopeGUI`:
 - `True` após: carga de dados, mudança de seleção no Listbox, transição edit→view
-- Verificado em `_on_tab_changed()`: se dirty, chama `_update_charts()` + `_update_ticker_indicator_tabs()` + `_update_ticker_counter()`, depois limpa bandeira
 
-`_on_ticker_edit()` NÃO chama `_update_charts()` diretamente — apenas marca dirty.
+Método `_refresh_current_tab()`: verifica `_charts_dirty`, identifica a aba ativa (Análise Geral → `_update_charts()`; Análise do Ticker → `_update_ticker_indicator_tabs()`), renderiza e limpa dirty. Chamado imediatamente após carga de dados e filtro.
 
-Os callbacks de combobox (`_on_vwap_combo_selected`, etc.) continuam chamando `_update_charts()` como antes (comportamento original preservado). A diferença é que agora `_update_charts()` usa o `get_tickers()` que no view mode retorna só os selecionados.
+`_on_tab_changed()`: além da lógica de `_refresh_current_tab()`, também atualiza o `OrientationPanel`. Chamado em navegação entre abas.
 
 ### D7: `set_tickers()` adaptado para view mode
 
@@ -97,9 +101,25 @@ def set_tickers(self, tickers: list[str]) -> None:
     self._view_selection_snapshot = set(tickers)
 ```
 
+Usado apenas por `_fill_with_index` (botões IBOV/IDIV/IFIX). `_on_load_data()` NÃO chama `set_tickers()` para preservar a lista original do usuário.
+
+### D8: Comboboxes da Análise Geral removidos
+
+Os comboboxes de ticker das abas VWAP, Quadrantes e Dominância (`_vwap_ticker_combo`, `_quadrant_ticker_combo`, `_dominance_combo`) foram removidos junto com:
+- `_build_ticker_selector()` — factory dos combos
+- `_update_ticker_selectors()` — atualização dos valores
+- `_sync_ticker_selectors()` — sincronia entre combos
+- `_on_*_combo_selected()` — handlers
+
+`_update_charts()` foi simplificado: todos os tickers selecionados no Listbox vão para todos os gráficos. A regra de quiver no Quadrantes usa `show_arrows = len(filtered) == 1`.
+
+### D9: Carga de dados usa todos os tickers
+
+`_ensure_tickers()` usa `get_all_listbox_tickers()` em vez de `get_tickers()`. Assim, a carga sempre busca dados para **todos** os tickers da lista, independente de quais estão marcados. A seleção só afeta a exibição nos painéis.
+
 ## Risks / Trade-offs
 
 - [**UX**] Dois widgets empilhados ocupam o mesmo espaço. O frame do content area precisa ter `expand=True` para ambos funcionarem corretamente.
 - [**Sincronia**] A transição edit→view pode disparar recarga de dados, que é uma operação cara (requisição B3). O usuário sente um delay ao apertar o toggle. Mitigação: só recarrega se a lista realmente mudou, e o loading state já existe.
 - [**Memória**] Manter Text e Listbox em memória simultaneamente é negligenciável (tickers são strings curtas).
-- [**Ícones**] `document-properties.png`, `edit-select-all.png` e `list-remove-all.png` precisam existir em `src/flowscope/icons/`. Se não existirem, usar fallback textual.
+- [**Ícones**] `document-properties.png`, `edit-select-all.png` e `edit-unselect-all.png` precisam existir em `src/flowscope/icons/`.
