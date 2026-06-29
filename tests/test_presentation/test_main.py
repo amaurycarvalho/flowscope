@@ -79,14 +79,23 @@ class TestDesktopShortcutExists:
         desktop_dir = tmp_path / "Desktop"
         desktop_dir.mkdir()
         (desktop_dir / "flowscope.desktop").write_text("")
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert _desktop_shortcut_exists() is True
 
     def test_fallback_to_area_de_trabalho(self, tmp_path):
         desktop_dir = tmp_path / "Área de Trabalho"
         desktop_dir.mkdir()
         (desktop_dir / "flowscope.desktop").write_text("")
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        user_dirs = tmp_path / ".config" / "user-dirs.dirs"
+        user_dirs.parent.mkdir(parents=True)
+        user_dirs.write_text('XDG_DESKTOP_DIR="$HOME/Área de Trabalho"\n')
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert _desktop_shortcut_exists() is True
 
 
