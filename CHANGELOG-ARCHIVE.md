@@ -227,6 +227,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_create_desktop_shortcut()` retorna `bool` em vez de chamar `sys.exit()` (reutilizável pela GUI)
 - CLI `--create-shortcut` passou a verificar plataforma no `main()` e retornar exit code 0 em não-Linux
 
+[0.3.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.3.0
 [0.2.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.2.1
 [0.2.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.2.0
 [0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0

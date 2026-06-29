@@ -43,15 +43,21 @@ O eixo Y DEVE exibir o rótulo "Diferença do VWAP (%)" e os limites DEVEM ser s
 - **THEN** o sistema DEVE exibir uma mensagem "Nenhum ticker corresponde ao filtro."
 
 ### Requirement: Contagem de tickers
-O sistema DEVE exibir um label ao lado do campo de tickers indicando a quantidade total carregada "Tickers (N)" e, quando filtrado, "Exibindo M de N ativos".
+O sistema DEVE exibir um label ao lado do campo de tickers indicando a quantidade total ou selecionada, dependendo do modo atual:
+- Modo visualização: "Tickers (N)" com N = total de tickers no Listbox; "Exibindo M de N ativos" quando M < N selecionados
+- Modo edição: "Tickers (N)" com N = total de tickers no Text widget
 
-#### Scenario: Label atualizado após carregamento
-- **WHEN** dados de 37 tickers são carregados
+#### Scenario: Label no modo visualização com todos marcados
+- **WHEN** dados de 37 tickers são carregados e todos estão marcados no Listbox
 - **THEN** o label DEVE mostrar "Tickers (37)"
 
-#### Scenario: Label atualizado após filtro
-- **WHEN** o usuário filtra para 15 de 37 tickers
-- **THEN** o label DEVE mostrar "Exibindo 15 de 37 ativos"
+#### Scenario: Label no modo visualização com seleção parcial
+- **WHEN** o usuário desmarca 10 dos 37 tickers no Listbox
+- **THEN** o label DEVE mostrar "Exibindo 27 de 37 ativos"
+
+#### Scenario: Label no modo edição
+- **WHEN** o usuário alterna para modo edição com 37 tickers carregados
+- **THEN** o label DEVE mostrar "Tickers (37)"
 
 ### Requirement: Ícone da aplicação na janela
 O sistema DEVE carregar e exibir o ícone da aplicação na barra de título e barra de tarefas.
@@ -97,7 +103,7 @@ O sistema DEVE expor os resultados completos do `IndicatorEngine.execute()` para
 
 ### Requirement: Botões de índice IBOV, IDIV e IFIX
 
-O sistema DEVE exibir três botões — "IBOV", "IDIV" e "IFIX" — em uma fileira abaixo dos botões "Salvar Tickers", "Carregar Tickers" e "Filtrar". Cada botão, quando pressionado, DEVE baixar a carteira teórica diária do respectivo índice via API B3 e **substituir** o conteúdo do campo de tickers pelos tickers obtidos.
+O sistema DEVE exibir três botões — "IBOV", "IDIV" e "IFIX" — na barra superior do TickerList, após um separador vertical do grupo de seleção (Editar, Selecionar Todos, Desmarcar Todos). Cada botão, quando pressionado, DEVE baixar a carteira teórica diária do respectivo índice via API B3 e **substituir** o conteúdo do Listbox pelos tickers obtidos.
 
 #### Scenario: Botão IBOV carrega carteira do IBOV
 - **WHEN** o usuário clica no botão "IBOV"
@@ -111,22 +117,42 @@ O sistema DEVE exibir três botões — "IBOV", "IDIV" e "IFIX" — em uma filei
 - **WHEN** o usuário clica em um botão de índice e o download falha
 - **THEN** o sistema DEVE exibir uma mensagem de erro na barra de status e NÃO DEVE alterar o campo de tickers
 
-### Requirement: Preenchimento automático com IDIV quando filtro vazio (modificado)
+### Requirement: Preenchimento automático com IDIV quando lista vazia (modificado)
 
-O sistema DEVE, quando o campo de filtro de tickers estiver vazio e o usuário pressionar "Carregar" (ou editar o filtro de forma que ele fique vazio), buscar automaticamente a carteira do **IDIV** e preencher o campo com os tickers do índice. Esta lógica DEVE usar o mesmo mecanismo interno do botão "IDIV".
+O sistema DEVE, quando a lista de tickers estiver vazia e o usuário pressionar "Carregar", buscar automaticamente a carteira do **IDIV** e preencher o Listbox com os tickers do índice. Esta lógica DEVE usar o mesmo mecanismo interno do botão "IDIV".
 
-#### Scenario: Carregar com filtro vazio (comportamento preservado)
-- **WHEN** o campo de tickers está vazio e o usuário clica em "Carregar"
-- **THEN** o sistema DEVE buscar a carteira IDIV (via `_fill_with_index("IDIV")`), preencher o campo de tickers com os tickers obtidos, e carregar os dados filtrando apenas por esses tickers
+#### Scenario: Carregar com lista vazia
+- **WHEN** a lista de tickers está vazia e o usuário clica em "Carregar"
+- **THEN** o sistema DEVE buscar a carteira IDIV (via `_fill_with_index("IDIV")`), preencher o Listbox com os tickers obtidos, selecionar todos, e carregar os dados
 
-#### Scenario: Edição do filtro deixando-o vazio dispara autopreenchimento
-- **WHEN** o campo de tickers contém tickers, o usuário apaga todos, e o sistema detecta o campo vazio
-- **THEN** o sistema DEVE buscar a carteira IDIV e preencher o campo automaticamente (mesmo comportamento do botão "Carregar" com filtro vazio)
-
-#### Scenario: Erro na busca IDIV com filtro vazio (comportamento preservado)
-- **WHEN** o campo de tickers está vazio, o sistema tenta buscar IDIV, e a busca falha
+#### Scenario: Erro na busca IDIV com lista vazia
+- **WHEN** a lista de tickers está vazia, o sistema tenta buscar IDIV, e a busca falha
 - **THEN** o sistema DEVE exibir uma mensagem de erro e NÃO DEVE carregar dados
 
-#### Scenario: Filtro já preenchido mantém comportamento atual
-- **WHEN** o campo de tickers contém tickers e o usuário clica em "Carregar"
-- **THEN** o sistema DEVE usar os tickers existentes no campo, sem buscar o IDIV
+#### Scenario: Lista já preenchida mantém comportamento atual
+- **WHEN** a lista de tickers contém tickers e o usuário clica em "Carregar"
+- **THEN** o sistema DEVE usar todos os tickers existentes no Listbox, sem buscar o IDIV
+
+### Requirement: Comboboxes de ticker da Análise Geral removidos
+Os comboboxes de seleção de ticker nas abas VWAP, Quadrantes e Dominância do Pregão foram removidos. A seleção de tickers é feita exclusivamente pelo Listbox no TickerList. Todos os gráficos da Análise Geral usam os tickers selecionados no Listbox.
+
+A regra de exibição de setas (quiver) no gráfico de Quadrantes é mantida: setas são exibidas quando apenas 1 ticker está selecionado no Listbox.
+
+#### Scenario: VWAP exibe todos os tickers selecionados
+- **WHEN** o usuário seleciona 5 tickers no Listbox e navega para a aba VWAP
+- **THEN** o histograma VWAP DEVE exibir dados para todos os 5 tickers
+
+#### Scenario: Quadrantes com setas quando 1 ticker selecionado
+- **WHEN** o usuário seleciona exatamente 1 ticker no Listbox e navega para a aba Quadrantes
+- **THEN** o gráfico de quadrantes DEVE exibir setas (quiver) para o ticker selecionado
+
+#### Scenario: Quadrantes sem setas quando múltiplos tickers
+- **WHEN** o usuário seleciona 3 tickers no Listbox e navega para a aba Quadrantes
+- **THEN** o gráfico de quadrantes DEVE exibir pontos sem setas
+
+### Requirement: Carga de dados usa todos os tickers da lista
+O método `_ensure_tickers()` DEVE usar `get_all_listbox_tickers()` para obter a lista completa de tickers, independentemente de quais estão marcados. A marcação no Listbox só afeta a exibição nos painéis, não a carga de dados.
+
+#### Scenario: Carga com tickers desmarcados
+- **WHEN** o usuário tem 30 tickers no Listbox, desmarca 10, e clica em "Carregar"
+- **THEN** os dados DEVEM ser carregados para todos os 30 tickers (não apenas os 20 marcados)

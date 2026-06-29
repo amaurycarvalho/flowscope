@@ -30,6 +30,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Painel de orientação**: textos de ajuda para os novos painéis.
 - **`_format_all_indicators`**: incluído `dominance_score` na listagem exibida.
 
+### [multi-ticker-selector](openspec/changes/archive/2026-06-29-multi-ticker-selector) Modo visualização com Listbox de seleção múltipla, lazy refresh híbrido e remoção dos comboboxes da Análise Geral
+
+#### Added
+- **Modo visualização com Listbox(EXTENDED)**: toggle "Editar lista de tickers" alterna entre Text (edição) e Listbox (seleção múltipla via Ctrl+Click e Shift+Click)
+- **Botões "Selecionar Todos" e "Desmarcar Todos"** na barra superior, ao lado direito do toggle, visíveis apenas no modo visualização
+- **Preservação de seleção ao transitar entre modos**: tickers existentes mantêm marcação; novos entram marcados; remoções desaparecem; se lista mudou, recarga de dados é disparada
+- **Separadores verticais** entre Salvar/Editar e entre grupo de seleção/índices
+- **Lazy refresh híbrido**: aba ativa renderiza imediatamente após carga/filtro; demais abas renderizam apenas ao serem selecionadas
+
+#### Changed
+- `get_tickers()` retorna apenas tickers selecionados no modo visualização (todos no modo edição)
+- `_ensure_tickers()` usa `get_all_listbox_tickers()` — carga de dados usa todos os tickers, independente da seleção
+- `_on_load_data()` não substitui `self._tickers` nem chama `set_tickers()` (preserva lista original do usuário)
+- Regra de quiver mantida no painel Quadrantes: setas exibidas quando apenas 1 ticker selecionado
+
+#### Removed
+- **Botão "Filtrar"** removido (seleção no Listbox já funciona como filtro)
+- **Comboboxes de ticker da Análise Geral** (VWAP, Quadrantes, Dominância) removidos; seleção via Listbox controla todos os gráficos
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.3.0...HEAD
 
 [0.3.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.3.0
