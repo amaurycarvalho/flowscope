@@ -1,0 +1,1 @@
+No specification changes required for this change. All changes are visual refinements to existing UI components — no new capabilities, no modified requirements, no removed behavior. The CLV, MFV, and efficiency calculations remain unchanged. The chart continues to show the same data (CLV ranking with MFV magnitude); only the visual encoding of MFV changes from circle to stem.
