@@ -76,14 +76,25 @@ O `DominanceTimelineChart` tem os mesmos textos de Vendedores/Compradores em `y=
 
 ### D8: Cor do stem
 
-- **Decisão**: Stem na cor da classificação de dominância (mesma cor da barra), com borda preta fina `linewidth=1.0`.
-- **Alternativa considerada**: Stem cinza neutro para não competir com a barra.
-- **Rationale**: O stem representa o MFV que *sustentou* aquela dominância — usar a mesma cor reforça a associação visual. A borda preta garante contraste se a cor for clara.
+- **Decisão**: Stem em tom de cinza derivado do `score` da classificação (0 a 3). Mapeamento: score 0 → `#C0C0C0` (cinza claro), score 1 → `#555555` (cinza escuro), score 2 → `#222222` (preto escuro), score 3 → `#0A0A0A` (quase preto). `linewidth=2`, `zorder=5`.
+- **Alternativa considerada**: Mesma cor da barra; preto sólido; preto tracejado; cinza com luminance igual à cor da barra.
+- **Rationale**: O usuário testou visualmente e preferiu que o stem fosse preto mas com tom variando conforme a intensidade da dominância — mais claro para equilíbrio, mais escuro para extremos. O `score` da classificação (0–3) mapeia diretamente para 4 níveis de cinza.
+
+### D9: ToolbarBR — botões Mover e Ampliar mutuamente exclusivos
+
+- **Decisão**: Sobrescrever `pan()`, `zoom()`, `home()`, e `_update_buttons_checked()` em `ToolbarBR` para que os botões Mover e Ampliar funcionem como botões de rádio (apenas um ativo por vez). "Início" desmarca ambos.
+- **Rationale**: O comportamento padrão do matplotlib permite ambos ativos simultaneamente, o que confunde o usuário. A implementação usa `self.mode` (enum `_Mode`) e `_update_buttons_checked()` para sincronizar os Checkbuttons do Tk.
+- **Detalhe**: `_update_buttons_checked()` foi sobrescrito porque o matplotlib busca os botões por `'Pan'` e `'Zoom'` (inglês), mas a toolbar usa os rótulos em português `'Mover'` e `'Ampliar'`.
+
+## Non-Goals (atualizado)
+
+- ~~Não alterar cores, classificação de dominância, ou eixos~~ → **Cor do stem** foi alterada para cinza (não afeta as barras de CLV)
+- ~~Não alterar comportamento do gráfico de timeline além da substituição círculo→stem e ajuste de labels~~ → **Toolbar** foi alterada (comportamento compartilhado entre todos os charts)
 
 ## Risks / Trade-offs
 
 - **[R1] Stem pode ser confundido com a barra**: Como o stem parte de x=0 e a barra também, pode não haver distinção visual clara entre barra e stem.
-  - **Mitigação**: O stem é desenhado com `linewidth=2` (mais fino que a barra que tem `height=0.6`) e mesma cor mas com borda preta. A diferença de espessura (linha fina vs retângulo largo) deve ser suficiente.
+  - **Mitigação**: O stem é desenhado com `linewidth=2` (mais fino que a barra que tem `height=0.6`) e cor em tom de cinza (diferente da barra colorida). A diferença de cor e espessura distingue os dois elementos.
 
 - **[R2] Stem muito curto para CLV pequeno**: Para `|CLV| < 0.05` o stem é suprimido. Para CLV pequeno mas MFV grande, o stem pode parecer desproporcional.
   - **Mitigação**: Aceitável — o stem comunica capital envolvido, não intensidade. Um MFV grande com CLV pequeno é um caso legítimo (muito dinheiro, pouca convicção).

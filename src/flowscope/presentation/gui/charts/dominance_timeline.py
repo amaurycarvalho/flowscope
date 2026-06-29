@@ -105,14 +105,35 @@ class DominanceTimelineChart:
         )
 
         max_dmf = max(abs(d) for d in dmfs) if dmfs else 1.0
+        stem_ys, stem_xmins, stem_xmaxs, stem_colors = [], [], [], []
         for i, (clv, dmf) in enumerate(zip(clvs, dmfs)):
             if dmf == 0.0 or abs(clv) < 0.05:
                 continue
-            size = max(math.sqrt(abs(dmf) / max_dmf) * 100, 6) if max_dmf > 0 else 6
-            x = clv + (0.04 if clv >= 0 else -0.04)
-            self._axes.scatter(
-                x, y_pos[i], s=size, c="white", edgecolors="black",
-                linewidth=0.5, zorder=5, picker=True, pickradius=5,
+            norm = abs(dmf) / max_dmf if max_dmf > 0 else 0
+            stem_len = max(math.sqrt(norm) * 0.15, 0.015)
+            cls = classify_dominance(clv)
+            stem_ys.append(y_pos[i])
+            intensity = abs(cls.score)
+            if intensity == 0:
+                gray = "#C0C0C0"
+            elif intensity == 1:
+                gray = "#555555"
+            elif intensity == 2:
+                gray = "#222222"
+            else:
+                gray = "#0A0A0A"
+            stem_colors.append(gray)
+            if clv >= 0:
+                stem_xmins.append(0.0)
+                stem_xmaxs.append(clv + stem_len)
+            else:
+                stem_xmins.append(clv - stem_len)
+                stem_xmaxs.append(0.0)
+
+        if stem_ys:
+            self._axes.hlines(
+                stem_ys, stem_xmins, stem_xmaxs,
+                colors=stem_colors, linewidth=2, zorder=5,
             )
 
         eff_ax = self._axes.twiny()
@@ -134,10 +155,10 @@ class DominanceTimelineChart:
         self._axes.set_xlim(-1.2, 1.2)
         self._axes.set_ylim(-0.5, len(rows) - 0.5)
 
-        self._axes.text(0.95, -0.06, "Compradores →",
+        self._axes.text(0.95, -0.10, "Compradores →",
                         transform=self._axes.transAxes, ha="right", va="top",
                         fontsize=8, color="green", fontweight="bold")
-        self._axes.text(0.05, -0.06, "← Vendedores",
+        self._axes.text(0.05, -0.10, "← Vendedores",
                         transform=self._axes.transAxes, ha="left", va="top",
                         fontsize=8, color="red", fontweight="bold")
 

@@ -91,26 +91,61 @@ class DominanceRankingChart:
             y_pos, clvs, height=0.6, color=bar_colors, zorder=3, picker=True,
         )
 
-        for i, (ticker, clv) in enumerate(zip(tickers, clvs)):
-            if clv >= 0:
-                self._axes.text(
-                    clv + 0.02, y_pos[i], ticker,
-                    va="center", fontsize=8, zorder=4,
-                )
+        stem_lens = []
+        for mfv in mfvs:
+            if mfv == 0.0:
+                stem_lens.append(0.0)
             else:
-                self._axes.text(
-                    clv - 0.02, y_pos[i], ticker,
-                    ha="right", va="center", fontsize=8, zorder=4,
-                )
+                norm = abs(mfv) / max_mfv if max_mfv > 0 else 0
+                stem_lens.append(max(math.sqrt(norm) * 0.10, 0.015))
 
+        for i, (ticker, clv) in enumerate(zip(tickers, clvs)):
+            stem_len = stem_lens[i]
+            if clv >= 0:
+                label_x = clv + stem_len + 0.02
+                ha = "left"
+            else:
+                label_x = clv - stem_len - 0.02
+                ha = "right"
+            if label_x > 1.18:
+                label_x = 1.18
+                ha = "right"
+            elif label_x < -1.18:
+                label_x = -1.18
+                ha = "left"
+            self._axes.text(
+                label_x, y_pos[i], ticker,
+                ha=ha, va="center", fontsize=8, zorder=4,
+            )
+
+        stem_ys, stem_xmins, stem_xmaxs, stem_colors = [], [], [], []
         for i, (clv, mfv) in enumerate(zip(clvs, mfvs)):
             if mfv == 0.0 or abs(clv) < 0.05:
                 continue
-            size = max(math.sqrt(abs(mfv) / max_mfv) * 120, 8) if max_mfv > 0 else 8
-            x = clv + (0.04 if clv >= 0 else -0.04)
-            self._axes.scatter(
-                x, y_pos[i], s=size, c="white", edgecolors="black",
-                linewidth=0.5, zorder=5, picker=True, pickradius=5,
+            stem_len = stem_lens[i]
+            cls = classify_dominance(clv)
+            stem_ys.append(y_pos[i])
+            intensity = abs(cls.score)
+            if intensity == 0:
+                gray = "#C0C0C0"
+            elif intensity == 1:
+                gray = "#555555"
+            elif intensity == 2:
+                gray = "#222222"
+            else:
+                gray = "#0A0A0A"
+            stem_colors.append(gray)
+            if clv >= 0:
+                stem_xmins.append(0.0)
+                stem_xmaxs.append(clv + stem_len)
+            else:
+                stem_xmins.append(clv - stem_len)
+                stem_xmaxs.append(0.0)
+
+        if stem_ys:
+            self._axes.hlines(
+                stem_ys, stem_xmins, stem_xmaxs,
+                colors=stem_colors, linewidth=2, zorder=5,
             )
 
         self._hover_data = rows
@@ -122,10 +157,10 @@ class DominanceRankingChart:
         self._axes.set_xlim(-1.2, 1.2)
         self._axes.set_ylim(-0.5, len(rows) - 0.5)
 
-        self._axes.text(0.95, -0.02, "Compradores →",
+        self._axes.text(0.95, -0.08, "Compradores →",
                         transform=self._axes.transAxes, ha="right", va="top",
                         fontsize=9, color="green", fontweight="bold")
-        self._axes.text(0.05, -0.02, "← Vendedores",
+        self._axes.text(0.05, -0.08, "← Vendedores",
                         transform=self._axes.transAxes, ha="left", va="top",
                         fontsize=9, color="red", fontweight="bold")
 

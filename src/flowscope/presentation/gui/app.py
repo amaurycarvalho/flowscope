@@ -300,9 +300,9 @@ class FlowScopeGUI(tk.Tk):
                 "Dominância do Pregão — Ranking de Tickers por CLV",
                 "Objetivo: Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.\n\n"
                 "Indicadores envolvidos: CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.\n\n"
-                "Como interpretar: Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "
-                "Quanto maior o comprimento, mais intensa a dominância. O círculo na extremidade representa o volume financeiro que sustentou o movimento. "
-                "Passe o mouse sobre as barras para ver detalhes do ticker."
+                 "Como interpretar: Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "
+                 "Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. "
+                 "Passe o mouse sobre as barras para ver detalhes do ticker."
             ),
             ("Análise do Ticker", "Amplitude de Preço"): (
                 "Amplitude de Preço — Indicadores de Amplitude",
@@ -314,9 +314,9 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Evolução da Dominância"): (
                 "Evolução da Dominância — Histórico de CLV por Pregão",
                 "Objetivo: Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.\n\n"
-                "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Efficiency (linha azul), Daily Money Flow (círculo na extremidade).\n\n"
-                "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
-                "A linha azul de eficiência mostra se o movimento foi convincente. O círculo indica o fluxo financeiro diário. "
+                 "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Efficiency (linha azul), Daily Money Flow (traço horizontal sobre a barra).\n\n"
+                 "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
+                 "A linha azul de eficiência mostra se o movimento foi convincente. O traço horizontal indica o fluxo financeiro diário. "
                 "O painel à direita resume a classificação do último pregão e o percentual de pregões compradores no período."
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (

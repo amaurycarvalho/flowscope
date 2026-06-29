@@ -11,6 +11,7 @@ O círculo de MFV no ranking de Dominância do Pregão é visualmente ruidoso: a
 - **"Vendedores" / "Compradores"**: Mover para y=-0.08 (transAxes) para alinhar com o texto "CLV" do eixo X. Mesma correção no dominance_timeline.
 - **Texto de orientação**: Atualizar referência de "círculo" para "traço horizontal" no OrientationPanel da aba Dominância do Pregão
 - **MFV próximo de zero**: Manter a supressão atual (`mfv == 0.0 or abs(clv) < 0.05`)
+- **ToolbarBR — botões Mover/Ampliar**: Tornar mutuamente exclusivos (desmarcar um ao clicar no outro). Botão "Início" desmarca ambos
 
 ## Capabilities
 
@@ -26,4 +27,5 @@ Nenhuma — o comportamento em nível de requisito não se altera. O gráfico co
 
 - `src/flowscope/presentation/gui/charts/dominance_ranking.py` — Substituir scatter do círculo por hlines/plot do stem; ajustar posição dos labels; mover Vendedores/Compradores
 - `src/flowscope/presentation/gui/charts/dominance_timeline.py` — Mesmas alterações para consistência
+- `src/flowscope/presentation/gui/charts/toolbar.py` — Mutuamente exclusivos Mover/Ampliar; Início desmarca ambos
 - `src/flowscope/presentation/gui/app.py` — Atualizar texto de orientação do painel Dominância do Pregão (Análise Geral)

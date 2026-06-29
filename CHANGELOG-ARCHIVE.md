@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## [0.2.1] — 2026-06-28
+
+### [quadrantes-ticker-sync](openspec/changes/archive/2026-06-28-quadrantes-ticker-sync) Sincronização de comboboxes e visibilidade condicional de setas nos quadrantes
+
+#### Added
+- **Sincronização bidirecional de comboboxes:** combobox do Quadrantes e da Análise do Ticker sincronizam valores entre si. "Todos" no Quadrantes limpa o combobox da Análise do Ticker.
+
+#### Changed
+- **Quadrantes — setas (quiver):** ocultas quando o ticker está como "Todos"; exibidas apenas para o ticker selecionado.
+- **`QuadrantChart.update()`:** adicionado parâmetro `show_arrows` para controle explícito das setas.
+
 ## [0.2.0] — 2026-06-28
 
 ### [index-portfolio-buttons](openspec/changes/archive/2026-06-28-index-portfolio-buttons) Botões para IBOV, IDIV e IFIX com cliente B3 genérico e parser reutilizável
@@ -216,6 +227,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_create_desktop_shortcut()` retorna `bool` em vez de chamar `sys.exit()` (reutilizável pela GUI)
 - CLI `--create-shortcut` passou a verificar plataforma no `main()` e retornar exit code 0 em não-Linux
 
+[0.2.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.2.1
 [0.2.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.2.0
 [0.1.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.1.0
 

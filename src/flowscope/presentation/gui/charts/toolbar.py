@@ -1,3 +1,4 @@
+from matplotlib.backend_bases import _Mode
 from matplotlib.backends.backend_tkagg import NavigationToolbar2Tk
 
 from flowscope.presentation.gui.widgets.tooltip import ToolTip as FsToolTip
@@ -29,3 +30,32 @@ class ToolbarBR(NavigationToolbar2Tk):
     def copy_chart(self):
         if self._copy_chart_callback:
             self._copy_chart_callback(self.canvas.figure)
+
+    def _update_buttons_checked(self):
+        for text, mode in [("Ampliar", _Mode.ZOOM), ("Mover", _Mode.PAN)]:
+            if text in self._buttons:
+                if self.mode == mode:
+                    self._buttons[text].select()
+                else:
+                    self._buttons[text].deselect()
+
+    def home(self, *args, **kwargs):
+        super().home(*args, **kwargs)
+        if self.mode != _Mode.NONE:
+            self.mode = _Mode.NONE
+            self.canvas.widgetlock.release(self)
+            self._update_buttons_checked()
+
+    def pan(self, *args, **kwargs):
+        if self.mode == _Mode.ZOOM:
+            self.mode = _Mode.NONE
+            self.canvas.widgetlock.release(self)
+        super().pan(*args, **kwargs)
+        self._update_buttons_checked()
+
+    def zoom(self, *args, **kwargs):
+        if self.mode == _Mode.PAN:
+            self.mode = _Mode.NONE
+            self.canvas.widgetlock.release(self)
+        super().zoom(*args, **kwargs)
+        self._update_buttons_checked()

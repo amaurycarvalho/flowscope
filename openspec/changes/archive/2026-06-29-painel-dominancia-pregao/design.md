@@ -37,9 +37,9 @@ O painel "Dominância do Pregão" atual na aba Análise do Ticker é um widget d
 - **Alternativa considerada**: Incorporar classificação nas strategies existentes.
 - **Rationale**: Classificação é uma transformação de apresentação, não um cálculo de indicador. Separar permite que os painéis usem as funções sem instanciar o engine, e mantém as strategies focadas em computação pura. A estrutura de retorno tipada (`@dataclass`) permite que os charts consumam diretamente sem lógica condicional espalhada.
 
-### D3: Círculo no ranking usa MFV acumulado; círculo no timeline usa MFV diário
+### D3: Stem no ranking usa MFV acumulado; stem no timeline usa MFV diário
 
-- **Decisão**: O ranking (Análise Geral) usa `money_flow_volume` (acumulado do período) para o círculo. O timeline (Análise do Ticker) usa o novo `daily_money_flow` (por pregão).
+- **Decisão**: O ranking (Análise Geral) usa `money_flow_volume` (acumulado do período) para o stem. O timeline (Análise do Ticker) usa o novo `daily_money_flow` (por pregão).
 - **Rationale**: No ranking, cada barra é um ticker — faz sentido mostrar o fluxo total que sustentou a dominância no período. No timeline, cada barra é um dia — o fluxo diário é mais informativo para comparar a evolução. A estratégia `money_flow_volume` já existe; `daily_money_flow` é a nova strategy necessária.
 
 ### D4: Eficiência como linha conectada em eixo secundário no timeline
@@ -96,13 +96,13 @@ FlowScopeGUI._current_data
 │                                                       │
 │         VENDEDORES    │    COMPRADORES                │
 │                        │                               │
-│                  ◄████ │            PETR4  +0.82 ●     │
-│               ◄█████  │            VALE3  +0.55 ●     │
-│                  ◄███  │            ITUB4  +0.31 ●     │
-│                    ◄█  │            BBAS3  +0.12       │
-│                        │◄█           ABEV3  -0.08     │
-│                        │◄██          BBDC4  -0.22 ●   │
-│               ◄██████  │            ELET3  -0.65 ●   │
+│                  ◄████ │────  PETR4  +0.82             │
+│               ◄█████  │───   VALE3  +0.55             │
+│                  ◄███  │──    ITUB4  +0.31             │
+│                    ◄█  │─     BBAS3  +0.12             │
+│                        │◄─    ABEV3  -0.08             │
+│                        │◄───  BBDC4  -0.22             │
+│               ◄██████  │────  ELET3  -0.65             │
 │                        │                               │
 │  -1.0              0.0              +1.0               │
 └─────────────────────────────────────────────────────┘
@@ -116,11 +116,11 @@ FlowScopeGUI._current_data
 │                                           │            │
 │  VENDEDORES   │    COMPRADORES            │  Dominância│
 │               │                            │  Compra    │
-│  20/06  ████████████████► ●               │  Forte     │
-│  23/06    ████████►       ●               │            │
-│  24/06  ◄████                            │  Convicção │
-│  25/06  ◄████████                          │  Alta      │
-│  26/06  ████████████████████████► ○       │            │
+│  20/06  ████████████████►────             │  Forte     │
+│  23/06    ████████►────                   │            │
+│  24/06  ◄████────                        │  Convicção │
+│  25/06  ◄████████────                     │  Alta      │
+│  26/06  ████████████████████████►──────  │            │
 │               │                            │  Fluxo     │
 │               │           ── Eficiência    │  R$ 4.2M   │
 │               │            ▁▃▆▇▆▅▃▁       │            │
@@ -137,11 +137,11 @@ FlowScopeGUI._current_data
 - **[R2] Performance com muitos tickers no ranking**: O DominanceRankingChart precisa renderizar uma barra por ticker. Com 80+ tickers (IDIV), o matplotlib pode ficar lento.
   - **Mitigação**: Limitar a altura do gráfico a ~30 tickers visíveis com scroll. Alternativamente, usar `ax.barh` que é eficiente para datasets médios. Se necessário, adicionar filtro por top N.
 
-- **[R3] Sobreposição visual entre círculo e eficiência**: No timeline, o círculo de MFV diário na ponta da barra pode colidir visualmente com a linha de eficiência.
-  - **Mitigação**: A linha de eficiência é plotada após as barras (zorder maior) com alpha reduzido e cor distinta (azul ou laranja). Círculo tem borda preta fina para se destacar.
+- **[R3] Sobreposição visual entre stem e eficiência**: No timeline, o stem de MFV diário pode colidir visualmente com a linha de eficiência.
+  - **Mitigação**: A linha de eficiência é plotada após as barras (zorder maior) com alpha reduzido e cor distinta (azul). Stem tem zorder=5 e cor em tom de cinza.
 
-- **[R4] Círculo em CLV próximo de 0**: Quando CLV ≈ 0, a barra tem comprimento próximo de zero, e o círculo fica sobre o eixo central.
-  - **Mitigação**: Para `|CLV| < 0.05`, não exibir círculo (evita poluição visual). MFV pode ser visto no tooltip.
+- **[R4] Stem em CLV próximo de 0**: Quando CLV ≈ 0, a barra tem comprimento próximo de zero, e o stem fica sobre o eixo central.
+  - **Mitigação**: Para `|CLV| < 0.05`, não exibir stem (evita poluição visual). MFV pode ser visto no tooltip.
 
 ## Open Questions
 

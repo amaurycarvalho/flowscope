@@ -24,6 +24,8 @@ O FlowScope já calcula todos os indicadores necessários para responder "quem v
 
 ## Impact
 
+- **Target**: Release 0.3.0
+
 - **`src/flowscope/domain/strategies/`**: 2 novas strategies (`daily_money_flow.py`, `dominance_score.py`), 1 novo subdiretório `classifiers/` com 2 módulos, atualização de `__init__.py` e `domain/indicators.py`
 - **`src/flowscope/presentation/gui/charts/`**: 2 novos chart widgets (`dominance_ranking.py`, `dominance_timeline.py`)
 - **`src/flowscope/presentation/gui/app.py`**: Adição dos novos sub-tabs, renomeação do tab antigo, atualização de `tab_configs`, `_tab_content`, `_build_main_area`, `_format_all_indicators`, e `_update_charts`
