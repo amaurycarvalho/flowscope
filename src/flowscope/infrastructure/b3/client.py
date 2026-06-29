@@ -2,6 +2,7 @@ import base64
 import json
 import logging
 from datetime import date
+from collections.abc import Callable
 from typing import Any
 
 from flowscope.infrastructure.b3.parser import parse_index_csv
@@ -66,14 +67,19 @@ class B3Client:
         resp.encoding = resp.apparent_encoding or "utf-8"
         return resp.text
 
-    def fetch_file(self, date_key: date, file_name: str = "TradeInformationConsolidated") -> str:
+    def fetch_file(self, date_key: date, file_name: str = "TradeInformationConsolidated",
+                   progress_callback: Callable[[str, bool], None] | None = None) -> str:
         cached = self._cache.get(date_key)
         if cached is not None:
+            if progress_callback:
+                progress_callback(f"{date_key} (em cache)", False)
             return cached
         token_data = self._request_token(file_name, date_key)
         token = token_data.get("token") or token_data.get("redirectUrl", "")
         content = self._download_csv(token)
         self._cache.put(date_key, content)
+        if progress_callback:
+            progress_callback(str(date_key), False)
         return content
 
     def _build_portfolio_url(self, index: str, language: str = "pt-br") -> str:
@@ -81,7 +87,8 @@ class B3Client:
         b64 = base64.b64encode(payload.encode()).decode()
         return f"{self._BASE_PORTFOLIO_URL}{b64}"
 
-    def fetch_portfolio(self, index: str, language: str = "pt-br") -> list[str]:
+    def fetch_portfolio(self, index: str, language: str = "pt-br",
+                        progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
         def _fetch():
             import requests
 
@@ -110,7 +117,11 @@ class B3Client:
             if not result:
                 self._cache.invalidate(key)
                 raise RuntimeError(f"Cached empty result for {index}")
+            if progress_callback:
+                progress_callback(f"Portfólio {index}: {len(result)} ativos", False)
             return result
         except Exception as e:
             logger.error("Failed to fetch portfolio %s: %s", index, e, exc_info=True)
+            if progress_callback:
+                progress_callback(f"Falha ao baixar portfólio {index}", True)
             return []

@@ -1,6 +1,9 @@
 import platform
 import shutil
 import sys
+import os
+import subprocess
+
 from pathlib import Path
 
 from flowscope import __version__
@@ -29,16 +32,21 @@ def main() -> None:
         _open_gui()
         return
 
-    ticker_filter = None
-    if args.tickers:
-        from flowscope.presentation.cli import _load_tickers
-        ticker_filter = _load_tickers(args.tickers)
+    has_cli_args = args.tickers is not None or args.vwap
+    if has_cli_args:
+        ticker_filter = None
+        if args.tickers:
+            from flowscope.presentation.cli import _load_tickers
+            ticker_filter = _load_tickers(args.tickers)
 
-    if args.vwap:
-        _export("vwap", ticker_filter)
+        if args.vwap:
+            _export("vwap", ticker_filter)
+            return
+
+        run_cli(args)
         return
 
-    run_cli(args)
+    _open_gui()
 
 
 def _resolve_icon_path(filename: str = "flowscope.png") -> Path:
@@ -50,11 +58,26 @@ def _resolve_icon_path(filename: str = "flowscope.png") -> Path:
 
 
 def _desktop_path() -> Path:
-    desktop = Path.home() / "Desktop"
-    if not desktop.exists():
-        desktop = Path.home() / "Área de Trabalho"
-    return desktop
-
+    try:
+        result = subprocess.run(
+            ["xdg-user-dir", "DESKTOP"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            path = result.stdout.strip()
+            if path:
+                return Path(path)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    user_dirs = Path.home() / ".config" / "user-dirs.dirs"
+    if user_dirs.is_file():
+        for line in user_dirs.read_text().splitlines():
+            if line.startswith("XDG_DESKTOP_DIR="):
+                raw = line.split("=", 1)[1].strip().strip('"')
+                expanded = raw.replace("$HOME", str(Path.home()))
+                if expanded:
+                    return Path(expanded)
+    return Path.home() / "Desktop"
 
 def _desktop_shortcut_exists() -> bool:
     return (_desktop_path() / "flowscope.desktop").exists()

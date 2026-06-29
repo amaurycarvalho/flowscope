@@ -1,4 +1,5 @@
 from collections import defaultdict, deque
+from collections.abc import Callable
 from typing import Any
 
 from flowscope.domain.entities import TradeDay
@@ -16,7 +17,8 @@ class IndicatorEngine:
             self._registry[s.id] = s
 
     def execute(
-        self, trades: list[TradeDay]
+        self, trades: list[TradeDay],
+        progress_callback: Callable[[str, bool], None] | None = None,
     ) -> dict[str, dict[str, Any]]:
         if not self._registry:
             return {}
@@ -32,6 +34,8 @@ class IndicatorEngine:
             }
             result = strategy.compute(trades, deps)
             cache[indicator_id] = result
+            if progress_callback:
+                progress_callback(indicator_id, False)
 
         return cache
 

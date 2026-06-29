@@ -9,6 +9,7 @@ from tkcalendar import DateEntry
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.presentation.gui.progress import ProgressReporter
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
@@ -245,9 +246,13 @@ class FlowScopeGUI(tk.Tk):
             ("Resumo Geral", None),
         ]
         self._ticker_indicator_frames = {}
+        enabled_tabs = {"Evolução da Dominância"}
         for name, *keys in tab_configs:
             frame = ttk.Frame(self._ticker_notebook)
-            self._ticker_notebook.add(frame, text=name)
+            kwargs = {"text": name}
+            if name not in enabled_tabs:
+                kwargs["state"] = "disabled"
+            self._ticker_notebook.add(frame, **kwargs)
             if name == "Evolução da Dominância":
                 self._dominance_timeline = DominanceTimelineChart(
                     frame, copy_chart_callback=self._copy_chart,
@@ -407,19 +412,35 @@ class FlowScopeGUI(tk.Tk):
 
     def _build_statusbar(self):
         self._status_var = tk.StringVar()
-        bar = tk.Label(
-            self,
+        self._status_frame = tk.Frame(self, relief=tk.SUNKEN, bd=1)
+        self._status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+        self._status_label = tk.Label(
+            self._status_frame,
             textvariable=self._status_var,
-            relief=tk.SUNKEN,
             anchor=tk.W,
             padx=PAD_SMALL,
             pady=PAD_SMALL,
         )
-        bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self._status_label.pack(side=tk.LEFT)
+
+        self._progress_bar = ttk.Progressbar(
+            self._status_frame,
+            mode="determinate",
+            length=140,
+        )
 
     def _set_status(self, msg: str, icon: str = "") -> None:
         text = f"{icon} {msg}" if icon else msg
         self._status_var.set(text)
+        self._progress_bar.pack_forget()
+
+    def _set_progress(self, current: int, total: int, label: str) -> None:
+        pct = int(current / max(total, 1) * 100) if total > 0 else 100
+        self._status_var.set(label)
+        self._progress_bar["value"] = pct
+        self._progress_bar.pack(side=tk.RIGHT, padx=PAD_SMALL)
+        self.update_idletasks()
 
     def _flash_status(self, msg: str, icon: str = "✓", clear_ms: int = 2500) -> None:
         if self._flash_after_id:
@@ -442,35 +463,42 @@ class FlowScopeGUI(tk.Tk):
         self._today_button.config(state=tk.DISABLED)
         self._date_entry.config(state=tk.DISABLED)
         self._set_wait_cursor()
-        self._animate_loading()
 
     def _exit_loading_state(self):
         self._load_button.config(state=tk.NORMAL)
         self._today_button.config(state=tk.NORMAL)
         self._date_entry.config(state="normal")
         self._clear_wait_cursor()
-        if self._loading_after_id:
-            self.after_cancel(self._loading_after_id)
-            self._loading_after_id = None
+        self._progress_bar.pack_forget()
+        self._progress_bar["value"] = 0
 
-    def _animate_loading(self):
-        frames = ["Carregando.", "Carregando..", "Carregando..."]
-        self._loading_idx = (getattr(self, "_loading_idx", -1) + 1) % len(frames)
-        self._set_status(frames[self._loading_idx], "⏳")
-        self._loading_after_id = self.after(400, self._animate_loading)
+    def _fill_with_index(self, index: str, reporter: ProgressReporter | None = None) -> None:
+        if reporter:
+            reporter.start_phase(f"Baixando portfólio {index}...", total=1, weight=1)
+            self._set_progress(0, 1, f"Baixando portfólio {index}...")
+        else:
+            self._set_status(f"Baixando portfólio {index}...", "⏳")
+            self.update_idletasks()
 
-    def _fill_with_index(self, index: str) -> None:
-        tickers = self._repo.get_index_tickers(index)
+        def _portfolio_cb(detail: str, failed: bool) -> None:
+            if reporter and not failed:
+                reporter.advance(1, detail)
+
+        tickers = self._repo.get_index_tickers(index, progress_callback=_portfolio_cb)
         if tickers:
             self._ticker_list.set_tickers(tickers)
+            if reporter:
+                reporter.finish_phase()
             self._flash_status(f"Carteira {index} carregada com {len(tickers)} ativos.")
         else:
+            if reporter:
+                reporter.finish_phase()
             self._flash_status(f"Não foi possível carregar a carteira {index}.", "⚠")
 
-    def _ensure_tickers(self) -> list[str]:
+    def _ensure_tickers(self, reporter: ProgressReporter | None = None) -> list[str]:
         tickers = self._ticker_list.get_all_listbox_tickers()
         if not tickers:
-            self._fill_with_index("IDIV")
+            self._fill_with_index("IDIV", reporter=reporter)
             tickers = self._ticker_list.get_all_listbox_tickers()
         return tickers
 
@@ -481,8 +509,9 @@ class FlowScopeGUI(tk.Tk):
     def _on_load_data(self):
         self._enter_loading_state()
         ref_date = self._date_entry.get_date()
+        reporter = ProgressReporter(on_update=self._set_progress)
         try:
-            tickers = self._ensure_tickers()
+            tickers = self._ensure_tickers(reporter=reporter)
             if not tickers:
                 self._set_status(
                     "Filtro vazio e não foi possível carregar a carteira IDIV.",
@@ -490,7 +519,22 @@ class FlowScopeGUI(tk.Tk):
                 )
                 return
             self._tickers = list(tickers)
-            self._current_data = self._use_case.execute(ref_date, self._tickers or None)
+            dates = self._repo.get_available_dates(ref_date)
+
+            def _pipeline_cb(detail: str, failed: bool) -> None:
+                if failed:
+                    reporter.fail(1, detail)
+                else:
+                    reporter.advance(1, detail)
+
+            reporter.start_phase("Baixando dados históricos", total=len(dates), weight=3)
+            self._current_data = self._use_case.execute(
+                ref_date, self._tickers or None,
+                progress_callback=_pipeline_cb,
+            )
+            reporter.finish_phase()
+            reporter.start_phase("Processando indicadores", total=1, weight=2)
+            reporter.finish_phase()
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
             self._charts_dirty = True

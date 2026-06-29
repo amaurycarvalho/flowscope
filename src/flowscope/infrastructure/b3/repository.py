@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from datetime import date
 
 from flowscope.application.ports import DataRepository
@@ -18,16 +18,18 @@ class B3DataRepository(DataRepository):
     def get_available_dates(self, ref_date: date) -> list[date]:
         return fibonacci_dates(ref_date)
 
-    def get_index_tickers(self, index: str) -> list[str]:
-        return self._client.fetch_portfolio(index)
+    def get_index_tickers(self, index: str,
+                          progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
+        return self._client.fetch_portfolio(index, progress_callback=progress_callback)
 
     def fetch_trades(
-        self, date_range: Iterable[date], tickers: list[str] | None = None
+        self, date_range: Iterable[date], tickers: list[str] | None = None,
+        progress_callback: Callable[[str, bool], None] | None = None,
     ) -> list[TradeDay]:
         all_trades: list[TradeDay] = []
         for d in date_range:
             try:
-                content = self._client.fetch_file(d)
+                content = self._client.fetch_file(d, progress_callback=progress_callback)
                 trades = parse_csv(content)
                 if tickers is not None:
                     trades = [
@@ -36,10 +38,14 @@ class B3DataRepository(DataRepository):
                 all_trades.extend(trades)
             except ParseError as e:
                 logger.warning("Erro ao processar CSV da data %s: %s", d, e)
+                if progress_callback:
+                    progress_callback(f"{d} (erro ao processar CSV)", True)
                 continue
             except Exception as e:
                 logger.warning(
                     "Erro ao baixar dados da data %s: %s. Pulando esta data.", d, e
                 )
+                if progress_callback:
+                    progress_callback(f"{d} (erro ao baixar)", True)
                 continue
         return all_trades

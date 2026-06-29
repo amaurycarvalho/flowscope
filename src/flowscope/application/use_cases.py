@@ -1,4 +1,4 @@
-from collections.abc import Iterable
+from collections.abc import Callable
 from datetime import date
 
 from flowscope.application.ports import DataRepository
@@ -16,18 +16,20 @@ class AnalyzeTickersUseCase:
         self._engine = engine if engine is not None else default_engine()
 
     def execute(
-        self, ref_date: date, tickers: list[str] | None = None
+        self, ref_date: date, tickers: list[str] | None = None,
+        progress_callback: Callable[[str, bool], None] | None = None,
     ) -> dict:
         dates = self._repository.get_available_dates(ref_date)
-        trades = self._repository.fetch_trades(dates, tickers)
+        trades = self._repository.fetch_trades(dates, tickers,
+                                               progress_callback=progress_callback)
 
         if not tickers:
-            top = self._engine.execute(trades)
+            top = self._engine.execute(trades, progress_callback=None)
             tickers = top.get("top_tickers", {}).get("_all", [])
 
         filtered = [t for t in trades if t.ticker.value in tickers]
 
-        results = self._engine.execute(filtered)
+        results = self._engine.execute(filtered, progress_callback=progress_callback)
 
         daily_data: dict[str, list[dict]] = {}
         for t in filtered:

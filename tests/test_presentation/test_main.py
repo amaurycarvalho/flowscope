@@ -29,6 +29,7 @@ class TestCreateDesktopShortcut:
             patch("platform.system", return_value="Linux"),
             patch("pathlib.Path.home", return_value=tmp_path),
             patch("sys.argv", [str(fake_exe)]),
+            patch("subprocess.run", side_effect=FileNotFoundError),
         ):
             result = _create_desktop_shortcut()
             assert result is True
@@ -50,6 +51,7 @@ class TestCreateDesktopShortcut:
             patch("platform.system", return_value="Linux"),
             patch("pathlib.Path.home", return_value=tmp_path),
             patch("sys.argv", [str(fake_exe)]),
+            patch("subprocess.run", side_effect=FileNotFoundError),
         ):
             _create_desktop_shortcut()
             shortcut = desktop_dir / "flowscope.desktop"
@@ -58,13 +60,19 @@ class TestCreateDesktopShortcut:
 
 class TestDesktopShortcutExists:
     def test_returns_false_when_no_desktop_dir(self, tmp_path):
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert _desktop_shortcut_exists() is False
 
     def test_returns_false_when_desktop_without_shortcut(self, tmp_path):
         desktop_dir = tmp_path / "Desktop"
         desktop_dir.mkdir()
-        with patch("pathlib.Path.home", return_value=tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("subprocess.run", side_effect=FileNotFoundError),
+        ):
             assert _desktop_shortcut_exists() is False
 
     def test_returns_true_when_shortcut_exists(self, tmp_path):
