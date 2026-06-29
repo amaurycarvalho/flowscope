@@ -24,6 +24,8 @@ from flowscope.domain.strategies.volume import (
 )
 from flowscope.domain.strategies.vwap_distance import VWAPDistanceStrategy
 from flowscope.domain.strategies.efficiency import DailyEfficiencyStrategy
+from flowscope.domain.strategies.daily_money_flow import DailyMoneyFlowStrategy
+from flowscope.domain.strategies.dominance_score import DominanceScoreStrategy
 from flowscope.domain.strategies.density import (
     FinancialDensityStrategy,
     TradeDensityStrategy,
@@ -48,6 +50,8 @@ __all__ = [
     "VolumeProfileStrategy",
     "TopTickersStrategy",
     "DailyEfficiencyStrategy",
+    "DailyMoneyFlowStrategy",
+    "DominanceScoreStrategy",
     "FinancialDensityStrategy",
     "TradeDensityStrategy",
     "VolumeDensityStrategy",

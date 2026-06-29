@@ -11,6 +11,8 @@ from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
+from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
+from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
@@ -227,6 +229,16 @@ class FlowScopeGUI(tk.Tk):
         )
         self._quadrant_chart.frame.pack(fill=tk.BOTH, expand=True)
 
+        general_dominance_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_dominance_frame, text="Dominância do Pregão")
+        self._dominance_combo = self._build_ticker_selector(
+            general_dominance_frame, on_select=self._on_dominance_combo_selected
+        )
+        self._dominance_ranking = DominanceRankingChart(
+            general_dominance_frame, copy_chart_callback=self._copy_chart,
+        )
+        self._dominance_ranking.frame.pack(fill=tk.BOTH, expand=True)
+
         ticker_main_frame = ttk.Frame(self._main_notebook)
         self._main_notebook.add(ticker_main_frame, text="Análise do Ticker")
 
@@ -239,7 +251,8 @@ class FlowScopeGUI(tk.Tk):
         self._ticker_notebook.pack(fill=tk.BOTH, expand=True)
 
         tab_configs = [
-            ("Dominância do Pregão", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
+            ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
+            ("Evolução da Dominância", "clv", "daily_efficiency", "dominance_score", "daily_money_flow"),
             ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume", "buying_pressure", "selling_pressure", "vwap_distance"),
             ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
             ("Eficiência do Movimento", "daily_efficiency"),
@@ -249,10 +262,17 @@ class FlowScopeGUI(tk.Tk):
         for name, *keys in tab_configs:
             frame = ttk.Frame(self._ticker_notebook)
             self._ticker_notebook.add(frame, text=name)
-            text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
-                                  padx=8, pady=8, relief=tk.FLAT, state=tk.DISABLED)
-            text_widget.pack(fill=tk.BOTH, expand=True)
-            self._ticker_indicator_frames[name] = {"frame": frame, "text": text_widget, "keys": keys}
+            if name == "Evolução da Dominância":
+                self._dominance_timeline = DominanceTimelineChart(
+                    frame, copy_chart_callback=self._copy_chart,
+                )
+                self._dominance_timeline.frame.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
+            else:
+                text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
+                                      padx=8, pady=8, relief=tk.FLAT, state=tk.DISABLED)
+                text_widget.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": text_widget, "keys": keys}
 
         self._tab_content = {
             ("Análise Geral", "VWAP"): (
@@ -276,12 +296,28 @@ class FlowScopeGUI(tk.Tk):
                 "• Q4 (CLV > 0, abaixo do VWAP): compra em desconto — reação compradora insuficiente para recuperar o VWAP.\n\n"
                 "As setas cinzas mostram a trajetória dos dias anteriores, evidenciando a evolução temporal de cada ativo."
             ),
-            ("Análise do Ticker", "Dominância do Pregão"): (
-                "Dominância do Pregão — Indicadores de Preço",
+            ("Análise Geral", "Dominância do Pregão"): (
+                "Dominância do Pregão — Ranking de Tickers por CLV",
+                "Objetivo: Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.\n\n"
+                "Indicadores envolvidos: CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.\n\n"
+                "Como interpretar: Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "
+                "Quanto maior o comprimento, mais intensa a dominância. O círculo na extremidade representa o volume financeiro que sustentou o movimento. "
+                "Passe o mouse sobre as barras para ver detalhes do ticker."
+            ),
+            ("Análise do Ticker", "Amplitude de Preço"): (
+                "Amplitude de Preço — Indicadores de Amplitude",
                 "Objetivo: Analisar a amplitude e posição do preço no período.\n\n"
                 "Indicadores envolvidos: Range (amplitude), Range% (amplitude relativa ao preço médio), Typical Price, Median Price, Weighted Close.\n\n"
                 "Como interpretar: Range mostra a volatilidade absoluta do dia. Range% relativiza pelo preço médio. Typical/Median/Weighted Close "
                 "são diferentes formas de resumir o preço do pregão, cada uma com viés diferente (fechamento tem mais peso no Weighted Close)."
+            ),
+            ("Análise do Ticker", "Evolução da Dominância"): (
+                "Evolução da Dominância — Histórico de CLV por Pregão",
+                "Objetivo: Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.\n\n"
+                "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Efficiency (linha azul), Daily Money Flow (círculo na extremidade).\n\n"
+                "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
+                "A linha azul de eficiência mostra se o movimento foi convincente. O círculo indica o fluxo financeiro diário. "
+                "O painel à direita resume a classificação do último pregão e o percentual de pregões compradores no período."
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
                 "Fluxo Financeiro — CLV e Money Flow",
@@ -489,6 +525,10 @@ class FlowScopeGUI(tk.Tk):
         ticker = self._ticker_combo.get()
         data = self._current_data.get(ticker) if ticker else None
         for name, info in self._ticker_indicator_frames.items():
+            if name == "Evolução da Dominância":
+                if hasattr(self, "_dominance_timeline"):
+                    self._dominance_timeline.update(self._current_data, ticker=ticker)
+                continue
             text_w = info["text"]
             text_w.config(state=tk.NORMAL)
             text_w.delete("1.0", tk.END)
@@ -529,7 +569,7 @@ class FlowScopeGUI(tk.Tk):
                      "weighted_close", "clv", "money_flow_multiplier",
                      "money_flow_volume", "buying_pressure", "selling_pressure",
                      "average_trade_size", "average_financial_ticket",
-            "daily_efficiency", "financial_density", "trade_density",
+            "daily_efficiency", "dominance_score", "financial_density", "trade_density",
             "volume_density", "vwap_distance"):
             val = all_inds.get(key)
             label = key.replace("_", " ").title()
@@ -609,7 +649,7 @@ class FlowScopeGUI(tk.Tk):
 
     def _update_ticker_selectors(self) -> None:
         values = ["Todos"] + self._tickers
-        for combo in (self._vwap_ticker_combo, self._quadrant_ticker_combo):
+        for combo in (self._vwap_ticker_combo, self._quadrant_ticker_combo, self._dominance_combo):
             current = combo.get()
             combo["values"] = values
             if current in values:
@@ -642,15 +682,17 @@ class FlowScopeGUI(tk.Tk):
             else:
                 self._vwap_ticker_combo.set("Todos")
                 self._ticker_combo.set("")
-        elif source == "vwap":
-            sel = self._vwap_ticker_combo.get()
+        elif source == "dominance":
+            sel = self._dominance_combo.get()
             if sel and sel != "Todos":
+                self._vwap_ticker_combo.set(sel)
                 self._quadrant_ticker_combo.set(sel)
                 self._ticker_combo.set(sel)
             else:
+                self._vwap_ticker_combo.set("Todos")
                 self._quadrant_ticker_combo.set("Todos")
                 self._ticker_combo.set("")
-        elif source == "ticker_analysis":
+        elif source == "vwap":
             sel = self._ticker_combo.get()
             if sel:
                 self._quadrant_ticker_combo.set(sel)
@@ -663,6 +705,10 @@ class FlowScopeGUI(tk.Tk):
 
     def _on_vwap_combo_selected(self, event=None):
         self._sync_ticker_selectors("vwap")
+        self._update_charts()
+
+    def _on_dominance_combo_selected(self, event=None):
+        self._sync_ticker_selectors("dominance")
         self._update_charts()
 
     def _on_ticker_combo_selected(self, event=None):
@@ -695,6 +741,13 @@ class FlowScopeGUI(tk.Tk):
             filtered_quadrant = filtered
         show_arrows = quadrant_sel != "Todos"
         self._quadrant_chart.update(filtered_quadrant, show_arrows=show_arrows)
+
+        dominance_sel = self._dominance_combo.get()
+        if dominance_sel and dominance_sel != "Todos":
+            filtered_dominance = {t: v for t, v in filtered.items() if t == dominance_sel}
+        else:
+            filtered_dominance = filtered
+        self._dominance_ranking.update(filtered_dominance)
 
     def _update_ticker_counter(self):
         filtered = self._ticker_list.get_tickers()
