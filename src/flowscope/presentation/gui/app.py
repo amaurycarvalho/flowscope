@@ -435,6 +435,13 @@ class FlowScopeGUI(tk.Tk):
         self._set_status(msg, icon)
         self._flash_after_id = self.after(clear_ms, lambda: self._set_status("Pronto."))
 
+    def _set_wait_cursor(self):
+        self.config(cursor="watch")
+        self.update_idletasks()
+
+    def _clear_wait_cursor(self):
+        self.config(cursor="")
+
     def _enter_loading_state(self):
         if self._flash_after_id:
             self.after_cancel(self._flash_after_id)
@@ -442,15 +449,14 @@ class FlowScopeGUI(tk.Tk):
         self._load_button.config(state=tk.DISABLED)
         self._today_button.config(state=tk.DISABLED)
         self._date_entry.config(state=tk.DISABLED)
-        self.config(cursor="watch")
-        self.update_idletasks()
+        self._set_wait_cursor()
         self._animate_loading()
 
     def _exit_loading_state(self):
         self._load_button.config(state=tk.NORMAL)
         self._today_button.config(state=tk.NORMAL)
         self._date_entry.config(state="normal")
-        self.config(cursor="")
+        self._clear_wait_cursor()
         if self._loading_after_id:
             self.after_cancel(self._loading_after_id)
             self._loading_after_id = None
@@ -605,12 +611,16 @@ class FlowScopeGUI(tk.Tk):
             return
 
         if self._charts_dirty and self._current_data:
-            if main_tab == "Análise Geral":
-                self._update_charts()
-                self._update_ticker_counter()
-            else:
-                self._update_ticker_indicator_tabs()
-                self._update_ticker_counter()
+            self._set_wait_cursor()
+            try:
+                if main_tab == "Análise Geral":
+                    self._update_charts()
+                    self._update_ticker_counter()
+                else:
+                    self._update_ticker_indicator_tabs()
+                    self._update_ticker_counter()
+            finally:
+                self._clear_wait_cursor()
             self._charts_dirty = False
 
         content = self._tab_content.get((main_tab, sub_tab))
@@ -635,7 +645,11 @@ class FlowScopeGUI(tk.Tk):
         self._tickers = list(tickers)
         self._ticker_combo["values"] = tickers
         self._charts_dirty = True
-        self._refresh_current_tab()
+        self._set_wait_cursor()
+        try:
+            self._refresh_current_tab()
+        finally:
+            self._clear_wait_cursor()
         self._flash_status("Filtro aplicado!", "ℹ")
 
     def _on_date_change(self):
@@ -729,11 +743,14 @@ class FlowScopeGUI(tk.Tk):
     def _copy_chart(self, figure):
         from flowscope.infrastructure.clipboard_image import ClipboardError, copy_image_to_clipboard
 
+        self._set_wait_cursor()
         try:
             copy_image_to_clipboard(figure)
             self._flash_status("Gráfico copiado!")
         except ClipboardError as e:
             self._set_status(f"Erro: {e}", "⚠")
+        finally:
+            self._clear_wait_cursor()
 
     def _bind_shortcuts(self):
         self._date_entry.bind("<Return>", lambda e: self._on_load_data())
