@@ -48,20 +48,25 @@ def _get_selected_ticker(self) -> str | None:
 
 **Alternativa considerada**: Adicionar um atributo `_selected_ticker` que é explicitamente setado. Rejeitada porque duplica estado e a TickerList já gerencia a seleção.
 
-### D2: Lazy refresh via mecanismo existente
+### D2: Lazy refresh na troca de abas
 
-O fluxo atual já funciona:
+O método `_on_tab_changed()` originalmente só atualizava o conteúdo da aba se `self._charts_dirty` estivesse True. Isso impedia a atualização ao navegar entre abas depois do carregamento inicial, já que `_refresh_current_tab()` limpava a flag.
 
-1. Usuário clica em ticker na TickerList
-2. `_on_listbox_select` → `_on_change` → `_on_ticker_edit`
-3. `_on_ticker_edit` seta `_charts_dirty = True` e chama `_refresh_current_tab()`
-4. Se estiver na aba "Análise do Ticker", `_refresh_current_tab()` chama `_update_ticker_indicator_tabs()`
-5. `_update_ticker_indicator_tabs()` chama `_get_selected_ticker()` em vez de `self._ticker_combo.get()`
+Correção: `_on_tab_changed()` agora sempre atualiza a aba atual quando `self._current_data` existe, independente de `_charts_dirty`. O wait cursor foi removido (desnecessário para navegação entre abas).
 
-Mudanças necessárias no `_on_ticker_edit`:
-- Remover `self._ticker_combo["values"] = tickers` (combobox será removido)
-- Manter `self._tickers = list(tickers)` se usado em outro lugar (verificar dependências)
-- `_charts_dirty = True` e `_refresh_current_tab()` permanecem
+```python
+if self._current_data:
+    if main_tab == "Análise Geral":
+        self._update_charts()
+    else:
+        self._update_ticker_indicator_tabs()
+    self._charts_dirty = False
+```
+
+O fluxo de `_on_ticker_edit` permanece o mesmo:
+1. `_on_listbox_select` → `_on_change` → `_on_ticker_edit`
+2. `_on_ticker_edit` seta `_charts_dirty = True` e chama `_refresh_current_tab()`
+3. `_refresh_current_tab()` chama o update apropriado e limpa `_charts_dirty`
 
 ### D3: Reordenação das sub-abas
 
@@ -92,6 +97,12 @@ O chart atual tem os seguintes elementos removidos/alterados:
 | Tooltip atual (`_show_tooltip`) | Expandir para incluir label de Dominância, CLV, label de Convicção, Eficiência em %, MFV diário |
 | Labels "Compradores" e "Vendedores" | Adicionar percentual de pregões |
 
+**Ordenação das datas**: As linhas são construídas em ordem reversa (`reversed(common_dates)`) para que a data mais recente fique em y=0 (inferior do chart) e a mais antiga em y=n-1 (topo), usando `barh` que renderiza de baixo para cima.
+
+**Hover sobre a barra**: O `_on_motion()` original media distância até `pt["clv"]` (ponta da barra). Para barras longas (CLV ≈ 0.8), o hover próximo a x=0 ficava fora do threshold 0.3. Corrigido para verificar se o mouse está dentro do intervalo horizontal da barra (entre 0 e CLV), usando apenas distância vertical.
+
+**Zorder do tooltip**: A anotação do tooltip recebeu `zorder=10` para ficar acima dos stems MFV (zorder=5) e das barras (zorder=3).
+
 **Tooltip novo**:
 ```
 Data: 2025-01-10
@@ -107,6 +118,23 @@ self._axes.text(0.05, -0.10, f"← Vendedores {seller_pct:.0f}%", ...)
 ```
 
 Cálculo: `buyer_pct = sum(CLV > 0) / total * 100`, `seller_pct = sum(CLV < 0) / total * 100`. Pregões neutros (CLV == 0) não são contabilizados em nenhum lado (mesmo comportamento do summary atual).
+
+### D5: Mesmas correções no DominanceRankingChart
+
+O `dominance_ranking.py` (Dominância do Pregão) tinha os mesmos dois bugs do timeline chart:
+- **Hover**: media distância até endpoint da barra — aplicada a mesma correção de verificar span horizontal
+- **Zorder**: tooltip sem zorder explícito, stems MFV em zorder=5 — elevado para zorder=10
+- Limpeza: removido `import matplotlib` não utilizado
+
+### D6: Labels "Compradores/Vendedores" no QuadrantChart
+
+Adicionados labels "Compradores →" e "← Vendedores" abaixo do eixo X (CLV) no gráfico de quadrantes, posicionados em coordenadas de eixo (`transAxes`) em y=-0.08, replicando o estilo visual do Dominância do Pregão.
+
+### D7: TickerList exportselection
+
+O `Listbox` do tkinter tem `exportselection=True` por padrão, o que o vincula ao protocolo X11 PRIMARY selection. Quando o usuário seleciona texto em outra aplicação (ex: gedit), o Listbox perde a seleção, disparando `<<ListboxSelect>>` e causando "Filtro aplicado!" indevido.
+
+Correção: `exportselection=False` no construtor do `Listbox` em `ticker_list.py`.
 
 ## Risks / Trade-offs
 

@@ -233,17 +233,12 @@ class FlowScopeGUI(tk.Tk):
         ticker_main_frame = ttk.Frame(self._main_notebook)
         self._main_notebook.add(ticker_main_frame, text="Análise do Ticker")
 
-        self._ticker_combo = ttk.Combobox(
-            ticker_main_frame, state="readonly",
-        )
-        self._ticker_combo.pack(fill=tk.X, padx=PAD_SMALL, pady=PAD_SMALL)
-
         self._ticker_notebook = ttk.Notebook(ticker_main_frame)
         self._ticker_notebook.pack(fill=tk.BOTH, expand=True)
 
         tab_configs = [
-            ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
             ("Evolução da Dominância", "clv", "daily_efficiency", "dominance_score", "daily_money_flow"),
+            ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
             ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume", "buying_pressure", "selling_pressure", "vwap_distance"),
             ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
             ("Eficiência do Movimento", "daily_efficiency"),
@@ -295,20 +290,19 @@ class FlowScopeGUI(tk.Tk):
                  "Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. "
                  "Passe o mouse sobre as barras para ver detalhes do ticker."
             ),
+            ("Análise do Ticker", "Evolução da Dominância"): (
+                "Evolução da Dominância — Histórico de CLV por Pregão",
+                "Objetivo: Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.\n\n"
+                 "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).\n\n"
+                 "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
+                 "O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento."
+            ),
             ("Análise do Ticker", "Amplitude de Preço"): (
                 "Amplitude de Preço — Indicadores de Amplitude",
                 "Objetivo: Analisar a amplitude e posição do preço no período.\n\n"
                 "Indicadores envolvidos: Range (amplitude), Range% (amplitude relativa ao preço médio), Typical Price, Median Price, Weighted Close.\n\n"
                 "Como interpretar: Range mostra a volatilidade absoluta do dia. Range% relativiza pelo preço médio. Typical/Median/Weighted Close "
                 "são diferentes formas de resumir o preço do pregão, cada uma com viés diferente (fechamento tem mais peso no Weighted Close)."
-            ),
-            ("Análise do Ticker", "Evolução da Dominância"): (
-                "Evolução da Dominância — Histórico de CLV por Pregão",
-                "Objetivo: Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.\n\n"
-                 "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Efficiency (linha azul), Daily Money Flow (traço horizontal sobre a barra).\n\n"
-                 "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
-                 "A linha azul de eficiência mostra se o movimento foi convincente. O traço horizontal indica o fluxo financeiro diário. "
-                "O painel à direita resume a classificação do último pregão e o percentual de pregões compradores no período."
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
                 "Fluxo Financeiro — CLV e Money Flow",
@@ -345,8 +339,6 @@ class FlowScopeGUI(tk.Tk):
         self._main_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._general_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._ticker_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
-        self._ticker_combo.bind("<<ComboboxSelected>>", self._on_ticker_combo_selected)
-
         last_tab = self._prefs.get("last_tab", "Análise Geral")
         last_subtab = self._prefs.get("last_subtab", "VWAP")
         self.after(10, lambda: self._restore_tabs(last_tab, last_subtab))
@@ -499,7 +491,6 @@ class FlowScopeGUI(tk.Tk):
                 return
             self._tickers = list(tickers)
             self._current_data = self._use_case.execute(ref_date, self._tickers or None)
-            self._ticker_combo["values"] = self._tickers
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
             self._charts_dirty = True
@@ -515,8 +506,17 @@ class FlowScopeGUI(tk.Tk):
         finally:
             self._exit_loading_state()
 
+    def _get_selected_ticker(self) -> str | None:
+        selected = self._ticker_list.get_tickers()
+        if selected:
+            return selected[0]
+        all_tickers = self._ticker_list.get_all_listbox_tickers()
+        if all_tickers:
+            return all_tickers[0]
+        return None
+
     def _update_ticker_indicator_tabs(self):
-        ticker = self._ticker_combo.get()
+        ticker = self._get_selected_ticker()
         data = self._current_data.get(ticker) if ticker else None
         for name, info in self._ticker_indicator_frames.items():
             if name == "Evolução da Dominância":
@@ -610,17 +610,13 @@ class FlowScopeGUI(tk.Tk):
         except Exception:
             return
 
-        if self._charts_dirty and self._current_data:
-            self._set_wait_cursor()
-            try:
-                if main_tab == "Análise Geral":
-                    self._update_charts()
-                    self._update_ticker_counter()
-                else:
-                    self._update_ticker_indicator_tabs()
-                    self._update_ticker_counter()
-            finally:
-                self._clear_wait_cursor()
+        if self._current_data:
+            if main_tab == "Análise Geral":
+                self._update_charts()
+                self._update_ticker_counter()
+            else:
+                self._update_ticker_indicator_tabs()
+                self._update_ticker_counter()
             self._charts_dirty = False
 
         content = self._tab_content.get((main_tab, sub_tab))
@@ -643,7 +639,6 @@ class FlowScopeGUI(tk.Tk):
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
         self._tickers = list(tickers)
-        self._ticker_combo["values"] = tickers
         self._charts_dirty = True
         self._set_wait_cursor()
         try:
@@ -670,13 +665,6 @@ class FlowScopeGUI(tk.Tk):
                 )
         except Exception:
             pass
-
-    def _on_ticker_combo_selected(self, event=None):
-        sel = self._ticker_combo.get()
-        if not sel:
-            return
-        self._charts_dirty = True
-        self._on_tab_changed()
 
     def _update_charts(self):
         import matplotlib

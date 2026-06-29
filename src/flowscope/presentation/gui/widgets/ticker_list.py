@@ -87,7 +87,7 @@ class TickerList:
         self._text.configure(yscrollcommand=self._text_scrollbar.set)
         self._text_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self._listbox = tk.Listbox(self._text_frame, selectmode=tk.EXTENDED)
+        self._listbox = tk.Listbox(self._text_frame, selectmode=tk.EXTENDED, exportselection=False)
         self._listbox_scrollbar = tk.Scrollbar(self._text_frame, orient=tk.VERTICAL, command=self._listbox.yview)
         self._listbox.configure(yscrollcommand=self._listbox_scrollbar.set)
         self._listbox_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)

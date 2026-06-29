@@ -1,31 +1,54 @@
 ## Purpose
 
-Define the per-ticker analysis interface, including a combobox for ticker selection and sub-tabs for price dominance, financial flow, institutional participation, movement efficiency, and a general summary.
+Define the per-ticker analysis interface, including ticker selection via TickerList and sub-tabs for price dominance, financial flow, institutional participation, movement efficiency, and a general summary.
 
 ## Requirements
 
-### Requirement: Seleção de ticker para análise individual
+### Requirement: Seleção de ticker via TickerList
 
-O sistema DEVE fornecer um combobox na aba "Análise do Ticker" para selecionar um ticker específico dentre os carregados no momento. O combobox DEVE ser populado com os tickers da lista principal (TickerList) e atualizado automaticamente quando a lista for modificada.
+O sistema DEVE derivar o ticker analisado na aba "Análise do Ticker" a partir da seleção na TickerList (painel direito). O primeiro ticker selecionado no Listbox (por ordem de aparição) DEVE ser usado como ticker atual para todas as sub-abas de indicadores.
 
-#### Scenario: Combobox populado após carregamento
+#### Scenario: Primeiro ticker selecionado é o analisado
 
-- **WHEN** o usuário carrega dados para 37 tickers
-- **THEN** o combobox DEVE conter 37 itens listando os tickers carregados
+- **WHEN** o usuário carrega dados para PETR4, VALE3, ITUB4 e seleciona VALE3 e ITUB4 no Listbox
+- **THEN** a aba "Análise do Ticker" DEVE exibir indicadores para VALE3 (primeiro da ordem de seleção)
 
-#### Scenario: Combobox atualizado após filtro
+#### Scenario: Nenhum ticker selecionado usa o primeiro da lista
 
-- **WHEN** o usuário filtra a lista para 15 tickers
-- **THEN** o combobox DEVE conter apenas os 15 tickers do filtro ativo
+- **WHEN** o usuário carrega dados para PETR4, VALE3, ITUB4 e nenhum está selecionado no Listbox
+- **THEN** a aba "Análise do Ticker" DEVE exibir indicadores para PETR4 (primeiro da lista completa)
 
-### Requirement: Placeholder para Dominância do Pregão
+#### Scenario: Lista vazia exibe mensagem
 
-A sub-aba "Dominância do Pregão" DEVE exibir os indicadores de preço: Range, Range%, Typical Price, Median Price, Weighted Close.
+- **WHEN** a lista de tickers está vazia e o usuário navega para "Análise do Ticker"
+- **THEN** as sub-abas DEVENDO exibir "Selecione um ticker"
+
+### Requirement: Reordenação das sub-abas
+
+A sub-aba "Evolução da Dominância" DEVE ser a primeira aba no notebook da "Análise do Ticker", antes de "Amplitude de Preço".
+
+#### Scenario: Evolução da Dominância como primeira aba
+
+- **WHEN** o usuário navega para "Análise do Ticker"
+- **THEN** a primeira sub-aba DEVE ser "Evolução da Dominância" seguida por "Amplitude de Preço"
+
+### Requirement: Atualização ao trocar seleção
+
+O sistema DEVE atualizar as sub-abas da "Análise do Ticker" quando o usuário alterar a seleção na TickerList, utilizando o mecanismo de lazy refresh existente (via `_charts_dirty` e `_on_ticker_edit`).
+
+#### Scenario: Troca de ticker atualiza abas
+
+- **WHEN** o usuário está na aba "Análise do Ticker > Evolução da Dominância" visualizando PETR4 e clica em VALE3 no Listbox
+- **THEN** o gráfico DEVE atualizar para mostrar dados de VALE3
+
+### Requirement: Placeholder para Amplitude de Preço
+
+A sub-aba "Amplitude de Preço" DEVE exibir os indicadores de preço: Range, Range%, Typical Price, Median Price, Weighted Close.
 
 #### Scenario: Exibição dos indicadores de preço
 
-- **WHEN** o usuário seleciona a sub-aba "Dominância do Pregão"
-- **THEN** o sistema DEVE exibir uma tabela ou painel com Range, Range%, Typical Price, Median Price e Weighted Close para o ticker selecionado
+- **WHEN** o usuário seleciona a sub-aba "Amplitude de Preço"
+- **THEN** o sistema DEVE exibir Range, Range%, Typical Price, Median Price e Weighted Close para o ticker selecionado
 
 ### Requirement: Placeholder para Fluxo Financeiro
 
@@ -62,31 +85,3 @@ A sub-aba "Resumo Geral" DEVE consolidar todos os indicadores do ticker em uma �
 
 - **WHEN** o usuário seleciona a sub-aba "Resumo Geral"
 - **THEN** o sistema DEVE exibir todos os indicadores disponíveis para o ticker selecionado em formato consolidado (tabela ou painel)
-
-### Requirement: Sincronização bidirecional de comboboxes
-
-O sistema DEVE sincronizar o combobox "Análise do Ticker" com o combobox de seleção de ticker do gráfico de quadrantes. As mudanças em um combobox DEVEM refletir no outro.
-
-#### Scenario: Ticker selecionado nos Quadrantes reflete na Análise do Ticker
-
-- **WHEN** o usuário seleciona "PETR4" no combobox do Quadrantes
-- **THEN** o combobox "Análise do Ticker" DEVE exibir "PETR4" como valor selecionado
-
-#### Scenario: Ticker selecionado na Análise do Ticker reflete nos Quadrantes
-
-- **WHEN** o usuário seleciona "VALE3" no combobox "Análise do Ticker"
-- **THEN** o combobox do Quadrantes DEVE exibir "VALE3" como valor selecionado
-
-#### Scenario: "Todos" nos Quadrantes limpa a Análise do Ticker
-
-- **WHEN** o usuário seleciona "Todos" no combobox do Quadrantes
-- **THEN** o combobox "Análise do Ticker" DEVE ficar vazio (nenhum ticker selecionado)
-
-### Requirement: Sincronização sem navegação automática de aba
-
-A sincronização do valor entre comboboxes NÃO DEVE forçar a navegação para a aba correspondente. O conteúdo da aba "Análise do Ticker" DEVE ser atualizado apenas quando o usuário navegar para ela explicitamente.
-
-#### Scenario: Sincronização preserva aba ativa
-
-- **WHEN** o usuário está na aba "Análise Geral > Quadrantes" e seleciona um ticker
-- **THEN** o combobox da Análise do Ticker é atualizado, MAS a aba ativa permanece "Análise Geral > Quadrantes"

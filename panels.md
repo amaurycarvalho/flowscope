@@ -65,6 +65,7 @@ A interface é dividida em três grandes regiões:
   - **Eixo Y:** VWAP Distance — desvio percentual do último preço em relação ao VWAP diário: `(LastPric − TradAvrgPric) / TradAvrgPric`.
   - **Tamanho da bolha:** Raiz quadrada do `FinInstrmQty` (quantidade de instrumentos negociados), normalizado.
   - **Cor da bolha:** Colormap divergente RdYlGn — verde para CLV positivo (pressão compradora), vermelho para CLV negativo (pressão vendedora).
+  - Labels "Compradores →" e "← Vendedores" abaixo do eixo CLV indicam a direção de cada quadrante.
 - **Como interpretar:**
   - As bolhas representam o **último dia** de cada ativo. As setas cinzas mostram a trajetória dos dias anteriores.
   - **Q1 (CLV > 0, acima do VWAP):** Compradores dominaram o pregão e o fechamento ficou acima do preço médio. Movimento consistente.
@@ -78,9 +79,25 @@ A interface é dividida em três grandes regiões:
 
 ## Aba Principal: "Análise do Ticker"
 
-Esta aba exibe indicadores calculados **por ticker**. Selecione o ativo desejado no combobox logo acima das sub-abas. Os dados são atualizados automaticamente ao trocar de ticker ou de sub-aba.
+O ticker analisado é determinado pelo primeiro item selecionado na TickerList (painel direito). Se nenhum ticker estiver selecionado, usa o primeiro da lista. Se a lista estiver vazia, exibe "Selecione um ticker". Os dados são atualizados automaticamente ao trocar de ticker ou de sub-aba.
 
-### Sub-aba: Dominância do Pregão
+### Sub-aba: Evolução da Dominância
+- **Visualização:** Gráfico de barras horizontais divergentes (Matplotlib), com barras de ferramentas para zoom, pan, salvar e copiar imagem.
+- **Objetivo:** Visualizar a evolução temporal da dominância compradora/vendedora de um único ticker ao longo de múltiplos pregões.
+- **Indicadores envolvidos:**
+  - `CLV` (Close Location Value) — Posição do fechamento no range (−1 a +1), representado pelo comprimento e direção de cada barra
+  - `Daily Efficiency` — Eficiência do movimento, exibida como percentual no tooltip de cada barra
+  - `Money Flow diário` — CLV × Volume Financeiro do pregão, representado como marcador stem na extremidade da barra
+  - Percentual de pregões com dominância compradora (CLV > 0) e vendedora (CLV < 0) nos labels abaixo do eixo X
+- **Como interpretar:**
+  - Barras para a direita (verdes) indicam fechamento na metade superior do range — viés comprador.
+  - Barras para a esquerda (vermelhas) indicam fechamento na metade inferior — viés vendedor.
+  - A intensidade da cor reflete a magnitude do CLV (mais escuro = mais extremo).
+  - Passe o mouse sobre qualquer ponto de uma barra para ver: data, dominância (label + CLV), convicção (label + eficiência em %) e MFV do pregão.
+  - Os labels "Compradores X%" e "← Vendedores Y%" abaixo do eixo X indicam a proporção de pregões com direção definida.
+  - As barras são ordenadas da mais antiga (topo) à mais recente (base).
+
+### Sub-aba: Amplitude de Preço
 - **Objetivo:** Analisar a amplitude da oscilação e as diferentes métricas de preço do ativo no pregão.
 - **Indicadores envolvidos:**
   - `Range` — Amplitude absoluta (máxima − mínima)
@@ -141,15 +158,15 @@ Esta aba exibe indicadores calculados **por ticker**. Selecione o ativo desejado
 ## Painel Lateral Direito
 
 ### Filtro de Tickers (TickerList)
-- **Componente:** `tk.Text` com scrollbar
-- **Descrição:** Lista editável de tickers, um por linha. Permite salvar/carregar listas de arquivos `.txt` e aplicar filtro.
-- **Objetivo:** Controlar quais tickers são exibidos nos gráficos e análises. Funciona como uma "carteira" ou "watchlist".
+- **Componente:** `tk.Text` (modo edição) / `tk.Listbox` com `exportselection=False` (modo visualização)
+- **Descrição:** Alterna entre edição (Text) e seleção múltipla (Listbox) via toggle "Editar lista de tickers". Permite salvar/carregar listas de arquivos `.txt`.
+- **Objetivo:** Controlar quais tickers são exibidos nos gráficos e análises. Funciona como uma "carteira" ou "watchlist". A seleção no Listbox também determina o ticker analisado na aba "Análise do Ticker".
 - **Funcionalidades:**
-  - Duplo clique em um ticker → isola apenas aquele ticker na lista.
-  - Clique direito → menu de contexto (copiar ticker, remover do filtro, selecionar todos, limpar).
+  - **Modo edição:** Texto multilinha, um ticker por linha. Duplo clique isola um ticker. Clique direito → menu de contexto (copiar, remover, selecionar todos, limpar).
+  - **Modo visualização:** Listbox com seleção múltipla (`EXTENDED`). Ctrl+Click e Shift+Click para selecionar múltiplos tickers.
+  - Botões "Selecionar Todos" e "Desmarcar Todos" na barra superior (visíveis apenas no modo visualização).
   - Botão "Salvar Tickers" → exporta a lista atual para arquivo.
   - Botão "Carregar Tickers" → importa lista de arquivo.
-  - Botão "Filtrar" → aplica o filtro, recarregando gráficos e listas de tickers.
   - Se nenhum ticker for fornecido, o programa carrega automaticamente a carteira IDIV (Índice Dividendos) da B3.
 
 ### Painel de Orientação (OrientationPanel)

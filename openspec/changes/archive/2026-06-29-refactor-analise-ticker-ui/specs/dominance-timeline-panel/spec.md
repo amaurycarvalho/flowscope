@@ -73,6 +73,29 @@ O sistema DEVE aplicar a mesma codificação visual do ranking (direção, compr
 - **WHEN** o usuário passa o mouse sobre uma barra com classificação Compra Forte
 - **THEN** o tooltip DEVE exibir "Dominância: Compra Forte (CLV: +0,52)" — a classificação NÃO DEVE mais aparecer em um painel lateral separado
 
+### Requirement: Tooltip acima dos stems MFV (DT208)
+
+O tooltip DEVE ser renderizado com zorder superior ao dos stems de MFV para garantir que a caixa de tooltip não seja encoberta pelas linhas horizontais.
+
+#### Scenario: Tooltip sobrepõe stem
+
+- **WHEN** o usuário passa o mouse sobre uma barra que possui stem MFV
+- **THEN** a caixa do tooltip DEVE aparecer sobre a linha do stem, sem ser obstruída
+
+### Requirement: Hover em qualquer ponto da barra (DT209)
+
+O sistema DEVE exibir o tooltip quando o mouse estiver sobre qualquer ponto da barra (entre 0 e o valor do CLV), não apenas próximo à extremidade.
+
+#### Scenario: Hover próximo a x=0
+
+- **WHEN** o usuário passa o mouse sobre uma barra com CLV = +0.80 na região próxima a x=0
+- **THEN** o tooltip DEVE ser exibido
+
+#### Scenario: Hover sobre stem sem barra
+
+- **WHEN** o usuário passa o mouse sobre um stem MFV que se estende além da barra
+- **THEN** o tooltip NÃO DEVE ser exibido (o stem está fora do span [0, CLV])
+
 ### Requirement: Marcador de Money Flow diário (DT203)
 
 *(Sem alterações — o marcador MFV diário via hlines permanece no chart.)*

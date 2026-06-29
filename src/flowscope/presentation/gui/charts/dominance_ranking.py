@@ -1,7 +1,6 @@
 import math
 import tkinter as tk
 
-import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -172,7 +171,7 @@ class DominanceRankingChart:
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
-            fontsize=9, visible=False,
+            fontsize=9, visible=False, zorder=10,
         )
 
     def _on_pick(self, event):
@@ -197,11 +196,17 @@ class DominanceRankingChart:
         min_dist = 0.3
         for pt in self._hover_data:
             idx = self._hover_data.index(pt)
-            dx = event.xdata - pt["clv"]
-            dy = event.ydata - idx
-            dist = math.sqrt(dx**2 + dy**2)
-            if dist < min_dist:
-                min_dist = dist
+            dy = abs(event.ydata - idx)
+            if dy > min_dist:
+                continue
+            if pt["clv"] >= 0:
+                if event.xdata < 0 or event.xdata > pt["clv"]:
+                    continue
+            else:
+                if event.xdata > 0 or event.xdata < pt["clv"]:
+                    continue
+            if dy < min_dist:
+                min_dist = dy
                 closest = pt
         if closest:
             self._show_tooltip(closest, event.xdata, event.ydata)

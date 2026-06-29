@@ -49,6 +49,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Botão "Filtrar"** removido (seleção no Listbox já funciona como filtro)
 - **Comboboxes de ticker da Análise Geral** (VWAP, Quadrantes, Dominância) removidos; seleção via Listbox controla todos os gráficos
 
+### [refactor-analise-ticker-ui](openspec/changes/archive/2026-06-29-refactor-analise-ticker-ui) Combobox de seleção substituído por TickerList; painel Evolução da Dominância simplificado sem resumo lateral e linha de eficiência
+
+#### Added
+- **Labels "Compradores/Vendedores"** no QuadrantChart, abaixo do eixo CLV
+
+#### Changed
+- **Sub-abas reordenadas**: "Evolução da Dominância" como primeira aba da "Análise do Ticker", antes de "Amplitude de Preço"
+- **DominanceTimelineChart redesenhado**: painel lateral de resumo removido; linha de eficiência (twiny) removida; informações movidas para o tooltip de cada barra (Data, Dominância, Convicção, MFV); percentuais adicionados nos labels "Compradores" e "Vendedores"
+- **Spec `ticker-analysis` atualizada**: mecânica de seleção sem combobox
+- **Spec `dominance-timeline-panel` atualizada**: design sem painel lateral, sem linha de eficiência, tooltip expandido
+
+#### Removed
+- **Combobox de seleção de ticker** na aba "Análise do Ticker"; ticker analisado agora deriva da TickerList (primeiro selecionado, ou primeiro da lista, ou "Selecione um ticker" se vazia)
+
+#### Fixed
+- **Hover nos charts de barra**: tooltip detecta mouse em qualquer ponto da barra (entre 0 e CLV), não apenas no endpoint
+- **Zorder do tooltip**: tooltip renderiza acima dos stems MFV em ambos os charts de barra
+- **Ordenação das datas**: DominanceTimelineChart ordena mais antiga no topo, mais recente na base
+- **TickerList**: `exportselection=False` evita que seleção externa (X11 PRIMARY) limpe seleção interna
+- **Lazy refresh**: `_on_tab_changed()` sempre atualiza a aba atual ao navegar, não apenas quando `_charts_dirty` está True
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.3.0...HEAD
 
 [0.3.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.3.0

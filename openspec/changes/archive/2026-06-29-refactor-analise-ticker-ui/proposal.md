@@ -12,6 +12,12 @@ A "Análise do Ticker" possui um combobox para selecionar o ticker analisado, ma
   - Mover as informações do resumo lateral para o tooltip de cada barra: Data, Dominância (label + CLV), Convicção (label + Eficiência em %), MFV do pregão
   - Incluir percentual de pregões nos labels "Compradores" e "Vendedores" abaixo do gráfico
   - Manter o estilo visual similar ao "Dominância do Pregão" (label nas extremidades das barras, marcador MFV via hlines)
+- **Corrigir hover nos charts de barra** (DominanceTimelineChart e DominanceRankingChart): tooltip agora detecta mouse sobre qualquer ponto da barra (entre 0 e CLV), não apenas próximo ao endpoint
+- **Corrigir zorder do tooltip** em ambos os charts de barra: tooltip agora renderiza acima dos stems MFV
+- **Corrigir ordenação das datas** no DominanceTimelineChart: mais antiga no topo, mais recente embaixo
+- **Adicionar labels "Compradores/Vendedores"** no QuadrantChart, abaixo do eixo CLV
+- **Corrigir TickerList**: adicionar `exportselection=False` para evitar que seleção externa (X11 PRIMARY) limpe a seleção interna
+- **Corrigir lazy refresh**: `_on_tab_changed()` agora sempre atualiza a aba atual ao navegar, não apenas quando `_charts_dirty` está True
 - **Atualizar spec `ticker-analysis`** para refletir a nova mecânica de seleção (sem combobox)
 - **Atualizar spec `dominance-timeline-panel`** para refletir o novo design (sem painel lateral, sem linha de eficiência, tooltip expandido)
 

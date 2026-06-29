@@ -6,12 +6,12 @@ Define the Dominance Timeline panel — a time-series visualization in the Anál
 
 ### Requirement: Gráfico temporal de CLV (DT201)
 
-O sistema DEVE exibir um gráfico de barras horizontais divergentes onde cada linha representa uma data de pregão para o ticker selecionado.
+O sistema DEVE exibir um gráfico de barras horizontais divergentes onde cada linha representa uma data de pregão para o ticker selecionado. O layout do gráfico DEVE ser similar ao do "Dominância do Pregão" (DominanceRankingChart), com labels nas extremidades das barras, sem painel lateral, e sem linha de eficiência sobreposta.
 
-#### Scenario: Uma barra por data
+#### Scenario: Layout similar ao Dominância do Pregão
 
 - **WHEN** o painel é carregado com dados de 5 pregões para PETR4
-- **THEN** DEVEM ser exibidas 5 barras, uma por data, ordenadas cronologicamente da mais antiga (topo) à mais recente (base)
+- **THEN** DEVEM ser exibidas 5 barras, uma por data, ordenadas cronologicamente da mais antiga (topo) à mais recente (base), sem painel lateral e sem linha de eficiência, com labels nas extremidades indicando a data de cada pregão
 
 #### Scenario: Ordenação cronológica
 
@@ -38,6 +38,11 @@ O sistema DEVE aplicar a mesma codificação visual do ranking (direção, compr
 - **WHEN** valores intermediários
 - **THEN** a barra DEVE usar cor proporcional à magnitude
 
+#### Scenario: Tooltip substitui informação lateral
+
+- **WHEN** o usuário passa o mouse sobre uma barra com classificação Compra Forte
+- **THEN** o tooltip DEVE exibir "Dominância: Compra Forte (CLV: +0,52)" — a classificação NÃO DEVE mais aparecer em um painel lateral separado
+
 ### Requirement: Marcador de Money Flow diário (DT203)
 
 O sistema DEVE exibir um marcador na extremidade da barra cujo tamanho representa o Money Flow diário (CLV × FinVol daquele pregão), não o MFV acumulado.
@@ -49,39 +54,61 @@ O sistema DEVE exibir um marcador na extremidade da barra cujo tamanho represent
 - **WHEN** outro pregão tem CLV = 0.5 e FinVol = R$ 200K
 - **THEN** o marcador DO primeiro DEVE ser maior que o do segundo
 
-### Requirement: Overlay de Daily Efficiency (DT204)
-
-O sistema DEVE exibir a Daily Efficiency como uma linha ou marcador sobreposto ao gráfico, em escala independente.
-
-#### Scenario: Linha de eficiência
-
-- **WHEN** o gráfico é renderizado
-- **THEN** DEVE haver uma linha conectando os valores de Daily Efficiency de cada pregão, plotada em um eixo secundário (0 a 1) ou como marcador visual distinto
-
-#### Scenario: Tooltip da eficiência
-
-- **WHEN** o usuário passa o mouse sobre um ponto da linha de eficiência
-- **THEN** o tooltip DEVE mostrar: data, Daily Efficiency, e classificação de convicção
-
-### Requirement: Resumo lateral (DT205)
-
-O sistema DEVE exibir um resumo textual ao lado do gráfico com a classificação do último pregão e um KPI agregado do período.
-
-#### Scenario: Classificação do último pregão
-
-- **WHEN** o gráfico é renderizado para um ticker com dados
-- **THEN** DEVE ser exibido: "Dominância: <classificação> (<CLV>)", "Convicção: <classificação> (<Efficiency>)", "Fluxo: <valor>"
-
-#### Scenario: KPI de pregões compradores
-
-- **WHEN** o período contém 10 pregões, dos quais 6 têm CLV positivo
-- **THEN** DEVE ser exibido "Pregões Compradores: 60%"
-
 ### Requirement: Tooltip por barra (DT206)
 
-O sistema DEVE exibir tooltip ao passar o mouse sobre cada barra ou marcador.
+O sistema DEVE exibir tooltip ao passar o mouse sobre cada barra com informações expandidas: Data, Dominância (label descritivo + valor do CLV), Convicção (label descritivo + eficiência como percentual), e MFV do pregão.
 
 #### Scenario: Tooltip completo
 
-- **WHEN** o usuário passa o mouse sobre uma barra de uma data específica
-- **THEN** o tooltip DEVE mostrar: data, CLV, classificação de dominância, Daily Efficiency, classificação de convicção, Money Flow diário
+- **WHEN** o usuário passa o mouse sobre uma barra com CLV = 0.52, eficiência = 0.45, MFV diário = R$ 480.000 na data 2025-01-10
+- **THEN** o tooltip DEVE exibir:
+  - Data: 2025-01-10
+  - Dominância: Compra Forte (CLV: +0,52)
+  - Convicção: Moderada (Efic: 45,0%)
+  - MFV do pregão: R$ 480.000
+
+*Nota: O tooltip NÃO DEVE mais exibir a linha separada de "Eficiência" (a eficiência é incorporada na linha de Convicção como percentual).*
+
+### Requirement: Percentual de pregões nos labels (DT207)
+
+O sistema DEVE exibir o percentual de pregões com dominância compradora e vendedora nos labels posicionados abaixo do eixo X do gráfico. Os labels substituem os atuais "Compradores →" e "← Vendedores".
+
+#### Scenario: Labels com percentual
+
+- **WHEN** o gráfico é renderizado com 10 pregões, dos quais 6 têm CLV > 0 e 4 têm CLV < 0
+- **THEN** o label esquerdo DEVE exibir "← Vendedores 40%" e o direito "Compradores 60% →"
+
+#### Scenario: Pregões neutros excluídos
+
+- **WHEN** o período contém 10 pregões, com 5 compradores, 3 vendedores e 2 neutros (CLV = 0)
+- **THEN** os labels DEVEM exibir "← Vendedores 37,5%" e "Compradores 62,5% →" (baseado apenas nos pregões com direção definida)
+
+*Nota: O percentual é calculado sobre o total de pregões com direção definida (CLV ≠ 0), consistente com o comportamento do resumo lateral anterior.*
+
+#### Scenario: Atualização dinâmica
+
+- **WHEN** o ticker ou período analisado muda
+- **THEN** os percentuais DEVEM ser recalculados e os labels atualizados
+
+### Requirement: Tooltip acima dos stems MFV (DT208)
+
+O tooltip DEVE ser renderizado com zorder superior ao dos stems de MFV para garantir que a caixa de tooltip não seja encoberta pelas linhas horizontais.
+
+#### Scenario: Tooltip sobrepõe stem
+
+- **WHEN** o usuário passa o mouse sobre uma barra que possui stem MFV
+- **THEN** a caixa do tooltip DEVE aparecer sobre a linha do stem, sem ser obstruída
+
+### Requirement: Hover em qualquer ponto da barra (DT209)
+
+O sistema DEVE exibir o tooltip quando o mouse estiver sobre qualquer ponto da barra (entre 0 e o valor do CLV), não apenas próximo à extremidade.
+
+#### Scenario: Hover próximo a x=0
+
+- **WHEN** o usuário passa o mouse sobre uma barra com CLV = +0.80 na região próxima a x=0
+- **THEN** o tooltip DEVE ser exibido
+
+#### Scenario: Hover sobre stem sem barra
+
+- **WHEN** o usuário passa o mouse sobre um stem MFV que se estende além da barra
+- **THEN** o tooltip NÃO DEVE ser exibido (o stem está fora do span [0, CLV])

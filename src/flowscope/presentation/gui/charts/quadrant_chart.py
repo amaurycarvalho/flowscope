@@ -98,7 +98,6 @@ class QuadrantChart:
         size_scale = 200
 
         last_x, last_y, last_sizes, last_colors = [], [], [], []
-        hover_index = 0
         for points in ticker_trajectories:
             last = points[-1]
             last_x.append(last["clv"])
@@ -145,6 +144,13 @@ class QuadrantChart:
                         ha="left", va="bottom", fontsize=10, alpha=0.4)
         self._axes.text(0.95, 0.05, "Q4", transform=self._axes.transAxes,
                         ha="right", va="bottom", fontsize=10, alpha=0.4)
+
+        self._axes.text(0.95, -0.08, "Compradores →",
+                        transform=self._axes.transAxes, ha="right", va="top",
+                        fontsize=9, color="green", fontweight="bold")
+        self._axes.text(0.05, -0.08, "← Vendedores",
+                        transform=self._axes.transAxes, ha="left", va="top",
+                        fontsize=9, color="red", fontweight="bold")
 
         self._figure.tight_layout()
 
