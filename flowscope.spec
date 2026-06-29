@@ -32,6 +32,10 @@ a = Analysis(
         'mpl_toolkits.mplot3d',
         'ctypes',
         'pyxclip',
+        'tkcalendar',
+        'tkcalendar.entry',
+        'tkcalendar.calendar_',
+        'tkcalendar.tooltip',
     ],
     hookspath=[],
     hooksconfig={},
@@ -71,8 +75,8 @@ if sys.platform == 'darwin':
         icon=icon_file,
         bundle_identifier='com.github.amaurycarvalho.flowscope',
         info_plist={
-            'CFBundleShortVersionString': '0.2.1',
-            'CFBundleVersion': '0.2.1',
+            'CFBundleShortVersionString': '0.3.0',
+            'CFBundleVersion': '0.3.0',
             'NSHighResolutionCapable': True,
         },
     )
