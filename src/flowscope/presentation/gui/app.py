@@ -14,6 +14,7 @@ from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
+from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
@@ -246,7 +247,7 @@ class FlowScopeGUI(tk.Tk):
             ("Resumo Geral", None),
         ]
         self._ticker_indicator_frames = {}
-        enabled_tabs = {"Evolução da Dominância"}
+        enabled_tabs = {"Evolução da Dominância", "Amplitude de Preço"}
         for name, *keys in tab_configs:
             frame = ttk.Frame(self._ticker_notebook)
             kwargs = {"text": name}
@@ -258,6 +259,12 @@ class FlowScopeGUI(tk.Tk):
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._dominance_timeline.frame.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
+            elif name == "Amplitude de Preço":
+                self._price_range_panel = PriceRangePanel(
+                    frame, copy_chart_callback=self._copy_chart,
+                )
+                self._price_range_panel.frame.pack(fill=tk.BOTH, expand=True)
                 self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             else:
                 text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
@@ -330,17 +337,29 @@ class FlowScopeGUI(tk.Tk):
                 ]
             ),
             ("Análise do Ticker", "Amplitude de Preço"): (
-                "Amplitude de Preço — Indicadores de Amplitude",
+                "Amplitude de Preço — Painel Visual",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Analisar a amplitude e posição do preço no período.\n\n", ""),
+                    ("Visualizar como o preço percorreu sua faixa de negociação ao longo dos pregões, "
+                     "identificando se a oscilação resultou em movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
                     ("\"O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?\"\n\n", "italic"),
-                    ("Indicadores envolvidos: ", "bold"),
-                    ("Range (amplitude), Range% (amplitude relativa ao preço médio), Typical Price, Median Price, Weighted Close.\n\n", ""),
+                    ("Componentes do painel:\n", "bold"),
+                    ("• Price Range Timeline: gráfico horizontal que normaliza o range de cada pregão em 0-100% e posiciona marcadores de referência (M=Median, T=Typical, V=VWAP, W=Weighted Close) apenas no dia atual, com a trajetória do fechamento (●) conectada por setas entre dias consecutivos.\n"
+                     "• Range % Histórico: linha do tempo da amplitude relativa dos últimos pregões, destacando o dia atual.\n"
+                     "• Eficiência Diária: gauge horizontal (0 a 1) indicando quanto do range foi convertido em deslocamento efetivo.\n"
+                     "• CLV: gauge horizontal (-1 a +1) indicando onde o preço fechou dentro do range.\n\n", ""),
+                    ("Classificação qualitativa: ", "bold"),
+                    ("O canto superior direito do timeline mostra a classificação do pregão com base na combinação de Range% e Eficiência Diária:\n"
+                     "• Pregão Lateral: Range% ≤ mediana histórica e Eficiência ≤ 0,30\n"
+                     "• Volatilidade sem Direção: Range% > mediana e Eficiência ≤ 0,30\n"
+                     "• Movimento Consistente: Range% ≤ mediana e Eficiência > 0,30\n"
+                     "• Movimento Direcional Forte: Range% > mediana e Eficiência > 0,30\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("Range mostra a volatilidade absoluta do dia. Range% relativiza pelo preço médio. Typical/Median/Weighted Close "
-                     "são diferentes formas de resumir o preço do pregão, cada uma com viés diferente (fechamento tem mais peso no Weighted Close).", ""),
+                    ("Uma amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte. "
+                     "Um CLV próximo de +1 indica fechamento perto da máxima; próximo de -1, perto da mínima. "
+                     "A Eficiência Diária elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção. "
+                     "Passe o mouse sobre os marcadores do timeline para ver valores detalhados.", ""),
                 ]
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
@@ -628,6 +647,10 @@ class FlowScopeGUI(tk.Tk):
             if name == "Evolução da Dominância":
                 if hasattr(self, "_dominance_timeline"):
                     self._dominance_timeline.update(self._current_data, ticker=ticker)
+                continue
+            if name == "Amplitude de Preço":
+                if hasattr(self, "_price_range_panel"):
+                    self._price_range_panel.update(self._current_data, ticker=ticker)
                 continue
             text_w = info["text"]
             text_w.config(state=tk.NORMAL)

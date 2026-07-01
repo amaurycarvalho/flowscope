@@ -90,18 +90,41 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 ### Sub-aba: Amplitude de Preço
 
-- **Objetivo:** Este painel mostra como o preço percorreu sua faixa de negociação ao longo do pregão. Mais do que medir a volatilidade, ele ajuda a identificar se a oscilação terminou em um movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.
+- **Objetivo:** Visualizar como o preço percorreu sua faixa de negociação ao longo dos pregões, identificando se a oscilação resultou em movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.
 - **Responde a pergunta:** _O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?_
+- **Layout do painel:** O painel é composto por quatro componentes gráficos organizados verticalmente:
+  ```
+  ┌──────────────────────────────────────────┐
+  │  Price Range Timeline       [Classificação]│
+  ├──────────────────────────────────────────┤
+  │  Range % Histórico                       │
+  ├──────────────────────────────────────────┤
+  │  Eficiência  [████████░░]               │
+  ├──────────────────────────────────────────┤
+  │  CLV         [████████████]              │
+  └──────────────────────────────────────────┘
+  ```
+- **Componentes:**
+  - **Price Range Timeline:** Gráfico horizontal que normaliza o range [Min, Max] de cada pregão em 0-100% no eixo X. O eixo Y lista as datas cronologicamente (mais recente no topo). O dia atual exibe todos os marcadores de referência: M (Median Price), T (Typical Price), V (VWAP), W (Weighted Close) e ● (Close). Dias anteriores mostram apenas o ● com opacidade reduzida, conectados por setas que traçam a trajetória do fechamento entre pregões consecutivos.
+  - **Range % Histórico:** Linha do tempo da amplitude relativa (Range%) dos últimos pregões, com destaque no ponto atual.
+  - **Eficiência Diária:** Gauge horizontal (escala 0 a 1) indicando quanto do range foi convertido em deslocamento efetivo do preço. Cores: vermelho (≤ 0,30), amarelo (0,30-0,60), verde (> 0,60).
+  - **CLV:** Gauge horizontal (escala -1 a +1) indicando onde o preço fechou dentro do range. Verde para CLV positivo (pressão compradora), vermelho para negativo (pressão vendedora).
+- **Classificação qualitativa:** Exibida no canto superior direito do timeline, baseada na combinação de Range% e Eficiência Diária:
+  - **Pregão Lateral:** Range% ≤ mediana histórica e Eficiência ≤ 0,30 — oscilação dentro do normal, sem direção.
+  - **Volatilidade sem Direção:** Range% > mediana e Eficiência ≤ 0,30 — range ampliado mas sem convicção.
+  - **Movimento Consistente:** Range% ≤ mediana e Eficiência > 0,30 — movimento direcionado mesmo com amplitude moderada.
+  - **Movimento Direcional Forte:** Range% > mediana e Eficiência > 0,30 — range amplo com convicção direcional.
 - **Indicadores envolvidos:**
   - **Range** e **Range Percentual** medem a amplitude da oscilação diária.
-  - **CLV (Close Location Value)** indica onde o preço fechou dentro dessa faixa, revelando se compradores ou vendedores dominaram o encerramento.
-  - **Daily Efficiency** mostra quanto da amplitude foi convertida em deslocamento líquido do preço, diferenciando movimentos direcionais de pregões laterais.
-  - **Median Price**, **Typical Price**, **Weighted Close** e **VWAP** servem como referências para comparar a posição do fechamento em relação ao centro da faixa e ao preço médio negociado.
+  - **CLV (Close Location Value)** indica onde o preço fechou dentro dessa faixa.
+  - **Daily Efficiency** mostra quanto da amplitude foi convertida em deslocamento líquido.
+  - **Median Price**, **Typical Price**, **Weighted Close** e **VWAP** servem como referências para comparar a posição do fechamento.
 - **Como interpretar:**
-  - Uma amplitude elevada indica maior volatilidade, mas isso não significa necessariamente uma tendência forte.
+  - Uma amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte.
   - Um **CLV** próximo de **+1** indica fechamento perto da máxima do dia; próximo de **−1**, fechamento perto da mínima.
-  - Uma **Eficiência Diária** elevada mostra que boa parte da oscilação foi convertida em avanço ou queda efetivos, sugerindo maior convicção do mercado.
-  - Quando a amplitude é alta, mas a eficiência é baixa, o pregão foi marcado por muita disputa e pouca definição de direção. Quando ambos são elevados, o movimento tende a refletir uma tendência intradiária mais consistente.
+  - Uma **Eficiência Diária** elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção.
+  - Quando a amplitude é alta mas a eficiência é baixa, o pregão foi marcado por disputa sem direção.
+  - Passe o mouse sobre os marcadores do timeline para ver valores detalhados de cada pregão.
 
 ### Sub-aba: Fluxo Financeiro
 
