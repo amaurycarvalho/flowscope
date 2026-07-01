@@ -16,11 +16,70 @@ O sistema DEVE substituir o seletor de visualização por RadioButtons por um tt
 - **THEN** o sistema DEVE exibir o combobox de seleção de ticker e o sub-notebook com as 5 sub-abas placeholder
 
 ### Requirement: OrientationPanel para conteúdo explicativo
-O sistema DEVE exibir um OrientationPanel na barra lateral direita contendo título e texto explicativo fixo associado à sub-aba ativa. Cada sub-aba DEVE ter seu próprio conteúdo explicativo (objetivo, indicadores envolvidos, como interpretá-lo).
+O sistema DEVE exibir um OrientationPanel na barra lateral direita contendo título e texto explicativo fixo associado à sub-aba ativa. Cada sub-aba DEVE ter seu próprio conteúdo explicativo composto por (objetivo, pergunta respondida, indicadores envolvidos, como interpretá-lo), nesta ordem. O texto explicativo DEVE suportar formatação rica nativa: cabeçalhos de seção (Objetivo, Responde a pergunta, Indicadores envolvidos, Como interpretar) em **negrito** e perguntas em itálico. O método `set_content(title, body)` DEVE aceitar `body` como uma lista de tuplas `(str, str)` onde o segundo elemento é o nome da tag de formatação.
 
 #### Scenario: OrientationPanel atualizado ao trocar sub-aba
 - **WHEN** o usuário seleciona a sub-aba "VWAP"
-- **THEN** o OrientationPanel DEVE exibir o título "VWAP — Volume Weighted Average Price" e o texto explicativo correspondente
+- **THEN** o OrientationPanel DEVE exibir o título "VWAP — Volume Weighted Average Price" e o texto explicativo correspondente, contendo os campos Objetivo, Responde a pergunta, Indicadores envolvidos e Como interpretar, nesta ordem
+
+#### Scenario: OrientationPanel da sub-aba VWAP contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "VWAP"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _Quem está acima do preço justo e quem está abaixo?_"
+
+#### Scenario: OrientationPanel da sub-aba Quadrantes contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Quadrantes"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _Quem dominou o fechamento?_"
+
+#### Scenario: OrientationPanel da sub-aba Dominância do Pregão contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Dominância do Pregão"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _Quem venceu a disputa diária pelo preço?_"
+
+#### Scenario: OrientationPanel da sub-aba Evolução da Dominância contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Evolução da Dominância"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _Quem venceu a disputa diária pelo preço?_"
+
+#### Scenario: OrientationPanel da sub-aba Amplitude de Preço contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Amplitude de Preço"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta" seguido da pergunta sobre movimento direcional e evolução do fechamento
+
+#### Scenario: OrientationPanel da sub-aba Fluxo Financeiro contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Fluxo Financeiro"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _O movimento ocorreu com dinheiro ou apenas por falta de liquidez?_"
+
+#### Scenario: OrientationPanel da sub-aba Participação Institucional contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Participação Institucional"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _Quem parece estar negociando? Grandes participantes ou varejo?_"
+
+#### Scenario: OrientationPanel da sub-aba Eficiência do Movimento contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Eficiência do Movimento"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _O mercado caminhou com convicção ou apenas oscilou?_"
+
+#### Scenario: OrientationPanel da sub-aba Resumo Geral contém a pergunta
+- **WHEN** o usuário seleciona a sub-aba "Resumo Geral"
+- **THEN** o texto do OrientationPanel DEVE conter "Responde a pergunta: _O que realmente aconteceu neste ativo?_"
+
+#### Scenario: OrientationPanel exibe texto com formatação
+- **WHEN** o usuário seleciona a sub-aba "VWAP"
+- **THEN** o OrientationPanel DEVE exibir "Objetivo:" em **negrito**, a pergunta em itálico, e os demais textos sem formatação especial
+
+#### Scenario: set_content aceita lista de tuplas
+- **WHEN** o sistema chama `set_content("Título", [("Objetivo: ", "bold"), ("texto plano", "")])`
+- **THEN** o OrientationPanel DEVE exibir "Objetivo:" em negrito e "texto plano" sem formatação
+
+### Requirement: Formatação via tags tk.Text
+O OrientationPanel DEVE configurar duas tags no widget `tk.Text`: `"bold"` (fonte TkDefaultFont 9 bold) e `"italic"` (fonte TkDefaultFont 9 italic). Tags DEVEM ser aplicadas conforme o nome da tag em cada tupla do body.
+
+#### Scenario: Tag bold aplicada a cabeçalhos
+- **WHEN** o body contém `("Objetivo: ", "bold")`
+- **THEN** o texto "Objetivo:" DEVE ser exibido em negrito
+
+#### Scenario: Tag italic aplicada a perguntas
+- **WHEN** o body contém `("pergunta", "italic")`
+- **THEN** o texto "pergunta" DEVE ser exibido em itálico
+
+#### Scenario: Tag vazia não aplica formatação
+- **WHEN** o body contém `("texto plano", "")`
+- **THEN** o texto DEVE ser exibido sem formatação especial
 
 ### Requirement: Gráfico de distribuição de preços VWAP
 O sistema DEVE exibir um violin plot horizontal com o ticker no eixo X e o valor do desvio percentual do TradAvrgPric em relação ao VWAP no eixo Y, calculado como `(TradAvrgPric - VWAP) / VWAP × 100`. A largura do violino em cada faixa DEVE ser proporcional à soma de FinInstrmQty para aquele ticker em todo o período. Sobreposto ao violin plot, DEVE haver:
