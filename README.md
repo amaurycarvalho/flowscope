@@ -47,7 +47,7 @@ Baixe o binário da plataforma desejada na [página de releases](https://github.
 ### A partir do código fonte
 
 ```bash
-python3 -m flowscope                     # consultar dados
+python3 -m flowscope                     # interface gráfica
 python3 -m flowscope --gui               # interface gráfica
 python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
 python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
@@ -57,7 +57,7 @@ python3 -m flowscope --version           # exibir versão
 ### A partir do executável gerado pelo Makefile
 
 ```bash
-dist/flowscope                           # consultar dados
+dist/flowscope                           # interface gráfica
 dist/flowscope --gui                     # interface gráfica
 dist/flowscope --create-shortcut         # criar atalho no desktop (Linux)
 dist/flowscope --help                    # exibir ajuda com todos os parâmetros
@@ -67,7 +67,7 @@ dist/flowscope --version                 # exibir versão
 ### A partir do binário pré-compilado
 
 ```bash
-./flowscope-linux                        # consultar data atual
+./flowscope-linux                        # interface gráfica
 ./flowscope-linux --gui                  # interface gráfica
 ./flowscope-linux --create-shortcut      # criar atalho no desktop (Linux)
 ./flowscope-linux --help                 # exibir ajuda com todos os parâmetros

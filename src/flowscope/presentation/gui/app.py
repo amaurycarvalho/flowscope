@@ -269,6 +269,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise Geral", "VWAP"): (
                 "VWAP — Volume Weighted Average Price",
                 "Objetivo: Identificar o preço médio ponderado pelo volume negociado no período, revelando o valor justo da ação sob a ótica do fluxo de ordens.\n\n"
+                "Responde a pergunta: \"Quem está acima do preço justo e quem está abaixo?\"\n\n"
                 "Indicadores envolvidos: VWAP (preço médio ponderado), volume por bucket de preço (volume profile), preço de fechamento (LastPric), preço mínimo e máximo (MinPric, MaxPric).\n\n"
                 "Como interpretar: O VWAP é a referência de preço justo do período. Negociações acima do VWAP indicam viés comprador; abaixo, viés vendedor. "
                 "A largura do violino mostra em quais faixas de preço houve maior concentração de volume. "
@@ -278,6 +279,7 @@ class FlowScopeGUI(tk.Tk):
                 "Quadrantes — CLV vs VWAP Distance",
                 "Objetivo: Classificar ativos em quatro quadrantes com base no CLV (eixo X) e no desvio do VWAP (eixo Y), "
                 "revelando a interação entre fluxo comprador/vendedor e posição relativa ao preço justo.\n\n"
+                "Responde a pergunta: \"Quem dominou o fechamento? O preço terminou acima ou abaixo do valor justo? Quanto volume financeiro sustentou esse comportamento?\"\n\n"
                 "Indicadores envolvidos: CLV (Close Location Value), VWAP Distance (desvio percentual do último preço "
                 "em relação ao VWAP diário), Volume (FinInstrmQty como tamanho da bolha).\n\n"
                 "Como interpretar:\n"
@@ -290,6 +292,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise Geral", "Dominância do Pregão"): (
                 "Dominância do Pregão — Ranking de Tickers por CLV",
                 "Objetivo: Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.\n\n"
+                "Responde a pergunta: \"Quem venceu a disputa diária pelo preço?\"\n\n"
                 "Indicadores envolvidos: CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.\n\n"
                  "Como interpretar: Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "
                  "Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. "
@@ -298,13 +301,15 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Evolução da Dominância"): (
                 "Evolução da Dominância — Histórico de CLV por Pregão",
                 "Objetivo: Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.\n\n"
-                 "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).\n\n"
+                "Responde a pergunta: \"Quem venceu a disputa diária pelo preço?\"\n\n"
+                "Indicadores envolvidos: CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).\n\n"
                  "Como interpretar: Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
                  "O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento."
             ),
             ("Análise do Ticker", "Amplitude de Preço"): (
                 "Amplitude de Preço — Indicadores de Amplitude",
                 "Objetivo: Analisar a amplitude e posição do preço no período.\n\n"
+                "Responde a pergunta: \"O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?\"\n\n"
                 "Indicadores envolvidos: Range (amplitude), Range% (amplitude relativa ao preço médio), Typical Price, Median Price, Weighted Close.\n\n"
                 "Como interpretar: Range mostra a volatilidade absoluta do dia. Range% relativiza pelo preço médio. Typical/Median/Weighted Close "
                 "são diferentes formas de resumir o preço do pregão, cada uma com viés diferente (fechamento tem mais peso no Weighted Close)."
@@ -312,6 +317,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Fluxo Financeiro"): (
                 "Fluxo Financeiro — CLV e Money Flow",
                 "Objetivo: Medir o viés comprador ou vendedor do pregão.\n\n"
+                "Responde a pergunta: \"O movimento ocorreu com dinheiro ou apenas por falta de liquidez?\"\n\n"
                 "Indicadores envolvidos: CLV (Close Location Value), Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure.\n\n"
                 "Como interpretar: CLV varia de -1 (fechamento na mínima) a +1 (fechamento na máxima). Money Flow Volume = CLV × Volume Financeiro, "
                 "acumulado no período. Positivo indica predomínio comprador; negativo, vendedor. Buying + Selling Pressure = 1."
@@ -319,6 +325,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Participação Institucional"): (
                 "Participação Institucional — Tamanho dos Negócios",
                 "Objetivo: Estimar o perfil dos participantes com base no tamanho médio das negociações.\n\n"
+                "Responde a pergunta: \"Quem parece estar negociando? Grandes participantes ou varejo?\"\n\n"
                 "Indicadores envolvidos: Average Trade Size (ações por negócio), Average Financial Ticket (valor por negócio).\n\n"
                 "Como interpretar: Tickets médios mais altos sugerem participação institucional (grandes blocos). Tickets baixos sugerem "
                 "predomínio de pessoa física. Acompanhar a evolução ao longo dos dias revela mudanças na composição do fluxo."
@@ -326,6 +333,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Eficiência do Movimento"): (
                 "Eficiência do Movimento",
                 "Objetivo: Medir quanto do range diário resultou em deslocamento efetivo do preço.\n\n"
+                "Responde a pergunta: \"O mercado caminhou com convicção ou apenas oscilou?\"\n\n"
                 "Indicadores envolvidos: Daily Efficiency = |Fechamento − Preço Médio| / Range.\n\n"
                 "Como interpretar: Próximo de 0 → pregão lateral (preço andou mas voltou). Próximo de 1 → movimento direcional "
                 "(o range inteiro resultou em deslocamento). Valores baixos indicam indecisão; altos, convicção."
@@ -333,6 +341,7 @@ class FlowScopeGUI(tk.Tk):
             ("Análise do Ticker", "Resumo Geral"): (
                 "Resumo Geral — Todos os Indicadores",
                 "Objetivo: Consolidar todos os indicadores do ticker em uma única visualização.\n\n"
+                "Responde a pergunta: \"O que realmente aconteceu neste ativo?\"\n\n"
                 "Indicadores envolvidos: Range, Range%, Typical Price, Median Price, Weighted Close, CLV, "
                 "Money Flow Multiplier, Money Flow Volume, Buying/Selling Pressure, Average Trade Size, "
                 "Average Financial Ticket, Daily Efficiency, Financial Density, Trade Density, Volume Density.\n\n"

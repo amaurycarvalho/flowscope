@@ -24,20 +24,24 @@ A interface é dividida em três grandes regiões:
 ## Barra Superior
 
 ### Seletor de Data
+
 - **Componente:** `DateEntry` (tkcalendar)
 - **Descrição:** Campo de seleção de data no formato `YYYY-MM-DD`.
 - **Objetivo:** Definir a data de referência para carregamento dos dados da B3.
 - **Uso:** Digite a data manualmente ou use o calendário suspenso. Pressione Enter ou clique em "Carregar" para iniciar a carga.
 
 ### Botão "Hoje"
+
 - **Descrição:** Atalho para definir a data atual e carregar automaticamente.
 - **Objetivo:** Agilizar a consulta do pregão mais recente disponível.
 
 ### Botão "Carregar"
+
 - **Descrição:** Dispara o carregamento dos dados da B3 para a data selecionada.
 - **Objetivo:** Obter os dados consolidados de negociação (TradeInformationConsolidated), processar todos os indicadores e popular a interface.
 
 ### Botão "Copiar Dados"
+
 - **Descrição:** Copia para a área de transferência uma tabela CSV contendo `Ticker;VWAP;MoneyFlowVolume` para todos os ativos carregados.
 - **Objetivo:** Exportação rápida dos principais indicadores agregados para análise externa (planilhas, relatórios).
 
@@ -46,34 +50,30 @@ A interface é dividida em três grandes regiões:
 ## Aba Principal: "Análise Geral"
 
 ### Sub-aba: VWAP
-- **Visualização:** Gráfico de violino (violin plot) utilizando Matplotlib, com barra de ferramentas para zoom, pan, salvar e copiar imagem.
+
 - **Objetivo:** Comparar a distribuição de preços de todos os ativos em relação ao seu respectivo VWAP no período.
-- **Indicadores envolvidos:** VWAP (linha zero), Volume Profile (largura do violino), preço mínimo/máximo (traço vertical), último preço (losango vermelho).
-- **Como interpretar:**
-  - A linha tracejada em 0% representa o VWAP de cada ativo.
-  - A largura do violino em cada faixa de percentual indica a concentração de volume financeiro — quanto mais largo, maior o volume negociado naquela faixa de preço.
-  - O traço vertical preto mostra a amplitude (mínima a máxima) dos preços do dia em percentual de desvio do VWAP.
-  - O círculo preto sobre a linha zero é o VWAP; o losango vermelho é o último preço (fechamento).
-  - Um fechamento acima de 0% sugere viés comprador no fechamento; abaixo, viés vendedor.
-  - Passe o mouse sobre cada violino para ver detalhes: ticker, VWAP em R$, desvios máximo/mínimo, último preço e volume total.
+- **Responde a pergunta:** _Quem está acima do preço justo e quem está abaixo?_
+- **Indicadores envolvidos:** VWAP (preço médio ponderado), volume por bucket de preço (volume profile), preço de fechamento (LastPric), preço mínimo e máximo (MinPric, MaxPric).
+- **Como interpretar:** O VWAP é a referência de preço justo do período. Negociações acima do VWAP indicam viés comprador; abaixo, viés vendedor. A largura do violino mostra em quais faixas de preço houve maior concentração de volume. O último preço (losango vermelho) em relação ao VWAP indica se o fechamento reforça ou contradiz a tendência do período.
 
 ### Sub-aba: Quadrantes
-- **Visualização:** Gráfico de dispersão bidimensional (bubble chart) utilizando Matplotlib, com setas de trajetória temporal (quiver) e barra de ferramentas para zoom, pan, salvar e copiar imagem.
-- **Objetivo:** Representar simultaneamente a direção do fluxo comprador/vendedor (CLV), a posição do fechamento em relação ao preço justo (VWAP Distance) e a intensidade da participação (volume de instrumentos).
-- **Indicadores envolvidos:**
-  - **Eixo X:** CLV (Close Location Value) — varia de −1 (fechamento na mínima) a +1 (fechamento na máxima).
-  - **Eixo Y:** VWAP Distance — desvio percentual do último preço em relação ao VWAP diário: `(LastPric − TradAvrgPric) / TradAvrgPric`.
-  - **Tamanho da bolha:** Raiz quadrada do `FinInstrmQty` (quantidade de instrumentos negociados), normalizado.
-  - **Cor da bolha:** Colormap divergente RdYlGn — verde para CLV positivo (pressão compradora), vermelho para CLV negativo (pressão vendedora).
-  - Labels "Compradores →" e "← Vendedores" abaixo do eixo CLV indicam a direção de cada quadrante.
+
+- **Objetivo:** Classificar ativos em quatro quadrantes com base no CLV (eixo X) e no desvio do VWAP (eixo Y), revelando a interação entre fluxo comprador/vendedor e posição relativa ao preço justo.
+- **Responde a pergunta:** _Quem dominou o fechamento? O preço terminou acima ou abaixo do valor justo? Quanto volume financeiro sustentou esse comportamento?_
+- **Indicadores envolvidos:** CLV (Close Location Value), VWAP Distance (desvio percentual do último preço em relação ao VWAP diário), Volume (FinInstrmQty como tamanho da bolha).
 - **Como interpretar:**
-  - As bolhas representam o **último dia** de cada ativo. As setas cinzas mostram a trajetória dos dias anteriores.
-  - **Q1 (CLV > 0, acima do VWAP):** Compradores dominaram o pregão e o fechamento ficou acima do preço médio. Movimento consistente.
-  - **Q2 (CLV < 0, acima do VWAP):** O ativo permaneceu acima do VWAP, mas perdeu força no fechamento. Possível realização de lucros.
-  - **Q3 (CLV < 0, abaixo do VWAP):** Vendedores dominaram durante todo o pregão. Fechamento abaixo do preço justo. Pressão vendedora consistente.
-  - **Q4 (CLV > 0, abaixo do VWAP):** Reação compradora no final, mas insuficiente para recuperar o preço médio. Possível início de acumulação.
-  - Passe o mouse sobre cada bolha para ver detalhes: ticker, data, CLV, VWAP Distance e quantidade de instrumentos.
-  - O painel de orientação exibe um resumo textual automático da distribuição dos ativos entre os quadrantes.
+  - Q1 (CLV > 0, acima do VWAP): compra forte confirmada — fechamento na metade superior do range e acima do VWAP.
+  - Q2 (CLV < 0, acima do VWAP): venda relativa — ativo acima do VWAP mas perdeu força no fechamento (possível realização).
+  - Q3 (CLV < 0, abaixo do VWAP): venda forte confirmada — vendedores dominaram o dia.
+  - Q4 (CLV > 0, abaixo do VWAP): compra em desconto — reação compradora insuficiente para recuperar o VWAP.
+  - Se apenas um ticker for selecionado, as setas cinzas mostram a trajetória dos dias anteriores, evidenciando a evolução temporal de cada ativo.
+
+### Sub-aba: Dominância do Pregão
+
+- **Objetivo:** Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.
+- **Responde a pergunta:** _Quem venceu a disputa diária pelo preço?_
+- **Indicadores envolvidos:** CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.
+- **Como interpretar:** Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. Passe o mouse sobre as barras para ver detalhes do ticker.
 
 ---
 
@@ -82,36 +82,31 @@ A interface é dividida em três grandes regiões:
 O ticker analisado é determinado pelo primeiro item selecionado na TickerList (painel direito). Se nenhum ticker estiver selecionado, usa o primeiro da lista. Se a lista estiver vazia, exibe "Selecione um ticker". Os dados são atualizados automaticamente ao trocar de ticker ou de sub-aba.
 
 ### Sub-aba: Evolução da Dominância
-- **Visualização:** Gráfico de barras horizontais divergentes (Matplotlib), com barras de ferramentas para zoom, pan, salvar e copiar imagem.
-- **Objetivo:** Visualizar a evolução temporal da dominância compradora/vendedora de um único ticker ao longo de múltiplos pregões.
-- **Indicadores envolvidos:**
-  - `CLV` (Close Location Value) — Posição do fechamento no range (−1 a +1), representado pelo comprimento e direção de cada barra
-  - `Daily Efficiency` — Eficiência do movimento, exibida como percentual no tooltip de cada barra
-  - `Money Flow diário` — CLV × Volume Financeiro do pregão, representado como marcador stem na extremidade da barra
-  - Percentual de pregões com dominância compradora (CLV > 0) e vendedora (CLV < 0) nos labels abaixo do eixo X
-- **Como interpretar:**
-  - Barras para a direita (verdes) indicam fechamento na metade superior do range — viés comprador.
-  - Barras para a esquerda (vermelhas) indicam fechamento na metade inferior — viés vendedor.
-  - A intensidade da cor reflete a magnitude do CLV (mais escuro = mais extremo).
-  - Passe o mouse sobre qualquer ponto de uma barra para ver: data, dominância (label + CLV), convicção (label + eficiência em %) e MFV do pregão.
-  - Os labels "Compradores X%" e "← Vendedores Y%" abaixo do eixo X indicam a proporção de pregões com direção definida.
-  - As barras são ordenadas da mais antiga (topo) à mais recente (base).
+
+- **Objetivo:** Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.
+- **Responde a pergunta:** _Quem venceu a disputa diária pelo preço?_
+- **Indicadores envolvidos:** CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).
+- **Como interpretar:** Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento.
 
 ### Sub-aba: Amplitude de Preço
-- **Objetivo:** Analisar a amplitude da oscilação e as diferentes métricas de preço do ativo no pregão.
+
+- **Objetivo:** Este painel mostra como o preço percorreu sua faixa de negociação ao longo do pregão. Mais do que medir a volatilidade, ele ajuda a identificar se a oscilação terminou em um movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.
+- **Responde a pergunta:** _O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?_
 - **Indicadores envolvidos:**
-  - `Range` — Amplitude absoluta (máxima − mínima)
-  - `Range Percentual` — Amplitude relativa ao preço médio
-  - `Typical Price` — Média de máxima, mínima e fechamento
-  - `Median Price` — Ponto médio entre máxima e mínima
-  - `Weighted Close` — Média com peso duplo no fechamento
+  - **Range** e **Range Percentual** medem a amplitude da oscilação diária.
+  - **CLV (Close Location Value)** indica onde o preço fechou dentro dessa faixa, revelando se compradores ou vendedores dominaram o encerramento.
+  - **Daily Efficiency** mostra quanto da amplitude foi convertida em deslocamento líquido do preço, diferenciando movimentos direcionais de pregões laterais.
+  - **Median Price**, **Typical Price**, **Weighted Close** e **VWAP** servem como referências para comparar a posição do fechamento em relação ao centro da faixa e ao preço médio negociado.
 - **Como interpretar:**
-  - Range alto indica alta volatilidade intradiária.
-  - Range% permite comparar volatilidade entre ativos de preços distintos.
-  - Compare Typical vs. Median vs. Weighted Close para identificar viés do fechamento em relação ao centro do range.
+  - Uma amplitude elevada indica maior volatilidade, mas isso não significa necessariamente uma tendência forte.
+  - Um **CLV** próximo de **+1** indica fechamento perto da máxima do dia; próximo de **−1**, fechamento perto da mínima.
+  - Uma **Eficiência Diária** elevada mostra que boa parte da oscilação foi convertida em avanço ou queda efetivos, sugerindo maior convicção do mercado.
+  - Quando a amplitude é alta, mas a eficiência é baixa, o pregão foi marcado por muita disputa e pouca definição de direção. Quando ambos são elevados, o movimento tende a refletir uma tendência intradiária mais consistente.
 
 ### Sub-aba: Fluxo Financeiro
+
 - **Objetivo:** Mensurar a direcionalidade do fluxo de ordens — pressão compradora versus vendedora.
+- **Responde a pergunta:** _O movimento ocorreu com dinheiro ou apenas por falta de liquidez?_
 - **Indicadores envolvidos:**
   - `CLV` (Close Location Value) — Posição do fechamento no range (−1 a +1)
   - `Money Flow Multiplier` — Idêntico ao CLV
@@ -124,7 +119,9 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - Money Flow Volume positivo ao longo dos dias → acúmulo (instituições comprando). Negativo → distribuição.
 
 ### Sub-aba: Participação Institucional
+
 - **Objetivo:** Estimar o perfil dos participantes do pregão (institucional vs. varejo) com base no tamanho médio das negociações.
+- **Responde a pergunta:** _Quem parece estar negociando? Grandes participantes ou varejo?_
 - **Indicadores envolvidos:**
   - `Average Trade Size` — Quantidade média de ações por negócio
   - `Average Financial Ticket` — Valor financeiro médio por negócio
@@ -134,7 +131,9 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - A evolução ao longo de múltiplos dias revela mudanças na composição do fluxo.
 
 ### Sub-aba: Eficiência do Movimento
+
 - **Objetivo:** Medir se o range do dia resultou em deslocamento efetivo do preço ou foi apenas ruído (oscilação sem direção).
+- **Responde a pergunta:** _O mercado caminhou com convicção ou apenas oscilou?_
 - **Indicadores envolvidos:**
   - `Daily Efficiency` — `|Fechamento − Preço Médio| / Range`
 - **Como interpretar:**
@@ -143,7 +142,9 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - Valores intermediários sugerem movimentos parciais.
 
 ### Sub-aba: Resumo Geral
+
 - **Objetivo:** Consolidar todos os indicadores disponíveis em uma única visualização para o ticker selecionado.
+- **Responde a pergunta:** _O que realmente aconteceu neste ativo?_
 - **Indicadores envolvidos:**
   - **Preço:** Range, Range%, Typical Price, Median Price, Weighted Close
   - **Fluxo:** CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure
@@ -158,6 +159,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 ## Painel Lateral Direito
 
 ### Filtro de Tickers (TickerList)
+
 - **Componente:** `tk.Text` (modo edição) / `tk.Listbox` com `exportselection=False` (modo visualização)
 - **Descrição:** Alterna entre edição (Text) e seleção múltipla (Listbox) via toggle "Editar lista de tickers". Permite salvar/carregar listas de arquivos `.txt`.
 - **Objetivo:** Controlar quais tickers são exibidos nos gráficos e análises. Funciona como uma "carteira" ou "watchlist". A seleção no Listbox também determina o ticker analisado na aba "Análise do Ticker".
@@ -170,6 +172,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - Se nenhum ticker for fornecido, o programa carrega automaticamente a carteira IDIV (Índice Dividendos) da B3.
 
 ### Painel de Orientação (OrientationPanel)
+
 - **Componente:** `tk.Text` somente leitura com título
 - **Descrição:** Exibe texto de ajuda contextual que se atualiza conforme o usuário navega entre abas e sub-abas.
 - **Objetivo:** Guiar o usuário na interpretação do painel ativo, explicando o objetivo, os indicadores envolvidos e como interpretar os resultados.
