@@ -24,6 +24,7 @@ Nenhuma — não há mudança de requisitos no nível de spec, apenas de impleme
 
 ## Impact
 
+- **Target**: Release 0.4.0
 - **Arquivo principal**: `src/flowscope/presentation/gui/charts/price_range_panel.py` — reescrita dos métodos de plotagem
 - **GridSpec**: muda de 4 rows para 2 rows (timeline unificado + CLV)
 - **Tooltip**: expandida para incluir Range %

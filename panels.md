@@ -81,101 +81,92 @@ A interface é dividida em três grandes regiões:
 
 O ticker analisado é determinado pelo primeiro item selecionado na TickerList (painel direito). Se nenhum ticker estiver selecionado, usa o primeiro da lista. Se a lista estiver vazia, exibe "Selecione um ticker". Os dados são atualizados automaticamente ao trocar de ticker ou de sub-aba.
 
-### Sub-aba: Evolução da Dominância
+### Sub-aba: Evolução da Dominância ✅
 
 - **Objetivo:** Visualizar a evolução temporal da dominância compradora/vendedora para o ticker selecionado.
 - **Responde a pergunta:** _Quem venceu a disputa diária pelo preço?_
-- **Indicadores envolvidos:** CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).
-- **Como interpretar:** Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento.
+- **Componente gráfico:** Gráfico de barras horizontais (CLV por pregão), com linha horizontal representando o fluxo financeiro diário (Daily Money Flow).
+- **Indicadores envolvidos:** CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal), Eficiência (convicção no tooltip).
+- **Como interpretar:** Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. O traço horizontal indica o fluxo financeiro diário (intensidade codificada pela espessura/opacidade). O rodapé mostra a proporção de dias compradores vs. vendedores. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento.
 
-### Sub-aba: Amplitude de Preço
+### Sub-aba: Amplitude de Preço ✅
 
 - **Objetivo:** Visualizar como o preço percorreu sua faixa de negociação ao longo dos pregões, identificando se a oscilação resultou em movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.
 - **Responde a pergunta:** _O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?_
-- **Layout do painel:** O painel é composto por quatro componentes gráficos organizados verticalmente:
+- **Layout do painel:** O painel é composto por dois componentes gráficos organizados verticalmente (GridSpec com `height_ratios=[3, 0.6]`):
   ```
   ┌──────────────────────────────────────────┐
   │  Price Range Timeline       [Classificação]│
+  │  (com eficiência como barra de fundo)    │
   ├──────────────────────────────────────────┤
-  │  Range % Histórico                       │
-  ├──────────────────────────────────────────┤
-  │  Eficiência  [████████░░]               │
-  ├──────────────────────────────────────────┤
-  │  CLV         [████████████]              │
+  │  CLV Gauge                               │
   └──────────────────────────────────────────┘
   ```
 - **Componentes:**
-  - **Price Range Timeline:** Gráfico horizontal que normaliza o range [Min, Max] de cada pregão em 0-100% no eixo X. O eixo Y lista as datas cronologicamente (mais recente no topo). O dia atual exibe todos os marcadores de referência: M (Median Price), T (Typical Price), V (VWAP), W (Weighted Close) e ● (Close). Dias anteriores mostram apenas o ● com opacidade reduzida, conectados por setas que traçam a trajetória do fechamento entre pregões consecutivos.
-  - **Range % Histórico:** Linha do tempo da amplitude relativa (Range%) dos últimos pregões, com destaque no ponto atual.
-  - **Eficiência Diária:** Gauge horizontal (escala 0 a 1) indicando quanto do range foi convertido em deslocamento efetivo do preço. Cores: vermelho (≤ 0,30), amarelo (0,30-0,60), verde (> 0,60).
-  - **CLV:** Gauge horizontal (escala -1 a +1) indicando onde o preço fechou dentro do range. Verde para CLV positivo (pressão compradora), vermelho para negativo (pressão vendedora).
-- **Classificação qualitativa:** Exibida no canto superior direito do timeline, baseada na combinação de Range% e Eficiência Diária:
-  - **Pregão Lateral:** Range% ≤ mediana histórica e Eficiência ≤ 0,30 — oscilação dentro do normal, sem direção.
-  - **Volatilidade sem Direção:** Range% > mediana e Eficiência ≤ 0,30 — range ampliado mas sem convicção.
-  - **Movimento Consistente:** Range% ≤ mediana e Eficiência > 0,30 — movimento direcionado mesmo com amplitude moderada.
-  - **Movimento Direcional Forte:** Range% > mediana e Eficiência > 0,30 — range amplo com convicção direcional.
+  - **Price Range Timeline (painel superior, 3/4 da altura):** Gráfico horizontal que normaliza o range [Min, Max] de cada pregão em 0-100% no eixo X. O eixo Y lista as datas cronologicamente (mais recente no topo). Cada linha possui uma **barra de fundo** cujo comprimento é a Eficiência Diária (substitui o gauge separado de eficiência): vermelha (≤ 0,30), amarela (0,30-0,60), verde (> 0,60). Sobre a barra de fundo, uma linha cinza horizontal percorre 0-100%.
+    - Dia atual: exibe todos os marcadores de referência — ● (Close, tamanho proporcional ao Range%), **M** (Median Price), **T** (Typical Price), **V** (VWAP), **W** (Weighted Close).
+    - Dias anteriores: ● com opacidade reduzida, conectados por setas cinzas que traçam a trajetória do fechamento.
+    - **Classificação qualitativa** no canto superior direito, baseada na combinação de Range% e Eficiência Diária:
+      - **Pregão Lateral:** Range% ≤ mediana histórica e Eficiência ≤ 0,30 — oscilação dentro do normal, sem direção.
+      - **Volatilidade sem Direção:** Range% > mediana e Eficiência ≤ 0,30 — range ampliado mas sem convicção.
+      - **Movimento Consistente:** Range% ≤ mediana e Eficiência > 0,30 — movimento direcionado mesmo com amplitude moderada.
+      - **Movimento Direcional Forte:** Range% > mediana e Eficiência > 0,30 — range amplo com convicção direcional.
+    - Mínima e máxima do dia mais recente exibidas como labels abaixo do eixo X.
+  - **CLV Gauge (painel inferior, ~1/4 da altura):** Barra horizontal (-1 a +1) indicando onde o preço fechou dentro do range. Verde para CLV positivo (pressão compradora), vermelho para negativo (pressão vendedora), com labels "Vendedores ←" e "Compradores →".
 - **Indicadores envolvidos:**
   - **Range** e **Range Percentual** medem a amplitude da oscilação diária.
   - **CLV (Close Location Value)** indica onde o preço fechou dentro dessa faixa.
-  - **Daily Efficiency** mostra quanto da amplitude foi convertida em deslocamento líquido.
+  - **Daily Efficiency** mostra quanto da amplitude foi convertida em deslocamento líquido (usado como barra de fundo).
   - **Median Price**, **Typical Price**, **Weighted Close** e **VWAP** servem como referências para comparar a posição do fechamento.
 - **Como interpretar:**
   - Uma amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte.
   - Um **CLV** próximo de **+1** indica fechamento perto da máxima do dia; próximo de **−1**, fechamento perto da mínima.
   - Uma **Eficiência Diária** elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção.
   - Quando a amplitude é alta mas a eficiência é baixa, o pregão foi marcado por disputa sem direção.
+  - Dias com barra de fundo verde consecutiva = sequência direcional forte.
   - Passe o mouse sobre os marcadores do timeline para ver valores detalhados de cada pregão.
 
-### Sub-aba: Fluxo Financeiro
+### Sub-aba: Fluxo Financeiro 🔒
 
+- **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Mensurar a direcionalidade do fluxo de ordens — pressão compradora versus vendedora.
-- **Responde a pergunta:** _O movimento ocorreu com dinheiro ou apenas por falta de liquidez?_
+- **Exibição atual:** Texto estático com valores dos indicadores (CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure, VWAP Distance) formatados pelo método `_format_selected_indicators`.
 - **Indicadores envolvidos:**
   - `CLV` (Close Location Value) — Posição do fechamento no range (−1 a +1)
   - `Money Flow Multiplier` — Idêntico ao CLV
   - `Money Flow Volume` — CLV × Volume Financeiro, acumulado no período
   - `Buying Pressure` — Percentual do range ocupado pelo movimento comprador
   - `Selling Pressure` — Percentual do range ocupado pelo movimento vendedor
-- **Como interpretar:**
-  - CLV positivo indica fechamento na metade superior do range (viés comprador); negativo, metade inferior (viés vendedor).
-  - Buying + Selling Pressure = 1. Se Buying > Selling, a pressão compradora foi dominante.
-  - Money Flow Volume positivo ao longo dos dias → acúmulo (instituições comprando). Negativo → distribuição.
 
-### Sub-aba: Participação Institucional
+### Sub-aba: Participação Institucional 🔒
 
+- **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Estimar o perfil dos participantes do pregão (institucional vs. varejo) com base no tamanho médio das negociações.
-- **Responde a pergunta:** _Quem parece estar negociando? Grandes participantes ou varejo?_
+- **Exibição atual:** Texto estático com valores dos indicadores (Average Trade Size, Average Financial Ticket) formatados pelo método `_format_selected_indicators`.
 - **Indicadores envolvidos:**
   - `Average Trade Size` — Quantidade média de ações por negócio
   - `Average Financial Ticket` — Valor financeiro médio por negócio
-- **Como interpretar:**
-  - Tickets médios elevados (ex.: milhares de ações ou dezenas de milhares de reais por negócio) sugerem participação de investidores institucionais (fundos, bancos).
-  - Tickets baixos sugerem predomínio de pessoa física.
-  - A evolução ao longo de múltiplos dias revela mudanças na composição do fluxo.
 
-### Sub-aba: Eficiência do Movimento
+### Sub-aba: Eficiência do Movimento 🔒
 
+- **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Medir se o range do dia resultou em deslocamento efetivo do preço ou foi apenas ruído (oscilação sem direção).
-- **Responde a pergunta:** _O mercado caminhou com convicção ou apenas oscilou?_
+- **Exibição atual:** Texto estático com valor do indicador Daily Efficiency formatado pelo método `_format_selected_indicators`.
 - **Indicadores envolvidos:**
   - `Daily Efficiency` — `|Fechamento − Preço Médio| / Range`
-- **Como interpretar:**
-  - Eficiência ≈ 0 (ex.: 0,05) → pregão lateral. O preço oscilou mas retornou ao ponto de partida. Indecisão.
-  - Eficiência ≈ 1 (ex.: 0,85) → dia direcional forte. O range foi totalmente aproveitado para deslocamento líquido. Convicção.
-  - Valores intermediários sugerem movimentos parciais.
 
-### Sub-aba: Resumo Geral
+### Sub-aba: Resumo Geral 🔒
 
+- **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Consolidar todos os indicadores disponíveis em uma única visualização para o ticker selecionado.
-- **Responde a pergunta:** _O que realmente aconteceu neste ativo?_
+- **Exibição atual:** Texto estático com todos os indicadores disponíveis formatados pelo método `_format_all_indicators`.
 - **Indicadores envolvidos:**
   - **Preço:** Range, Range%, Typical Price, Median Price, Weighted Close
   - **Fluxo:** CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure
   - **Tamanho:** Average Trade Size, Average Financial Ticket
-  - **Eficiência:** Daily Efficiency
+  - **Eficiência:** Daily Efficiency, Dominance Score
   - **Densidade:** Financial Density, Trade Density, Volume Density
-  - **Adicionais:** VWAP do período, Money Flow Volume acumulado
-- **Como interpretar:** Use este painel para uma visão panorâmica de todos os indicadores, facilitando a correlação entre diferentes dimensões (preço, fluxo, tamanho, eficiência e densidade).
+  - **Adicionais:** VWAP Distance, VWAP do período, Money Flow Volume acumulado
 
 ---
 

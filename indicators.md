@@ -66,6 +66,20 @@
 - **Fórmula:** `Σ(MFM × VolumeFinanceiro)` para todos os dias do período.
 - **Aplicabilidade:** Valor positivo indica fluxo líquido comprador no período; negativo indica fluxo líquido vendedor. Útil para identificar acúmulo ou distribuição.
 
+### Daily Money Flow (Fluxo Financeiro Diário)
+- **ID:** `daily_money_flow`
+- **Descrição:** Fluxo financeiro diário ponderado pelo sinal do CLV.
+- **Fórmula:** `CLV × VolumeFinanceiro` por data.
+- **Dependência:** Depende do indicador `clv`.
+- **Aplicabilidade:** Diferente do Money Flow Volume (que acumula), este é calculado por data. Valor positivo indica fluxo comprador líquido naquele pregão; negativo indica fluxo vendedor. Utilizado como traço horizontal no gráfico de evolução da dominância para mostrar o capital envolvido em cada dia.
+
+### Dominance Score (Score de Dominância)
+- **ID:** `dominance_score`
+- **Descrição:** Combina direção do fechamento (CLV) com a convicção do movimento (Daily Efficiency).
+- **Fórmula:** `CLV × DailyEfficiency` por data.
+- **Dependências:** Depende dos indicadores `clv` e `daily_efficiency`.
+- **Aplicabilidade:** Valores positivos altos indicam forte dominância compradora com alta convicção; valores negativos baixos indicam forte dominância vendedora. Valores próximos de zero sugerem indecisão ou movimento lateral, independentemente da direção do CLV.
+
 ---
 
 ## Categoria: Tamanho de Negócios

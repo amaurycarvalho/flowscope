@@ -17,7 +17,7 @@ A mudança é puramente interna ao `PriceRangePanel` — sem impacto em domínio
 - Fundir as métricas de posição, amplitude relativa e eficiência num único axes matplotlib
 - Alinhar todas as métricas pelo mesmo eixo Y (datas, mais recente no topo)
 - Manter o CLV como gauge abaixo do gráfico principal
-- Preservar tooltip, classificação, setas de trajetória e demais interações existentes
+- Preservar tooltip, classificação, linhas de trajetória e demais interações existentes
 - Atualizar nomenclatura e texto de orientação
 
 **Non-Goals:**
@@ -72,28 +72,57 @@ A barra é desenhada com `zorder=1`, abaixo do timeline (zorder=2+), ocupando a 
 ### Decisão 4: GridSpec reduzido de 4 para 2 rows
 
 ```
-height_ratios=[3, 0.5], hspace=0.2
+height_ratios=[3, 0.6], hspace=0.3
 
-gs[0] — axes único: Trajetória no Range (timeline + eficiência fundo + ● size)
-gs[1] — axes compacto: CLV gauge (mantido como está)
+gs[0] — axes único: Amplitude de Preço (timeline + eficiência fundo + ● size)
+gs[1] — axes compacto: CLV gauge + labels Vendedores/Compradores
 ```
+
+O height_ratio do CLV foi de 0.8 para 0.6 (~20% menor que a versão inicial do refactor) para dar mais espaço ao gráfico principal.
 
 ### Decisão 5: Nomenclatura atualizada
 
 | Atual | Novo | Explicação |
 |---|---|---|
-| Price Range Timeline | **Trajetória no Range** | Mostra onde o preço se posicionou |
+| Price Range Timeline | **Amplitude de Preço — {ticker}** | Título com nome do ativo |
 | Range % Histórico | *eliminado* | Substituído pelo tamanho do ● |
 | Range % | **Amplitude Relativa** | `(Max-Min)/PreçoMédio` |
 | Eficiência Diária | Eficiência Diária (mantido) | Fundo colorido por row |
+| CLV | **CLV (data mais recente)** | Deixa explícito que é só o último dia |
 
 ### Decisão 6: Tooltip expandida
 
 A tooltip existente (hover no timeline) ganha a linha `Ampl. Relativa: X.XX%` para cada dia, lida do `range_pct_dict`.
 
-### Decisão 7: Classificação mantida
+### Decisão 7: Classificação mantida com significado interpretativo
 
 O badge de classificação ("Pregão Lateral", "Movimento Direcional Forte", etc.) continua no canto superior direito, calculado com os mesmos critérios (Range % vs mediana + eficiência).
+
+O help text foi expandido com o significado interpretativo de cada classe:
+- **Pregão Lateral**: amplitude baixa + eficiência baixa → indecisão, mercado sem direção
+- **Volatilidade sem Direção**: amplitude alta + eficiência baixa → nervosismo, barulho sem sinal
+- **Movimento Consistente**: amplitude baixa + eficiência alta → foco direcional com pouca oscilação
+- **Movimento Direcional Forte**: amplitude alta + eficiência alta → consenso forte no fluxo de ordens
+
+### Decisão 8: Trajetória com `ax.plot` em vez de `ax.arrow`
+
+As setas de trajetória originais usavam `ax.arrow()` com `head_width=0.25` (muito larga) e `ec="gray"`, o que gerava artefatos visuais — linhas angulares fantasmas cortando os pontos de fechamento.
+
+Substituído por `ax.plot([x0, x1], [y0, y1])` com `color="gray", linewidth=1, alpha=0.3`, mantendo o mesmo propósito visual (conexão entre dias consecutivos) sem os traçados extras.
+
+### Decisão 9: Labels de range diário separados
+
+O label único `"Min: X.XX  Max: X.XX"` centralizado abaixo do eixo foi substituído por dois labels independentes:
+- `"Min: X.XX"` em x=0 (0%, data coords), y=-0.08 (axes coords)
+- `"Max: X.XX"` em x=1 (100%, data coords), y=-0.08 (axes coords)
+
+Usa `ax.get_xaxis_transform()` para misturar coordenadas de dado (x) com coordenadas de axes (y).
+
+### Decisão 10: Labels direcionais no CLV
+
+Adicionados labels "← Vendedores" (vermelho) e "Compradores →" (verde) abaixo do gauge CLV, replicando o padrão visual usado nos painéis de Dominância do Pregão (`quadrant_chart.py`, `dominance_ranking.py`).
+
+Posicionados com y=-0.20 (axes coords), aproximadamente 2× altura da fonte abaixo do eixo.
 
 ## Risks / Trade-offs
 
@@ -103,3 +132,4 @@ O badge de classificação ("Pregão Lateral", "Movimento Direcional Forte", etc
 | **● muito pequeno ou grande** dependendo da distribuição de Range % | Usar clamping nos percentis 5-95 em vez de min-max bruto para evitar outliers distorcerem a escala |
 | **Perda da escala absoluta do Range %** (não dá mais para saber se 2% ou 3% sem tooltip) | Tooltip mostra o valor exato. O badge de classificação também usa o valor numérico internamente |
 | **Barra de eficiência confundida com o range normalizado** | A barra tem altura maior (quase toda a row) e cor, enquanto o range é uma linha fina cinza. São visualmente distintas |
+| **Linhas de trajetória (ax.plot) menos informativas que setas** | A direção já é evidente pela inclinação da linha; a cabeça da seta não acrescentava informação e gerava artefatos |

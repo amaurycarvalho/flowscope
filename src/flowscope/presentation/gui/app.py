@@ -340,26 +340,36 @@ class FlowScopeGUI(tk.Tk):
                 "Amplitude de Preço — Painel Visual",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Visualizar como o preço percorreu sua faixa de negociação ao longo dos pregões, "
-                     "identificando se a oscilação resultou em movimento direcional convincente ou se compradores e vendedores permaneceram equilibrados.\n\n", ""),
+                    ("Analisar se o preço apenas oscilou ou houve um movimento direcional convincente durante o pregão, "
+                     "mostrando como a posição do fechamento dentro do range evoluiu nos últimos dias.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
-                    ("\"O preço apenas oscilou ou houve um movimento direcional convincente durante o pregão? Como a posição do fechamento dentro do range evoluiu nos últimos dias?\"\n\n", "italic"),
-                    ("Componentes do painel:\n", "bold"),
-                    ("• Price Range Timeline: gráfico horizontal que normaliza o range de cada pregão em 0-100% e posiciona marcadores de referência (M=Median, T=Typical, V=VWAP, W=Weighted Close) apenas no dia atual, com a trajetória do fechamento (●) conectada por setas entre dias consecutivos.\n"
-                     "• Range % Histórico: linha do tempo da amplitude relativa dos últimos pregões, destacando o dia atual.\n"
-                     "• Eficiência Diária: gauge horizontal (0 a 1) indicando quanto do range foi convertido em deslocamento efetivo.\n"
-                     "• CLV: gauge horizontal (-1 a +1) indicando onde o preço fechou dentro do range.\n\n", ""),
-                    ("Classificação qualitativa: ", "bold"),
-                    ("O canto superior direito do timeline mostra a classificação do pregão com base na combinação de Range% e Eficiência Diária:\n"
-                     "• Pregão Lateral: Range% ≤ mediana histórica e Eficiência ≤ 0,30\n"
-                     "• Volatilidade sem Direção: Range% > mediana e Eficiência ≤ 0,30\n"
-                     "• Movimento Consistente: Range% ≤ mediana e Eficiência > 0,30\n"
-                     "• Movimento Direcional Forte: Range% > mediana e Eficiência > 0,30\n\n", ""),
-                    ("Como interpretar: ", "bold"),
-                    ("Uma amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte. "
-                     "Um CLV próximo de +1 indica fechamento perto da máxima; próximo de -1, perto da mínima. "
-                     "A Eficiência Diária elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção. "
-                     "Passe o mouse sobre os marcadores do timeline para ver valores detalhados.", ""),
+                    ("\"Onde o preço andou (trajetória)? Quanto andou (amplitude)? Andou com convicção (eficiência)?\"\n\n", "italic"),
+                    ("Indicadores envolvidos:\n", "bold"),
+                    ("• Trajetória: onde o preço se posicionou dentro da faixa do dia (0%=perto do preço mínimo, "
+                     "100%=perto do preço máximo), acompanhado dos marcadores ● (preço de fechamento, no tamanho da amplitude), "
+                     "M (Median), T (Typical), V (VWAP) e W (Weighted Close);\n"
+                     "• Amplitude: quanto o preço oscilou, em percentual do preço médio (pequeno=pouco, grande=muito);\n"
+                     "• Eficiência: o movimento teve convicção ou foi ruído (0%=muito ruído, 100%=muita convicção);\n"
+                     "• CLV: Close Location Value, indicando pressão vendedora (negativo) ou compradora (positivo);\n"
+                     "• Classificação do pregão: \"Pregão Lateral\" (Amplitude Relativa ≤ mediana histórica e Eficiência ≤ 0,30), "
+                     "\"Volatilidade sem Direção\" (Amplitude Relativa > mediana e Eficiência ≤ 0,30), "
+                     "\"Movimento Consistente\" (Amplitude Relativa ≤ mediana e Eficiência > 0,30) e "
+                     "\"Movimento Direcional Forte\" (Amplitude Relativa > mediana e Eficiência > 0,30).\n\n", ""),
+                     ("Como interpretar: ", "bold"),
+                     ("Uma Amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte. "
+                      "A Eficiência elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção. "
+                      "Um CLV próximo de +1 indica fechamento perto da máxima (pressão compradora); próximo de -1, perto da mínima "
+                      "(pressão vendedora). Dias com barra de fundo verde consecutiva = sequência direcional forte.\n\n"
+                      "Classificações:\n"
+                      "• \"Pregão Lateral\": amplitude baixa e eficiência baixa — o preço andou pouco e sem convicção. "
+                      "Indecisão total, mercado sem direção.\n"
+                      "• \"Volatilidade sem Direção\": amplitude alta e eficiência baixa — o preço oscilou muito mas sem rumo. "
+                      "Mercado nervoso, barulho sem sinal direcional.\n"
+                      "• \"Movimento Consistente\": amplitude baixa e eficiência alta — movimento eficiente com pouca oscilação. "
+                      "Compradores ou vendedores agiram com foco e sem dispersão.\n"
+                      "• \"Movimento Direcional Forte\": amplitude alta e eficiência alta — volatilidade com convicção. "
+                      "Movimento forte e direcionado, indicando consenso no fluxo de ordens.\n\n"
+                      "Passe o mouse sobre os marcadores para ver valores detalhados.", ""),
                 ]
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (

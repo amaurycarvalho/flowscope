@@ -1,4 +1,5 @@
 import tkinter as tk
+import warnings
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -11,13 +12,11 @@ class PriceRangePanel:
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 4), dpi=100)
         self._gs = self._figure.add_gridspec(
-            nrows=4, ncols=1, height_ratios=[3, 1, 0.5, 0.5],
-            hspace=0.15,
+            nrows=2, ncols=1, height_ratios=[3, 0.6],
+            hspace=0.3,
         )
-        self._ax_timeline = self._figure.add_subplot(self._gs[0])
-        self._ax_range_history = self._figure.add_subplot(self._gs[1])
-        self._ax_efficiency = self._figure.add_subplot(self._gs[2])
-        self._ax_clv = self._figure.add_subplot(self._gs[3])
+        self._ax_main = self._figure.add_subplot(self._gs[0])
+        self._ax_clv = self._figure.add_subplot(self._gs[1])
 
         self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -27,7 +26,7 @@ class PriceRangePanel:
         )
 
         self._hover_data: list[dict] = []
-        self._annot = self._ax_timeline.annotate(
+        self._annot = self._ax_main.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
             fontsize=9, visible=False,
@@ -35,22 +34,21 @@ class PriceRangePanel:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, ticker: str | None = None) -> None:
-        for ax in [self._ax_timeline, self._ax_range_history,
-                   self._ax_efficiency, self._ax_clv]:
+        for ax in [self._ax_main, self._ax_clv]:
             ax.clear()
         self._hover_data.clear()
 
         if not data or not ticker or ticker not in data:
-            self._ax_timeline.set_title("Amplitude de Preço")
-            self._ax_timeline.set_xlim(-0.05, 1.05)
+            self._ax_main.set_title("Amplitude de Preço")
+            self._ax_main.set_xlim(-0.05, 1.05)
             self._canvas.draw()
             return
 
         info = data[ticker]
         daily = info.get("daily_data", [])
         if not daily:
-            self._ax_timeline.set_title(f"Amplitude de Preço — {ticker}")
-            self._ax_timeline.set_xlim(-0.05, 1.05)
+            self._ax_main.set_title(f"Amplitude de Preço — {ticker}")
+            self._ax_main.set_xlim(-0.05, 1.05)
             self._canvas.draw()
             return
 
@@ -65,18 +63,18 @@ class PriceRangePanel:
         clv_dict = all_inds.get("clv") or {}
         eff_dict = all_inds.get("daily_efficiency") or {}
 
-        self._build_timeline(daily_sorted, typical_dict, median_dict,
-                             weighted_dict, range_pct_dict, eff_dict)
-        self._build_range_history(daily_sorted, range_pct_dict)
-        self._build_efficiency_gauge(daily_sorted, eff_dict)
+        self._build_main_chart(daily_sorted, typical_dict, median_dict,
+                               weighted_dict, range_pct_dict, eff_dict, ticker)
         self._build_clv_gauge(daily_sorted, clv_dict)
 
         self._attach_annot()
-        self._figure.tight_layout()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            self._figure.tight_layout()
         self._canvas.draw()
 
     def _attach_annot(self):
-        self._annot = self._ax_timeline.annotate(
+        self._annot = self._ax_main.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
             fontsize=9, visible=False, zorder=10,
@@ -89,12 +87,30 @@ class PriceRangePanel:
             return 0.5
         return (price - min_p) / rng
 
-    def _build_timeline(self, daily, typical_dict, median_dict,
-                        weighted_dict, range_pct_dict, eff_dict):
-        ax = self._ax_timeline
+    def _build_main_chart(self, daily, typical_dict, median_dict,
+                          weighted_dict, range_pct_dict, eff_dict,
+                          ticker=None):
+        ax = self._ax_main
         n = len(daily)
         rev_daily = list(reversed(daily))
         today_range_text = None
+
+        pct_values = [float(v) for v in range_pct_dict.values() if v is not None]
+        if pct_values:
+            sorted_pcts = sorted(pct_values)
+            n_pcts = len(sorted_pcts)
+            lo = sorted_pcts[max(0, int(n_pcts * 0.05))]
+            hi = sorted_pcts[min(n_pcts - 1, int(n_pcts * 0.95))]
+            if hi <= lo:
+                hi = lo + 0.01
+            def map_size(v):
+                if v is None:
+                    return 60
+                clamped = max(lo, min(hi, float(v)))
+                return 40 + (clamped - lo) / (hi - lo) * 160
+        else:
+            def map_size(v):
+                return 60
 
         for i, d in enumerate(rev_daily):
             dt = d["date"]
@@ -106,14 +122,26 @@ class PriceRangePanel:
             norm_close = self._normalize(close, min_p, max_p)
             norm_avg = self._normalize(avg_p, min_p, max_p)
 
-            ax.plot([0, 1], [i, i], color="#CCCCCC", linewidth=3, zorder=1)
+            eff = float(eff_dict.get(dt, 0) or 0)
+            if eff <= 0.30:
+                eff_color = "#CC6666"
+            elif eff <= 0.60:
+                eff_color = "#CCAA44"
+            else:
+                eff_color = "#44AA66"
+            ax.barh(i, eff, height=0.9, left=0, color=eff_color, alpha=0.3, zorder=1)
+
+            ax.plot([0, 1], [i, i], color="#CCCCCC", linewidth=3, zorder=2)
+
+            marker_size = map_size(range_pct_dict.get(dt))
 
             is_last = (i == 0)
 
             if is_last:
-                today_range_text = f"Min: {min_p:.2f}  Max: {max_p:.2f}"
+                today_min_text = f"Min: {min_p:.2f}"
+                today_max_text = f"Max: {max_p:.2f}"
 
-                ax.scatter(norm_close, i, marker="o", color="blue", s=60,
+                ax.scatter(norm_close, i, marker="o", color="blue", s=marker_size,
                            zorder=5, label="Close")
 
                 typical = typical_dict.get(dt)
@@ -159,15 +187,17 @@ class PriceRangePanel:
                     "weighted": weighted,
                     "min_p": min_p,
                     "max_p": max_p,
+                    "amplitude_relativa": range_pct_dict.get(dt),
                 })
             else:
-                ax.scatter(norm_close, i, marker="o", color="blue", s=30,
+                ax.scatter(norm_close, i, marker="o", color="blue", s=marker_size,
                            alpha=0.35, zorder=3)
                 self._hover_data.append({
                     "date": dt,
                     "close": close,
                     "min_p": min_p,
                     "max_p": max_p,
+                    "amplitude_relativa": range_pct_dict.get(dt),
                 })
 
         if n >= 2:
@@ -187,10 +217,7 @@ class PriceRangePanel:
                 y0 = i
                 y1 = i + 1
 
-                ax.arrow(x0, y0, x1 - x0, y1 - y0,
-                         head_width=0.25, head_length=0.02,
-                         fc="gray", ec="gray", alpha=0.3,
-                         length_includes_head=True, zorder=2)
+                ax.plot([x0, x1], [y0, y1], color="gray", linewidth=1, alpha=0.3, zorder=4)
 
         classification = self._get_classification(
             daily, range_pct_dict, eff_dict
@@ -210,11 +237,14 @@ class PriceRangePanel:
         ax.set_xlabel("Faixa de Preço Normalizada (%)", fontsize=8)
         ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
         ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
-        ax.set_title("Price Range Timeline", fontsize=10)
+        ax.set_title(f"Amplitude de Preço — {ticker}" if ticker else "Amplitude de Preço", fontsize=10)
 
-        if today_range_text:
-            ax.text(0.5, -0.05, today_range_text, transform=ax.transAxes,
-                    ha="center", va="top", fontsize=7, color="gray")
+        ax.text(0, -0.08, today_min_text,
+                transform=ax.get_xaxis_transform(),
+                ha="center", va="top", fontsize=7, color="gray")
+        ax.text(1, -0.08, today_max_text,
+                transform=ax.get_xaxis_transform(),
+                ha="center", va="top", fontsize=7, color="gray")
 
     def _get_classification(self, daily, range_pct_dict, eff_dict):
         if not daily or not range_pct_dict or not eff_dict:
@@ -253,62 +283,6 @@ class PriceRangePanel:
         else:
             return "Movimento Direcional Forte"
 
-    def _build_range_history(self, daily, range_pct_dict):
-        ax = self._ax_range_history
-
-        dates = [d["date"] for d in daily]
-        values = [
-            float(range_pct_dict.get(d["date"], 0) or 0)
-            for d in daily
-        ]
-
-        if not values or all(v == 0 for v in values):
-            ax.set_title("Range % Histórico", fontsize=9)
-            return
-
-        ax.plot(dates, values, marker="o", color="steelblue",
-                linewidth=1.5, markersize=4, zorder=3)
-
-        if len(values) > 0:
-            ax.scatter(dates[-1], values[-1], color="red", s=50,
-                       zorder=5, marker="o", edgecolors="darkred",
-                       linewidth=1)
-
-        ax.set_title("Range % Histórico", fontsize=9)
-        ax.set_ylabel("Range %", fontsize=8)
-        ax.tick_params(axis="x", labelsize=7)
-        ax.tick_params(axis="y", labelsize=7)
-        ax.grid(True, alpha=0.3)
-
-    def _build_efficiency_gauge(self, daily, eff_dict):
-        ax = self._ax_efficiency
-
-        last_date = daily[-1]["date"] if daily else None
-        eff = float(eff_dict.get(last_date, 0) or 0) if last_date else 0
-
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-
-        ax.barh(0.5, 1, height=0.35, color="#EEEEEE", zorder=1)
-
-        if eff <= 0.30:
-            color = "#CC6666"
-        elif eff <= 0.60:
-            color = "#CCAA44"
-        else:
-            color = "#44AA66"
-
-        ax.barh(0.5, eff, height=0.35, color=color, zorder=2)
-
-        ax.text(eff / 2, 0.5, f"{eff*100:.0f}%",
-                ha="center", va="center", fontsize=9, fontweight="bold",
-                color="white" if eff > 0.3 else "black")
-
-        ax.set_title("Eficiência Diária", fontsize=9, loc="left")
-        ax.set_yticks([])
-        ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
-        ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
-
     def _build_clv_gauge(self, daily, clv_dict):
         ax = self._ax_clv
 
@@ -337,13 +311,20 @@ class PriceRangePanel:
                 ha="center", va="center", fontsize=9, fontweight="bold",
                 color="white" if abs(clv) > 0.15 else "black")
 
-        ax.set_title("CLV", fontsize=9, loc="left")
+        ax.set_title("CLV (data mais recente)", fontsize=9, loc="left")
         ax.set_yticks([])
         ax.set_xticks([-1, -0.5, 0, 0.5, 1])
         ax.set_xticklabels(["-100%", "-50%", "0%", "50%", "100%"], fontsize=7)
 
+        ax.text(0.05, -0.20, "← Vendedores",
+                transform=ax.transAxes, ha="left", va="top",
+                fontsize=9, color="red", fontweight="bold")
+        ax.text(0.95, -0.20, "Compradores →",
+                transform=ax.transAxes, ha="right", va="top",
+                fontsize=9, color="green", fontweight="bold")
+
     def _on_motion(self, event):
-        if event.inaxes != self._ax_timeline or not self._hover_data:
+        if event.inaxes != self._ax_main or not self._hover_data:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
             return
@@ -374,6 +355,8 @@ class PriceRangePanel:
             lines.append(f"VWAP: {float(pt['vwap']):.2f}")
         if "weighted" in pt and pt["weighted"] is not None:
             lines.append(f"W. Close: {float(pt['weighted']):.2f}")
+        if "amplitude_relativa" in pt and pt["amplitude_relativa"] is not None:
+            lines.append(f"Amplitude: {float(pt['amplitude_relativa']):.2f}%")
 
         self._annot.set_text("\n".join(lines))
         self._annot.xy = (x, y)
