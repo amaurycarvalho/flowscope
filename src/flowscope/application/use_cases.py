@@ -42,6 +42,7 @@ class AnalyzeTickersUseCase:
                 "min_price": t.min_price.value,
                 "max_price": t.max_price.value,
                 "last_price": t.last_price.value,
+                "fin_vol": t.fin_vol,
                 "fin_instr_qty": t.fin_instr_qty,
             })
 

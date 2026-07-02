@@ -15,6 +15,7 @@ from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
+from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
@@ -247,7 +248,7 @@ class FlowScopeGUI(tk.Tk):
             ("Resumo Geral", None),
         ]
         self._ticker_indicator_frames = {}
-        enabled_tabs = {"Evolução da Dominância", "Amplitude de Preço"}
+        enabled_tabs = {"Evolução da Dominância", "Amplitude de Preço", "Fluxo Financeiro"}
         for name, *keys in tab_configs:
             frame = ttk.Frame(self._ticker_notebook)
             kwargs = {"text": name}
@@ -265,6 +266,13 @@ class FlowScopeGUI(tk.Tk):
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._price_range_panel.frame.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
+            elif name == "Fluxo Financeiro":
+                self._financial_flow_panel = FinancialFlowPanel(
+                    frame, copy_chart_callback=self._copy_chart,
+                    summary_callback=self._on_flow_summary,
+                )
+                self._financial_flow_panel.frame.pack(fill=tk.BOTH, expand=True)
                 self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             else:
                 text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
@@ -373,17 +381,26 @@ class FlowScopeGUI(tk.Tk):
                 ]
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
-                "Fluxo Financeiro — CLV e Money Flow",
+                "Fluxo Financeiro — Daily Money Flow",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Medir o viés comprador ou vendedor do pregão.\n\n", ""),
+                    ("Mostrar se o movimento do preço foi acompanhado por fluxo financeiro suficiente para indicar convicção compradora ou vendedora.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
-                    ("\"O movimento ocorreu com dinheiro ou apenas por falta de liquidez?\"\n\n", "italic"),
+                    ("\"O movimento de hoje foi sustentado por fluxo financeiro?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("CLV (Close Location Value), Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure.\n\n", ""),
+                    ("• Daily Money Flow (DMF): fluxo líquido do pregão = CLV × Volume Financeiro\n"
+                     "• Money Flow Volume acumulado: soma do DMF no período\n"
+                     "• CLV (Close Location Value): posição do fechamento no range\n"
+                     "• Buying Pressure / Selling Pressure: domínio do range\n"
+                     "• Score normalizado: DMF / Volume Financeiro (comparável entre ativos)\n"
+                     "• Range Percentual: amplitude relativa do dia\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("CLV varia de -1 (fechamento na mínima) a +1 (fechamento na máxima). Money Flow Volume = CLV × Volume Financeiro, "
-                     "acumulado no período. Positivo indica predomínio comprador; negativo, vendedor. Buying + Selling Pressure = 1.", ""),
+                    ("O DMF é o indicador principal: positivo indica fluxo comprador; negativo, fluxo vendedor. "
+                     "O score normalizado (DMF / Volume Financeiro) permite comparar a intensidade do fluxo entre ativos de diferentes liquidez. "
+                     "Um DMF elevado com score > 8% sugere fluxo forte. "
+                     "O MFV acumulado mostra se a tendência de hoje reforça ou contradiz o fluxo dos dias anteriores. "
+                     "O CLV, integrado ao DMF, indica onde o preço fechou. "
+                     "Buying + Selling Pressure mostram quem dominou o range.", ""),
                 ]
             ),
             ("Análise do Ticker", "Participação Institucional"): (
@@ -662,6 +679,10 @@ class FlowScopeGUI(tk.Tk):
                 if hasattr(self, "_price_range_panel"):
                     self._price_range_panel.update(self._current_data, ticker=ticker)
                 continue
+            if name == "Fluxo Financeiro":
+                if hasattr(self, "_financial_flow_panel"):
+                    self._financial_flow_panel.update(self._current_data, ticker=ticker)
+                continue
             text_w = info["text"]
             text_w.config(state=tk.NORMAL)
             text_w.delete("1.0", tk.END)
@@ -800,6 +821,19 @@ class FlowScopeGUI(tk.Tk):
                 body = self._tab_content.get(("Análise Geral", "Quadrantes"), ("", []))[1]
                 self._orientation_panel.set_content(
                     "Quadrantes — CLV vs VWAP Distance",
+                    body + [("\n\n---\n\n" + summary, "")],
+                )
+        except Exception:
+            pass
+
+    def _on_flow_summary(self, summary: str) -> None:
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
+            if main_tab == "Análise do Ticker" and sub_tab == "Fluxo Financeiro":
+                body = self._tab_content.get(("Análise do Ticker", "Fluxo Financeiro"), ("", []))[1]
+                self._orientation_panel.set_content(
+                    "Fluxo Financeiro — Daily Money Flow",
                     body + [("\n\n---\n\n" + summary, "")],
                 )
         except Exception:
