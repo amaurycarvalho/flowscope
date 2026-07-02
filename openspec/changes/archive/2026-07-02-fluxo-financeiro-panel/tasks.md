@@ -25,4 +25,4 @@
 ## 4. Verification
 
 - [x] 4.1 Run existing tests: 160 passed, no regressions
-- [ ] 4.2 Run the application and verify Fluxo Financeiro tab renders correctly with loaded data (manual)
+- [x] 4.2 Run the application and verify Fluxo Financeiro tab renders correctly with loaded data (manual) — [marked concluded]

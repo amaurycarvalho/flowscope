@@ -30,3 +30,4 @@ A sub-aba "Fluxo Financeiro" existe como placeholder desabilitado que exibe apen
 - `src/flowscope/domain/strategies/classifiers/`: Novo arquivo `money_flow.py` com classificador de fluxo financeiro
 - `openspec/specs/gui-interface/spec.md`: Atualizar cenários do OrientationPanel para Fluxo Financeiro
 - Nenhuma mudança em indicadores existentes — `daily_money_flow`, `money_flow_volume`, `clv`, `buying_pressure`, `selling_pressure` já estão disponíveis
+- **Target**: Release 0.5.0
