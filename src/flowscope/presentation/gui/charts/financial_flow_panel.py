@@ -82,7 +82,7 @@ class FinancialFlowPanel:
         n_days = len(daily_sorted)
         mfv_text = ""
         if accumulated_mfv is not None:
-            mfv_text = f"Acum. {n_days}d: R${float(accumulated_mfv):+,.0f}"
+            mfv_text = f"Acum. do período: R${float(accumulated_mfv):+,.0f}"
 
         fin_vol_millions = fin_vol / 1_000_000
 
@@ -102,7 +102,7 @@ class FinancialFlowPanel:
         })
 
         if self._summary_callback:
-            summary = self._generate_summary(dmf, score, classification, clv, bp)
+            summary = self._generate_summary(dmf, score, classification, clv, bp, sp)
             self._summary_callback(summary)
 
         with warnings.catch_warnings():
@@ -118,69 +118,83 @@ class FinancialFlowPanel:
         ax.set_xlim(-1.2, 1.2)
         ax.set_ylim(0, 1)
 
-        ax.axhline(y=0.5, xmin=0, xmax=1, color="#E0E0E0", linewidth=2, zorder=1)
-
-        bar_height = 0.35
-        bar_y = 0.5 - bar_height / 2
-
-        if dmf > 0:
-            ax.barh(0.5, abs(clv), height=bar_height, color="#4CAF50",
-                    zorder=2, left=0, alpha=0.85)
-            ax.barh(0.5, 1, height=bar_height, color="#E8F5E9",
-                    zorder=1, left=0, alpha=0.3)
-        elif dmf < 0:
-            ax.barh(0.5, abs(clv), height=bar_height, color="#EF5350",
-                    zorder=2, left=clv, alpha=0.85)
-            ax.barh(0.5, 1, height=bar_height, color="#FFEBEE",
-                    zorder=1, left=-1, alpha=0.3)
-        else:
-            ax.barh(0.5, 1, height=bar_height, color="#F5F5F5",
-                    zorder=1, left=-1)
-
-        ax.axvline(x=0, color="#9E9E9E", linewidth=1, linestyle="-", zorder=3)
-
-        ax.plot(clv, 0.5, marker="v", color="#333333", markersize=10,
-                zorder=5, clip_on=False)
-        ax.plot(clv, 0.5, marker="v", color="white", markersize=6,
-                zorder=6, clip_on=False)
-
         unit = "M"
         dmf_display = abs(dmf) / 1_000_000
         if abs(dmf) >= 1e9:
             dmf_display = abs(dmf) / 1e9
             unit = "Bi"
-        if dmf != 0:
-            dmf_label = f"{dmf:+.2f}  (R${dmf_display:+,.1f}{unit})"
-        else:
-            dmf_label = "R$ 0,00"
-        ax.text(0, 0.88, dmf_label, ha="center", va="bottom", fontsize=11,
-                fontweight="bold", color="#333333")
 
-        ax.text(-1.15, 0.5, "◄ Vendedor", ha="left", va="center", fontsize=8,
-                color="#EF5350", fontweight="bold")
-        ax.text(1.15, 0.5, "Comprador ►", ha="right", va="center", fontsize=8,
-                color="#4CAF50", fontweight="bold")
-
-        cls_color = classification.color
         cls_label = classification.label
-        ax.text(0, 0.12, cls_label, ha="center", va="center", fontsize=10,
+        cls_color = classification.color
+
+        box_bg = "#F8F8F8"
+
+        line1_left = f"Último pregão: R${fin_vol_millions:+,.1f}M"
+        if dmf != 0:
+            line1_center = f"DMF: {dmf:+.2f} (R${dmf_display:+,.1f}{unit})"
+        else:
+            line1_center = "DMF: R$ 0,00"
+        line1_right = "DMF = CLV × Vol. Fin."
+
+        line2_left = mfv_text if mfv_text else ""
+        line2_center = f"Amplitude: {rp:.2f}%"
+        line2_right = cls_label
+
+        line1 = f"{line1_left}   |   {line1_center}   |   {line1_right}"
+        line2 = f"{line2_left}   |   {line2_center}   |   {line2_right}"
+
+        bbox_outer = dict(boxstyle="round,pad=0.35", fc=box_bg, ec="#DDDDDD", alpha=0.9)
+        ax.text(0, 0.86, line1, ha="center", va="center", fontsize=6.5,
+                color="#444444", fontweight="medium", bbox=bbox_outer)
+
+        bbox_inner_left = dict(boxstyle="round,pad=0.15", fc=box_bg, ec="none")
+        bbox_inner_right = dict(boxstyle="round,pad=0.15", fc=box_bg, ec=cls_color,
+                                alpha=0.85)
+        ax.text(0, 0.78, line2, ha="center", va="center", fontsize=6.5,
+                color="#444444", fontweight="medium", bbox=bbox_inner_left)
+        ax.text(0.95, 0.78, line2_right, ha="right", va="center", fontsize=7,
                 fontweight="bold", color=cls_color,
-                bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=cls_color,
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec=cls_color,
                           alpha=0.85))
 
-        if mfv_text:
-            ax.text(1.15, 0.12, mfv_text, ha="right", va="center", fontsize=7,
-                    color="#666666", style="italic")
+        bar_y = 0.46
+        bar_height = 0.35
 
-        ax.text(-1.15, 0.12, f"Range: {rp:.2f}%", ha="left", va="center",
-                fontsize=7, color="#666666", style="italic")
+        if dmf > 0:
+            ax.barh(bar_y, abs(clv), height=bar_height, color="#4CAF50",
+                    zorder=2, left=0, alpha=0.85)
+            ax.barh(bar_y, 1, height=bar_height, color="#E8F5E9",
+                    zorder=1, left=0, alpha=0.3)
+        elif dmf < 0:
+            ax.barh(bar_y, abs(clv), height=bar_height, color="#EF5350",
+                    zorder=2, left=clv, alpha=0.85)
+            ax.barh(bar_y, 1, height=bar_height, color="#FFEBEE",
+                    zorder=1, left=-1, alpha=0.3)
+        else:
+            ax.barh(bar_y, 1, height=bar_height, color="#F5F5F5",
+                    zorder=1, left=-1)
 
-        vol_text = f"Vol. Financeiro: R${fin_vol_millions:+,.1f}M"
-        ax.text(-1.15, -0.05, vol_text, ha="left", va="top", fontsize=6,
-                color="#999999")
+        ax.axvline(x=0, color="#9E9E9E", linewidth=1, linestyle="-", zorder=3)
+
+        ax.plot(clv, bar_y, marker="v", color="#333333", markersize=10,
+                zorder=5, clip_on=False)
+        ax.plot(clv, bar_y, marker="v", color="white", markersize=6,
+                zorder=6, clip_on=False)
+
+        clv_annot_x = clv + 0.08 if clv >= 0 else clv - 0.08
+        clv_ha = "left" if clv >= 0 else "right"
+        ax.text(clv_annot_x, bar_y, f"CLV {clv:+.2f}", ha=clv_ha, va="center",
+                fontsize=7, color="#555555", fontweight="bold",
+                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="#CCCCCC",
+                          alpha=0.85))
+
+        ax.text(-1.15, bar_y, "◄ Vendedor", ha="left", va="center", fontsize=8,
+                color="#EF5350", fontweight="bold")
+        ax.text(1.15, bar_y, "Comprador ►", ha="right", va="center", fontsize=8,
+                color="#4CAF50", fontweight="bold")
 
         ax.set_title(f"Fluxo Financeiro — {ticker}", fontsize=10, loc="center",
-                     pad=8)
+                     pad=6)
         ax.set_yticks([])
         ax.set_xticks([-1, -0.5, 0, 0.5, 1])
         ax.set_xticklabels(["-100%", "-50%", "0%", "50%", "100%"], fontsize=7)
@@ -194,7 +208,7 @@ class FinancialFlowPanel:
         ax.clear()
 
         ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
+        ax.set_ylim(-0.1, 0.9)
 
         if bp + sp > 0:
             bp_pct = bp / (bp + sp) * 100
@@ -203,31 +217,43 @@ class FinancialFlowPanel:
             bp_pct = 50
             sp_pct = 50
 
+        bar_y = 0.11
+        bar_height = 0.30
+
         if bp > 0:
-            ax.barh(0.5, bp, height=0.35, color="#4CAF50", zorder=2,
+            ax.barh(bar_y, bp, height=bar_height, color="#4CAF50", zorder=2,
                     left=0, alpha=0.85)
         if sp > 0:
-            ax.barh(0.5, sp, height=0.35, color="#EF5350", zorder=2,
+            ax.barh(bar_y, sp, height=bar_height, color="#EF5350", zorder=2,
                     left=bp, alpha=0.85)
         if bp == 0 and sp == 0:
-            ax.barh(0.5, 1, height=0.35, color="#E0E0E0", zorder=1, left=0)
+            ax.barh(bar_y, 1, height=bar_height, color="#E0E0E0", zorder=1, left=0)
 
         bp_label = f"Compra {bp_pct:.0f}%"
         sp_label = f"Venda {sp_pct:.0f}%"
         if bp > 0.1:
-            ax.text(bp / 2, 0.5, bp_label, ha="center", va="center",
+            ax.text(bp / 2, bar_y, bp_label, ha="center", va="center",
                     fontsize=10, fontweight="bold", color="white")
         else:
-            ax.text(0.02, 0.5, bp_label, ha="left", va="center",
+            ax.text(0.02, bar_y, bp_label, ha="left", va="center",
                     fontsize=10, fontweight="bold", color="#4CAF50")
         if sp > 0.1:
-            ax.text(bp + sp / 2, 0.5, sp_label, ha="center", va="center",
+            ax.text(bp + sp / 2, bar_y, sp_label, ha="center", va="center",
                     fontsize=10, fontweight="bold", color="white")
         else:
-            ax.text(0.98, 0.5, sp_label, ha="right", va="center",
+            ax.text(0.98, bar_y, sp_label, ha="right", va="center",
                     fontsize=10, fontweight="bold", color="#EF5350")
 
-        ax.set_title("Pressão no Range", fontsize=9, loc="left", pad=6)
+        ax.text(0, 0.62, "Pressão na amplitude de preço do pregão mais recente",
+                ha="left", va="bottom", fontsize=8, fontweight="bold")
+
+        bp_formula = f"BP = (Close \u2212 Min) / (Max \u2212 Min) = {bp:.2f}"
+        sp_formula = f"SP = (Max \u2212 Close) / (Max \u2212 Min) = {sp:.2f}"
+        ax.text(0, 0.54, bp_formula, ha="left", va="bottom", fontsize=5.5,
+                color="#4CAF50")
+        ax.text(1, 0.54, sp_formula, ha="right", va="bottom", fontsize=5.5,
+                color="#EF5350")
+
         ax.set_yticks([])
         ax.set_xticks([0, 0.25, 0.5, 0.75, 1])
         ax.set_xticklabels(["0%", "25%", "50%", "75%", "100%"], fontsize=7)
@@ -235,7 +261,7 @@ class FinancialFlowPanel:
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_visible(False)
 
-    def _generate_summary(self, dmf, score, classification, clv, bp):
+    def _generate_summary(self, dmf, score, classification, clv, bp, sp):
         parts = []
         if dmf > 0:
             if classification.score >= 3:
@@ -255,11 +281,11 @@ class FinancialFlowPanel:
             parts.append("O fluxo financeiro foi neutro")
 
         if clv > 0.3:
-            parts.append("e o fechamento ocorreu próximo da máxima")
+            parts.append(" e o fechamento ocorreu próximo da máxima")
         elif clv < -0.3:
-            parts.append("e o fechamento ocorreu próximo da mínima")
+            parts.append(" e o fechamento ocorreu próximo da mínima")
         else:
-            parts.append("e o fechamento ocorreu na região central do range")
+            parts.append(" e o fechamento ocorreu na região central do range")
 
         if bp > 0.65:
             parts.append(", com ampla dominância compradora no range.")
