@@ -3,6 +3,7 @@ import warnings
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
+from matplotlib.patches import FancyBboxPatch
 
 from flowscope.domain.strategies.classifiers import classify_money_flow
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
@@ -13,11 +14,12 @@ class FinancialFlowPanel:
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 4), dpi=100)
         self._gs = self._figure.add_gridspec(
-            nrows=2, ncols=1, height_ratios=[3, 2],
+            nrows=3, ncols=1, height_ratios=[3, 2, 3],
             hspace=0.3,
         )
-        self._ax_gauge = self._figure.add_subplot(self._gs[0])
-        self._ax_bs = self._figure.add_subplot(self._gs[1])
+        self._ax_card = self._figure.add_subplot(self._gs[0])
+        self._ax_clv = self._figure.add_subplot(self._gs[1])
+        self._ax_bs = self._figure.add_subplot(self._gs[2])
 
         self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
@@ -28,7 +30,7 @@ class FinancialFlowPanel:
 
         self._summary_callback = summary_callback
         self._hover_data: list[dict] = []
-        self._annot = self._ax_gauge.annotate(
+        self._annot = self._ax_card.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
             fontsize=9, visible=False,
@@ -36,13 +38,14 @@ class FinancialFlowPanel:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, ticker: str | None = None) -> None:
-        for ax in [self._ax_gauge, self._ax_bs]:
+        for ax in [self._ax_card, self._ax_clv, self._ax_bs]:
             ax.clear()
         self._hover_data.clear()
 
         if not data or not ticker or ticker not in data:
-            self._ax_gauge.set_title("Fluxo Financeiro")
-            self._ax_gauge.set_xlim(-1, 1)
+            self._ax_card.set_title("Fluxo Financeiro")
+            self._ax_card.set_xlim(-1, 1)
+            self._ax_clv.set_xlim(0, 1)
             self._ax_bs.set_xlim(0, 1)
             self._canvas.draw()
             return
@@ -50,8 +53,9 @@ class FinancialFlowPanel:
         info = data[ticker]
         daily = info.get("daily_data", [])
         if not daily:
-            self._ax_gauge.set_title(f"Fluxo Financeiro — {ticker}")
-            self._ax_gauge.set_xlim(-1, 1)
+            self._ax_card.set_title(f"Fluxo Financeiro — {ticker}")
+            self._ax_card.set_xlim(-1, 1)
+            self._ax_clv.set_xlim(0, 1)
             self._ax_bs.set_xlim(0, 1)
             self._canvas.draw()
             return
@@ -80,14 +84,16 @@ class FinancialFlowPanel:
         classification = classify_money_flow(score)
 
         n_days = len(daily_sorted)
-        mfv_text = ""
+        mfv_value = ""
+        mfv_millions = 0.0
         if accumulated_mfv is not None:
-            mfv_text = f"Acum. do período: R${float(accumulated_mfv):+,.0f}"
+            mfv_value = f"R${float(accumulated_mfv):+,.0f}"
+            mfv_millions = float(accumulated_mfv) / 1_000_000
 
         fin_vol_millions = fin_vol / 1_000_000
 
-        self._build_gauge(clv, dmf, score, classification, mfv_text, rp,
-                          last_date, ticker, fin_vol_millions)
+        self._build_card(dmf, classification, mfv_value, rp, ticker, fin_vol_millions, mfv_millions)
+        self._build_clv_bar(clv, dmf)
         self._build_bs_bar(bp, sp)
 
         self._hover_data.append({
@@ -110,13 +116,18 @@ class FinancialFlowPanel:
             self._figure.tight_layout()
         self._canvas.draw()
 
-    def _build_gauge(self, clv, dmf, score, classification, mfv_text, rp,
-                     last_date, ticker, fin_vol_millions):
-        ax = self._ax_gauge
-        ax.clear()
+    def _build_card(self, dmf, classification, mfv_value, rp, ticker,
+                    fin_vol_millions, mfv_millions):
+        ax = self._ax_card
+        ax.axis("off")
 
         ax.set_xlim(-1.2, 1.2)
-        ax.set_ylim(0, 1)
+        ax.set_ylim(0, 0.7)
+
+        chart_title_y = 0.67
+        ax.text(0, chart_title_y, f"Fluxo Financeiro — {ticker}",
+                ha="center", va="center", fontsize=10, fontweight="bold",
+                color="#333333")
 
         unit = "M"
         dmf_display = abs(dmf) / 1_000_000
@@ -127,38 +138,49 @@ class FinancialFlowPanel:
         cls_label = classification.label
         cls_color = classification.color
 
-        box_bg = "#F8F8F8"
-
-        line1_left = f"Último pregão: R${fin_vol_millions:+,.1f}M"
         if dmf != 0:
-            line1_center = f"DMF: {dmf:+.2f} (R${dmf_display:+,.1f}{unit})"
+            dmf_value = f"R$ {dmf_display:+,.1f}{unit}"
         else:
-            line1_center = "DMF: R$ 0,00"
-        line1_right = "DMF = CLV × Vol. Fin."
+            dmf_value = "R$ 0,00"
+        mfv_line = mfv_value if mfv_value else "—"
 
-        line2_left = mfv_text if mfv_text else ""
-        line2_center = f"Amplitude: {rp:.2f}%"
-        line2_right = cls_label
+        card_x0, card_x1 = -0.95, 0.95
+        card_y0, card_y1 = 0.10, 0.55
 
-        line1 = f"{line1_left}   |   {line1_center}   |   {line1_right}"
-        line2 = f"{line2_left}   |   {line2_center}   |   {line2_right}"
+        card = FancyBboxPatch(
+            (card_x0, card_y0), card_x1 - card_x0, card_y1 - card_y0,
+            boxstyle="round,pad=0.05", fc="#FAFAFA", ec=cls_color, lw=1.5,
+            alpha=0.9, zorder=1,
+        )
+        ax.add_patch(card)
 
-        bbox_outer = dict(boxstyle="round,pad=0.35", fc=box_bg, ec="#DDDDDD", alpha=0.9)
-        ax.text(0, 0.86, line1, ha="center", va="center", fontsize=6.5,
-                color="#444444", fontweight="medium", bbox=bbox_outer)
+        cls_label_y = card_y1 - 0.04
+        ax.text(0, cls_label_y, cls_label, ha="center", va="center", fontsize=10,
+                fontweight="bold", color=cls_color)
 
-        bbox_inner_left = dict(boxstyle="round,pad=0.15", fc=box_bg, ec="none")
-        bbox_inner_right = dict(boxstyle="round,pad=0.15", fc=box_bg, ec=cls_color,
-                                alpha=0.85)
-        ax.text(0, 0.78, line2, ha="center", va="center", fontsize=6.5,
-                color="#444444", fontweight="medium", bbox=bbox_inner_left)
-        ax.text(0.95, 0.78, line2_right, ha="right", va="center", fontsize=7,
-                fontweight="bold", color=cls_color,
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec=cls_color,
-                          alpha=0.85))
+        left_text_y = cls_label_y - 0.08
+        left_text = "Último pregão:\nDMF:\nAcumulado\nAmplitude de preço:"
+        ax.text(card_x0 + 0.08, left_text_y, left_text, ha="left", va="top",
+                fontsize=8, color="#666666")
 
-        bar_y = 0.46
-        bar_height = 0.35
+        right_text_y = left_text_y
+        right_text = (
+            f"R$ {fin_vol_millions:+,.1f}M\n"
+            f"{dmf_value}\n"
+            f"R$ {mfv_millions:+,.1f}M\n"
+            f"{rp:.1f}%"
+        )
+        ax.text(card_x1 - 0.08, right_text_y, right_text, ha="right", va="top",
+                fontsize=8, color="#444444")
+
+    def _build_clv_bar(self, clv, dmf):
+        ax = self._ax_clv
+
+        ax.set_xlim(-1.2, 1.2)
+        ax.set_ylim(0.0, 1.0)
+
+        bar_y = 0.5
+        bar_height = 0.40
 
         if dmf > 0:
             ax.barh(bar_y, abs(clv), height=bar_height, color="#4CAF50",
@@ -176,9 +198,9 @@ class FinancialFlowPanel:
 
         ax.axvline(x=0, color="#9E9E9E", linewidth=1, linestyle="-", zorder=3)
 
-        ax.plot(clv, bar_y, marker="v", color="#333333", markersize=10,
+        ax.plot(clv, bar_y, marker="v", color="#333333", markersize=9,
                 zorder=5, clip_on=False)
-        ax.plot(clv, bar_y, marker="v", color="white", markersize=6,
+        ax.plot(clv, bar_y, marker="v", color="white", markersize=5,
                 zorder=6, clip_on=False)
 
         clv_annot_x = clv + 0.08 if clv >= 0 else clv - 0.08
@@ -188,13 +210,11 @@ class FinancialFlowPanel:
                 bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="#CCCCCC",
                           alpha=0.85))
 
-        ax.text(-1.15, bar_y, "◄ Vendedor", ha="left", va="center", fontsize=8,
+        ax.text(-1.15, bar_y, "◄ Vendedor", ha="left", va="center", fontsize=7.5,
                 color="#EF5350", fontweight="bold")
-        ax.text(1.15, bar_y, "Comprador ►", ha="right", va="center", fontsize=8,
+        ax.text(1.15, bar_y, "Comprador ►", ha="right", va="center", fontsize=7.5,
                 color="#4CAF50", fontweight="bold")
 
-        ax.set_title(f"Fluxo Financeiro — {ticker}", fontsize=10, loc="center",
-                     pad=6)
         ax.set_yticks([])
         ax.set_xticks([-1, -0.5, 0, 0.5, 1])
         ax.set_xticklabels(["-100%", "-50%", "0%", "50%", "100%"], fontsize=7)
@@ -208,7 +228,7 @@ class FinancialFlowPanel:
         ax.clear()
 
         ax.set_xlim(0, 1)
-        ax.set_ylim(-0.1, 0.9)
+        ax.set_ylim(-0.1, 0.6)
 
         if bp + sp > 0:
             bp_pct = bp / (bp + sp) * 100
@@ -217,8 +237,8 @@ class FinancialFlowPanel:
             bp_pct = 50
             sp_pct = 50
 
-        bar_y = 0.11
-        bar_height = 0.30
+        bar_y = 0.03
+        bar_height = 0.24
 
         if bp > 0:
             ax.barh(bar_y, bp, height=bar_height, color="#4CAF50", zorder=2,
@@ -244,14 +264,14 @@ class FinancialFlowPanel:
             ax.text(0.98, bar_y, sp_label, ha="right", va="center",
                     fontsize=10, fontweight="bold", color="#EF5350")
 
-        ax.text(0, 0.62, "Pressão na amplitude de preço do pregão mais recente",
+        ax.text(0, 0.32, "Pressão na amplitude de preço do pregão mais recente",
                 ha="left", va="bottom", fontsize=8, fontweight="bold")
 
         bp_formula = f"BP = (Close \u2212 Min) / (Max \u2212 Min) = {bp:.2f}"
         sp_formula = f"SP = (Max \u2212 Close) / (Max \u2212 Min) = {sp:.2f}"
-        ax.text(0, 0.54, bp_formula, ha="left", va="bottom", fontsize=5.5,
+        ax.text(0, 0.24, bp_formula, ha="left", va="bottom", fontsize=5.5,
                 color="#4CAF50")
-        ax.text(1, 0.54, sp_formula, ha="right", va="bottom", fontsize=5.5,
+        ax.text(1, 0.24, sp_formula, ha="right", va="bottom", fontsize=5.5,
                 color="#EF5350")
 
         ax.set_yticks([])
@@ -302,7 +322,7 @@ class FinancialFlowPanel:
         return "".join(parts)
 
     def _on_motion(self, event):
-        if event.inaxes != self._ax_gauge or not self._hover_data:
+        if event.inaxes != self._ax_card or not self._hover_data:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
             return

@@ -126,17 +126,36 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - Dias com barra de fundo verde consecutiva = sequência direcional forte.
   - Passe o mouse sobre os marcadores do timeline para ver valores detalhados de cada pregão.
 
-### Sub-aba: Fluxo Financeiro 🔒
+### Sub-aba: Fluxo Financeiro
 
-- **Status:** Placeholder — sub-aba desabilitada (implementação futura).
-- **Objetivo:** Mensurar a direcionalidade do fluxo de ordens — pressão compradora versus vendedora.
-- **Exibição atual:** Texto estático com valores dos indicadores (CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure, VWAP Distance) formatados pelo método `_format_selected_indicators`.
+- **Objetivo:** Mostrar se o movimento do preço foi acompanhado por fluxo financeiro suficiente para indicar convicção compradora ou vendedora.
+- **Responde a pergunta:** _O movimento de hoje foi sustentado por fluxo financeiro?_
+- **Layout do painel:** Três subplots empilhados verticalmente (GridSpec com `height_ratios=[3, 2, 3]`):
+  ```
+  ┌──────────────────────────────────────────┐
+  │  Card de Classificação (sem eixos)       │
+  │  (título, classificação, DMF,            │
+  │   MFV acumulado, Range%)                 │
+  ├──────────────────────────────────────────┤
+  │  CLV / Score Bar                         │
+  │  (marcador CLV, labels Comprador/Vendedor)│
+  ├──────────────────────────────────────────┤
+  │  Pressão no Range (B×S)                  │
+  │  (barra empilhada Buy/Sell Pressure)     │
+  └──────────────────────────────────────────┘
+  ```
+- **Componentes:**
+  - **Card de Classificação (painel superior, eixos ocultos):** Exibe o título "Fluxo Financeiro — {ticker}", a classificação qualitativa (ex.: "Fluxo Forte"), e os valores do último pregão: Volume Financeiro (R$ X,XXM), DMF (R$ X,XXM), MFV Acumulado (R$ X,XXM) e Range% (X,X%). Borda colorida conforme a classificação.
+  - **Gráfico CLV / Score (painel médio):** Barra horizontal na escala −1 a +1. Verde para fluxo comprador (CLV positivo), vermelho para vendedor (CLV negativo). Marcador triangular na posição exata do CLV, rótulos "◄ Vendedor" / "Comprador ►", escala percentual (−100% a +100%).
+  - **Barra de Pressão no Range (painel inferior):** Barra empilhada horizontal com Buying Pressure (verde) e Selling Pressure (vermelha). Rótulos "Compra {bp}%" e "Venda {sp}%". Fórmulas BP e SP como referência.
 - **Indicadores envolvidos:**
-  - `CLV` (Close Location Value) — Posição do fechamento no range (−1 a +1)
-  - `Money Flow Multiplier` — Idêntico ao CLV
-  - `Money Flow Volume` — CLV × Volume Financeiro, acumulado no período
-  - `Buying Pressure` — Percentual do range ocupado pelo movimento comprador
-  - `Selling Pressure` — Percentual do range ocupado pelo movimento vendedor
+  - `Daily Money Flow (DMF)` — CLV × Volume Financeiro do pregão, exibido em milhões
+  - `Money Flow Volume (MFV) acumulado` — soma do DMF no período, exibido em milhões
+  - `CLV (Close Location Value)` — posição do fechamento no range (−1 a +1)
+  - `Buying Pressure / Selling Pressure` — domínio do range (0 a 1)
+  - `Score normalizado` — DMF / Volume Financeiro (comparável entre ativos)
+  - `Range Percentual` — amplitude relativa do dia
+- **Como interpretar:** O DMF é o indicador principal. Score > 8% sugere fluxo forte. MFV acumulado mostra tendência multidia. CLV indica onde o preço fechou. Passe o mouse sobre o card para detalhes numéricos completos.
 
 ### Sub-aba: Participação Institucional 🔒
 

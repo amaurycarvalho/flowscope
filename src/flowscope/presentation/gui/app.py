@@ -399,8 +399,9 @@ class FlowScopeGUI(tk.Tk):
                      "O score normalizado (DMF / Volume Financeiro) permite comparar a intensidade do fluxo entre ativos de diferentes liquidez. "
                      "Um DMF elevado com score > 8% sugere fluxo forte. "
                      "O MFV acumulado mostra se a tendência de hoje reforça ou contradiz o fluxo dos dias anteriores. "
-                     "O CLV, integrado ao DMF, indica onde o preço fechou. "
-                     "Buying + Selling Pressure mostram quem dominou o range.", ""),
+                     "O CLV (subplot central) indica onde o preço fechou no range. "
+                     "Buying + Selling Pressure mostram quem dominou o range. "
+                     "DMF e MFV acumulado são exibidos em milhões de reais.", ""),
                 ]
             ),
             ("Análise do Ticker", "Participação Institucional"): (

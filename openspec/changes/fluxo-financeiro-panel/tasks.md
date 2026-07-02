@@ -5,15 +5,14 @@
 
 ## 2. FinancialFlowPanel Core
 
-- [x] 2.1 Create `src/flowscope/presentation/gui/charts/financial_flow_panel.py` with `__init__`: tk.Frame, Figure(figsize=(5,4), dpi=100), GridSpec(2, 1, height_ratios=[3, 2]), FigureCanvasTkAgg, ToolbarBR, hover infrastructure (_annot, _canvas.mpl_connect)
-- [x] 2.2 Implement gauge principal (row 0): divergent horizontal bar centered at 0 using `daily_money_flow` value, with green/red coloring, scale labels ("Vendedor ◄" / "► Comprador"), classification text annotation, DMF value text
-- [x] 2.3 Add CLV marker to the gauge: triangle or vertical line at CLV position on -1 to +1 scale, with CLV value label
-- [x] 2.4 Add accumulated MFV text overlay: "Acum. {N}d: R$ {valor}" using `money_flow_volume` from data, positioned at bottom-right of gauge
-- [x] 2.5 Add Range% text overlay: "Range: {value}%" positioned at bottom-left of gauge
-- [x] 2.6 Implement barra empilhada (row 1): stacked horizontal bar with Buying Pressure (green) and Selling Pressure (red), labels "Compra {bp}%" and "Venda {sp}%"
-- [x] 2.7 Implement hover tooltip on gauge: show DMF, MFV acumulado, CLV, Score, Classification, Volume Financeiro, Range% on mouse motion
-- [x] 2.8 Implement `update(self, data: dict, ticker: str | None)`: extract daily_money_flow, money_flow_volume, clv, buying_pressure, selling_pressure, range_percentual from data; compute score; classify; render all elements; invoke summary_callback
-- [x] 2.9 Implement `get_figure(self) -> Figure` for clipboard copy support
+- [x] 2.1 Create `src/flowscope/presentation/gui/charts/financial_flow_panel.py` with `__init__`: tk.Frame, Figure(figsize=(5,4), dpi=100), GridSpec(3, 1, height_ratios=[3, 2, 3]), FigureCanvasTkAgg, ToolbarBR, hover infrastructure (_annot, _canvas.mpl_connect). Three independent subplots: `_ax_card` (card), `_ax_clv` (CLV bar), `_ax_bs` (B×S bar).
+- [x] 2.2 Implement card subplot (`_ax_card`): `axis("off")`, ylim 0–0.7, FancyBboxPatch com classificação qualitativa, DMF em milhões, MFV acumulado em milhões, Range%. Borda colorida conforme classificação.
+- [x] 2.3 Implement CLV/Score subplot (`_ax_clv`): barra horizontal −1 a +1 com barh verde/vermelho conforme sinal do DMF, marcador triangular na posição do CLV, label do CLV, "◄ Vendedor" / "Comprador ►", escala percentual.
+- [x] 2.4 Implement barra empilhada (`_ax_bs`): stacked horizontal bar with Buying Pressure (green) and Selling Pressure (red), labels "Compra {bp}%" and "Venda {sp}%", BP/SP formulas.
+- [x] 2.5 Implement hover tooltip on card axis: show DMF, MFV acumulado, CLV, Score, Classification, Volume Financeiro, Range% on mouse motion.
+- [x] 2.6 Implement `update(self, data: dict, ticker: str | None)`: extract daily_money_flow, money_flow_volume, clv, buying_pressure, selling_pressure, range_percentual from data; compute score; classify; render all three subplots; invoke summary_callback.
+- [x] 2.7 Implement `get_figure(self) -> Figure` for clipboard copy support.
+- [x] 2.8 Refactor: split `_build_gauge` into `_build_card` and `_build_clv_bar` for independent rendering.
 
 ## 3. app.py Integration
 

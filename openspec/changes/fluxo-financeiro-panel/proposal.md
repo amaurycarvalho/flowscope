@@ -6,10 +6,9 @@ A sub-aba "Fluxo Financeiro" existe como placeholder desabilitado que exibe apen
 
 - Criar um painel visual matplotlib para a sub-aba "Fluxo Financeiro" em "Análise do Ticker"
 - O painel substitui o atual `tk.Text` placeholder (desabilitado) por um gráfico rico com:
-  - Gauge horizontal divergente do Daily Money Flow (indicador operacional)
+  - Card de classificação com DMF, MFV acumulado (em milhões), Range% e classificação qualitativa
+  - Barra CLV / Score com marcador triangular e escala percentual (subplot independente)
   - Barra empilhada de Buying Pressure vs Selling Pressure
-  - Marcador de CLV integrado ao gauge principal
-  - Caixa de contexto com o Money Flow Volume acumulado do período
   - Classificação qualitativa baseada em score normalizado (|DMF|/fin_vol)
 - Ativar a sub-aba (remover do conjunto `enabled_tabs`)
 - Atualizar o OrientationPanel com novo conteúdo explicativo
@@ -19,7 +18,7 @@ A sub-aba "Fluxo Financeiro" existe como placeholder desabilitado que exibe apen
 ## Capabilities
 
 ### New Capabilities
-- `fluxo-financeiro-panel`: Painel visual que mostra o fluxo financeiro diário (Daily Money Flow) como gauge horizontal divergente, complementado por barra empilhada de Buying vs Selling Pressure, marcador de CLV, e classificação qualitativa baseada em score normalizado pelo volume financeiro.
+- `fluxo-financeiro-panel`: Painel visual com três subplots: (1) card de classificação com DMF, MFV acumulado e Range%; (2) barra CLV / Score com marcador triangular; (3) barra empilhada de Buying vs Selling Pressure. Classificação qualitativa baseada em score normalizado pelo volume financeiro.
 
 ### Modified Capabilities
 - `gui-interface`: Ativar a sub-aba "Fluxo Financeiro" (remover do conjunto de abas desabilitadas). Atualizar OrientationPanel com novo conteúdo explicativo alinhado ao redesign. Adicionar cenário para o summary dinâmico via callback.

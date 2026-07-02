@@ -71,7 +71,7 @@
 - **Descrição:** Fluxo financeiro diário ponderado pelo sinal do CLV.
 - **Fórmula:** `CLV × VolumeFinanceiro` por data.
 - **Dependência:** Depende do indicador `clv`.
-- **Aplicabilidade:** Diferente do Money Flow Volume (que acumula), este é calculado por data. Valor positivo indica fluxo comprador líquido naquele pregão; negativo indica fluxo vendedor. Utilizado como traço horizontal no gráfico de evolução da dominância para mostrar o capital envolvido em cada dia.
+- **Aplicabilidade:** Diferente do Money Flow Volume (que acumula), este é calculado por data. Valor positivo indica fluxo comprador líquido naquele pregão; negativo indica fluxo vendedor. É o indicador principal do painel Fluxo Financeiro (sub-aba "Análise do Ticker"), onde aparece em milhões de reais no card de classificação ao lado do score normalizado. Também utilizado como traço horizontal no gráfico de evolução da dominância.
 
 ### Dominance Score (Score de Dominância)
 - **ID:** `dominance_score`

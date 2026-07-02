@@ -46,22 +46,23 @@ Em vez de thresholds absolutos em reais (que não funcionam entre PETR4 e small 
 
 Simétrico, independente de capitalização e liquidez.
 
-### D3: CLV integrado como marcador no gauge principal
+### D3: CLV como subplot independente
 
-O CLV está embutido no MFV (MFV = CLV × fin_vol). Em vez de um subplot separado, o CLV aparece como um marcador (triângulo ou linha vertical) sobreposto no gauge, indicando onde ocorreu o fechamento no range. Isso reduz complexidade visual.
+O CLV originalmente seria um marcador sobreposto no gauge, mas foi separado em seu próprio subplot (`_ax_clv`) abaixo do card. A barra horizontal representa o range −1 a +1 com o marcador triangular na posição exata do CLV, labels "◄ Vendedor" / "Comprador ►" e escala percentual. A separação permite que cada subplot tenha seu próprio ylim e estilo visual independente.
 
-### D4: MFV acumulado como texto no gauge
+### D4: Card de classificação como subplot independente
 
-Em vez de subplot separado, o valor acumulado do período aparece como texto de contexto dentro do próprio eixo do gauge, estilo "Acum. 7d: +R$ 52,3M".
+O card de classificação (título, classificação qualitativa, DMF, MFV acumulado, Range%) está em seu próprio subplot (`_ax_card`) com eixos e frame invisíveis (`axis("off")`) e ylim reduzido para 0–0.7. O MFV acumulado é exibido em milhões (R$ X,XXM).
 
-### D5: GridSpec de 2 linhas
+### D5: GridSpec de 3 linhas
 
 ```
-Row 0 (60%): Gauge MFV (divergente) com CLV marker + MFV acumulado + score
-Row 1 (40%): Barra empilhada B×S (65%) | Range% + info contexto (35%)
+Row 0 (37.5%): Card de Classificação (sem eixos) — classificação, DMF, MFV, Range%
+Row 1 (25%):   CLV / Score Bar — barra horizontal −1 a +1 com marcador
+Row 2 (37.5%): Pressão no Range (B×S) — barra empilhada Buy/Sell Pressure
 ```
 
-Isso maximiza destaque para o indicador principal enquanto ancora com a decomposição do range.
+Isolamento visual completo entre os componentes, cada um com seu próprio sistema de coordenadas e responsabilidade.
 
 ### D6: Summary callback segue padrão Quadrantes
 
