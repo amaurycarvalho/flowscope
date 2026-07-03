@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## [0.5.0] — 2026-07-02
+
+### [fluxo-financeiro-panel](openspec/changes/archive/2026-07-02-fluxo-financeiro-panel) Painel visual de fluxo financeiro com classificação DMF, barra CLV/Score e pressão de compra/venda
+
+#### Added
+- Painel visual matplotlib para sub-aba "Fluxo Financeiro" com card de classificação, barra CLV/Score e barra empilhada de pressão de compra/venda
+- `summary_callback` para resumo textual dinâmico
+- `MoneyFlowClassifier` para classificação qualitativa do fluxo financeiro
+
+#### Changed
+- Sub-aba "Fluxo Financeiro" ativada (removida do conjunto de abas desabilitadas)
+- OrientationPanel atualizado com novo conteúdo explicativo para o fluxo financeiro
+
 ## [0.4.0] — 2026-07-01
 
 ### [orientation-add-question-field](openspec/changes/archive/2026-07-01-orientation-add-question-field) Pergunta-guia adicionada ao conteúdo de orientação de cada sub-aba
@@ -342,6 +355,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `_create_desktop_shortcut()` retorna `bool` em vez de chamar `sys.exit()` (reutilizável pela GUI)
 - CLI `--create-shortcut` passou a verificar plataforma no `main()` e retornar exit code 0 em não-Linux
+
+[0.5.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.5.0
 
 [0.4.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.4.0
 

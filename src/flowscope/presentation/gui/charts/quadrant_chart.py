@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class QuadrantChart:
@@ -20,6 +21,9 @@ class QuadrantChart:
             self._canvas, self.frame, copy_chart_callback=copy_chart_callback
         )
 
+        self._all_axes = [self._axes]
+        self._empty_label = create_empty(self._figure, self._all_axes)
+
         self._summary_callback = summary_callback
         self._hover_data: list[dict] = []
         self._scatter = None
@@ -32,14 +36,16 @@ class QuadrantChart:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, *, show_arrows: bool = False) -> None:
-        self._axes.clear()
         self._hover_data.clear()
         self._scatter = None
 
         if not data:
-            self._axes.set_title("Quadrantes — CLV vs VWAP Distance")
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        self._axes.clear()
 
         ticker_trajectories: list[list[dict]] = []
 
@@ -69,7 +75,7 @@ class QuadrantChart:
                 ticker_trajectories.append(points)
 
         if not ticker_trajectories:
-            self._axes.set_title("Quadrantes — CLV vs VWAP Distance")
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -270,6 +276,10 @@ class QuadrantChart:
         self._annot.xy = (x, y)
         self._annot.set_visible(True)
         self._canvas.draw_idle()
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

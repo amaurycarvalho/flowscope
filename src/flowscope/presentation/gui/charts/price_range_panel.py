@@ -5,6 +5,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class PriceRangePanel:
@@ -25,6 +26,9 @@ class PriceRangePanel:
             self._canvas, self.frame, copy_chart_callback=copy_chart_callback,
         )
 
+        self._all_axes = [self._ax_main, self._ax_clv]
+        self._empty_label = create_empty(self._figure, self._all_axes)
+
         self._hover_data: list[dict] = []
         self._annot = self._ax_main.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
@@ -34,21 +38,21 @@ class PriceRangePanel:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, ticker: str | None = None) -> None:
-        for ax in [self._ax_main, self._ax_clv]:
-            ax.clear()
         self._hover_data.clear()
 
         if not data or not ticker or ticker not in data:
-            self._ax_main.set_title("Amplitude de Preço")
-            self._ax_main.set_xlim(-0.05, 1.05)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        for ax in [self._ax_main, self._ax_clv]:
+            ax.clear()
 
         info = data[ticker]
         daily = info.get("daily_data", [])
         if not daily:
-            self._ax_main.set_title(f"Amplitude de Preço — {ticker}")
-            self._ax_main.set_xlim(-0.05, 1.05)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -362,6 +366,10 @@ class PriceRangePanel:
         self._annot.xy = (x, y)
         self._annot.set_visible(True)
         self._canvas.draw_idle()
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

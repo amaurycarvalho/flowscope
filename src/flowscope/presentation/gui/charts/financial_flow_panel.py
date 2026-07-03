@@ -7,6 +7,7 @@ from matplotlib.patches import FancyBboxPatch
 
 from flowscope.domain.strategies.classifiers import classify_money_flow
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class FinancialFlowPanel:
@@ -28,6 +29,9 @@ class FinancialFlowPanel:
             self._canvas, self.frame, copy_chart_callback=copy_chart_callback,
         )
 
+        self._all_axes = [self._ax_card, self._ax_clv, self._ax_bs]
+        self._empty_label = create_empty(self._figure, self._all_axes)
+
         self._summary_callback = summary_callback
         self._hover_data: list[dict] = []
         self._annot = self._ax_card.annotate(
@@ -38,25 +42,21 @@ class FinancialFlowPanel:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, ticker: str | None = None) -> None:
-        for ax in [self._ax_card, self._ax_clv, self._ax_bs]:
-            ax.clear()
         self._hover_data.clear()
 
         if not data or not ticker or ticker not in data:
-            self._ax_card.set_title("Fluxo Financeiro")
-            self._ax_card.set_xlim(-1, 1)
-            self._ax_clv.set_xlim(0, 1)
-            self._ax_bs.set_xlim(0, 1)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        for ax in [self._ax_card, self._ax_clv, self._ax_bs]:
+            ax.clear()
 
         info = data[ticker]
         daily = info.get("daily_data", [])
         if not daily:
-            self._ax_card.set_title(f"Fluxo Financeiro — {ticker}")
-            self._ax_card.set_xlim(-1, 1)
-            self._ax_clv.set_xlim(0, 1)
-            self._ax_bs.set_xlim(0, 1)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -344,6 +344,10 @@ class FinancialFlowPanel:
         self._annot.xy = (x, y)
         self._annot.set_visible(True)
         self._canvas.draw_idle()
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

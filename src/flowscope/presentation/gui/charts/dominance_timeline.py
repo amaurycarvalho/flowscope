@@ -9,6 +9,7 @@ from flowscope.domain.strategies.classifiers import (
     classify_conviction,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class DominanceTimelineChart:
@@ -23,6 +24,9 @@ class DominanceTimelineChart:
             self._canvas, self.frame, copy_chart_callback=copy_chart_callback
         )
 
+        self._all_axes = [self._axes]
+        self._empty_label = create_empty(self._figure, self._all_axes)
+
         self._hover_data: list[dict] = []
         self._bars = None
         self._annot = self._axes.annotate(
@@ -34,15 +38,16 @@ class DominanceTimelineChart:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict, ticker: str | None = None) -> None:
-        self._axes.clear()
         self._hover_data.clear()
         self._bars = None
 
         if not data or not ticker or ticker not in data:
-            self._axes.set_title("Evolução da Dominância")
-            self._axes.set_xlim(-1.2, 1.2)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        self._axes.clear()
 
         info = data[ticker]
         all_inds = info.get("all_indicators", {})
@@ -55,8 +60,7 @@ class DominanceTimelineChart:
             if clv_dict[d] is not None
         )
         if not common_dates:
-            self._axes.set_title(f"Evolução da Dominância — {ticker}")
-            self._axes.set_xlim(-1.2, 1.2)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -207,6 +211,10 @@ class DominanceTimelineChart:
         self._annot.xy = (x, y)
         self._annot.set_visible(True)
         self._canvas.draw_idle()
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

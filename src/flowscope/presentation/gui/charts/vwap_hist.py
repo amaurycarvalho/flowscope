@@ -5,6 +5,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class VWAPHistChart:
@@ -15,6 +16,9 @@ class VWAPHistChart:
         self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
         self._toolbar = ToolbarBR(self._canvas, self.frame, copy_chart_callback=copy_chart_callback)
+
+        self._all_axes = [self._axes]
+        self._empty_label = create_empty(self._figure, self._all_axes)
 
         self._hover_tickers: list[str] = []
         self._hover_vwaps: list[float] = []
@@ -33,16 +37,18 @@ class VWAPHistChart:
         return (price - vwap) / vwap * 100
 
     def update(self, data: dict) -> None:
-        self._axes.clear()
         self._hover_tickers.clear()
         self._hover_vwaps.clear()
         self._hover_buckets.clear()
         self._hover_last_pct.clear()
         self._violin_polygons.clear()
         if not data:
-            self._axes.set_title("VWAP — Distribuição de Preços")
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        self._axes.clear()
 
         tickers = []
         violin_data = []
@@ -79,7 +85,7 @@ class VWAPHistChart:
             last_prices_pct.append(self._to_pct(float(last_day["last_price"]), vwap_abs))
 
         if not tickers:
-            self._axes.set_title("VWAP — Distribuição de Preços")
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -216,6 +222,10 @@ class VWAPHistChart:
             return 0.25
         else:
             return 0.50
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

@@ -26,3 +26,5 @@ Ao iniciar o programa, todos os painéis de gráficos mostram eixos matplotlib e
 - **src/flowscope/presentation/gui/charts/** — Todos os 6 charts: adicionar empty state no `__init__` e nos guards de `update()`
 - **src/flowscope/presentation/gui/app.py** — Refatorar `_update_charts()`, `_update_ticker_indicator_tabs()`, `_on_tab_changed()`, `_on_load_data()` para usar registry + lazy rendering
 - **src/flowscope/presentation/gui/charts/__init__.py** — Adicionar utility function compartilhada (ou criar novo módulo `empty_state.py`)
+
+- **Target**: Release 0.5.1

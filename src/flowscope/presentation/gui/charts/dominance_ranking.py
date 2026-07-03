@@ -6,6 +6,7 @@ from matplotlib.figure import Figure
 
 from flowscope.domain.strategies.classifiers import classify_dominance
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
+from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class DominanceRankingChart:
@@ -20,6 +21,9 @@ class DominanceRankingChart:
             self._canvas, self.frame, copy_chart_callback=copy_chart_callback
         )
 
+        self._all_axes = [self._axes]
+        self._empty_label = create_empty(self._figure, self._all_axes)
+
         self._hover_data: list[dict] = []
         self._bars = None
         self._circles = None
@@ -32,16 +36,17 @@ class DominanceRankingChart:
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
     def update(self, data: dict) -> None:
-        self._axes.clear()
         self._hover_data.clear()
         self._bars = None
         self._circles = None
 
         if not data:
-            self._axes.set_title("Dominância do Pregão")
-            self._axes.set_xlim(-1.2, 1.2)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
+
+        hide_empty(self._empty_label)
+        self._axes.clear()
 
         rows = []
         max_mfv = 0.0
@@ -67,8 +72,7 @@ class DominanceRankingChart:
             })
 
         if not rows:
-            self._axes.set_title("Dominância do Pregão")
-            self._axes.set_xlim(-1.2, 1.2)
+            show_empty(self._figure, self._all_axes, self._empty_label)
             self._canvas.draw()
             return
 
@@ -227,6 +231,10 @@ class DominanceRankingChart:
         self._annot.xy = (x, y)
         self._annot.set_visible(True)
         self._canvas.draw_idle()
+
+    def reset(self):
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
     def get_figure(self):
         return self._figure

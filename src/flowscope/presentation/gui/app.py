@@ -97,7 +97,6 @@ class FlowScopeGUI(tk.Tk):
         self._all_tickers: list[str] = []
         self._loading_after_id = None
         self._flash_after_id = None
-        self._charts_dirty: bool = True
 
         self._build_top_bar()
         self._build_main_area()
@@ -492,6 +491,19 @@ class FlowScopeGUI(tk.Tk):
             except Exception:
                 pass
 
+        self._GENERAL = {
+            "VWAP": self._vwap_chart,
+            "Quadrantes": self._quadrant_chart,
+            "Dominância do Pregão": self._dominance_ranking,
+        }
+        self._TICKER = {
+            "Evolução da Dominância": self._dominance_timeline,
+            "Amplitude de Preço": self._price_range_panel,
+            "Fluxo Financeiro": self._financial_flow_panel,
+        }
+        self._ticker_charts = set(self._TICKER.values())
+        self._all_charts = [*self._GENERAL.values(), *self._TICKER.values()]
+
     def _restore_tabs(self, last_tab, last_subtab):
         try:
             for i in range(self._main_notebook.index("end")):
@@ -646,8 +658,14 @@ class FlowScopeGUI(tk.Tk):
             reporter.finish_phase()
             self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
             self._date_label.config(text=f"Dados: {ref_date}")
-            self._charts_dirty = True
-            self._refresh_current_tab()
+
+            current = self._resolve_current_chart()
+            for c in self._all_charts:
+                if c is not current:
+                    c.reset()
+            if current:
+                self._do_update(current)
+
             n = len(self._tickers)
             self._copy_data_btn.config(state=tk.NORMAL)
             self._set_status(
@@ -668,34 +686,31 @@ class FlowScopeGUI(tk.Tk):
             return all_tickers[0]
         return None
 
-    def _update_ticker_indicator_tabs(self):
-        ticker = self._get_selected_ticker()
-        data = self._current_data.get(ticker) if ticker else None
-        for name, info in self._ticker_indicator_frames.items():
-            if name == "Evolução da Dominância":
-                if hasattr(self, "_dominance_timeline"):
-                    self._dominance_timeline.update(self._current_data, ticker=ticker)
-                continue
-            if name == "Amplitude de Preço":
-                if hasattr(self, "_price_range_panel"):
-                    self._price_range_panel.update(self._current_data, ticker=ticker)
-                continue
-            if name == "Fluxo Financeiro":
-                if hasattr(self, "_financial_flow_panel"):
-                    self._financial_flow_panel.update(self._current_data, ticker=ticker)
-                continue
-            text_w = info["text"]
-            text_w.config(state=tk.NORMAL)
-            text_w.delete("1.0", tk.END)
-            if not data:
-                text_w.insert(tk.END, "Selecione um ticker e carregue os dados.")
-                text_w.config(state=tk.DISABLED)
-                continue
-            if info["keys"][0] is None:
-                self._format_all_indicators(text_w, ticker, data)
+    def _resolve_chart(self, main_tab: str, sub_tab: str):
+        if main_tab == "Análise Geral":
+            return self._GENERAL.get(sub_tab)
+        return self._TICKER.get(sub_tab)
+
+    def _resolve_current_chart(self):
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            if main_tab == "Análise Geral":
+                sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
-                self._format_selected_indicators(text_w, ticker, data, info["keys"])
-            text_w.config(state=tk.DISABLED)
+                sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
+            return self._resolve_chart(main_tab, sub_tab)
+        except Exception:
+            return None
+
+    def _do_update(self, chart) -> None:
+        tickers = self._ticker_list.get_tickers()
+        filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
+        if isinstance(chart, QuadrantChart):
+            chart.update(filtered, show_arrows=(len(filtered) == 1))
+        elif chart in self._ticker_charts:
+            chart.update(self._current_data, ticker=self._get_selected_ticker())
+        else:
+            chart.update(filtered)
 
     def _format_selected_indicators(self, text_w, ticker, data, keys):
         all_inds = data.get("all_indicators", {})
@@ -747,20 +762,6 @@ class FlowScopeGUI(tk.Tk):
         if mfv is not None:
             text_w.insert(tk.END, f"\nMoney Flow Volume (acum.): {mfv}")
 
-    def _refresh_current_tab(self):
-        if not self._charts_dirty or not self._current_data:
-            return
-        try:
-            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
-        except Exception:
-            return
-        if main_tab == "Análise Geral":
-            self._update_charts()
-        else:
-            self._update_ticker_indicator_tabs()
-        self._update_ticker_counter()
-        self._charts_dirty = False
-
     def _on_tab_changed(self, event=None):
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
@@ -772,13 +773,10 @@ class FlowScopeGUI(tk.Tk):
             return
 
         if self._current_data:
-            if main_tab == "Análise Geral":
-                self._update_charts()
-                self._update_ticker_counter()
-            else:
-                self._update_ticker_indicator_tabs()
-                self._update_ticker_counter()
-            self._charts_dirty = False
+            chart = self._resolve_chart(main_tab, sub_tab)
+            if chart:
+                self._do_update(chart)
+            self._update_ticker_counter()
 
         content = self._tab_content.get((main_tab, sub_tab))
         if content:
@@ -800,10 +798,11 @@ class FlowScopeGUI(tk.Tk):
                 self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
                 return
         self._tickers = list(tickers)
-        self._charts_dirty = True
         self._set_wait_cursor()
         try:
-            self._refresh_current_tab()
+            current = self._resolve_current_chart()
+            if current and self._current_data:
+                self._do_update(current)
         finally:
             self._clear_wait_cursor()
         self._flash_status("Filtro aplicado!", "ℹ")
@@ -811,8 +810,12 @@ class FlowScopeGUI(tk.Tk):
     def _on_date_change(self):
         ref_date = self._date_entry.get_date()
         self._current_data = self._use_case.execute(ref_date, self._tickers or None)
-        self._charts_dirty = True
-        self._refresh_current_tab()
+        current = self._resolve_current_chart()
+        for c in self._all_charts:
+            if c is not current:
+                c.reset()
+        if current:
+            self._do_update(current)
 
     def _on_quadrant_summary(self, summary: str) -> None:
         try:
@@ -839,21 +842,6 @@ class FlowScopeGUI(tk.Tk):
                 )
         except Exception:
             pass
-
-    def _update_charts(self):
-        import matplotlib
-
-        matplotlib.use("TkAgg")
-
-        tickers = self._ticker_list.get_tickers()
-        filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
-
-        self._vwap_chart.update(filtered)
-
-        show_arrows = len(filtered) == 1
-        self._quadrant_chart.update(filtered, show_arrows=show_arrows)
-
-        self._dominance_ranking.update(filtered)
 
     def _update_ticker_counter(self):
         all_listbox = self._ticker_list.get_all_listbox_tickers()
