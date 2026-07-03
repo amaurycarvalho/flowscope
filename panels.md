@@ -161,7 +161,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 - **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Estimar o perfil dos participantes do pregão (institucional vs. varejo) com base no tamanho médio das negociações.
-- **Exibição atual:** Texto estático com valores dos indicadores (Average Trade Size, Average Financial Ticket) formatados pelo método `_format_selected_indicators`.
+- **Responde a pergunta:** _Quem parece estar negociando? Grandes participantes ou varejo?_
 - **Indicadores envolvidos:**
   - `Average Trade Size` — Quantidade média de ações por negócio
   - `Average Financial Ticket` — Valor financeiro médio por negócio
@@ -170,7 +170,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 - **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Medir se o range do dia resultou em deslocamento efetivo do preço ou foi apenas ruído (oscilação sem direção).
-- **Exibição atual:** Texto estático com valor do indicador Daily Efficiency formatado pelo método `_format_selected_indicators`.
+- **Responde a pergunta:** _O mercado caminhou com convicção ou apenas oscilou?_
 - **Indicadores envolvidos:**
   - `Daily Efficiency` — `|Fechamento − Preço Médio| / Range`
 
@@ -178,7 +178,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 - **Status:** Placeholder — sub-aba desabilitada (implementação futura).
 - **Objetivo:** Consolidar todos os indicadores disponíveis em uma única visualização para o ticker selecionado.
-- **Exibição atual:** Texto estático com todos os indicadores disponíveis formatados pelo método `_format_all_indicators`.
+- **Responde a pergunta:** _O que realmente aconteceu neste ativo? Quem parece estar negociando? Grandes participantes ou varejo?_
 - **Indicadores envolvidos:**
   - **Preço:** Range, Range%, Typical Price, Median Price, Weighted Close
   - **Fluxo:** CLV, Money Flow Multiplier, Money Flow Volume, Buying Pressure, Selling Pressure
