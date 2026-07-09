@@ -1,3 +1,4 @@
+import os
 import tkinter as tk
 import pytest
 
@@ -9,7 +10,14 @@ def root():
     r.destroy()
 
 
+needs_display = pytest.mark.skipif(
+    not os.environ.get("DISPLAY"),
+    reason="Test requires a display (no DISPLAY env var)",
+)
+
+
 class TestDisableRestoreButtons:
+    @needs_display
     def test_disable_all_salva_snapshot_e_desabilita(self, root):
         btn1 = tk.Button(root, state=tk.NORMAL)
         btn2 = tk.Button(root, state=tk.DISABLED)
@@ -26,6 +34,7 @@ class TestDisableRestoreButtons:
         assert gui._button_states[btn2] == tk.DISABLED
         assert gui._button_states[btn3] == tk.ACTIVE
 
+    @needs_display
     def test_restore_all_retorna_aos_estados_anteriores(self, root):
         btn1 = tk.Button(root, state=tk.NORMAL)
         btn2 = tk.Button(root, state=tk.DISABLED)
