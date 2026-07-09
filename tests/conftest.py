@@ -1,11 +1,15 @@
-from datetime import date
+import json
+from datetime import date, datetime
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import responses
 
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
+from flowscope.infrastructure.cache import CacheManager
 
 SAMPLE_CSV = (
     "RptDt;TckrSymb;SgmtNm;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;NtlFinVol;FinInstrmQty\n"
@@ -148,4 +152,27 @@ def mock_trades() -> list[TradeDay]:
 def mock_b3_client():
     client = MagicMock()
     client.fetch_file.return_value = SAMPLE_CSV
+    client.fetch_portfolio.return_value = ["PETR4", "VALE3", "ITUB4"]
     return client
+
+
+@pytest.fixture
+def mock_repository(mock_b3_client):
+    from flowscope.infrastructure.b3.repository import B3DataRepository
+    repo = MagicMock(spec=B3DataRepository)
+    repo._client = mock_b3_client
+    repo.get_available_dates.return_value = [date(2026, 6, 25), date(2026, 6, 24)]
+    repo.get_index_tickers.return_value = ["PETR4", "VALE3", "ITUB4"]
+    return repo
+
+
+@pytest.fixture
+def sample_cached_portfolio(tmp_path: Path) -> Path:
+    meta_path = tmp_path / "portfolio_IBOV.json"
+    payload = {
+        "cached_at": datetime.now().isoformat(),
+        "tickers": ["PETR4", "VALE3"],
+        "index": "IBOV",
+    }
+    meta_path.write_text(json.dumps(payload), encoding="utf-8")
+    return tmp_path

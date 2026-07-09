@@ -121,7 +121,7 @@ class FlowScopeController:
                 self._presenter.on_result(result, tickers, ref_date)
 
             except PortfolioNotFoundError:
-                self._presenter._gui._set_status(
+                self._presenter.set_status(
                     "Filtro vazio e não foi possível carregar a carteira IDIV.",
                     "⚠",
                 )

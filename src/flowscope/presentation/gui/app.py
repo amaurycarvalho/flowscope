@@ -124,7 +124,7 @@ class FlowScopeGUI(tk.Tk):
         guard = OperationGuard()
         load_portfolio = LoadIndexPortfolioUseCase(repo)
         analyze = AnalyzeTickersUseCase(repo)
-        presenter = FlowScopePresenter(gui=self)
+        presenter = FlowScopePresenter(view=self)
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -598,6 +598,57 @@ class FlowScopeGUI(tk.Tk):
 
     def _clear_wait_cursor(self):
         self.config(cursor="")
+
+    # ── GUIView protocol public methods ──────────────────────────────
+
+    def disable_all_buttons(self) -> None:
+        self._disable_all_buttons()
+
+    def restore_all_buttons(self) -> None:
+        self._restore_all_buttons()
+
+    def set_wait_cursor(self) -> None:
+        self._set_wait_cursor()
+
+    def clear_wait_cursor(self) -> None:
+        self._clear_wait_cursor()
+
+    def set_progress(self, current: int, total: int, label: str) -> None:
+        self._set_progress(current, total, label)
+
+    def set_status(self, msg: str, icon: str = "") -> None:
+        self._set_status(msg, icon)
+
+    def get_reference_date(self) -> date:
+        return self._date_entry.get_date()
+
+    def get_current_tickers(self) -> list[str]:
+        return self._ticker_list.get_all_listbox_tickers()
+
+    def set_tickers(self, tickers: list[str]) -> None:
+        self._ticker_list.set_tickers(tickers)
+
+    def set_counter(self, text: str) -> None:
+        self._ticker_list.set_counter(text)
+
+    def config_copy_button_state(self, state: str) -> None:
+        self._copy_data_btn.config(state=state)
+
+    def on_tab_changed(self) -> None:
+        self._on_tab_changed()
+
+    def clear_progress(self) -> None:
+        self._progress_bar.pack_forget()
+        self._progress_bar["value"] = 0
+
+    def set_current_data(self, data: dict) -> None:
+        self._current_data = data
+
+    def set_tickers_list(self, tickers: list[str]) -> None:
+        self._tickers = list(tickers)
+
+    def set_date_label(self, text: str) -> None:
+        self._date_label.config(text=text)
 
     def _disable_all_buttons(self) -> None:
         if self._flash_after_id:

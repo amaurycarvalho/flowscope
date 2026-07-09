@@ -1,54 +1,75 @@
 import tkinter as tk
 from datetime import date
-from typing import TYPE_CHECKING
+from typing import Protocol
 
-if TYPE_CHECKING:
-    from flowscope.presentation.gui.app import FlowScopeGUI
+
+class GUIView(Protocol):
+    def disable_all_buttons(self) -> None: ...
+    def restore_all_buttons(self) -> None: ...
+    def set_wait_cursor(self) -> None: ...
+    def clear_wait_cursor(self) -> None: ...
+    def set_progress(self, current: int, total: int, label: str) -> None: ...
+    def set_status(self, msg: str, icon: str = "") -> None: ...
+    def get_reference_date(self) -> date: ...
+    def get_current_tickers(self) -> list[str]: ...
+    def set_tickers(self, tickers: list[str]) -> None: ...
+    def set_counter(self, text: str) -> None: ...
+    def config_copy_button_state(self, state: str) -> None: ...
+    def on_tab_changed(self) -> None: ...
+    def clear_progress(self) -> None: ...
+    def set_current_data(self, data: dict) -> None: ...
+    def set_tickers_list(self, tickers: list[str]) -> None: ...
+    def set_date_label(self, text: str) -> None: ...
 
 
 class FlowScopePresenter:
-    def __init__(self, gui: "FlowScopeGUI"):
-        self._gui = gui
+    def __init__(self, view: GUIView):
+        self._view = view
 
     def on_operation_started(self) -> None:
-        self._gui._disable_all_buttons()
-        self._gui._set_wait_cursor()
+        self._view.disable_all_buttons()
+        self._view.set_wait_cursor()
 
     def on_operation_finished(self) -> None:
-        self._gui._restore_all_buttons()
-        self._gui._clear_wait_cursor()
-        self._gui._progress_bar.pack_forget()
-        self._gui._progress_bar["value"] = 0
+        self._view.restore_all_buttons()
+        self._view.clear_wait_cursor()
+        self._view.clear_progress()
 
     def on_portfolio_loaded(self, tickers: list[str]) -> None:
-        self._gui._ticker_list.set_tickers(tickers)
+        self._view.set_tickers(tickers)
 
     def on_progress(self, current: int, total: int, label: str) -> None:
-        self._gui._set_progress(current, total, label)
+        self._view.set_progress(current, total, label)
 
     def on_result(
         self, result: dict, tickers: list[str], ref_date: date,
     ) -> None:
-        gui = self._gui
-        gui._current_data = result
-        gui._tickers = list(tickers)
-        gui._copy_data_btn.config(state=tk.NORMAL)
-        gui._ticker_list.set_counter(f"Tickers ({len(tickers)})")
-        gui._date_label.config(text=f"Dados: {ref_date}")
-        gui._on_tab_changed()
-        gui._set_status(
+        self._view.set_current_data(result)
+        self._view.set_tickers_list(tickers)
+        self._view.config_copy_button_state(tk.NORMAL)
+        self._view.set_counter(f"Tickers ({len(tickers)})")
+        self._view.set_date_label(f"Dados: {ref_date}")
+        self._view.on_tab_changed()
+        self._view.set_status(
             f"{len(tickers)} ticker{'s' if len(tickers) != 1 else ''} "
             f"carregado{'s' if len(tickers) != 1 else ''} para {ref_date}.",
             "✓",
         )
 
     def on_error(self, error: Exception) -> None:
-        self._gui._set_status(
+        self._view.set_status(
             f"Não foi possível carregar os dados. {error}", "⚠",
         )
 
     def get_reference_date(self) -> date:
-        return self._gui._date_entry.get_date()
+        return self._view.get_reference_date()
 
     def get_current_tickers(self) -> list[str]:
-        return self._gui._ticker_list.get_all_listbox_tickers()
+        return self._view.get_current_tickers()
+
+    def set_status(self, msg: str, icon: str = "") -> None:
+        self._view.set_status(msg, icon)
+
+    @property
+    def _gui(self):
+        return self._view

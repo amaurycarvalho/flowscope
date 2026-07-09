@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
-from flowscope.application.use_cases import ExportVWAPUseCase
+from flowscope.application.use_cases import AnalyzeTickersUseCase, ExportVWAPUseCase
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
 
@@ -85,3 +85,38 @@ class TestExportVWAPUseCase:
         assert "2026-06-24" in header
         assert "2026-06-25" in header
         assert len(lines) >= 2
+
+
+class TestAnalyzeTickersUseCase:
+    def test_execute_com_tickers(self, mock_trades):
+        repo = _make_mock_repo(mock_trades)
+        uc = AnalyzeTickersUseCase(repo)
+        result = uc.execute(ref_date=date(2026, 6, 26), tickers=["PETR4", "VALE3"])
+        assert "PETR4" in result
+        assert "VALE3" in result
+        for ticker in ("PETR4", "VALE3"):
+            assert "vwap" in result[ticker]
+            assert "volume_profile" in result[ticker]
+            assert "daily_data" in result[ticker]
+            assert "money_flow_volume" in result[ticker]
+            assert "all_indicators" in result[ticker]
+
+    def test_execute_sem_tickers_usa_top_tickers(self, mock_trades):
+        repo = _make_mock_repo(mock_trades)
+        uc = AnalyzeTickersUseCase(repo)
+        result = uc.execute(ref_date=date(2026, 6, 26))
+        assert len(result) > 0
+
+    def test_execute_com_progress_callback(self, mock_trades):
+        repo = _make_mock_repo(mock_trades)
+        callback = MagicMock()
+        uc = AnalyzeTickersUseCase(repo)
+        uc.execute(ref_date=date(2026, 6, 26), tickers=["PETR4"], progress_callback=callback)
+        callback.assert_called()
+
+    def test_execute_sem_trades_retorna_dict_com_tickers_mas_sem_dados(self):
+        repo = _make_mock_repo([])
+        uc = AnalyzeTickersUseCase(repo)
+        result = uc.execute(ref_date=date(2026, 6, 26), tickers=["PETR4"])
+        assert "PETR4" in result
+        assert result["PETR4"]["daily_data"] == []
