@@ -11,33 +11,36 @@ from flowscope.presentation.main import _resolve_icon_path
 class TickerList:
     def __init__(self, parent: tk.Widget, on_change: callable = None, on_load: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None, on_data_needed: callable = None):
         self.frame = tk.Frame(parent)
-        self._on_change = on_change
-        self._on_load = on_load
+        self._callbacks: dict[str, callable | dict] = {}
+        self._callbacks["on_change"] = on_change
+        self._callbacks["on_load"] = on_load
+        self._callbacks["on_dir_changed"] = on_dir_changed
+        self._callbacks["on_data_needed"] = on_data_needed
+        self._callbacks["on_index_click"] = on_index_click or {}
         self._initialdir = initialdir
-        self._on_dir_changed = on_dir_changed
-        self._on_data_needed = on_data_needed
         self._view_mode = True
         self._icon_refs: list[ImageTk.PhotoImage] = []
 
         self._view_tickers_snapshot: list[str] = []
         self._view_selection_snapshot: set[str] = set()
 
-        btn_frame = tk.Frame(self.frame)
-        btn_frame.pack(fill=tk.X, pady=(0, 2))
+        self._btn_frame = tk.Frame(self.frame)
+        self._btn_frame.pack(fill=tk.X, pady=(0, 2))
+        btn_frame = self._btn_frame
 
-        btn_load = tk.Button(
+        self._btn_load = tk.Button(
             btn_frame, image=self._load_icon("document-open.png"),
             command=self._load, cursor="hand2", padx=0,
         )
-        btn_load.pack(side=tk.LEFT, padx=2)
-        ToolTip(btn_load, "Carregar lista de tickers de arquivo")
+        self._btn_load.pack(side=tk.LEFT, padx=2)
+        ToolTip(self._btn_load, "Carregar lista de tickers de arquivo")
 
-        btn_save = tk.Button(
+        self._btn_save = tk.Button(
             btn_frame, image=self._load_icon("document-save.png"),
             command=self._save, cursor="hand2", padx=0,
         )
-        btn_save.pack(side=tk.LEFT, padx=2)
-        ToolTip(btn_save, "Salvar lista de tickers em arquivo")
+        self._btn_save.pack(side=tk.LEFT, padx=2)
+        ToolTip(self._btn_save, "Salvar lista de tickers em arquivo")
 
         sep1 = tk.Frame(btn_frame, width=2, relief=tk.RIDGE, bd=1)
         sep1.pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
@@ -69,9 +72,16 @@ class TickerList:
         self._sep = tk.Frame(btn_frame, width=2, relief=tk.RIDGE, bd=1)
         self._sep.pack(side=tk.LEFT, fill=tk.Y, padx=6, pady=2)
 
+        self._index_buttons: list[tk.Button] = []
         if on_index_click:
-            for label, callback in on_index_click.items():
-                tk.Button(btn_frame, text=label, command=callback, cursor="hand2").pack(side=tk.LEFT, padx=2)
+            for label in on_index_click:
+                btn = tk.Button(
+                    btn_frame, text=label,
+                    command=lambda l=label: self._callbacks.get("on_index_click", {}).get(l, lambda: None)(),
+                    cursor="hand2",
+                )
+                btn.pack(side=tk.LEFT, padx=2)
+                self._index_buttons.append(btn)
 
         top_frame = tk.Frame(self.frame)
         top_frame.pack(fill=tk.X)
@@ -169,8 +179,9 @@ class TickerList:
         if new_set != old_set:
             self._view_tickers_snapshot = list(text_tickers)
             self._view_selection_snapshot = new_selection
-            if self._on_data_needed:
-                self._on_data_needed()
+            on_data_needed = self._callbacks.get("on_data_needed")
+            if on_data_needed:
+                on_data_needed()
 
     def _get_text_tickers(self) -> list[str]:
         content = self._text.get("1.0", tk.END).strip()
@@ -205,9 +216,34 @@ class TickerList:
     def _deselect_all_listbox(self) -> None:
         self._listbox.selection_clear(0, tk.END)
 
+    def all_buttons(self) -> list[tk.Widget]:
+        buttons = [
+            self._btn_load, self._btn_save,
+            self._edit_toggle, self._btn_all, self._btn_none,
+        ]
+        buttons.extend(self._index_buttons)
+        return buttons
+
+    def rebind(self, **callbacks) -> None:
+        self._callbacks.update(callbacks)
+        on_index_click = callbacks.get("on_index_click")
+        if on_index_click is not None:
+            for btn in self._index_buttons:
+                btn.destroy()
+            self._index_buttons.clear()
+            for label in on_index_click:
+                btn = tk.Button(
+                    self._btn_frame, text=label,
+                    command=lambda l=label: self._callbacks.get("on_index_click", {}).get(l, lambda: None)(),
+                    cursor="hand2",
+                )
+                btn.pack(side=tk.LEFT, padx=2)
+                self._index_buttons.append(btn)
+
     def _on_listbox_select(self, event=None) -> None:
-        if self._view_mode and self._on_change:
-            self._on_change()
+        on_change = self._callbacks.get("on_change")
+        if self._view_mode and on_change:
+            on_change()
 
     def _on_double_click(self, event):
         try:
@@ -270,12 +306,14 @@ class TickerList:
         )
         if path:
             Path(path).write_text("\n".join(self.get_tickers()), encoding="utf-8")
-            if self._on_dir_changed:
-                self._on_dir_changed(Path(path).parent)
+            on_dir_changed = self._callbacks.get("on_dir_changed")
+            if on_dir_changed:
+                on_dir_changed(Path(path).parent)
 
     def _filter(self) -> None:
-        if self._on_change:
-            self._on_change()
+        on_change = self._callbacks.get("on_change")
+        if on_change:
+            on_change()
 
     def _load(self) -> None:
         path = filedialog.askopenfilename(
@@ -297,7 +335,9 @@ class TickerList:
             self._view_tickers_snapshot = list(loaded)
             self._view_selection_snapshot = set(loaded)
             self._set_view_mode(True)
-            if self._on_dir_changed:
-                self._on_dir_changed(Path(path).parent)
-            if self._on_load:
-                self._on_load()
+            on_dir_changed = self._callbacks.get("on_dir_changed")
+            if on_dir_changed:
+                on_dir_changed(Path(path).parent)
+            on_load = self._callbacks.get("on_load")
+            if on_load:
+                on_load()

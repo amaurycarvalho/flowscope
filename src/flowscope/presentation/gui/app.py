@@ -6,10 +6,13 @@ from datetime import date, datetime
 from pathlib import Path
 from tkcalendar import DateEntry
 
+from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
+from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
-from flowscope.presentation.gui.progress import ProgressReporter
+from flowscope.presentation.gui.controller import FlowScopeController
+from flowscope.presentation.gui.presenter import FlowScopePresenter
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
@@ -90,8 +93,6 @@ class FlowScopeGUI(tk.Tk):
         self._set_icon()
         self._setup_style()
 
-        self._repo = B3DataRepository(B3Client())
-        self._use_case = AnalyzeTickersUseCase(self._repo)
         self._current_data: dict = {}
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
@@ -112,9 +113,34 @@ class FlowScopeGUI(tk.Tk):
             except (ValueError, TypeError):
                 pass
 
+        self._wire_controller()
+
         self._date_entry.focus_set()
         self._set_status("Pronto. Selecione uma data e clique em Carregar.")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _wire_controller(self) -> None:
+        repo = B3DataRepository(B3Client())
+        guard = OperationGuard()
+        load_portfolio = LoadIndexPortfolioUseCase(repo)
+        analyze = AnalyzeTickersUseCase(repo)
+        presenter = FlowScopePresenter(gui=self)
+        self._controller = FlowScopeController(
+            guard=guard,
+            load_portfolio=load_portfolio,
+            analyze=analyze,
+            presenter=presenter,
+        )
+        self._ticker_list.rebind(
+            on_change=self._controller.on_ticker_edit,
+            on_load=self._controller.on_load_data,
+            on_data_needed=self._controller.on_load_data,
+            on_index_click={
+                "IBOV": lambda: self._controller.on_index_clicked("IBOV"),
+                "IDIV": lambda: self._controller.on_index_clicked("IDIV"),
+                "IFIX": lambda: self._controller.on_index_clicked("IFIX"),
+            },
+        )
 
     def _load_icon(self, filename: str, size: tuple = (20, 20)) -> ImageTk.PhotoImage:
         path = _resolve_icon_path(filename)
@@ -465,15 +491,12 @@ class FlowScopeGUI(tk.Tk):
         right_pw.add(ticker_frame, stretch="always")
         self._ticker_list = TickerList(
             ticker_frame,
-            on_change=self._on_ticker_edit,
-            on_load=self._on_load_data,
             initialdir=self._prefs.get("last_ticker_dir"),
             on_dir_changed=self._on_ticker_dir_changed,
-            on_data_needed=self._on_load_data,
             on_index_click={
-                "IBOV": lambda: self._fill_with_index("IBOV") or self._on_load_data(),
-                "IDIV": lambda: self._fill_with_index("IDIV") or self._on_load_data(),
-                "IFIX": lambda: self._fill_with_index("IFIX") or self._on_load_data(),
+                "IBOV": lambda: None,
+                "IDIV": lambda: None,
+                "IFIX": lambda: None,
             },
         )
         self._ticker_list.frame.pack(fill=tk.BOTH, expand=True)
@@ -576,106 +599,41 @@ class FlowScopeGUI(tk.Tk):
     def _clear_wait_cursor(self):
         self.config(cursor="")
 
-    def _enter_loading_state(self):
+    def _disable_all_buttons(self) -> None:
         if self._flash_after_id:
             self.after_cancel(self._flash_after_id)
             self._flash_after_id = None
-        self._load_button.config(state=tk.DISABLED)
-        self._today_button.config(state=tk.DISABLED)
+        self._button_states: dict[tk.Widget, str] = {}
+        gui_buttons = [
+            self._load_button, self._today_button, self._copy_data_btn,
+        ]
+        if self._shortcut_btn:
+            gui_buttons.append(self._shortcut_btn)
+        for btn in gui_buttons:
+            self._button_states[btn] = btn.cget("state")
+            btn.config(state=tk.DISABLED)
+        for btn in self._ticker_list.all_buttons():
+            self._button_states[btn] = btn.cget("state")
+            btn.config(state=tk.DISABLED)
+        self._button_states[self._date_entry] = str(self._date_entry.cget("state"))
         self._date_entry.config(state=tk.DISABLED)
-        self._set_wait_cursor()
 
-    def _exit_loading_state(self):
-        self._load_button.config(state=tk.NORMAL)
-        self._today_button.config(state=tk.NORMAL)
-        self._date_entry.config(state="normal")
-        self._clear_wait_cursor()
-        self._progress_bar.pack_forget()
-        self._progress_bar["value"] = 0
-
-    def _fill_with_index(self, index: str, reporter: ProgressReporter | None = None) -> None:
-        if reporter:
-            reporter.start_phase(f"Baixando portfólio {index}...", total=1, weight=1)
-            self._set_progress(0, 1, f"Baixando portfólio {index}...")
-        else:
-            self._set_status(f"Baixando portfólio {index}...", "⏳")
-            self.update_idletasks()
-
-        def _portfolio_cb(detail: str, failed: bool) -> None:
-            if reporter and not failed:
-                reporter.advance(1, detail)
-
-        tickers = self._repo.get_index_tickers(index, progress_callback=_portfolio_cb)
-        if tickers:
-            self._ticker_list.set_tickers(tickers)
-            if reporter:
-                reporter.finish_phase()
-            self._flash_status(f"Carteira {index} carregada com {len(tickers)} ativos.")
-        else:
-            if reporter:
-                reporter.finish_phase()
-            self._flash_status(f"Não foi possível carregar a carteira {index}.", "⚠")
-
-    def _ensure_tickers(self, reporter: ProgressReporter | None = None) -> list[str]:
-        tickers = self._ticker_list.get_all_listbox_tickers()
-        if not tickers:
-            self._fill_with_index("IDIV", reporter=reporter)
-            tickers = self._ticker_list.get_all_listbox_tickers()
-        return tickers
+    def _restore_all_buttons(self) -> None:
+        if not hasattr(self, "_button_states"):
+            return
+        for widget, state in self._button_states.items():
+            try:
+                widget.config(state=state)
+            except tk.TclError:
+                pass
+        self._button_states = {}
 
     def _on_today(self):
         self._date_entry.set_date(date.today())
-        self._on_load_data()
+        self._controller.on_load_data()
 
     def _on_load_data(self):
-        self._enter_loading_state()
-        ref_date = self._date_entry.get_date()
-        reporter = ProgressReporter(on_update=self._set_progress)
-        try:
-            tickers = self._ensure_tickers(reporter=reporter)
-            if not tickers:
-                self._set_status(
-                    "Filtro vazio e não foi possível carregar a carteira IDIV.",
-                    "⚠",
-                )
-                return
-            self._tickers = list(tickers)
-            dates = self._repo.get_available_dates(ref_date)
-
-            def _pipeline_cb(detail: str, failed: bool) -> None:
-                if failed:
-                    reporter.fail(1, detail)
-                else:
-                    reporter.advance(1, detail)
-
-            reporter.start_phase("Baixando dados históricos", total=len(dates), weight=3)
-            self._current_data = self._use_case.execute(
-                ref_date, self._tickers or None,
-                progress_callback=_pipeline_cb,
-            )
-            reporter.finish_phase()
-            reporter.start_phase("Processando indicadores", total=1, weight=2)
-            reporter.finish_phase()
-            self._ticker_list.set_counter(f"Tickers ({len(self._tickers)})")
-            self._date_label.config(text=f"Dados: {ref_date}")
-
-            current = self._resolve_current_chart()
-            for c in self._all_charts:
-                if c is not current:
-                    c.reset()
-            if current:
-                self._do_update(current)
-
-            n = len(self._tickers)
-            self._copy_data_btn.config(state=tk.NORMAL)
-            self._set_status(
-                f"{n} ticker{'s' if n != 1 else ''} carregado{'s' if n != 1 else ''} para {ref_date}.",
-                "✓",
-            )
-        except Exception as e:
-            self._set_status(f"Não foi possível carregar os dados. {e}", "⚠")
-        finally:
-            self._exit_loading_state()
+        self._controller.on_load_data()
 
     def _get_selected_ticker(self) -> str | None:
         selected = self._ticker_list.get_tickers()
@@ -790,32 +748,7 @@ class FlowScopeGUI(tk.Tk):
         save_preferences(self._prefs)
 
     def _on_ticker_edit(self):
-        tickers = self._ticker_list.get_tickers()
-        if not tickers:
-            self._fill_with_index("IDIV")
-            tickers = self._ticker_list.get_tickers()
-            if not tickers:
-                self._flash_status("Não foi possível carregar a carteira IDIV.", "⚠")
-                return
-        self._tickers = list(tickers)
-        self._set_wait_cursor()
-        try:
-            current = self._resolve_current_chart()
-            if current and self._current_data:
-                self._do_update(current)
-        finally:
-            self._clear_wait_cursor()
-        self._flash_status("Filtro aplicado!", "ℹ")
-
-    def _on_date_change(self):
-        ref_date = self._date_entry.get_date()
-        self._current_data = self._use_case.execute(ref_date, self._tickers or None)
-        current = self._resolve_current_chart()
-        for c in self._all_charts:
-            if c is not current:
-                c.reset()
-        if current:
-            self._do_update(current)
+        self._controller.on_ticker_edit()
 
     def _on_quadrant_summary(self, summary: str) -> None:
         try:
