@@ -1,10 +1,7 @@
 import argparse
 import sys
 from datetime import date
-from decimal import Decimal
 from pathlib import Path
-
-from flowscope import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -104,4 +101,3 @@ def export_vwap_csv(
     if output_path:
         Path(output_path).write_text(content, encoding="utf-8")
     return content
-

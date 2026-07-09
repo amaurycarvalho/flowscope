@@ -1,5 +1,4 @@
 from flowscope.domain.strategies import (
-    IndicatorStrategy,
     RangeStrategy,
     RangePercentualStrategy,
     TypicalPriceStrategy,

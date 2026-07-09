@@ -120,14 +120,7 @@ class QuadrantChart:
             alpha=0.8, zorder=5, picker=True, pickradius=5,
         )
 
-        for pt in self._hover_data:
-            self._axes.annotate(
-                pt["ticker"],
-                xy=(pt["clv"], pt["vwap_dist"]),
-                xytext=(5, 5), textcoords="offset points",
-                fontsize=7, alpha=0.8,
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.5),
-            )
+        self._annotate_tickers()
 
         self._axes.axhline(y=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
         self._axes.axvline(x=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
@@ -170,7 +163,17 @@ class QuadrantChart:
         if self._summary_callback:
             self._summary_callback(self._generate_summary(ticker_trajectories))
 
-    def _generate_summary(self, trajectories):
+    def _annotate_tickers(self):
+        for pt in self._hover_data:
+            self._axes.annotate(
+                pt["ticker"],
+                xy=(pt["clv"], pt["vwap_dist"]),
+                xytext=(5, 5), textcoords="offset points",
+                fontsize=7, alpha=0.8,
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.5),
+            )
+
+    def _generate_summary(self, trajectories):  # noqa: C901
         counts = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
         for points in trajectories:
             last = points[-1]

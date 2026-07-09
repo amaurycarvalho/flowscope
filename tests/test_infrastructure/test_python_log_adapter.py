@@ -1,5 +1,5 @@
 import logging
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from flowscope.application.logging_port import LogEntry, LogReference
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
@@ -29,6 +29,7 @@ class TestPythonLogAdapter:
 
         logger.log.assert_called_once()
         assert logger.log.call_args[0][0] == logging.WARNING
+        assert isinstance(ref, LogReference)
 
     def test_info_loga_com_nivel_info(self):
         logger = MagicMock()
@@ -39,6 +40,7 @@ class TestPythonLogAdapter:
 
         logger.log.assert_called_once()
         assert logger.log.call_args[0][0] == logging.INFO
+        assert isinstance(ref, LogReference)
 
     def test_error_com_exception_inclui_stack_trace(self):
         logger = MagicMock()

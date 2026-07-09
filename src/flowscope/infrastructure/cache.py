@@ -1,6 +1,5 @@
 import json
 import platform
-import sys
 from datetime import date, datetime
 from pathlib import Path
 
@@ -14,9 +13,6 @@ class CacheManager:
         if system == "Linux":
             base = Path.home() / ".cache" / "flowscope"
         elif system == "Windows":
-            local_appdata = Path(
-                sys.executable or ""
-            ).parent.parent / "Local" / "flowscope" / "cache"
             base = Path.home() / "AppData" / "Local" / "flowscope" / "cache"
         elif system == "Darwin":
             base = Path.home() / "Library" / "Caches" / "flowscope"

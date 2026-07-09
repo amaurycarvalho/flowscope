@@ -49,7 +49,7 @@ class TestIndicatorEngine:
 
     def test_circular_dependency(self):
         from flowscope.domain.strategies.base import IndicatorStrategy
-        from typing import Any, ClassVar
+        from typing import ClassVar
 
         class A(IndicatorStrategy):
             id = "a"
@@ -84,7 +84,7 @@ class TestIndicatorEngine:
 
     def test_unknown_dependency(self):
         from flowscope.domain.strategies.base import IndicatorStrategy
-        from typing import Any, ClassVar
+        from typing import ClassVar
 
         class Bad(IndicatorStrategy):
             id = "bad"

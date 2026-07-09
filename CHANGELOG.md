@@ -61,6 +61,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [cross-platform-logging](openspec/changes/archive/2026-07-09-cross-platform-logging) Logging técnico cross-platform com LogPort, PythonLogAdapter e handlers nativos (syslog/Event Log)
 
+### [fix-linting-warnings](openspec/changes/archive/2026-07-09-fix-linting-warnings) Correção de 75 warnings de linting com extração de métodos e limpeza de código
+
+#### Changed
+- `DominanceRankingChart.update` e `DominanceTimelineChart.update` — lógica de stems extraída para função compartilhada `_compute_stems` (reduz complexidade C901 de 21→~16 e 12→~8)
+- `PriceRangePanel._build_main_chart` — bloco `is_last` extraído para `_render_last_day_markers` (C901 16→~10)
+- `VWAPHistChart.update` — loops de coleta de dados e violins extraídos para `_collect_ticker_data` e `_compute_violin_shapes` (C901 14→~9)
+- `QuadrantChart.update` — anotações de ticker extraídas para `_annotate_tickers` (C901 15→~12)
+
+#### Fixed
+- 19 imports não usados (F401) e 4 variáveis não usadas (F841) removidos
+- 37 problemas cosméticos corrigidos (E501, E306, E741, W391, E302, E127-E131)
+- 2 `_generate_summary` suprimidos com `# noqa: C901` (complexidade inerente de texto narrativo)
+
 #### Added
 - `LogPort` (Protocol) na camada application como porta de logging, seguindo o padrão Clean Architecture já usado com `DataRepository`
 - `PythonLogAdapter` na infraestrutura que implementa `LogPort` delegando para o módulo `logging` stdlib

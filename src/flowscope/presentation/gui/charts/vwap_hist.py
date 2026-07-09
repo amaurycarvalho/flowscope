@@ -36,20 +36,7 @@ class VWAPHistChart:
     def _to_pct(price: float, vwap: float) -> float:
         return (price - vwap) / vwap * 100
 
-    def update(self, data: dict) -> None:
-        self._hover_tickers.clear()
-        self._hover_vwaps.clear()
-        self._hover_buckets.clear()
-        self._hover_last_pct.clear()
-        self._violin_polygons.clear()
-        if not data:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
-            return
-
-        hide_empty(self._empty_label)
-        self._axes.clear()
-
+    def _collect_ticker_data(self, data):
         tickers = []
         violin_data = []
         vwap_values_abs = []
@@ -84,12 +71,9 @@ class VWAPHistChart:
             last_day = max(daily, key=lambda d: d["date"])
             last_prices_pct.append(self._to_pct(float(last_day["last_price"]), vwap_abs))
 
-        if not tickers:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
-            return
+        return tickers, violin_data, vwap_values_abs, min_prices_pct, max_prices_pct, last_prices_pct
 
-        x_positions = list(range(len(tickers)))
+    def _compute_violin_shapes(self, violin_data):
         bucket_size = self._estimate_bucket_size(violin_data)
         max_vol = 1
         violin_shapes = []
@@ -105,6 +89,33 @@ class VWAPHistChart:
             if vol_vals:
                 max_vol = max(max_vol, max(vol_vals))
             violin_shapes.append((y_vals, vol_vals))
+
+        return violin_shapes, max_vol, bucket_size
+
+    def update(self, data: dict) -> None:
+        self._hover_tickers.clear()
+        self._hover_vwaps.clear()
+        self._hover_buckets.clear()
+        self._hover_last_pct.clear()
+        self._violin_polygons.clear()
+        if not data:
+            show_empty(self._figure, self._all_axes, self._empty_label)
+            self._canvas.draw()
+            return
+
+        hide_empty(self._empty_label)
+        self._axes.clear()
+
+        (tickers, violin_data, vwap_values_abs, min_prices_pct,
+         max_prices_pct, last_prices_pct) = self._collect_ticker_data(data)
+
+        if not tickers:
+            show_empty(self._figure, self._all_axes, self._empty_label)
+            self._canvas.draw()
+            return
+
+        x_positions = list(range(len(tickers)))
+        violin_shapes, max_vol, bucket_size = self._compute_violin_shapes(violin_data)
 
         violin_width = 0.35
         for idx, (y_vals, vol_vals) in enumerate(violin_shapes):

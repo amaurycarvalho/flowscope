@@ -1,7 +1,5 @@
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, call
 from datetime import date
-
-import pytest
 
 from flowscope.application.load_portfolio_use_case import (
     PortfolioNotFoundError,

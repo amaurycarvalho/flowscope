@@ -9,6 +9,43 @@ from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
+def _compute_stems(
+    values: list[float],
+    clvs: list[float],
+    y_pos: list[int],
+    max_val: float,
+    scale: float = 0.10,
+) -> tuple[list[int], list[float], list[float], list[str]]:
+    stem_ys: list[int] = []
+    stem_xmins: list[float] = []
+    stem_xmaxs: list[float] = []
+    stem_colors: list[str] = []
+    for i, (clv, val) in enumerate(zip(clvs, values)):
+        if val == 0.0 or abs(clv) < 0.05:
+            continue
+        norm = abs(val) / max_val if max_val > 0 else 0
+        stem_len = max(math.sqrt(norm) * scale, 0.015)
+        cls = classify_dominance(clv)
+        stem_ys.append(y_pos[i])
+        intensity = abs(cls.score)
+        if intensity == 0:
+            gray = "#C0C0C0"
+        elif intensity == 1:
+            gray = "#555555"
+        elif intensity == 2:
+            gray = "#222222"
+        else:
+            gray = "#0A0A0A"
+        stem_colors.append(gray)
+        if clv >= 0:
+            stem_xmins.append(0.0)
+            stem_xmaxs.append(clv + stem_len)
+        else:
+            stem_xmins.append(clv - stem_len)
+            stem_xmaxs.append(0.0)
+    return stem_ys, stem_xmins, stem_xmaxs, stem_colors
+
+
 class DominanceRankingChart:
     def __init__(self, parent, *, copy_chart_callback=None):
         self.frame = tk.Frame(parent)
@@ -121,29 +158,9 @@ class DominanceRankingChart:
                 ha=ha, va="center", fontsize=8, zorder=4,
             )
 
-        stem_ys, stem_xmins, stem_xmaxs, stem_colors = [], [], [], []
-        for i, (clv, mfv) in enumerate(zip(clvs, mfvs)):
-            if mfv == 0.0 or abs(clv) < 0.05:
-                continue
-            stem_len = stem_lens[i]
-            cls = classify_dominance(clv)
-            stem_ys.append(y_pos[i])
-            intensity = abs(cls.score)
-            if intensity == 0:
-                gray = "#C0C0C0"
-            elif intensity == 1:
-                gray = "#555555"
-            elif intensity == 2:
-                gray = "#222222"
-            else:
-                gray = "#0A0A0A"
-            stem_colors.append(gray)
-            if clv >= 0:
-                stem_xmins.append(0.0)
-                stem_xmaxs.append(clv + stem_len)
-            else:
-                stem_xmins.append(clv - stem_len)
-                stem_xmaxs.append(0.0)
+        stem_ys, stem_xmins, stem_xmaxs, stem_colors = _compute_stems(
+            mfvs, clvs, y_pos, max_mfv, scale=0.10,
+        )
 
         if stem_ys:
             self._axes.hlines(

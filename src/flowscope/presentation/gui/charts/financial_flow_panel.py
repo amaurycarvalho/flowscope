@@ -83,7 +83,6 @@ class FinancialFlowPanel:
 
         classification = classify_money_flow(score)
 
-        n_days = len(daily_sorted)
         mfv_value = ""
         mfv_millions = 0.0
         if accumulated_mfv is not None:
@@ -142,7 +141,6 @@ class FinancialFlowPanel:
             dmf_value = f"R$ {dmf_display:+,.1f}{unit}"
         else:
             dmf_value = "R$ 0,00"
-        mfv_line = mfv_value if mfv_value else "—"
 
         card_x0, card_x1 = -0.95, 0.95
         card_y0, card_y1 = 0.10, 0.55
@@ -281,7 +279,7 @@ class FinancialFlowPanel:
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_visible(False)
 
-    def _generate_summary(self, dmf, score, classification, clv, bp, sp):
+    def _generate_summary(self, dmf, score, classification, clv, bp, sp):  # noqa: C901
         parts = []
         if dmf > 0:
             if classification.score >= 3:

@@ -2,7 +2,6 @@ import logging
 import platform
 import shutil
 import sys
-import os
 import subprocess
 
 from logging.handlers import RotatingFileHandler, SysLogHandler
@@ -80,6 +79,7 @@ def _desktop_path() -> Path:
                 if expanded:
                     return Path(expanded)
     return Path.home() / "Desktop"
+
 
 def _desktop_shortcut_exists() -> bool:
     return (_desktop_path() / "flowscope.desktop").exists()

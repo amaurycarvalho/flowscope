@@ -84,12 +84,75 @@ class PriceRangePanel:
             fontsize=9, visible=False, zorder=10,
         )
 
+    def _render_last_day_markers(
+        self, ax, d, i, typical_dict, median_dict,
+        weighted_dict, range_pct_dict, marker_size,
+    ):
+        dt = d["date"]
+        min_p = float(d["min_price"])
+        max_p = float(d["max_price"])
+        close = float(d["last_price"])
+        avg_p = float(d["avg_price"])
+
+        today_min_text = f"Min: {min_p:.2f}"
+        today_max_text = f"Max: {max_p:.2f}"
+
+        norm_close = self._normalize(close, min_p, max_p)
+        norm_avg = self._normalize(avg_p, min_p, max_p)
+
+        ax.scatter(norm_close, i, marker="o", color="blue", s=marker_size,
+                   zorder=5, label="Close")
+
+        typical = typical_dict.get(dt)
+        median = median_dict.get(dt)
+        weighted = weighted_dict.get(dt)
+
+        if median is not None:
+            norm_m = self._normalize(float(median), min_p, max_p)
+            ax.scatter(norm_m, i, marker="s", color="orange", s=50, zorder=5)
+            ax.annotate("M", (norm_m, i),
+                        xytext=(4, 4), textcoords="offset points",
+                        fontsize=8, color="orange", fontweight="bold")
+
+        if typical is not None:
+            norm_t = self._normalize(float(typical), min_p, max_p)
+            ax.scatter(norm_t, i, marker="^", color="green", s=50, zorder=5)
+            ax.annotate("T", (norm_t, i),
+                        xytext=(4, 4), textcoords="offset points",
+                        fontsize=8, color="green", fontweight="bold")
+
+        ax.scatter(norm_avg, i, marker="D", color="purple", s=50, zorder=5)
+        ax.annotate("V", (norm_avg, i),
+                    xytext=(4, 4), textcoords="offset points",
+                    fontsize=8, color="purple", fontweight="bold")
+
+        if weighted is not None:
+            norm_w = self._normalize(float(weighted), min_p, max_p)
+            ax.scatter(norm_w, i, marker="v", color="brown", s=50, zorder=5)
+            ax.annotate("W", (norm_w, i),
+                        xytext=(4, 4), textcoords="offset points",
+                        fontsize=8, color="brown", fontweight="bold")
+
+        self._hover_data.append({
+            "date": dt,
+            "close": close,
+            "typical": typical,
+            "median": median,
+            "vwap": avg_p,
+            "weighted": weighted,
+            "min_p": min_p,
+            "max_p": max_p,
+            "amplitude_relativa": range_pct_dict.get(dt),
+        })
+
+        return today_min_text, today_max_text
+
     @staticmethod
-    def _normalize(price, min_p, max_p):
+    def _normalize(close, min_p, max_p):
         rng = max_p - min_p
         if rng == 0:
             return 0.5
-        return (price - min_p) / rng
+        return (close - min_p) / rng
 
     def _build_main_chart(self, daily, typical_dict, median_dict,
                           weighted_dict, range_pct_dict, eff_dict,
@@ -97,7 +160,6 @@ class PriceRangePanel:
         ax = self._ax_main
         n = len(daily)
         rev_daily = list(reversed(daily))
-        today_range_text = None
 
         pct_values = [float(v) for v in range_pct_dict.values() if v is not None]
         if pct_values:
@@ -107,12 +169,14 @@ class PriceRangePanel:
             hi = sorted_pcts[min(n_pcts - 1, int(n_pcts * 0.95))]
             if hi <= lo:
                 hi = lo + 0.01
+
             def map_size(v):
                 if v is None:
                     return 60
                 clamped = max(lo, min(hi, float(v)))
                 return 40 + (clamped - lo) / (hi - lo) * 160
         else:
+
             def map_size(v):
                 return 60
 
@@ -121,10 +185,8 @@ class PriceRangePanel:
             min_p = float(d["min_price"])
             max_p = float(d["max_price"])
             close = float(d["last_price"])
-            avg_p = float(d["avg_price"])
 
             norm_close = self._normalize(close, min_p, max_p)
-            norm_avg = self._normalize(avg_p, min_p, max_p)
 
             eff = float(eff_dict.get(dt, 0) or 0)
             if eff <= 0.30:
@@ -139,60 +201,11 @@ class PriceRangePanel:
 
             marker_size = map_size(range_pct_dict.get(dt))
 
-            is_last = (i == 0)
-
-            if is_last:
-                today_min_text = f"Min: {min_p:.2f}"
-                today_max_text = f"Max: {max_p:.2f}"
-
-                ax.scatter(norm_close, i, marker="o", color="blue", s=marker_size,
-                           zorder=5, label="Close")
-
-                typical = typical_dict.get(dt)
-                median = median_dict.get(dt)
-                weighted = weighted_dict.get(dt)
-
-                if median is not None:
-                    norm_m = self._normalize(float(median), min_p, max_p)
-                    ax.scatter(norm_m, i, marker="s", color="orange", s=50,
-                               zorder=5)
-                    ax.annotate("M", (norm_m, i),
-                                xytext=(4, 4), textcoords="offset points",
-                                fontsize=8, color="orange", fontweight="bold")
-
-                if typical is not None:
-                    norm_t = self._normalize(float(typical), min_p, max_p)
-                    ax.scatter(norm_t, i, marker="^", color="green", s=50,
-                               zorder=5)
-                    ax.annotate("T", (norm_t, i),
-                                xytext=(4, 4), textcoords="offset points",
-                                fontsize=8, color="green", fontweight="bold")
-
-                ax.scatter(norm_avg, i, marker="D", color="purple", s=50,
-                           zorder=5)
-                ax.annotate("V", (norm_avg, i),
-                            xytext=(4, 4), textcoords="offset points",
-                            fontsize=8, color="purple", fontweight="bold")
-
-                if weighted is not None:
-                    norm_w = self._normalize(float(weighted), min_p, max_p)
-                    ax.scatter(norm_w, i, marker="v", color="brown", s=50,
-                               zorder=5)
-                    ax.annotate("W", (norm_w, i),
-                                xytext=(4, 4), textcoords="offset points",
-                                fontsize=8, color="brown", fontweight="bold")
-
-                self._hover_data.append({
-                    "date": dt,
-                    "close": close,
-                    "typical": typical,
-                    "median": median,
-                    "vwap": avg_p,
-                    "weighted": weighted,
-                    "min_p": min_p,
-                    "max_p": max_p,
-                    "amplitude_relativa": range_pct_dict.get(dt),
-                })
+            if i == 0:
+                today_min_text, today_max_text = self._render_last_day_markers(
+                    ax, d, i, typical_dict, median_dict,
+                    weighted_dict, range_pct_dict, marker_size,
+                )
             else:
                 ax.scatter(norm_close, i, marker="o", color="blue", s=marker_size,
                            alpha=0.35, zorder=3)

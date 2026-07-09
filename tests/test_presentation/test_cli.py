@@ -1,6 +1,3 @@
-import sys
-from unittest.mock import patch
-
 import pytest
 
 from flowscope.presentation.cli import build_parser, _load_tickers

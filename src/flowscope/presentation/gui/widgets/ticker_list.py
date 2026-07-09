@@ -9,7 +9,15 @@ from flowscope.presentation.main import _resolve_icon_path
 
 
 class TickerList:
-    def __init__(self, parent: tk.Widget, on_change: callable = None, on_load: callable = None, initialdir: str = None, on_dir_changed: callable = None, on_index_click: dict[str, callable] = None, on_data_needed: callable = None):
+    def __init__(
+        self, parent: tk.Widget,
+        on_change: callable = None,
+        on_load: callable = None,
+        initialdir: str = None,
+        on_dir_changed: callable = None,
+        on_index_click: dict[str, callable] = None,
+        on_data_needed: callable = None,
+    ):
         self.frame = tk.Frame(parent)
         self._callbacks: dict[str, callable | dict] = {}
         self._callbacks["on_change"] = on_change
@@ -77,7 +85,7 @@ class TickerList:
             for label in on_index_click:
                 btn = tk.Button(
                     btn_frame, text=label,
-                    command=lambda l=label: self._callbacks.get("on_index_click", {}).get(l, lambda: None)(),
+                    command=lambda lb=label: self._callbacks.get("on_index_click", {}).get(lb, lambda: None)(),
                     cursor="hand2",
                 )
                 btn.pack(side=tk.LEFT, padx=2)
@@ -234,7 +242,7 @@ class TickerList:
             for label in on_index_click:
                 btn = tk.Button(
                     self._btn_frame, text=label,
-                    command=lambda l=label: self._callbacks.get("on_index_click", {}).get(l, lambda: None)(),
+                    command=lambda lb=label: self._callbacks.get("on_index_click", {}).get(lb, lambda: None)(),
                     cursor="hand2",
                 )
                 btn.pack(side=tk.LEFT, padx=2)

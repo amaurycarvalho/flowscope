@@ -17,6 +17,3 @@ class TradeDay:
     trades_qty: Volume
     fin_vol: Decimal
     fin_instr_qty: int
-
-
-

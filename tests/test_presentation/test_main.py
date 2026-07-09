@@ -1,8 +1,5 @@
-import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from flowscope.presentation.main import (
     _create_desktop_shortcut,
@@ -215,9 +212,6 @@ class TestDesktopShortcutGuiButton:
         app = MagicMock()
         app._shortcut_btn = btn
 
-        from flowscope.presentation.gui.app import (
-            _create_desktop_shortcut as real_create,
-        )
         with patch(
             "flowscope.presentation.gui.app._create_desktop_shortcut",
             return_value=False,
@@ -241,5 +235,3 @@ class TestDesktopShortcutGuiButton:
 
         app._flash_status.assert_not_called()
         app._set_status.assert_not_called()
-
-

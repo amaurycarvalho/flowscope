@@ -5,11 +5,9 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-import responses
 
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
-from flowscope.infrastructure.cache import CacheManager
 
 SAMPLE_CSV = (
     "RptDt;TckrSymb;SgmtNm;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;NtlFinVol;FinInstrmQty\n"

@@ -1,4 +1,3 @@
-import math
 import tkinter as tk
 
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -8,6 +7,7 @@ from flowscope.domain.strategies.classifiers import (
     classify_dominance,
     classify_conviction,
 )
+from flowscope.presentation.gui.charts.dominance_ranking import _compute_stems
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
@@ -94,30 +94,9 @@ class DominanceTimelineChart:
         )
 
         max_dmf = max(abs(d) for d in dmfs) if dmfs else 1.0
-        stem_ys, stem_xmins, stem_xmaxs, stem_colors = [], [], [], []
-        for i, (clv, dmf) in enumerate(zip(clvs, dmfs)):
-            if dmf == 0.0 or abs(clv) < 0.05:
-                continue
-            norm = abs(dmf) / max_dmf if max_dmf > 0 else 0
-            stem_len = max(math.sqrt(norm) * 0.15, 0.015)
-            cls = classify_dominance(clv)
-            stem_ys.append(y_pos[i])
-            intensity = abs(cls.score)
-            if intensity == 0:
-                gray = "#C0C0C0"
-            elif intensity == 1:
-                gray = "#555555"
-            elif intensity == 2:
-                gray = "#222222"
-            else:
-                gray = "#0A0A0A"
-            stem_colors.append(gray)
-            if clv >= 0:
-                stem_xmins.append(0.0)
-                stem_xmaxs.append(clv + stem_len)
-            else:
-                stem_xmins.append(clv - stem_len)
-                stem_xmaxs.append(0.0)
+        stem_ys, stem_xmins, stem_xmaxs, stem_colors = _compute_stems(
+            dmfs, clvs, y_pos, max_dmf, scale=0.15,
+        )
 
         if stem_ys:
             self._axes.hlines(

@@ -3,6 +3,7 @@ from flowscope.presentation.gui.progress import ProgressReporter
 
 def test_advance_normal():
     calls = []
+
     def on_update(current, total, label):
         calls.append((current, total, label))
 
@@ -18,6 +19,7 @@ def test_advance_normal():
 
 def test_failures():
     calls = []
+
     def on_update(current, total, label):
         calls.append((current, total, label))
 
@@ -35,6 +37,7 @@ def test_failures():
 
 def test_multiple_phases_with_weights():
     phases_seen = []
+
     def on_update(current, total, label):
         phases_seen.append((current, total, label))
 
@@ -53,6 +56,7 @@ def test_multiple_phases_with_weights():
 
 def test_phase_with_zero_total():
     calls = []
+
     def on_update(current, total, label):
         calls.append((current, total, label))
 
@@ -65,6 +69,7 @@ def test_phase_with_zero_total():
 
 def test_throttle_skips_updates():
     call_count = 0
+
     def on_update(current, total, label):
         nonlocal call_count
         call_count += 1
@@ -101,6 +106,7 @@ def test_finish_phase_sets_current_to_total():
 
 def test_label_includes_detail():
     calls = []
+
     def on_update(current, total, label):
         calls.append(label)
 

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 from datetime import date, datetime
 
 from flowscope.application.logging_port import LogReference

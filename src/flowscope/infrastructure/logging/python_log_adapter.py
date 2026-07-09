@@ -1,7 +1,7 @@
 import logging
 import traceback
 
-from flowscope.application.logging_port import LogEntry, LogPort, LogReference
+from flowscope.application.logging_port import LogEntry, LogReference
 
 
 class PythonLogAdapter:
@@ -24,7 +24,12 @@ class PythonLogAdapter:
         extra = {"component": entry.component, "context": entry.context or {}}
         message = f"[{entry.component}] {entry.message}"
         if entry.exception:
-            message += "\n" + "".join(traceback.format_exception(type(entry.exception), entry.exception, entry.exception.__traceback__))
+            message += "\n" + "".join(
+                traceback.format_exception(
+                    type(entry.exception), entry.exception,
+                    entry.exception.__traceback__,
+                ),
+            )
         self._logger.log(level, message, exc_info=entry.exception is not None, extra=extra)
 
     def _make_reference(self, entry: LogEntry) -> LogReference:
