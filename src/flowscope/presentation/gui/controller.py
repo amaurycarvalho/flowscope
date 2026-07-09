@@ -4,6 +4,7 @@ from flowscope.application.load_portfolio_use_case import (
     LoadIndexPortfolioUseCase,
     PortfolioNotFoundError,
 )
+from flowscope.application.logging_port import LogEntry, LogPort
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.presentation.gui.presenter import FlowScopePresenter
@@ -17,11 +18,13 @@ class FlowScopeController:
         load_portfolio: LoadIndexPortfolioUseCase,
         analyze: AnalyzeTickersUseCase,
         presenter: FlowScopePresenter,
+        logger: LogPort,
     ):
         self._guard = guard
         self._load_portfolio = load_portfolio
         self._analyze = analyze
         self._presenter = presenter
+        self._logger = logger
 
     def _make_progress_cb(self, reporter: ProgressReporter):
         def _cb(detail: str, failed: bool) -> None:
@@ -74,7 +77,14 @@ class FlowScopeController:
             except PortfolioNotFoundError:
                 self._presenter.on_operation_finished()
             except Exception as e:
-                self._presenter.on_error(e)
+                ref = self._logger.error(LogEntry(
+                    message=str(e),
+                    level="ERROR",
+                    component="Controller.on_index_clicked",
+                    exception=e,
+                    context={"index": index},
+                ))
+                self._presenter.on_technical_error(e, ref)
             finally:
                 self._presenter.on_operation_finished()
 
@@ -126,7 +136,14 @@ class FlowScopeController:
                     "⚠",
                 )
             except Exception as e:
-                self._presenter.on_error(e)
+                ref = self._logger.error(LogEntry(
+                    message=str(e),
+                    level="ERROR",
+                    component="Controller.on_load_data",
+                    exception=e,
+                    context={"ref_date": str(ref_date)},
+                ))
+                self._presenter.on_technical_error(e, ref)
             finally:
                 self._presenter.on_operation_finished()
 

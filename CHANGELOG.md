@@ -59,6 +59,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependência `responses` adicionada em `[project.optional-dependencies] dev` para mock HTTP
 - `conftest.py` com fixtures padronizadas para B3Client, CacheManager e B3DataRepository mockados
 
+### [cross-platform-logging](openspec/changes/archive/2026-07-09-cross-platform-logging) Logging técnico cross-platform com LogPort, PythonLogAdapter e handlers nativos (syslog/Event Log)
+
+#### Added
+- `LogPort` (Protocol) na camada application como porta de logging, seguindo o padrão Clean Architecture já usado com `DataRepository`
+- `PythonLogAdapter` na infraestrutura que implementa `LogPort` delegando para o módulo `logging` stdlib
+
+#### Changed
+- Handlers de logging configurados por plataforma no `main.py`: `SysLogHandler` (Linux/macOS), `NTEventLogHandler` (Windows), `RotatingFileHandler` (fallback universal em `~/.flowscope/logs/`)
+- `LogPort` injetado no `FlowScopeController` para logar erros técnicos antes de exibir mensagem na statusbar
+- `FlowScopePresenter` ganha `on_technical_error()` que exibe mensagem amigável orientando o usuário a consultar o log
+
+#### Removed
+- `NullHandler` de `main.py` (substituído por configuração real de logging)
+
 [Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.5.2...HEAD
 
 [0.5.2]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.5.2

@@ -1,9 +1,11 @@
+import logging
 import platform
 import shutil
 import sys
 import os
 import subprocess
 
+from logging.handlers import RotatingFileHandler, SysLogHandler
 from pathlib import Path
 
 from flowscope import __version__
@@ -119,9 +121,33 @@ def _create_desktop_shortcut() -> bool:
         return False
 
 
+def _configure_logging() -> None:
+    log_dir = Path.home() / ".flowscope" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    handlers: list[logging.Handler] = [
+        RotatingFileHandler(log_dir / "flowscope.log", maxBytes=1_000_000, backupCount=3),
+    ]
+
+    system = platform.system()
+    if system in ("Linux", "Darwin"):
+        address = "/dev/log" if system == "Linux" else "/var/run/syslog"
+        try:
+            handlers.append(SysLogHandler(address=address))
+        except OSError:
+            pass
+    elif system == "Windows":
+        try:
+            from logging.handlers import NTEventLogHandler
+            handlers.append(NTEventLogHandler("FlowScope"))
+        except ImportError:
+            pass
+
+    logging.basicConfig(level=logging.WARNING, handlers=handlers, force=True)
+
+
 def _open_gui() -> None:
-    import logging
-    logging.basicConfig(handlers=[logging.NullHandler()], force=True)
+    _configure_logging()
 
     from flowscope.presentation.gui.app import FlowScopeGUI
 

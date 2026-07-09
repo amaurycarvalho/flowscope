@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, call
-from datetime import date
+from datetime import date, datetime
 
+from flowscope.application.logging_port import LogReference
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
@@ -56,6 +57,21 @@ class TestFlowScopePresenter:
         args = view.set_status.call_args[0]
         assert "dados inválidos" in args[0]
         assert args[1] == "⚠"
+
+    def test_on_technical_error_mostra_mensagem_do_log(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        error = RuntimeError("timeout")
+        ref = LogReference(
+            source="flowscope.log",
+            identifier=datetime.now().isoformat(),
+            hint="Consulte o arquivo de log em ~/.flowscope/logs/flowscope.log",
+        )
+        presenter.on_technical_error(error, ref)
+        view.set_status.assert_called_once()
+        args = view.set_status.call_args[0]
+        assert "Erro técnico" in args[0]
+        assert "flowscope.log" in args[0]
 
     def test_get_reference_date_le_da_view(self):
         view = MagicMock()

@@ -29,3 +29,4 @@ Erros técnicos (HTTP 500, timeout, parse failure) são atualmente exibidos como
 - `presentation/gui/app.py` — instanciar `PythonLogAdapter` e passar ao controller (`_wire_controller`)
 - `infrastructure/b3/client.py` — já usa `logger`; passa a funcionar (não vai mais para o NullHandler)
 - Nenhuma dependência externa nova (`pywin32` é opcional, só Windows)
+- **Target**: Release 0.5.2

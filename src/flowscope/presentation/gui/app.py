@@ -1,4 +1,5 @@
 import json
+import logging
 import platform
 import tkinter as tk
 import tkinter.ttk as ttk
@@ -11,6 +12,7 @@ from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
@@ -125,11 +127,13 @@ class FlowScopeGUI(tk.Tk):
         load_portfolio = LoadIndexPortfolioUseCase(repo)
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
+        logger = PythonLogAdapter(logging.getLogger("flowscope"))
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
             analyze=analyze,
             presenter=presenter,
+            logger=logger,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,

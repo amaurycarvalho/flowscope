@@ -16,6 +16,7 @@ def _make_controller(**overrides):
         load_portfolio=MagicMock(),
         analyze=MagicMock(),
         presenter=MagicMock(),
+        logger=MagicMock(),
     )
     defaults.update(overrides)
     return FlowScopeController(**defaults)
@@ -101,7 +102,7 @@ class TestOnIndexClicked:
         assert idx_started < idx_finished
         assert call.on_result not in mc
 
-    def test_excecao_generica_chama_on_error(self):
+    def test_excecao_generica_chama_on_technical_error(self):
         guard = MagicMock()
         guard.acquire.return_value = _mock_context(True)
         load_portfolio = MagicMock()
@@ -115,12 +116,12 @@ class TestOnIndexClicked:
 
         mc = presenter.mock_calls
         idx_started = mc.index(call.on_operation_started())
-        presenter.on_error.assert_called_once()
-        args = presenter.on_error.call_args[0]
+        presenter.on_technical_error.assert_called_once()
+        args = presenter.on_technical_error.call_args[0]
         assert isinstance(args[0], RuntimeError)
         assert str(args[0]) == "bug"
         idx_finished = mc.index(call.on_operation_finished())
-        assert idx_started < mc.index(call.on_error(args[0])) < idx_finished
+        assert idx_started < mc.index(call.on_technical_error(args[0], args[1])) < idx_finished
 
 
 class TestOnLoadData:

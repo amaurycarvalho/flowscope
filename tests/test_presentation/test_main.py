@@ -126,6 +126,68 @@ class TestResolveIconPath:
             assert path == Path("/tmp/fake_meipass") / "icons" / "custom.png"
 
 
+class TestConfigureLogging:
+    def test_cria_diretorio_de_log(self, tmp_path):
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            log_dir = tmp_path / ".flowscope" / "logs"
+            assert log_dir.exists()
+            log_file = log_dir / "flowscope.log"
+            assert log_file.exists()
+
+    def test_escreve_mensagem_no_arquivo(self, tmp_path):
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            import logging
+            logging.getLogger("flowscope").error("teste log")
+            log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
+            content = log_file.read_text()
+            assert "teste log" in content
+
+    def test_linux_adiciona_syslog_handler(self, tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("platform.system", return_value="Linux"),
+            patch("flowscope.presentation.main.SysLogHandler", return_value=MagicMock()) as mock_syslog,
+        ):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            mock_syslog.assert_called_once_with(address="/dev/log")
+
+    def test_macos_adiciona_syslog_handler(self, tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("platform.system", return_value="Darwin"),
+            patch("flowscope.presentation.main.SysLogHandler", return_value=MagicMock()) as mock_syslog,
+        ):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            mock_syslog.assert_called_once_with(address="/var/run/syslog")
+
+    def test_windows_tenta_adicionar_nt_event_log(self, tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("platform.system", return_value="Windows"),
+            patch("logging.handlers.NTEventLogHandler", return_value=MagicMock()) as mock_nt,
+        ):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            mock_nt.assert_called_once_with("FlowScope")
+
+    def test_syslog_falha_silenciosamente(self, tmp_path):
+        with (
+            patch("pathlib.Path.home", return_value=tmp_path),
+            patch("platform.system", return_value="Linux"),
+            patch("flowscope.presentation.main.SysLogHandler", side_effect=OSError),
+        ):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
+            assert log_file.exists()
+
+
 class TestDesktopShortcutGuiButton:
     def test_on_create_shortcut_hides_button_on_success(self):
         btn = MagicMock()

@@ -2,6 +2,8 @@ import tkinter as tk
 from datetime import date
 from typing import Protocol
 
+from flowscope.application.logging_port import LogReference
+
 
 class GUIView(Protocol):
     def disable_all_buttons(self) -> None: ...
@@ -59,6 +61,12 @@ class FlowScopePresenter:
     def on_error(self, error: Exception) -> None:
         self._view.set_status(
             f"Não foi possível carregar os dados. {error}", "⚠",
+        )
+
+    def on_technical_error(self, error: Exception, ref: LogReference) -> None:
+        self._view.set_status(
+            "⚠ Erro técnico. Consulte o arquivo de log em "
+            "~/.flowscope/logs/flowscope.log",
         )
 
     def get_reference_date(self) -> date:
