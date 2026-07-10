@@ -3,6 +3,7 @@ from datetime import date
 from typing import Protocol
 
 from flowscope.application.logging_port import LogReference
+from flowscope.domain.sampling import SamplingConfig
 
 
 class GUIView(Protocol):
@@ -22,6 +23,7 @@ class GUIView(Protocol):
     def set_current_data(self, data: dict) -> None: ...
     def set_tickers_list(self, tickers: list[str]) -> None: ...
     def set_date_label(self, text: str) -> None: ...
+    def get_sampling_config(self) -> SamplingConfig: ...
 
 
 class FlowScopePresenter:
@@ -71,6 +73,9 @@ class FlowScopePresenter:
 
     def get_reference_date(self) -> date:
         return self._view.get_reference_date()
+
+    def get_sampling_config(self) -> SamplingConfig:
+        return self._view.get_sampling_config()
 
     def get_current_tickers(self) -> list[str]:
         return self._view.get_current_tickers()

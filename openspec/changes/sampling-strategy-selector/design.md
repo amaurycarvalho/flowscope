@@ -17,7 +17,7 @@ O usuário precisa de controle sobre:
 - Implementar busca de data mais próxima no cache (±7 dias) com deduplicação
 - Recarga automática quando dados já carregados e combo muda
 - Incluir combos no OperationGuard (desabilitar durante carga)
-- Tooltip fixo em cada combo + texto explicativo dinâmico na statusbar
+- Tooltip fixo em cada combo + texto explicativo do período na statusbar + label inline para amostragem
 - Não recarregar se não houver dados carregados (combos inertes)
 
 **Non-Goals:**
@@ -110,9 +110,9 @@ def resolve_date(d, ref_date, period_days, cache, cache_only):
 ### 5. Integração na GUI
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│ Data: [2026-07-10 ▼] [📅] [🔄] [30 dias ▼] [Fibonacci ▼] [📋]  Dados...│
-│        DateEntry     Today  Load   Período     Amostragem    Copy        │
+┌──────────────────────────────────────────────────────────────────────────────────────┐
+│ Data: [2026-07-10 ▼] [📅] [🔄] [30 dias ▼] [Fibonacci ▼] [📋]  Dados...  Fib: ... │
+│        DateEntry     Today  Load   Período     Amostragem    Copy        date_label │
 ```
 
 Eventos:
@@ -123,7 +123,7 @@ Eventos:
   - Atualiza `self._status_var` com texto explicativo do item selecionado
   - A carga só acontece quando o usuário de fato seleciona (fecha o dropdown)
 
-### 6. Tooltips e statusbar
+### 6. Tooltips, label de amostragem e statusbar
 
 Tooltip fixo em cada combobox:
 
@@ -132,19 +132,26 @@ Tooltip fixo em cada combobox:
 | Período | "Seleciona a janela de tempo para análise dos dados históricos" |
 | Amostragem | "Define o método de seleção das datas dentro do período" |
 
-Textos na statusbar (exibidos ao navegar pelos itens):
+A mensagem explicativa do método de amostragem é exibida em um `tk.Label` (`_sampling_label`, fg="gray") posicionado ao lado do `_date_label` na barra superior. O label é atualizado no evento `<<ComboboxSelected>>`. Já a explicação do período permanece na barra de status (por ser informação sobre cache/download).
+
+Textos no label de amostragem:
+
+| Método | Texto no label |
+|--------|----------------|
+| Fibonacci | "Amostra concentrada nas datas mais recentes." |
+| Fibonacci reverso | "Amostra concentrada nas datas mais distantes." |
+| Fibonacci duplo | "Amostra concentrada nas margens do período." |
+| Monte Carlos | "Amostra das margens do período com centro aleatório disperso." |
+| Monte Carlos duplo | "Amostra das margens com centro aleatório concentrado." |
+| Todos os dias | "Amostra contendo todos os dias." |
+
+Textos na statusbar (apenas período):
 
 | Combo | Item | Texto na statusbar |
 |-------|------|-------------------|
 | Período | 30 dias | "Janela de 30 dias corridos. Os dados serão baixados da B3 e armazenados em cache." |
 | Período | 60 dias | "Janela de 60 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3." |
 | Período | 90 dias | "Janela de 90 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3." |
-| Amostragem | Fibonacci | "Amostragem com offsets de Fibonacci: 1, 2, 3, 5, 8, 13, 21... até o limite do período." |
-| Amostragem | Fibonacci reverso | "Amostragem do fim para o início: parte do offset máximo do período e recua com passos de Fibonacci." |
-| Amostragem | Fibonacci duplo | "Amostragem mista: mescla offsets Fibonacci com datas concentradas no início e fim do período." |
-| Amostragem | Monte Carlos | "Seleciona a data mais recente, a mais antiga e 5 dias aleatórios intermediários." |
-| Amostragem | Monte Carlos duplo | "Seleciona a data mais recente, a mais antiga e 12 dias aleatórios intermediários." |
-| Amostragem | Todos os dias | "Todas as datas úteis dentro do período selecionado (máximo de 90 datas)." |
 
 ### 7. OperationGuard
 

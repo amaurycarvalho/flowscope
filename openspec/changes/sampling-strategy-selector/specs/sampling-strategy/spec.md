@@ -130,14 +130,39 @@ Se o usuário modificar o combobox de período ou amostragem e houver dados prev
 
 ### Requirement: Tooltips e textos explicativos
 
-Cada combobox DEVE ter um tooltip fixo explicando sua função. Ao percorrer os itens de um combobox (via teclado), a barra de status DEVE exibir um texto explicativo do item atualmente selecionado. A carga de dados só DEVE ser acionada quando o usuário finalizar a seleção.
+Cada combobox DEVE ter um tooltip fixo explicando sua função. Ao selecionar um item no combobox de amostragem, o `_sampling_label` (label inline na barra superior) DEVE exibir um texto explicativo conciso sobre o método. Ao selecionar um item no combobox de período, a barra de status DEVE exibir o texto explicativo. A carga de dados só DEVE ser acionada quando o usuário finalizar a seleção.
 
 #### Scenario: Tooltip do combobox de período
 
 - **WHEN** o usuário passa o mouse sobre o combobox de período
 - **THEN** DEVE exibir o tooltip "Seleciona a janela de tempo para análise dos dados históricos"
 
-#### Scenario: Texto explicativo na statusbar para Fibonacci
+#### Scenario: Label de amostragem para Fibonacci
 
-- **WHEN** o usuário navega até o item "Fibonacci" no combobox de amostragem
-- **THEN** a barra de status DEVE exibir "Amostragem com offsets de Fibonacci: 1, 2, 3, 5, 8, 13, 21... até o limite do período."
+- **WHEN** o usuário seleciona "Fibonacci" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra concentrada nas datas mais recentes."
+
+#### Scenario: Label de amostragem para Fibonacci reverso
+
+- **WHEN** o usuário seleciona "Fibonacci reverso" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra concentrada nas datas mais distantes."
+
+#### Scenario: Label de amostragem para Fibonacci duplo
+
+- **WHEN** o usuário seleciona "Fibonacci duplo" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra concentrada nas margens do período."
+
+#### Scenario: Label de amostragem para Monte Carlos
+
+- **WHEN** o usuário seleciona "Monte Carlos" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra das margens do período com centro aleatório disperso."
+
+#### Scenario: Label de amostragem para Monte Carlos duplo
+
+- **WHEN** o usuário seleciona "Monte Carlos duplo" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra das margens com centro aleatório concentrado."
+
+#### Scenario: Label de amostragem para Todos os dias
+
+- **WHEN** o usuário seleciona "Todos os dias" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra contendo todos os dias."

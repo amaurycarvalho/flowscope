@@ -57,6 +57,7 @@ class FlowScopeController:
                 self._presenter.on_portfolio_loaded(tickers)
 
                 ref_date = self._presenter.get_reference_date()
+                config = self._presenter.get_sampling_config()
                 reporter.start_phase(
                     "Baixando dados históricos", total=7, weight=3,
                 )
@@ -64,6 +65,7 @@ class FlowScopeController:
                 result = self._analyze.execute(
                     ref_date, tickers,
                     progress_callback=self._make_progress_cb(reporter),
+                    config=config,
                 )
                 reporter.finish_phase()
 
@@ -113,6 +115,7 @@ class FlowScopeController:
                 if ref_date is None:
                     ref_date = self._presenter.get_reference_date()
 
+                config = self._presenter.get_sampling_config()
                 reporter.start_phase(
                     "Baixando dados históricos", total=7, weight=3,
                 )
@@ -120,6 +123,7 @@ class FlowScopeController:
                 result = self._analyze.execute(
                     ref_date, tickers,
                     progress_callback=self._make_progress_cb(reporter),
+                    config=config,
                 )
                 reporter.finish_phase()
 

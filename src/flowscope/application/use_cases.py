@@ -4,6 +4,7 @@ from datetime import date
 from flowscope.application.ports import DataRepository
 from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.indicators import default_engine
+from flowscope.domain.sampling import SamplingConfig
 
 
 class AnalyzeTickersUseCase:
@@ -18,10 +19,13 @@ class AnalyzeTickersUseCase:
     def execute(
         self, ref_date: date, tickers: list[str] | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
+        config: SamplingConfig | None = None,
     ) -> dict:
-        dates = self._repository.get_available_dates(ref_date)
+        dates = self._repository.get_available_dates(ref_date, config=config)
+        cache_only = (config.period_days > 30) if config else False
         trades = self._repository.fetch_trades(dates, tickers,
-                                               progress_callback=progress_callback)
+                                               progress_callback=progress_callback,
+                                               cache_only=cache_only)
 
         if not tickers:
             top = self._engine.execute(trades, progress_callback=None)

@@ -199,6 +199,23 @@ class FlowScopeGUI(tk.Tk):
         )
         self._load_button.pack(side=tk.LEFT, padx=PAD_SMALL)
 
+        self._period_var = tk.StringVar(value="Últimos 30 dias")
+        self._period_combo = ttk.Combobox(
+            top, textvariable=self._period_var,
+            values=["Últimos 30 dias", "Últimos 60 dias (cache)", "Últimos 90 dias (cache)"],
+            state="readonly", width=18,
+        )
+        self._period_combo.pack(side=tk.LEFT, padx=PAD_SMALL)
+
+        self._sampling_var = tk.StringVar(value="Fibonacci")
+        self._sampling_combo = ttk.Combobox(
+            top, textvariable=self._sampling_var,
+            values=["Fibonacci", "Fibonacci reverso", "Fibonacci duplo",
+                    "Monte Carlos", "Monte Carlos duplo", "Todos os dias"],
+            state="readonly", width=18,
+        )
+        self._sampling_combo.pack(side=tk.LEFT, padx=PAD_SMALL)
+
         self._copy_data_btn = tk.Button(
             top, image=self._load_icon("edit-copy.png"),
             command=self._copy_data,
@@ -219,7 +236,16 @@ class FlowScopeGUI(tk.Tk):
         ToolTip(self._today_button, "Voltar para a data atual")
         ToolTip(self._load_button, "Carregar dados da data selecionada")
         ToolTip(self._date_entry, "Data de referência para carregamento")
+        ToolTip(self._period_combo, "Seleciona a janela de tempo para análise dos dados históricos")
+        ToolTip(self._sampling_combo, "Define o método de seleção das datas dentro do período")
         ToolTip(self._copy_data_btn, "Copiar dados CSV para a área de transferência")
+
+        self._sampling_label = tk.Label(top, text="", fg="gray")
+        self._sampling_label.pack(side=tk.LEFT, padx=PAD)
+        self._update_sampling_label()
+
+        self._period_combo.bind("<<ComboboxSelected>>", self._on_period_combo_changed)
+        self._sampling_combo.bind("<<ComboboxSelected>>", self._on_sampling_combo_changed)
 
     def _build_main_area(self):
         self._main_pw = tk.PanedWindow(
@@ -671,6 +697,9 @@ class FlowScopeGUI(tk.Tk):
         for btn in self._ticker_list.all_buttons():
             self._button_states[btn] = btn.cget("state")
             btn.config(state=tk.DISABLED)
+        for combo in (self._period_combo, self._sampling_combo):
+            self._button_states[combo] = str(combo.cget("state"))
+            combo.config(state=tk.DISABLED)
         self._button_states[self._date_entry] = str(self._date_entry.cget("state"))
         self._date_entry.config(state=tk.DISABLED)
 
@@ -683,6 +712,57 @@ class FlowScopeGUI(tk.Tk):
             except tk.TclError:
                 pass
         self._button_states = {}
+
+    _PERIOD_STATUS = {
+        "Últimos 30 dias": "Janela de 30 dias corridos. Os dados serão baixados da B3 e armazenados em cache.",
+        "Últimos 60 dias (cache)": "Janela de 60 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3.",
+        "Últimos 90 dias (cache)": "Janela de 90 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3.",
+    }
+
+    _SAMPLING_STATUS = {
+        "Fibonacci": "Amostra concentrada nas datas mais recentes.",
+        "Fibonacci reverso": "Amostra concentrada nas datas mais distantes.",
+        "Fibonacci duplo": "Amostra concentrada nas margens do período.",
+        "Monte Carlos": "Amostra das margens do período com centro aleatório disperso.",
+        "Monte Carlos duplo": "Amostra das margens com centro aleatório concentrado.",
+        "Todos os dias": "Amostra contendo todos os dias.",
+    }
+
+    def _on_period_combo_changed(self, event=None):
+        text = self._PERIOD_STATUS.get(self._period_var.get(), "")
+        if text:
+            self._set_status(text)
+        if self._current_data:
+            self._controller.on_load_data()
+
+    def _update_sampling_label(self):
+        text = self._SAMPLING_STATUS.get(self._sampling_var.get(), "")
+        self._sampling_label.config(text=text)
+
+    def _on_sampling_combo_changed(self, event=None):
+        self._update_sampling_label()
+        if self._current_data:
+            self._controller.on_load_data()
+
+    def get_sampling_config(self):
+        from flowscope.domain.sampling import SamplingConfig
+        period_map = {
+            "Últimos 30 dias": 30,
+            "Últimos 60 dias (cache)": 60,
+            "Últimos 90 dias (cache)": 90,
+        }
+        sampling_map = {
+            "Fibonacci": "fibonacci",
+            "Fibonacci reverso": "fibonacci_reverse",
+            "Fibonacci duplo": "fibonacci_double",
+            "Monte Carlos": "monte_carlo",
+            "Monte Carlos duplo": "monte_carlo_double",
+            "Todos os dias": "all_days",
+        }
+        return SamplingConfig(
+            period_days=period_map.get(self._period_var.get(), 30),
+            method=sampling_map.get(self._sampling_var.get(), "fibonacci"),
+        )
 
     def _on_today(self):
         self._date_entry.set_date(date.today())

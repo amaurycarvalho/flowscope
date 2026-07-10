@@ -37,13 +37,22 @@ Cada combobox DEVE ter um tooltip fixo (usando a classe `ToolTip` existente) que
 - **WHEN** o usuário passa o mouse sobre o combobox de amostragem
 - **THEN** DEVE exibir o tooltip "Define o método de seleção das datas dentro do período"
 
-### Requirement: Texto explicativo dinâmico na barra de status
+### Requirement: Texto explicativo dinâmico do método de amostragem
 
-Ao navegar pelos itens do combobox (via teclado ou mouse), a barra de status DEVE exibir temporariamente o texto explicativo do item selecionado. Apenas quando o usuário finaliza a seleção (evento `<<ComboboxSelected>>`) é que a ação de recarga (se aplicável) DEVE ser disparada.
+A mensagem explicativa do método de amostragem DEVE ser exibida em um `tk.Label` (`_sampling_label`) posicionado ao lado do `_date_label` na barra superior, com cor `fg="gray"`. O label DEVE ser atualizado no evento `<<ComboboxSelected>>` do combobox de amostragem. O texto explicativo do período permanece na barra de status.
 
-#### Scenario: Texto explicativo ao navegar no período
+#### Scenario: Label de amostragem mostra texto conciso ao selecionar
 
-- **WHEN** o usuário navega para o item "Últimos 60 dias (cache)" no combobox de período
+- **WHEN** o usuário seleciona "Fibonacci" no combobox de amostragem
+- **THEN** o `_sampling_label` DEVE exibir "Amostra concentrada nas datas mais recentes."
+
+### Requirement: Texto explicativo do período na barra de status
+
+Ao selecionar um item no combobox de período, a barra de status DEVE exibir o texto explicativo do período selecionado. Apenas quando o usuário finaliza a seleção (evento `<<ComboboxSelected>>`) é que a ação de recarga (se aplicável) DEVE ser disparada.
+
+#### Scenario: Texto explicativo ao selecionar período 60 dias
+
+- **WHEN** o usuário seleciona "Últimos 60 dias (cache)" no combobox de período
 - **THEN** a barra de status DEVE exibir "Janela de 60 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3."
 
 ### Requirement: Recarga automática ao mudar seleção com dados carregados

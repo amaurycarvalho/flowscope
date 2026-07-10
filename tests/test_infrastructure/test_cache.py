@@ -83,3 +83,36 @@ class TestInvalidate:
 
     def test_chave_inexistente_nao_levanta_excecao(self, cache: CacheManager):
         cache.invalidate("ghost")
+
+
+class TestFindNearest:
+    def test_exact_date_found(self, cache: CacheManager):
+        d = date(2026, 7, 10)
+        cache.put(d, "data")
+        result = cache.find_nearest(d)
+        assert result == d
+
+    def test_within_deviation(self, cache: CacheManager):
+        cache.put(date(2026, 7, 10), "data")
+        result = cache.find_nearest(date(2026, 7, 12), max_deviation=3)
+        assert result == date(2026, 7, 10)
+
+    def test_empty_cache(self, cache: CacheManager):
+        result = cache.find_nearest(date(2026, 7, 10))
+        assert result is None
+
+    def test_beyond_deviation(self, cache: CacheManager):
+        cache.put(date(2026, 7, 10), "data")
+        result = cache.find_nearest(date(2026, 7, 20), max_deviation=3)
+        assert result is None
+
+    def test_prefers_closer_date(self, cache: CacheManager):
+        cache.put(date(2026, 7, 10), "data")
+        cache.put(date(2026, 7, 15), "data")
+        result = cache.find_nearest(date(2026, 7, 12), max_deviation=5)
+        assert result == date(2026, 7, 10)
+
+    def test_zero_deviation(self, cache: CacheManager):
+        cache.put(date(2026, 7, 10), "data")
+        result = cache.find_nearest(date(2026, 7, 10), max_deviation=0)
+        assert result == date(2026, 7, 10)

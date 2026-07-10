@@ -68,12 +68,17 @@ class B3Client:
         return resp.text
 
     def fetch_file(self, date_key: date, file_name: str = "TradeInformationConsolidated",
-                   progress_callback: Callable[[str, bool], None] | None = None) -> str:
+                   progress_callback: Callable[[str, bool], None] | None = None,
+                   cache_only: bool = False) -> str | None:
         cached = self._cache.get(date_key)
         if cached is not None:
             if progress_callback:
                 progress_callback(f"{date_key} (em cache)", False)
             return cached
+        if cache_only:
+            if progress_callback:
+                progress_callback(f"{date_key} (sem cache)", True)
+            return None
         token_data = self._request_token(file_name, date_key)
         token = token_data.get("token") or token_data.get("redirectUrl", "")
         content = self._download_csv(token)

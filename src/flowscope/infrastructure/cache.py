@@ -1,6 +1,6 @@
 import json
 import platform
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
@@ -30,6 +30,15 @@ class CacheManager:
         path = self._path_for(d)
         if path.exists():
             return path.read_text(encoding="utf-8")
+        return None
+
+    def find_nearest(self, d: date, max_deviation: int = 7) -> date | None:
+        for delta_days in range(max_deviation + 1):
+            for candidate in (d - timedelta(days=delta_days), d + timedelta(days=delta_days)):
+                if self._path_for(candidate).exists():
+                    return candidate
+                if delta_days == 0:
+                    break
         return None
 
     def put(self, d: date, content: str) -> None:
