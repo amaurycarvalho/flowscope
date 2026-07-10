@@ -19,9 +19,30 @@ class B3DataRepository(DataRepository):
 
     def get_available_dates(self, ref_date: date,
                             config: SamplingConfig | None = None) -> list[date]:
-        if config is None or (config.period_days == 30 and config.method == "fibonacci"):
+        _SAMPLING_METHODS = frozenset({
+            "fibonacci", "fibonacci_reverse", "fibonacci_double",
+            "monte_carlo", "monte_carlo_double",
+        })
+
+        if config is None:
             return fibonacci_dates(ref_date)
-        return resolve_dates(ref_date, config, cache=self._client._cache)
+
+        has_data = self._has_data if config.method in _SAMPLING_METHODS else None
+
+        if config.period_days == 30 and config.method == "fibonacci":
+            return fibonacci_dates(ref_date, has_data=has_data)
+
+        return resolve_dates(ref_date, config, has_data=has_data)
+
+    def _has_data(self, d: date) -> bool:
+        content = self._client._cache.get(d)
+        if content is None:
+            return True
+        lines = content.splitlines()
+        if not lines:
+            return False
+        data_start = 1 if not lines[0].startswith("RptDt") else 0
+        return len(lines) > data_start + 1
 
     def get_index_tickers(self, index: str,
                           progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:

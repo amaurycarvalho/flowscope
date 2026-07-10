@@ -121,33 +121,66 @@ def generate_dates(ref_date: date, config: SamplingConfig | None = None) -> list
         return _fibonacci_dates(ref_date, period)
 
 
+def _find_nearest_with_data(
+    date: date, has_data, already_selected: set[date], max_deviation: int = 7
+) -> date | None:
+    for delta in range(max_deviation + 1):
+        candidate = date - timedelta(days=delta)
+        if (candidate not in already_selected
+                and _is_business_day(candidate)
+                and has_data(candidate)):
+            return candidate
+        if delta > 0:
+            candidate = date + timedelta(days=delta)
+            if (candidate not in already_selected
+                    and _is_business_day(candidate)
+                    and has_data(candidate)):
+                return candidate
+    return None
+
+
+def _resolve_with_data(
+    raw_dates: list[date], has_data, max_deviation: int = 7
+) -> list[date]:
+    resolved: list[date] = []
+    seen: set[date] = set()
+    for d in raw_dates:
+        bd = _next_business_day(d)
+        if has_data is not None:
+            data_date = _find_nearest_with_data(bd, has_data, seen, max_deviation)
+            if data_date is None:
+                continue
+            if data_date not in seen:
+                resolved.append(data_date)
+                seen.add(data_date)
+        else:
+            if bd not in seen:
+                resolved.append(bd)
+                seen.add(bd)
+    return sorted(resolved)
+
+
 def resolve_dates(
     ref_date: date,
     config: SamplingConfig | None = None,
-    cache=None,
+    has_data=None,
 ) -> list[date]:
     raw = generate_dates(ref_date, config)
-    cfg = config or SamplingConfig()
-    cache_only = cfg.period_days > 30
+    return _resolve_with_data(raw, has_data) if has_data is not None else sorted(
+        _next_business_day(d) for d in {_next_business_day(d)
+                                         for d in raw}
+    )
 
-    resolved: list[date] = []
+
+def fibonacci_dates(ref_date: date, has_data=None) -> list[date]:
+    raw = [ref_date - timedelta(days=o) for o in FIBONACCI_OFFSETS[:7]]
+    if has_data is not None:
+        return _resolve_with_data(raw, has_data)
+    dates = []
+    seen = set()
     for d in raw:
         bd = _next_business_day(d)
-        if cache_only and cache is not None:
-            nearest = cache.find_nearest(bd, max_deviation=7)
-            if nearest is not None:
-                resolved.append(nearest)
-        else:
-            resolved.append(bd)
-
-    seen = set()
-    return sorted(d for d in resolved if d not in seen and not seen.add(d))
-
-
-def fibonacci_dates(ref_date: date) -> list[date]:
-    dates = []
-    for offset in FIBONACCI_OFFSETS[:7]:
-        d = ref_date - timedelta(days=offset)
-        d = _next_business_day(d)
-        dates.append(d)
+        if bd not in seen:
+            dates.append(bd)
+            seen.add(bd)
     return dates

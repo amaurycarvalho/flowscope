@@ -52,3 +52,22 @@ O sistema DEVE remover datas duplicadas do conjunto final, mantendo apenas uma o
 
 - **WHEN** o ajuste ao próximo dia útil faz duas datas diferentes colapsarem para a mesma data (ex: sábado e domingo ajustam para segunda)
 - **THEN** a data DEVE aparecer apenas uma vez na lista final de datas a serem consultadas
+
+### Requirement: Substituição de datas sem trades (pós-resolução ticker-aware)
+
+Após o download dos trades, cada data de amostragem DEVE ser verificada contra os dados reais dos tickers analisados. Se nenhum ticker analisado tiver negociado em uma data de amostragem, a data DEVE ser substituída pela data mais próxima (d±1..d±7, dias úteis não repetidos) onde pelo menos um ticker tenha negociado.
+
+A substituição DEVE ocorrer antes da execução do motor de indicadores, para que gráficos (ex: Evolução da Dominância) exibam todas as datas de amostragem com indicadores computados.
+
+#### Scenario: Data de amostragem sem trades substituída
+
+- **WHEN** uma data de amostragem d não possui trades de nenhum ticker analisado
+- **AND** d+1 possui trades de pelo menos um ticker analisado
+- **THEN** o sistema DEVE substituir d por d+1 na lista de datas de amostragem
+- **AND** o motor de indicadores DEVE computar indicadores para d+1
+
+#### Scenario: Data sem trades mantida se não houver substituta
+
+- **WHEN** uma data de amostragem d não possui trades de nenhum ticker analisado
+- **AND** nenhuma data em d±1..d±7 possui trades de nenhum ticker analisado
+- **THEN** o sistema DEVE manter d na lista (como fallback, resultando em linha vazia no CSV)

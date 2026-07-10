@@ -96,6 +96,7 @@ class FlowScopeGUI(tk.Tk):
         self._setup_style()
 
         self._current_data: dict = {}
+        self._sampling_dates: list[date] = []
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
         self._loading_after_id = None
@@ -211,7 +212,7 @@ class FlowScopeGUI(tk.Tk):
         self._sampling_combo = ttk.Combobox(
             top, textvariable=self._sampling_var,
             values=["Fibonacci", "Fibonacci reverso", "Fibonacci duplo",
-                    "Monte Carlos", "Monte Carlos duplo", "Todos os dias"],
+                    "Monte Carlo", "Monte Carlo duplo", "Todos os dias"],
             state="readonly", width=18,
         )
         self._sampling_combo.pack(side=tk.LEFT, padx=PAD_SMALL)
@@ -673,7 +674,8 @@ class FlowScopeGUI(tk.Tk):
         self._progress_bar["value"] = 0
 
     def set_current_data(self, data: dict) -> None:
-        self._current_data = data
+        self._current_data = {k: v for k, v in data.items() if not k.startswith("_")}
+        self._sampling_dates = data.get("_sampling_dates", [])
 
     def set_tickers_list(self, tickers: list[str]) -> None:
         self._tickers = list(tickers)
@@ -724,8 +726,8 @@ class FlowScopeGUI(tk.Tk):
         "Fibonacci": "Amostra concentrada nas datas mais recentes.",
         "Fibonacci reverso": "Amostra concentrada nas datas mais distantes.",
         "Fibonacci duplo": "Amostra concentrada nas margens do período.",
-        "Monte Carlos": "Amostra das margens do período com centro aleatório disperso.",
-        "Monte Carlos duplo": "Amostra das margens com centro aleatório concentrado.",
+        "Monte Carlo": "Amostra das margens do período com centro aleatório disperso.",
+        "Monte Carlo duplo": "Amostra das margens com centro aleatório concentrado.",
         "Todos os dias": "Amostra contendo todos os dias.",
     }
 
@@ -756,8 +758,8 @@ class FlowScopeGUI(tk.Tk):
             "Fibonacci": "fibonacci",
             "Fibonacci reverso": "fibonacci_reverse",
             "Fibonacci duplo": "fibonacci_double",
-            "Monte Carlos": "monte_carlo",
-            "Monte Carlos duplo": "monte_carlo_double",
+            "Monte Carlo": "monte_carlo",
+            "Monte Carlo duplo": "monte_carlo_double",
             "Todos os dias": "all_days",
         }
         return SamplingConfig(
@@ -943,22 +945,36 @@ class FlowScopeGUI(tk.Tk):
             self._flash_status("Nenhum ticker disponível para cópia.")
             return ""
 
+        sampling_dates = (
+            self._sampling_dates or
+            sorted({
+                day["date"]
+                for t in tickers
+                for day in self._current_data.get(t, {}).get("daily_data", [])
+            })
+        )
+
         header = "RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol"
         lines = [header]
 
         for ticker in tickers:
             daily = self._current_data.get(ticker, {}).get("daily_data", [])
-            for day in daily:
-                min_p = str(day["min_price"]).replace(".", ",")
-                max_p = str(day["max_price"]).replace(".", ",")
-                avg_p = str(day["avg_price"]).replace(".", ",")
-                last_p = str(day["last_price"]).replace(".", ",")
-                fin_v = str(day["fin_vol"]).replace(".", ",")
-                lines.append(
-                    f"{day['date'].isoformat()};{ticker};{min_p};{max_p};"
-                    f"{avg_p};{last_p};{day['trades_qty']};"
-                    f"{day['fin_instr_qty']};{fin_v}"
-                )
+            by_date = {day["date"]: day for day in daily}
+            for sd in sampling_dates:
+                day = by_date.get(sd)
+                if day:
+                    min_p = str(day["min_price"]).replace(".", ",")
+                    max_p = str(day["max_price"]).replace(".", ",")
+                    avg_p = str(day["avg_price"]).replace(".", ",")
+                    last_p = str(day["last_price"]).replace(".", ",")
+                    fin_v = str(day["fin_vol"]).replace(".", ",")
+                    lines.append(
+                        f"{sd.isoformat()};{ticker};{min_p};{max_p};"
+                        f"{avg_p};{last_p};{day['trades_qty']};"
+                        f"{day['fin_instr_qty']};{fin_v}"
+                    )
+                else:
+                    lines.append(f"{sd.isoformat()};{ticker};;;;;;;")
 
         return "\n".join(lines)
 

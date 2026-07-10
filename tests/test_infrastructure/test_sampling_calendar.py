@@ -91,20 +91,29 @@ class TestResolveDates:
         for d in dates:
             assert d.weekday() < 5
 
-    def test_cache_only_with_full_cache(self):
+    def test_has_data_all_valid(self):
         ref = date(2026, 7, 10)
         config = SamplingConfig(period_days=60, method="fibonacci")
-        cache = MagicMock()
-        cache.find_nearest.return_value = date(2026, 7, 9)
-        dates = resolve_dates(ref, config, cache=cache)
+        has_data = MagicMock(return_value=True)
+        dates = resolve_dates(ref, config, has_data=has_data)
         assert len(dates) > 0
-        assert cache.find_nearest.called
+        for d in dates:
+            assert d.weekday() < 5
+
+    def test_has_data_fallback(self):
+        ref = date(2026, 7, 10)
+        config = SamplingConfig(period_days=30, method="fibonacci")
+        # Simulate 2026-06-29 as having no data, fallback to 2026-06-30
+        def has_data(d):
+            return d != date(2026, 6, 29)
+        dates = resolve_dates(ref, config, has_data=has_data)
+        assert len(dates) == 7
+        assert date(2026, 6, 29) not in dates
+        assert date(2026, 6, 30) in dates
 
     def test_deduplication(self):
         ref = date(2026, 7, 12)
         config = SamplingConfig(period_days=10, method="all_days")
-        cache = MagicMock()
-        cache.find_nearest.return_value = None
         dates = resolve_dates(ref, config)
         assert len(dates) <= 10
         assert len(dates) == len(set(dates))

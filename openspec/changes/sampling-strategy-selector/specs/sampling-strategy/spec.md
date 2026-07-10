@@ -16,16 +16,16 @@ O sistema DEVE exibir um combobox na barra superior com as opções de período:
 
 ### Requirement: Seleção de método de amostragem
 
-O sistema DEVE exibir um combobox na barra superior com as opções de amostragem: "Fibonacci" (default), "Fibonacci reverso", "Fibonacci duplo", "Monte Carlos", "Monte Carlos duplo", "Todos os dias". O combobox DEVE ser do tipo read-only.
+O sistema DEVE exibir um combobox na barra superior com as opções de amostragem: "Fibonacci" (default), "Fibonacci reverso", "Fibonacci duplo", "Monte Carlo", "Monte Carlo duplo", "Todos os dias". O combobox DEVE ser do tipo read-only.
 
 #### Scenario: Amostragem default é Fibonacci
 
 - **WHEN** o usuário abre a aplicação pela primeira vez
 - **THEN** o combobox de amostragem DEVE exibir "Fibonacci" como valor selecionado
 
-#### Scenario: Seleção de amostragem Monte Carlos
+#### Scenario: Seleção de amostragem Monte Carlo
 
-- **WHEN** o usuário seleciona "Monte Carlos" no combobox de amostragem
+- **WHEN** o usuário seleciona "Monte Carlo" no combobox de amostragem
 - **THEN** o sistema DEVE configurar a amostragem para selecionar a data mais recente, a data mais antiga do período e 5 dias aleatórios intermediários
 
 ### Requirement: Geração de datas conforme período e amostragem
@@ -47,14 +47,14 @@ O sistema DEVE gerar a lista de datas para download com base na combinação de 
 - **WHEN** período=30 e amostragem=Fibonacci duplo
 - **THEN** as datas geradas DEVEM ser: ref_date - 22 + d, onde d ∈ {1,2,3,13,19,20,21}
 
-#### Scenario: Monte Carlos em 30 dias
+#### Scenario: Monte Carlo em 30 dias
 
-- **WHEN** período=30 e amostragem=Monte Carlos
+- **WHEN** período=30 e amostragem=Monte Carlo
 - **THEN** as datas geradas DEVEM ser: ref_date - 1, ref_date - 30 (ou mais próxima disponível), e 5 dias aleatórios entre a primeira e a última (excluindo ambas)
 
-#### Scenario: Monte Carlos duplo em 30 dias
+#### Scenario: Monte Carlo duplo em 30 dias
 
-- **WHEN** período=30 e amostragem=Monte Carlos duplo
+- **WHEN** período=30 e amostragem=Monte Carlo duplo
 - **THEN** as datas geradas DEVEM ser: ref_date - 1, ref_date - 30 (ou mais próxima disponível), e 12 dias aleatórios entre a primeira e a última (excluindo ambas)
 
 #### Scenario: Todos os dias em 30 dias
@@ -125,7 +125,7 @@ Se o usuário modificar o combobox de período ou amostragem e houver dados prev
 
 #### Scenario: Mudança de amostragem sem dados carregados
 
-- **WHEN** o usuário abre a aplicação (sem dados carregados) e seleciona "Monte Carlos"
+- **WHEN** o usuário abre a aplicação (sem dados carregados) e seleciona "Monte Carlo"
 - **THEN** o sistema NÃO DEVE executar nenhuma ação
 
 ### Requirement: Tooltips e textos explicativos
@@ -152,14 +152,14 @@ Cada combobox DEVE ter um tooltip fixo explicando sua função. Ao selecionar um
 - **WHEN** o usuário seleciona "Fibonacci duplo" no combobox de amostragem
 - **THEN** o `_sampling_label` DEVE exibir "Amostra concentrada nas margens do período."
 
-#### Scenario: Label de amostragem para Monte Carlos
+#### Scenario: Label de amostragem para Monte Carlo
 
-- **WHEN** o usuário seleciona "Monte Carlos" no combobox de amostragem
+- **WHEN** o usuário seleciona "Monte Carlo" no combobox de amostragem
 - **THEN** o `_sampling_label` DEVE exibir "Amostra das margens do período com centro aleatório disperso."
 
-#### Scenario: Label de amostragem para Monte Carlos duplo
+#### Scenario: Label de amostragem para Monte Carlo duplo
 
-- **WHEN** o usuário seleciona "Monte Carlos duplo" no combobox de amostragem
+- **WHEN** o usuário seleciona "Monte Carlo duplo" no combobox de amostragem
 - **THEN** o `_sampling_label` DEVE exibir "Amostra das margens com centro aleatório concentrado."
 
 #### Scenario: Label de amostragem para Todos os dias

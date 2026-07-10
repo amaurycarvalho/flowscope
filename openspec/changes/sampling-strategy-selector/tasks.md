@@ -50,13 +50,25 @@
 - [x] 7.5 Testar `B3Client.fetch_file(cache_only=True)` — deve retornar None em cache miss
 - [x] 7.6 Verificar que testes existentes continuam passando (comportamento default inalterado)
 
-## 8. Verificação manual
+## 8. Pós-resolução ticker-aware
 
-- [ ] 8.1 Iniciar aplicação e verificar comboboxes visíveis e com valores default **(manual)**
-- [ ] 8.2 Carregar dados com período=30 e Fibonacci (comportamento atual) — deve funcionar **(manual)**
-- [ ] 8.3 Alternar período para 60 dias com dados carregados — deve recarregar automático **(manual)**
-- [ ] 8.4 Alternar amostragem sem dados carregados — não deve ter ação **(manual)**
-- [ ] 8.5 Verificar tooltips ao passar mouse nos combos **(manual)**
-- [ ] 8.6 Verificar texto explicativo na statusbar ao navegar nos combos **(manual)**
-- [ ] 8.7 Verificar que combos são desabilitados durante carga e restaurados após **(manual)**
-- [ ] 8.8 Testar período > 30 sem cache — deve executar sem erro (apenas menos datas) **(manual)**
+- [x] 8.1 Implementar varredura d±1..d±7 em `AnalyzeTickersUseCase.execute()` para substituir datas sem trades de nenhum ticker analisado
+- [x] 8.2 Mover `_engine.execute()` para depois da varredura de substituição, garantindo que indicadores sejam computados para todas as datas
+- [x] 8.3 Propagar `_sampling_dates` no dict resultado do use case
+
+## 9. Renomeação UI
+
+- [x] 9.1 Renomear "Monte Carlos" → "Monte Carlo" nos labels do combobox, status labels e sampling_map
+
+## 10. Verificação manual
+
+- [ ] 10.1 Iniciar aplicação e verificar comboboxes visíveis e com valores default **(manual)**
+- [ ] 10.2 Carregar dados com período=30 e Fibonacci (comportamento atual) — deve funcionar **(manual)**
+- [ ] 10.3 Alternar período para 60 dias com dados carregados — deve recarregar automático **(manual)**
+- [ ] 10.4 Alternar amostragem sem dados carregados — não deve ter ação **(manual)**
+- [ ] 10.5 Verificar tooltips ao passar mouse nos combos **(manual)**
+- [ ] 10.6 Verificar texto explicativo na statusbar ao navegar nos combos **(manual)**
+- [ ] 10.7 Verificar que combos são desabilitados durante carga e restaurados após **(manual)**
+- [ ] 10.8 Testar período > 30 sem cache — deve executar sem erro (apenas menos datas) **(manual)**
+- [ ] 10.9 Verificar que CSV contém todas as datas de amostragem, incluindo linhas vazias para datas sem trade **(manual)**
+- [ ] 10.10 Verificar que gráfico "Evolução da Dominância" exibe todas as datas de amostragem (sem datas faltando) **(manual)**

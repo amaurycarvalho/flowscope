@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 
 from flowscope.application.ports import DataRepository
 from flowscope.domain.engine import IndicatorEngine
@@ -33,6 +33,37 @@ class AnalyzeTickersUseCase:
 
         filtered = [t for t in trades if t.ticker.value in tickers]
 
+        # Replace sampling dates where no ticker traded with nearby dates that have data
+        ticker_set = set(tickers)
+        dates_with_trades = {t.date for t in filtered}
+        sampling_dates = list(dates)
+        seen = set(dates)
+
+        for i, d in enumerate(sampling_dates):
+            if d in dates_with_trades:
+                continue
+            replacement = None
+            for delta in range(1, 8):
+                for sign in (-1, 1):
+                    candidate = d + timedelta(days=delta * sign)
+                    if candidate in seen or candidate.weekday() >= 5:
+                        continue
+                    new_trades = self._repository.fetch_trades(
+                        [candidate], list(ticker_set),
+                        progress_callback=None, cache_only=cache_only,
+                    )
+                    if new_trades:
+                        replacement = candidate
+                        filtered.extend(new_trades)
+                        dates_with_trades.add(candidate)
+                        break
+                if replacement:
+                    break
+            if replacement:
+                sampling_dates[i] = replacement
+                seen.add(replacement)
+                seen.discard(d)
+
         results = self._engine.execute(filtered, progress_callback=progress_callback)
 
         daily_data: dict[str, list[dict]] = {}
@@ -52,7 +83,7 @@ class AnalyzeTickersUseCase:
                 "trades_qty": t.trades_qty.value,
             })
 
-        result = {}
+        result = {"_sampling_dates": sampling_dates}
         for ticker in tickers:
             result[ticker] = {
                 "vwap": results.get("vwap", {}).get(ticker),

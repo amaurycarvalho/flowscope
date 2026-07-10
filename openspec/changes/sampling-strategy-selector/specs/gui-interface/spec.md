@@ -16,7 +16,7 @@ O sistema DEVE exibir um combobox do tipo `ttk.Combobox` em modo read-only na ba
 
 ### Requirement: Combobox de seleção de amostragem
 
-O sistema DEVE exibir um combobox do tipo `ttk.Combobox` em modo read-only na barra superior, posicionado entre o combobox de período e o botão "Copiar dados CSV", com as opções: "Fibonacci", "Fibonacci reverso", "Fibonacci duplo", "Monte Carlos", "Monte Carlos duplo", "Todos os dias". O valor padrão DEVE ser "Fibonacci".
+O sistema DEVE exibir um combobox do tipo `ttk.Combobox` em modo read-only na barra superior, posicionado entre o combobox de período e o botão "Copiar dados CSV", com as opções: "Fibonacci", "Fibonacci reverso", "Fibonacci duplo", "Monte Carlo", "Monte Carlo duplo", "Todos os dias". O valor padrão DEVE ser "Fibonacci".
 
 #### Scenario: Posicionamento do combobox de amostragem
 
@@ -66,7 +66,7 @@ O sistema DEVE monitorar o evento `<<ComboboxSelected>>` de ambos os comboboxes.
 
 #### Scenario: Mudança de amostragem sem dados carregados
 
-- **WHEN** o usuário abre a aplicação (sem dados carregados) e seleciona "Monte Carlos duplo"
+- **WHEN** o usuário abre a aplicação (sem dados carregados) e seleciona "Monte Carlo duplo"
 - **THEN** o sistema NÃO DEVE executar nenhuma ação além de atualizar o valor selecionado
 
 ### Requirement: Comboboxes desabilitados durante operações

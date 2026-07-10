@@ -179,6 +179,47 @@ def on_load_data(self, ref_date=None):
 
 `presenter.get_sampling_config()` lê os valores atuais dos combos e monta o `SamplingConfig`.
 
+### 9. Resolução data-aware com callback has_data
+
+Adicionado `_find_nearest_with_data()` e `_resolve_with_data()` em `calendar.py`. A resolução ajusta cada data bruta para o dia útil mais próximo dentro de ±7 dias onde o callback `has_data(d)` retorna True. O callback é injetado pelo repository (`B3DataRepository._has_data()`), que verifica se o conteúdo do cache (ou a existência do arquivo B3) contém dados.
+
+**Bug conhecido:** `_has_data()` retorna `True` para arquivos não cacheados, tornando a checagem um no-op durante a resolução inicial. A mitigação é a pós-resolução com dados reais dos tickers (seção 10).
+
+### 10. Pós-resolução ticker-aware para substituir datas sem trades
+
+Após `fetch_trades()` no `AnalyzeTickersUseCase.execute()`, cada data de amostragem é verificada contra o conjunto real de trades dos tickers analisados:
+
+```python
+for i, d in enumerate(sampling_dates):
+    if d in dates_with_trades:
+        continue
+    for delta in range(1, 8):
+        for sign in (-1, 1):
+            candidate = d ± delta
+            if candidate não visitado e dia útil:
+                new_trades = fetch_trades([candidate], tickers)
+                if new_trades:
+                    substitui d por candidate
+                    filtered.extend(new_trades)
+```
+
+Isso garante que cada data de amostragem tenha trades de pelo menos um ticker analisado. Datas sem trades de nenhum ticker são substituídas pela data mais próxima (d±1..d±7) que tenha dados.
+
+**Trade-off:** a varredura pode baixar até 14 arquivos extras por data substituída. Os arquivos são cacheados, então execuções subsequentes são rápidas.
+
+### 11. Motor de indicadores roda após a pós-resolução
+
+`_engine.execute(filtered)` foi movido para depois da varredura de substituição. Isso garante que os indicadores (CLV, eficiência, fluxo financeiro, etc.) sejam computados para TODAS as datas de amostragem, incluindo as de reposição. Os gráficos (ex: Evolução da Dominância) lêem de `all_indicators` e portanto exibem todas as datas.
+
+### 12. Renomeação UI: "Monte Carlos" → "Monte Carlo"
+
+O label "Monte Carlos" foi renomeado para "Monte Carlo" (singular) em:
+- Valores do combobox de amostragem
+- Labels de status explicativos
+- Mapeamento `sampling_map` (chave)
+
+Os identificadores internos (`monte_carlo`, `monte_carlo_double`) permanecem inalterados.
+
 ## Risks / Trade-offs
 
 - **Monte Carlo não-determinístico**: cada execução gera datas diferentes → Mitigação: é um comportamento esperado e documentado na interface e nos textos explicativos. O usuário entende que é uma amostragem aleatória.

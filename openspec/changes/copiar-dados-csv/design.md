@@ -43,6 +43,24 @@ A arquitetura existente:
 ### Decisão 4: Extrair geração do CSV para método auxiliar
 `_build_raw_csv()` retorna a string CSV. `_copy_data` e `_fallback_clipboard_text` chamam esse método, eliminando duplicação de lógica.
 
+### Decisão 5: CSV itera sobre sampling_dates, não daily_data
+O CSV deve conter todas as datas de amostragem, mesmo que o ticker não tenha negociado em alguma delas. Para isso, `_sampling_dates` é propagado do use case → GUI via chave `_sampling_dates` no dict resultado. Em `set_current_data()`, chaves `_` são extraídas para `self._sampling_dates` e removidas de `self._current_data`. Em `_build_raw_csv()`, itera sobre `_sampling_dates` e preenche com `;;;;;;;` linhas vazias para datas sem trade do ticker.
+
+```python
+sampling_dates = self._sampling_dates or sorted({day["date"] ...})
+for ticker in tickers:
+    by_date = {day["date"]: day for day in daily}
+    for sd in sampling_dates:
+        day = by_date.get(sd)
+        if day: ...  # dados reais
+        else: f"{sd};{ticker};;;;;;;"  # linha vazia
+```
+
+**Alternativa considerada:** iterar apenas sobre `daily_data` (datas com trades). Rejeitado porque o usuário precisa visualizar explicitamente as datas sem trade para auditoria.
+
+### Decisão 6: Propagação de sampling_dates pelo pipeline
+O use case retorna `_sampling_dates` no mesmo dict do resultado. O presenter (`on_result`) passa o dict completo para `set_current_data()`. A GUI extrai `_sampling_dates` e armazena separadamente, mantendo `_current_data` limpo (apenas dados de ticker).
+
 ## Risks / Trade-offs
 
 - **[Baixo] Campo `segment` sempre "CASH"** — O parser B3 já filtra `SgmtNm=CASH`, então o campo será sempre "CASH". É informação redundante, mas mantida por completude do CSV bruto e consistência com a fonte original.

@@ -47,3 +47,17 @@ O sistema DEVE incluir os campos `segment` (SgmtNm) e `trades_qty` (TradQty) no 
 #### Scenario: daily_data contém segment e trades_qty
 - **WHEN** o `AnalyzeTickersUseCase` constrói o dicionário resultado
 - **THEN** cada registro em `daily_data` DEVE conter as chaves `"segment"` (str) e `"trades_qty"` (int)
+
+### Requirement: CSV contém todas as datas de amostragem
+
+O CSV DEVE incluir todas as datas de amostragem, independentemente de o ticker específico ter negociado ou não naquela data. Datas sem trades DEVEM aparecer como `RptDt;TckrSymb;;;;;;;` (valores vazios).
+
+A lista completa de datas de amostragem DEVE ser propagada do use case até a GUI via chave `_sampling_dates` no dict resultado, extraída em `set_current_data()` e armazenada em `self._sampling_dates`.
+
+#### Scenario: Data sem trade do ticker aparece vazia no CSV
+- **WHEN** um ticker não negociou em uma data de amostragem
+- **THEN** o CSV DEVE conter a linha `{data};{ticker};;;;;;;` com valores vazios
+
+#### Scenario: Todas as datas de amostragem no CSV
+- **WHEN** o CSV é gerado
+- **THEN** o CSV DEVE conter exatamente N linhas por ticker, onde N é o número de datas de amostragem (incluindo datas sem trade)
