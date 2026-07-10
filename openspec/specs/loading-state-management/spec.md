@@ -6,37 +6,39 @@ Define the behavior and architecture for disabling all buttons during portfolio 
 
 ### Requirement: Botões desabilitados durante processamento de índice
 
-O sistema DEVE desabilitar todos os botões da aplicação quando um botão de índice (IBOV, IDIV, IFIX) for pressionado, desde o início do download do portfólio até a finalização completa do processamento dos dados. Ao finalizar, os botões DEVEM retornar aos seus estados anteriores (habilitado ou desabilitado).
+O sistema DEVE desabilitar todos os botões da aplicação **e os comboboxes de período e amostragem** quando um botão de índice (IBOV, IDIV, IFIX) for pressionado, desde o início do download do portfólio até a finalização completa do processamento dos dados. Ao finalizar, os botões e comboboxes DEVEM retornar aos seus estados anteriores (habilitado/readonly ou desabilitado).
 
-#### Scenario: Todos os botões desabilitados durante carregamento do IBOV
-
+#### Scenario: Comboboxes desabilitados durante carregamento do IBOV
 - **WHEN** o usuário clica no botão "IBOV"
-- **THEN** todos os botões da aplicação DEVEM ser desabilitados imediatamente, incluindo botões de índice, carregar, hoje, salvar, editar, selecionar todos, desmarcar todos e copiar
+- **THEN** todos os botões da aplicação E os comboboxes de período e amostragem DEVEM ser desabilitados imediatamente
 
-#### Scenario: Botões restaurados ao estado anterior após processamento
-
+#### Scenario: Comboboxes restaurados após processamento do IBOV
 - **WHEN** o processamento do IBOV finaliza com sucesso
-- **THEN** os botões DEVEM retornar aos estados que tinham antes do clique: botões normalmente habilitados (índice, carregar, hoje) voltam a NORMAL, e o botão copiar mantém seu estado anterior (NORMAL se já havia dados carregados, DISABLED se não)
+- **THEN** os comboboxes DEVEM retornar ao estado "readonly"
 
-#### Scenario: Botões restaurados mesmo em caso de erro
-
+#### Scenario: Comboboxes restaurados mesmo em caso de erro
 - **WHEN** o processamento do IBOV falha (erro de rede, API, ou parsing)
-- **THEN** os botões DEVEM ser restaurados aos seus estados anteriores, mesmo com a falha
+- **THEN** os comboboxes DEVEM ser restaurados ao estado "readonly", mesmo com a falha
 
-#### Scenario: Cliques concorrentes ignorados durante processamento
-
+#### Scenario: Concorrência ignorada
 - **WHEN** o usuário clica em "IBOV" e, enquanto o processamento ocorre, clica em "IFIX"
 - **THEN** o segundo clique DEVE ser ignorado e o sistema DEVE continuar o processamento do IBOV sem interrupção
 
-#### Scenario: Botão Carregar também dispara loading state
+### Requirement: Botão Carregar também dispara loading state
 
+O sistema DEVE desabilitar todos os botões da aplicação **e os comboboxes de período e amostragem** quando o botão "Carregar" (ou Enter/F5) for pressionado, com o mesmo comportamento dos botões de índice.
+
+#### Scenario: Combos desabilitados ao pressionar Carregar
 - **WHEN** o usuário clica no botão "Carregar" (ou pressiona Enter/F5)
-- **THEN** todos os botões DEVEM ser desabilitados durante o processamento, com o mesmo comportamento dos botões de índice
+- **THEN** os comboboxes de período e amostragem DEVEM ser desabilitados durante o processamento e restaurados ao finalizar
 
-#### Scenario: Botão Hoje também dispara loading state
+### Requirement: Recarga por mudança de combo também dispara loading state
 
-- **WHEN** o usuário clica no botão "Hoje"
-- **THEN** todos os botões DEVEM ser desabilitados durante o processamento e restaurados ao finalizar
+Quando a mudança de seleção em um combobox disparar uma recarga automática (dados já carregados), o sistema DEVE desabilitar todos os controles (incluindo os próprios comboboxes) durante o processamento, com o mesmo comportamento de uma carga manual.
+
+#### Scenario: Mudança de combo com dados carregados desabilita controles
+- **WHEN** o usuário tem dados carregados e seleciona um novo período/amostragem
+- **THEN** os comboboxes DEVEM ser desabilitados durante a recarga e restaurados ao finalizar
 
 ### Requirement: Cursor de espera durante processamento
 

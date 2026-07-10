@@ -15,11 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.6.0] — 2026-07-10
 
-### [sampling-strategy-selector](openspec/changes/sampling-strategy-selector) Comboboxes de período e amostragem para controle flexível da janela temporal de análise
+### [copiar-dados-csv](openspec/changes/archive/2026-07-10-copiar-dados-csv) Botão Copiar Dados passa a exportar dados brutos CSV da B3 em vez de indicadores agregados
+
+#### Added
+- `segment` e `trades_qty` adicionados ao `daily_data` no use case para viabilizar o CSV completo
+
+#### Changed
+- Lógica do botão "Copiar Dados" substituída para copiar dados brutos CSV (SgmtNm=CASH) com campos `RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol`
+- Na aba "Análise do Ticker": copia dados apenas do ticker selecionado; na "Análise Geral": copia de todos os tickers selecionados
+- Período copiado reflete o selecionado nos comboboxes de período e amostragem
+- Formato brasileiro: campo separado por `;`, decimal com `,` (vírgula)
+- OperationGuard continua desabilitando/habilitando o botão durante cargas; atalho `Ctrl+Shift+C` mantido
+
+### [sampling-strategy-selector](openspec/changes/archive/2026-07-10-sampling-strategy-selector) Comboboxes de período e amostragem para controle flexível da janela temporal de análise
 
 #### Added
 - Combobox de período (30/60/90 dias) na barra superior, ao lado do botão Copiar CSV
-- Combobox de amostragem (Fibonacci, Fibonacci reverso, Fibonacci duplo, Monte Carlos, Monte Carlos duplo, Todos os dias)
+- Combobox de amostragem (Fibonacci, Fibonacci reverso, Fibonacci duplo, Monte Carlo, Monte Carlo duplo, Todos os dias)
 - Tooltip único e fixo em cada combobox com explicação geral do controle
 - Recarga automática de dados ao mudar seleção dos combos quando dados já estão carregados
 - Se nenhum dado estiver carregado, mudar combos não tem efeito

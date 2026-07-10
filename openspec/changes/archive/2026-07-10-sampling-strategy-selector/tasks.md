@@ -62,13 +62,13 @@
 
 ## 10. Verificação manual
 
-- [ ] 10.1 Iniciar aplicação e verificar comboboxes visíveis e com valores default **(manual)**
-- [ ] 10.2 Carregar dados com período=30 e Fibonacci (comportamento atual) — deve funcionar **(manual)**
-- [ ] 10.3 Alternar período para 60 dias com dados carregados — deve recarregar automático **(manual)**
-- [ ] 10.4 Alternar amostragem sem dados carregados — não deve ter ação **(manual)**
-- [ ] 10.5 Verificar tooltips ao passar mouse nos combos **(manual)**
-- [ ] 10.6 Verificar texto explicativo na statusbar ao navegar nos combos **(manual)**
-- [ ] 10.7 Verificar que combos são desabilitados durante carga e restaurados após **(manual)**
-- [ ] 10.8 Testar período > 30 sem cache — deve executar sem erro (apenas menos datas) **(manual)**
-- [ ] 10.9 Verificar que CSV contém todas as datas de amostragem, incluindo linhas vazias para datas sem trade **(manual)**
-- [ ] 10.10 Verificar que gráfico "Evolução da Dominância" exibe todas as datas de amostragem (sem datas faltando) **(manual)**
+- [x] 10.1 Iniciar aplicação e verificar comboboxes visíveis e com valores default **(manual)**
+- [x] 10.2 Carregar dados com período=30 e Fibonacci (comportamento atual) — deve funcionar **(manual)**
+- [x] 10.3 Alternar período para 60 dias com dados carregados — deve recarregar automático **(manual)**
+- [x] 10.4 Alternar amostragem sem dados carregados — não deve ter ação **(manual)**
+- [x] 10.5 Verificar tooltips ao passar mouse nos combos **(manual)**
+- [x] 10.6 Verificar texto explicativo na statusbar ao navegar nos combos **(manual)**
+- [x] 10.7 Verificar que combos são desabilitados durante carga e restaurados após **(manual)**
+- [x] 10.8 Testar período > 30 sem cache — deve executar sem erro (apenas menos datas) **(manual)**
+- [x] 10.9 Verificar que CSV contém todas as datas de amostragem, incluindo linhas vazias para datas sem trade **(manual)**
+- [x] 10.10 Verificar que gráfico "Evolução da Dominância" exibe todas as datas de amostragem (sem datas faltando) **(manual)**

@@ -22,6 +22,8 @@ _(Nenhuma — é uma modificação de capability existente)_
 ### Modified Capabilities
 - `clipboard-export`: O conteúdo copiado pelo botão "Copiar Dados" muda de indicadores agregados (Ticker;VWAP;MoneyFlowVolume) para dados brutos do CSV original (RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol), com comportamento sensível à aba ativa
 
+- **Target**: Release 0.6.0
+
 ## Impact
 
 - `src/flowscope/application/use_cases.py`: +2 campos no `daily_data` (`segment`, `trades_qty`)
