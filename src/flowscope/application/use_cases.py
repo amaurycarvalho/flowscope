@@ -48,6 +48,8 @@ class AnalyzeTickersUseCase:
                 "last_price": t.last_price.value,
                 "fin_vol": t.fin_vol,
                 "fin_instr_qty": t.fin_instr_qty,
+                "segment": t.segment,
+                "trades_qty": t.trades_qty.value,
             })
 
         result = {}

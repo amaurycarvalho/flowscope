@@ -687,13 +687,14 @@ class FlowScopeGUI(tk.Tk):
             self._flash_after_id = None
         self._button_states: dict[tk.Widget, str] = {}
         gui_buttons = [
-            self._load_button, self._today_button, self._copy_data_btn,
+            self._load_button, self._today_button,
         ]
         if self._shortcut_btn:
             gui_buttons.append(self._shortcut_btn)
         for btn in gui_buttons:
             self._button_states[btn] = btn.cget("state")
             btn.config(state=tk.DISABLED)
+        self._copy_data_btn.config(state=tk.DISABLED)
         for btn in self._ticker_list.all_buttons():
             self._button_states[btn] = btn.cget("state")
             btn.config(state=tk.DISABLED)
@@ -923,29 +924,62 @@ class FlowScopeGUI(tk.Tk):
         elif n_total > 0:
             self._ticker_list.set_counter(f"Tickers ({n_total})")
 
+    def _build_raw_csv(self) -> str:
+        try:
+            main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+        except Exception:
+            main_tab = "Análise Geral"
+
+        if main_tab == "Análise do Ticker":
+            ticker = self._get_selected_ticker()
+            tickers = [ticker] if ticker else []
+        else:
+            tickers = self._ticker_list.get_tickers()
+            if not tickers:
+                ticker = self._get_selected_ticker()
+                tickers = [ticker] if ticker else []
+
+        if not tickers:
+            self._flash_status("Nenhum ticker disponível para cópia.")
+            return ""
+
+        header = "RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol"
+        lines = [header]
+
+        for ticker in tickers:
+            daily = self._current_data.get(ticker, {}).get("daily_data", [])
+            for day in daily:
+                min_p = str(day["min_price"]).replace(".", ",")
+                max_p = str(day["max_price"]).replace(".", ",")
+                avg_p = str(day["avg_price"]).replace(".", ",")
+                last_p = str(day["last_price"]).replace(".", ",")
+                fin_v = str(day["fin_vol"]).replace(".", ",")
+                lines.append(
+                    f"{day['date'].isoformat()};{ticker};{min_p};{max_p};"
+                    f"{avg_p};{last_p};{day['trades_qty']};"
+                    f"{day['fin_instr_qty']};{fin_v}"
+                )
+
+        return "\n".join(lines)
+
     def _copy_data(self):
+        csv_text = self._build_raw_csv()
+        if not csv_text:
+            return
         try:
             import pyxclip
 
-            lines = ["Ticker;VWAP;MoneyFlowVolume"]
-            for ticker, data in self._current_data.items():
-                vwap = data.get("vwap", {}).get("period_vwap", "")
-                mfv = data.get("money_flow_volume", "")
-                lines.append(f"{ticker};{vwap};{mfv}")
-            text = "\n".join(lines)
-            pyxclip.copy(text)
+            pyxclip.copy(csv_text)
             self._flash_status("Dados copiados!")
         except Exception:
             self._fallback_clipboard_text()
 
     def _fallback_clipboard_text(self):
+        csv_text = self._build_raw_csv()
+        if not csv_text:
+            return
         self.clipboard_clear()
-        lines = ["Ticker;VWAP;MoneyFlowVolume"]
-        for ticker, data in self._current_data.items():
-            vwap = data.get("vwap", {}).get("period_vwap", "")
-            mfv = data.get("money_flow_volume", "")
-            lines.append(f"{ticker};{vwap};{mfv}")
-        self.clipboard_append("\n".join(lines))
+        self.clipboard_append(csv_text)
         self._flash_status("Dados copiados! (fallback)")
 
     def _on_create_shortcut(self):
