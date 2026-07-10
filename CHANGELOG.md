@@ -13,80 +13,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [eficiencia-do-movimento](openspec/changes/eficiencia-do-movimento) Painel "Eficiência do Movimento" com gauge horizontal, card qualitativo e timeline de barras para os últimos 15 pregões
 - [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado com gauge de concentração, card informativo e timeline AFT
 
-## [0.5.2] — 2026-07-09
+## [0.6.0] — 2026-07-10
 
-### [refactor-loading-architecture](openspec/changes/archive/2026-07-09-refactor-loading-architecture) Refatoração da arquitetura de carregamento com controller, presenter e guarda de operação
-
-#### Added
-- `LoadIndexPortfolioUseCase` — caso de uso em application layer para carregar carteiras de índices, eliminando a comunicação direta da GUI com o repositório
-- `OperationGuard` — context manager que previne operações concorrentes, garantindo fluxos atômicos de botão-para-gráfico
-- `FlowScopeController` — extrai a lógica de orquestração do `FlowScopeGUI` para uma classe separada na adapter layer
-- `FlowScopePresenter` — extrai a lógica de atualização da UI do `FlowScopeGUI` para uma classe separada de apresentação
-
-#### Changed
-- `DataRepository` port ganha `get_index_tickers()` para fechar a lacuna atual do protocolo
-- Todos os botões (índice, carregar, salvar, editar, selecionar todos, desmarcar todos) desabilitam durante o pipeline completo de portfólio + análise e restauram ao estado anterior ao finalizar
-
-#### Removed
-- `_fill_with_index()` e `_ensure_tickers()` do `FlowScopeGUI` — orquestração movida para o controller
-
-### [add-presentation-layer-tests](openspec/changes/archive/2026-07-09-add-presentation-layer-tests) Testes unitários para a camada de apresentação com protocolo GUIView destacável
+### [sampling-strategy-selector](openspec/changes/sampling-strategy-selector) Comboboxes de período e amostragem para controle flexível da janela temporal de análise
 
 #### Added
-- Testes unitários para `FlowScopeController.on_index_clicked()` e `on_load_data()` com dependências mockadas (sequência, erros, guard)
-- Testes para `FlowScopeController._make_progress_cb()` — verifica advance/fail no callback
-- Testes para `FlowScopePresenter` com mock de `GUIView` (operation_started/finished, progress, result, error, getters)
-- Teste para `OperationGuard.is_busy` property
-- Teste para `LoadIndexPortfolioUseCase.execute()` repassando `progress_callback`
-- Testes Tkinter headless para `_disable_all_buttons()` e `_restore_all_buttons()` com snapshot de estados
+- Combobox de período (30/60/90 dias) na barra superior, ao lado do botão Copiar CSV
+- Combobox de amostragem (Fibonacci, Fibonacci reverso, Fibonacci duplo, Monte Carlos, Monte Carlos duplo, Todos os dias)
+- Tooltip único e fixo em cada combobox com explicação geral do controle
+- Recarga automática de dados ao mudar seleção dos combos quando dados já estão carregados
+- Se nenhum dado estiver carregado, mudar combos não tem efeito
 
 #### Changed
-- `FlowScopePresenter` passa a depender do protocolo `GUIView` em vez da classe concreta `FlowScopeGUI`
-- `FlowScopeGUI` implementa o protocolo `GUIView` com 16 novos métodos públicos
+- Barra de status exibe texto explicativo do item selecionado ao percorrer os comboboxes
+- `calendar.py` com novas funções de geração de datas para cada combinação período × amostragem
+- `DataRepository.get_available_dates()` recebe parâmetros de período e amostragem
+- `B3Client.fetch_file()` aceita modo `cache_only` — período > 30 usa apenas cache
+- Ajuste de cada data de amostragem para o próximo dia útil disponível no cache (±7 dias), com deduplicação
+- `AnalyzeTickersUseCase.execute()` recebe config de período/amostragem e propaga ao repositório
+- Dois comboboxes incluídos no OperationGuard (desabilitados durante carga/processamento)
 
-### [testes-core](openspec/changes/archive/2026-07-09-testes-core) Testes para lacunas de cobertura nas camadas de application e infrastructure com mock HTTP
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.6.0...HEAD
 
-#### Added
-- Testes para `AnalyzeTickersUseCase.execute()` com trades mockados (com/sem filtro de tickers, agregação diária)
-- Testes para `OperationGuard.acquire()` nos estados livre e ocupado, incluindo reentrância
-- Testes para `LoadIndexPortfolioUseCase.execute()` com índices válidos, inválidos, retorno vazio e sucesso
-- Testes para `CacheManager.get_or_fetch()` com cache válido, expirado, ausente e falha no fetch
-- Testes para `CacheManager.invalidate()` com chave existente e inexistente
-- Testes para `B3Client.fetch_file()` com cache hit, cache miss (HTTP mockado) e callback de progresso
-- Testes para `B3Client.fetch_portfolio()` com retorno de tickers, resposta vazia e falha HTTP
-- Testes para `B3DataRepository.fetch_trades()` com parser sucesso, erro de parse e erro de download
-- Testes para `B3Client._build_portfolio_url()` — verificação do encoding base64
-- Dependência `responses` adicionada em `[project.optional-dependencies] dev` para mock HTTP
-- `conftest.py` com fixtures padronizadas para B3Client, CacheManager e B3DataRepository mockados
-
-### [cross-platform-logging](openspec/changes/archive/2026-07-09-cross-platform-logging) Logging técnico cross-platform com LogPort, PythonLogAdapter e handlers nativos (syslog/Event Log)
-
-### [fix-linting-warnings](openspec/changes/archive/2026-07-09-fix-linting-warnings) Correção de 75 warnings de linting com extração de métodos e limpeza de código
-
-#### Changed
-- `DominanceRankingChart.update` e `DominanceTimelineChart.update` — lógica de stems extraída para função compartilhada `_compute_stems` (reduz complexidade C901 de 21→~16 e 12→~8)
-- `PriceRangePanel._build_main_chart` — bloco `is_last` extraído para `_render_last_day_markers` (C901 16→~10)
-- `VWAPHistChart.update` — loops de coleta de dados e violins extraídos para `_collect_ticker_data` e `_compute_violin_shapes` (C901 14→~9)
-- `QuadrantChart.update` — anotações de ticker extraídas para `_annotate_tickers` (C901 15→~12)
-
-#### Fixed
-- 19 imports não usados (F401) e 4 variáveis não usadas (F841) removidos
-- 37 problemas cosméticos corrigidos (E501, E306, E741, W391, E302, E127-E131)
-- 2 `_generate_summary` suprimidos com `# noqa: C901` (complexidade inerente de texto narrativo)
-
-#### Added
-- `LogPort` (Protocol) na camada application como porta de logging, seguindo o padrão Clean Architecture já usado com `DataRepository`
-- `PythonLogAdapter` na infraestrutura que implementa `LogPort` delegando para o módulo `logging` stdlib
-
-#### Changed
-- Handlers de logging configurados por plataforma no `main.py`: `SysLogHandler` (Linux/macOS), `NTEventLogHandler` (Windows), `RotatingFileHandler` (fallback universal em `~/.flowscope/logs/`)
-- `LogPort` injetado no `FlowScopeController` para logar erros técnicos antes de exibir mensagem na statusbar
-- `FlowScopePresenter` ganha `on_technical_error()` que exibe mensagem amigável orientando o usuário a consultar o log
-
-#### Removed
-- `NullHandler` de `main.py` (substituído por configuração real de logging)
-
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.5.2...HEAD
-
-[0.5.2]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.5.2
+[0.6.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.6.0
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
