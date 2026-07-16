@@ -8,7 +8,6 @@ from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.calendar import fibonacci_dates, resolve_dates
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.parser import parse_csv, ParseError
-from flowscope.infrastructure.cache import CacheManager
 
 logger = logging.getLogger(__name__)
 

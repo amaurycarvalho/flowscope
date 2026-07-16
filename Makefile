@@ -1,4 +1,4 @@
-.PHONY: install build test clean
+.PHONY: install build test lint clean
 
 VENV = .venv
 
@@ -15,19 +15,25 @@ else
 endif
 
 install: $(ACTIVATE)
+
 $(ACTIVATE): pyproject.toml
 	$(PYTHON_CMD) -m venv $(VENV)
-	$(PYTHON) -m pip install --upgrade pip
-	$(PIP) install -e .
-	$(PIP) install -e ".[dev]"
+	$(PYTHON) -m pip install -q --upgrade pip
+	$(PIP) install -q -e .
+	$(PIP) install -q -e ".[dev]"
 	touch $(ACTIVATE)
 
 build: $(ACTIVATE)
-	$(PIP) install pyinstaller
+	$(PIP) install -q pyinstaller
 	$(PYTHON) -m PyInstaller flowscope.spec
 
 test: $(ACTIVATE)
-	$(PYTHON) -m pytest tests/ -v
+	$(PIP) install -q pytest
+	$(PYTHON) -m pytest tests/ -v --tb=short
+
+lint: $(VENV)
+	$(PIP) install -q ruff
+	$(VENV)/bin/ruff check .
 
 clean:
 	rm -rf $(VENV) build/ dist/ __pycache__/ *.spec

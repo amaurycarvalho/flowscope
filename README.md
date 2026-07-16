@@ -1,4 +1,4 @@
-# flowscope
+# FlowScope
 
 FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens baseada nos dados públicos consolidados de negociações (pregões) disponibilizados pela bolsa de valores B3.
 
@@ -10,29 +10,11 @@ A principal diretriz do FlowScope é explicar o mercado, não apenas exibir [ind
 
 Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI), com suporte multiplataforma para Linux, Windows e macOS.
 
-## Instalação
+---
 
-### 1. Manual (código fonte)
+## 🧑‍💻 Para Usuários
 
-```bash
-pip install -e .
-```
-
-Requisitos:
-
-- Python 3.10+
-- matplotlib, Pillow, pyxclip e tkcalendar (veja `pyproject.toml`)
-
-### 2. Via Makefile (build local)
-
-```bash
-make install   # cria .venv/ e instala dependências
-make build     # gera executável em dist/
-```
-
-O executável será gerado em `dist/flowscope` (Linux), `dist/flowscope.exe` (Windows) ou `dist/flowscope` (macOS).
-
-### 3. Binário pré-compilado
+### Como Instalar
 
 Baixe o binário da plataforma desejada na [página de releases](https://github.com/amaurycarvalho/flowscope/releases):
 
@@ -42,29 +24,9 @@ Baixe o binário da plataforma desejada na [página de releases](https://github.
 | Windows    | `flowscope-windows.exe` |
 | macOS      | `flowscope-macos`       |
 
-## Como usar
+### Como Usar
 
-### A partir do código fonte
-
-```bash
-python3 -m flowscope                     # interface gráfica
-python3 -m flowscope --gui               # interface gráfica
-python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
-python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
-python3 -m flowscope --version           # exibir versão
-```
-
-### A partir do executável gerado pelo Makefile
-
-```bash
-dist/flowscope                           # interface gráfica
-dist/flowscope --gui                     # interface gráfica
-dist/flowscope --create-shortcut         # criar atalho no desktop (Linux)
-dist/flowscope --help                    # exibir ajuda com todos os parâmetros
-dist/flowscope --version                 # exibir versão
-```
-
-### A partir do binário pré-compilado
+Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 
 ```bash
 ./flowscope-linux                        # interface gráfica
@@ -74,24 +36,63 @@ dist/flowscope --version                 # exibir versão
 ./flowscope-linux --version              # exibir versão
 ```
 
-Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
+---
 
-### Testes
+## 👨‍🔧 Para Desenvolvedores
 
-#### Manual (via Makefile)
+### Como Instalar
 
-```bash
-make test
-```
-
-#### CI (pytest)
+#### Baixando o codigo fonte
 
 ```bash
-pip install pytest
-pytest
+git clone https://github.com/amaurycarvalho/flowscope.git
 ```
 
-## Saiba mais
+#### Como Compilar
+
+```bash
+make install   # cria .venv/ e instala dependências
+make build     # gera executável em dist/
+```
+
+O executável será gerado em `dist/flowscope` (Linux), `dist/flowscope.exe` (Windows) ou `dist/flowscope` (macOS).
+
+Requisitos:
+
+- Python 3.10+
+- matplotlib, Pillow, pyxclip e tkcalendar (veja `pyproject.toml`)
+
+#### Linting e Testes Unitários
+
+```bash
+make lint test
+```
+
+### Como Usar
+
+#### A partir do código fonte
+
+```bash
+python3 -m flowscope                     # interface gráfica
+python3 -m flowscope --gui               # interface gráfica
+python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
+python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
+python3 -m flowscope --version           # exibir versão
+```
+
+#### A partir do executável gerado pelo Makefile
+
+```bash
+dist/flowscope                           # interface gráfica
+dist/flowscope --gui                     # interface gráfica
+dist/flowscope --create-shortcut         # criar atalho no desktop (Linux)
+dist/flowscope --help                    # exibir ajuda com todos os parâmetros
+dist/flowscope --version                 # exibir versão
+```
+
+---
+
+## Saiba Mais
 
 - [Repositório do projeto](https://github.com/amaurycarvalho/flowscope)
 - [Releases com binários pré-compilados](https://github.com/amaurycarvalho/flowscope/releases)

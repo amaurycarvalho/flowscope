@@ -1,8 +1,6 @@
 from datetime import date
 from unittest.mock import MagicMock
 
-import pytest
-
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.calendar import (
     generate_dates,
