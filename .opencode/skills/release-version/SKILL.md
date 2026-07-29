@@ -69,7 +69,7 @@ Files updated:
 - src/flowscope/__init__.py (__version__)
 - flowscope.spec
 
-Commentary: openspec-changelog skill can now be used manually to update the changelog files.
+Commentary: changelog skill can now be used manually to update the changelog files.
 ```
 
 **Output On Error**
