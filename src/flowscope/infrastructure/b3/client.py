@@ -1,8 +1,8 @@
 import base64
 import json
 import logging
-from datetime import date
 from collections.abc import Callable
+from datetime import date
 from typing import Any
 
 from flowscope.infrastructure.b3.parser import parse_index_csv
@@ -107,7 +107,7 @@ class B3Client:
                 raise RuntimeError(f"Empty response for portfolio {index}")
             try:
                 decoded = base64.b64decode(raw).decode("latin-1")
-            except Exception:
+            except (ValueError, TypeError):
                 decoded = raw
             tickers = parse_index_csv(decoded)
             logger.info("Parsed %d tickers from %s", len(tickers), index)
@@ -125,8 +125,8 @@ class B3Client:
             if progress_callback:
                 progress_callback(f"Portfólio {index}: {len(result)} ativos", False)
             return result
-        except Exception as e:
-            logger.error("Failed to fetch portfolio %s: %s", index, e, exc_info=True)
+        except Exception:
+            logger.exception("Failed to fetch portfolio %s", index)
             if progress_callback:
                 progress_callback(f"Falha ao baixar portfólio {index}", True)
             return []

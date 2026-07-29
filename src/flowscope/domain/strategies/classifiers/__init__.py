@@ -1,10 +1,10 @@
-from flowscope.domain.strategies.classifiers.dominance import (
-    DominanceClassification,
-    classify_dominance,
-)
 from flowscope.domain.strategies.classifiers.conviction import (
     ConvictionClassification,
     classify_conviction,
+)
+from flowscope.domain.strategies.classifiers.dominance import (
+    DominanceClassification,
+    classify_dominance,
 )
 from flowscope.domain.strategies.classifiers.money_flow import (
     MoneyFlowClassification,
@@ -12,10 +12,10 @@ from flowscope.domain.strategies.classifiers.money_flow import (
 )
 
 __all__ = [
-    "DominanceClassification",
-    "classify_dominance",
     "ConvictionClassification",
-    "classify_conviction",
+    "DominanceClassification",
     "MoneyFlowClassification",
+    "classify_conviction",
+    "classify_dominance",
     "classify_money_flow",
 ]

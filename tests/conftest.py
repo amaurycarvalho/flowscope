@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -104,7 +104,7 @@ def mock_trades() -> list[TradeDay]:
             avg_price=Price("28.80"),
             last_price=Price("28.90"),
             trades_qty=Volume(15000),
-            fin_vol=Decimal("432000"),
+            fin_vol=Decimal(432000),
             fin_instr_qty=15000,
         ),
         TradeDay(
@@ -116,7 +116,7 @@ def mock_trades() -> list[TradeDay]:
             avg_price=Price("28.40"),
             last_price=Price("28.30"),
             trades_qty=Volume(12000),
-            fin_vol=Decimal("340800"),
+            fin_vol=Decimal(340800),
             fin_instr_qty=12000,
         ),
         TradeDay(
@@ -128,7 +128,7 @@ def mock_trades() -> list[TradeDay]:
             avg_price=Price("62.80"),
             last_price=Price("62.50"),
             trades_qty=Volume(8000),
-            fin_vol=Decimal("502400"),
+            fin_vol=Decimal(502400),
             fin_instr_qty=8000,
         ),
         TradeDay(
@@ -140,7 +140,7 @@ def mock_trades() -> list[TradeDay]:
             avg_price=Price("62.20"),
             last_price=Price("62.80"),
             trades_qty=Volume(10000),
-            fin_vol=Decimal("622000"),
+            fin_vol=Decimal(622000),
             fin_instr_qty=10000,
         ),
     ]
@@ -168,7 +168,7 @@ def mock_repository(mock_b3_client):
 def sample_cached_portfolio(tmp_path: Path) -> Path:
     meta_path = tmp_path / "portfolio_IBOV.json"
     payload = {
-        "cached_at": datetime.now().isoformat(),
+        "cached_at": datetime.now(timezone.utc).isoformat(),
         "tickers": ["PETR4", "VALE3"],
         "index": "IBOV",
     }

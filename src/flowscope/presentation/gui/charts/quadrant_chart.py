@@ -5,8 +5,12 @@ import matplotlib
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class QuadrantChart:
@@ -29,7 +33,7 @@ class QuadrantChart:
         self._scatter = None
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.mpl_connect("pick_event", self._on_pick)
@@ -155,7 +159,7 @@ class QuadrantChart:
 
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.draw()
@@ -170,10 +174,10 @@ class QuadrantChart:
                 xy=(pt["clv"], pt["vwap_dist"]),
                 xytext=(5, 5), textcoords="offset points",
                 fontsize=7, alpha=0.8,
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.5),
+                bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.5},
             )
 
-    def _generate_summary(self, trajectories):  # noqa: C901
+    def _generate_summary(self, trajectories):
         counts = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
         for points in trajectories:
             last = points[-1]
@@ -191,8 +195,8 @@ class QuadrantChart:
             return ""
 
         parts = [
-            f"Distribuição: Q1={counts['Q1']}, Q2={counts['Q2']}, "
-            f"Q3={counts['Q3']}, Q4={counts['Q4']} (total: {total})"
+            (f"Distribuição: Q1={counts['Q1']}, Q2={counts['Q2']}, "
+            f"Q3={counts['Q3']}, Q4={counts['Q4']} (total: {total})")
         ]
 
         q1 = counts["Q1"] / total
@@ -245,7 +249,7 @@ class QuadrantChart:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
             return
-        contains, info = self._scatter.contains(event)
+        contains, _info = self._scatter.contains(event)
         if contains:
             return
         closest = None

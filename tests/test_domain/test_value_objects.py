@@ -16,7 +16,7 @@ class TestPrice:
 
     def test_from_int(self):
         p = Price(30)
-        assert p.value == Decimal("30")
+        assert p.value == Decimal(30)
 
     def test_equality(self):
         assert Price("28.50") == Price("28.50")

@@ -1,5 +1,5 @@
-from unittest.mock import MagicMock, call
 from datetime import date
+from unittest.mock import MagicMock, call
 
 from flowscope.application.load_portfolio_use_case import (
     PortfolioNotFoundError,
@@ -9,13 +9,13 @@ from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
 def _make_controller(**overrides):
-    defaults = dict(
-        guard=MagicMock(),
-        load_portfolio=MagicMock(),
-        analyze=MagicMock(),
-        presenter=MagicMock(),
-        logger=MagicMock(),
-    )
+    defaults = {
+        "guard": MagicMock(),
+        "load_portfolio": MagicMock(),
+        "analyze": MagicMock(),
+        "presenter": MagicMock(),
+        "logger": MagicMock(),
+    }
     defaults.update(overrides)
     return FlowScopeController(**defaults)
 

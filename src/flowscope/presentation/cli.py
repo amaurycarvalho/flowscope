@@ -1,6 +1,6 @@
 import argparse
 import sys
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -57,12 +57,12 @@ def _load_tickers(path: str) -> list[str]:
 
 
 def run_cli(args: argparse.Namespace) -> None:
+    from flowscope.application.use_cases import AnalyzeTickersUseCase
     from flowscope.infrastructure.b3.client import B3Client
     from flowscope.infrastructure.b3.repository import B3DataRepository
-    from flowscope.application.use_cases import AnalyzeTickersUseCase
 
     repo = B3DataRepository(B3Client())
-    ref_date = date.today()
+    ref_date = datetime.now(timezone.utc).date()
 
     tickers = None
     if args.tickers:

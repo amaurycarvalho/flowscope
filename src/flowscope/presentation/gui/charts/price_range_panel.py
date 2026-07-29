@@ -4,8 +4,12 @@ import warnings
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class PriceRangePanel:
@@ -32,7 +36,7 @@ class PriceRangePanel:
         self._hover_data: list[dict] = []
         self._annot = self._ax_main.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
@@ -80,7 +84,7 @@ class PriceRangePanel:
     def _attach_annot(self):
         self._annot = self._ax_main.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False, zorder=10,
         )
 
@@ -243,8 +247,8 @@ class PriceRangePanel:
             ax.text(0.98, 0.98, classification,
                     transform=ax.transAxes, ha="right", va="top",
                     fontsize=10, fontweight="bold",
-                    bbox=dict(boxstyle="round,pad=0.3", fc="lightyellow",
-                              ec="gray", alpha=0.9),
+                    bbox={"boxstyle": "round,pad=0.3", "fc": "lightyellow",
+                              "ec": "gray", "alpha": 0.9},
                     zorder=10)
 
         ax.set_yticks(range(n))

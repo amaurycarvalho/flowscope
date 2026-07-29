@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from flowscope.application.logging_port import LogEntry, LogReference, LogPort
+from flowscope.application.logging_port import LogEntry, LogPort, LogReference
 
 
 class TestLogEntry:

@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import filedialog
+from collections.abc import Callable
 from pathlib import Path
+from tkinter import filedialog
 
 from PIL import Image, ImageTk
 
@@ -11,15 +12,15 @@ from flowscope.presentation.main import _resolve_icon_path
 class TickerList:
     def __init__(
         self, parent: tk.Widget,
-        on_change: callable = None,
-        on_load: callable = None,
-        initialdir: str = None,
-        on_dir_changed: callable = None,
-        on_index_click: dict[str, callable] = None,
-        on_data_needed: callable = None,
+        on_change: Callable | None = None,
+        on_load: Callable | None = None,
+        initialdir: str | None = None,
+        on_dir_changed: Callable | None = None,
+        on_index_click: dict[str, Callable] | None = None,
+        on_data_needed: Callable | None = None,
     ):
         self.frame = tk.Frame(parent)
-        self._callbacks: dict[str, callable | dict] = {}
+        self._callbacks: dict[str, Callable | dict] = {}
         self._callbacks["on_change"] = on_change
         self._callbacks["on_load"] = on_load
         self._callbacks["on_dir_changed"] = on_dir_changed

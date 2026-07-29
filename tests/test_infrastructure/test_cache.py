@@ -1,5 +1,5 @@
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -44,7 +44,7 @@ class TestCacheManager:
 class TestGetOrFetch:
     def test_cache_valido_retorna_dado_sem_executar_fetch(self, cache: CacheManager):
         fetch_fn = MagicMock(return_value={"data": "fresh"})
-        payload = {"cached_at": datetime.now().isoformat(), "data": "cached"}
+        payload = {"cached_at": datetime.now(timezone.utc).isoformat(), "data": "cached"}
         _write_meta(cache._cache_dir, "mykey", payload)
         result = cache.get_or_fetch("mykey", ttl_days=7, fetch_fn=fetch_fn)
         assert result == payload
@@ -52,7 +52,7 @@ class TestGetOrFetch:
 
     def test_cache_expirado_executa_fetch(self, cache: CacheManager):
         fetch_fn = MagicMock(return_value={"data": "fresh"})
-        old = (datetime.now() - timedelta(days=10)).isoformat()
+        old = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
         payload = {"cached_at": old, "data": "stale"}
         _write_meta(cache._cache_dir, "mykey", payload)
         result = cache.get_or_fetch("mykey", ttl_days=7, fetch_fn=fetch_fn)

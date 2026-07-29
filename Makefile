@@ -32,7 +32,7 @@ test: $(ACTIVATE)
 	$(PYTHON) -m pytest tests/ -v --tb=short
 
 lint: $(VENV)
-	$(PIP) install -q ruff
+	$(PIP) install -q -U ruff
 	$(VENV)/bin/ruff check .
 
 clean:

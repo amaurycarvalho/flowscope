@@ -4,12 +4,16 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from flowscope.domain.strategies.classifiers import (
-    classify_dominance,
     classify_conviction,
+    classify_dominance,
 )
 from flowscope.presentation.gui.charts.dominance_ranking import _compute_stems
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class DominanceTimelineChart:
@@ -31,7 +35,7 @@ class DominanceTimelineChart:
         self._bars = None
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.mpl_connect("pick_event", self._on_pick)
@@ -133,7 +137,7 @@ class DominanceTimelineChart:
     def _attach_annot(self):
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False, zorder=10,
         )
 

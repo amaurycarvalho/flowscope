@@ -1,6 +1,6 @@
 import pytest
 
-from flowscope.presentation.cli import build_parser, _load_tickers
+from flowscope.presentation.cli import _load_tickers, build_parser
 
 
 class TestBuildParser:

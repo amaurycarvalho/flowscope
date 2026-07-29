@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.calendar import (
+    fibonacci_dates,
     generate_dates,
     resolve_dates,
-    fibonacci_dates,
 )
 
 

@@ -1,6 +1,6 @@
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 
 @dataclass
@@ -62,13 +62,14 @@ class ProgressReporter:
         pct = int(global_weight / total_weight * 100)
 
         now_ms = time.monotonic() * 1000
-        if self._last_pct >= 0 and self._last_update_ms > 0:
-            if (
-                abs(pct - self._last_pct) < self._throttle_pct
-                and now_ms - self._last_update_ms < self._throttle_ms
-                and pct < 100
-            ):
-                return
+        if (
+            self._last_pct >= 0
+            and self._last_update_ms > 0
+            and abs(pct - self._last_pct) < self._throttle_pct
+            and now_ms - self._last_update_ms < self._throttle_ms
+            and pct < 100
+        ):
+            return
 
         self._last_pct = pct
         self._last_update_ms = now_ms

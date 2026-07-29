@@ -34,7 +34,7 @@ class TypicalPriceStrategy(IndicatorStrategy):
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
-            tp = (t.max_price.value + t.min_price.value + t.last_price.value) / Decimal("3")
+            tp = (t.max_price.value + t.min_price.value + t.last_price.value) / Decimal(3)
             if ticker not in result:
                 result[ticker] = {}
             result[ticker][t.date] = tp
@@ -51,7 +51,7 @@ class MedianPriceStrategy(IndicatorStrategy):
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
-            mp = (t.max_price.value + t.min_price.value) / Decimal("2")
+            mp = (t.max_price.value + t.min_price.value) / Decimal(2)
             if ticker not in result:
                 result[ticker] = {}
             result[ticker][t.date] = mp
@@ -68,7 +68,7 @@ class WeightedCloseStrategy(IndicatorStrategy):
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
-            wc = (t.max_price.value + t.min_price.value + Decimal("2") * t.last_price.value) / Decimal("4")
+            wc = (t.max_price.value + t.min_price.value + Decimal(2) * t.last_price.value) / Decimal(4)
             if ticker not in result:
                 result[ticker] = {}
             result[ticker][t.date] = wc

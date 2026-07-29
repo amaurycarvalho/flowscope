@@ -4,8 +4,12 @@ from collections import defaultdict
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class VWAPHistChart:
@@ -27,7 +31,7 @@ class VWAPHistChart:
         self._violin_polygons: list[tuple[int, object]] = []
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.mpl_connect("motion_notify_event", self._on_hover)
@@ -115,7 +119,7 @@ class VWAPHistChart:
             return
 
         x_positions = list(range(len(tickers)))
-        violin_shapes, max_vol, bucket_size = self._compute_violin_shapes(violin_data)
+        violin_shapes, max_vol, _bucket_size = self._compute_violin_shapes(violin_data)
 
         violin_width = 0.35
         for idx, (y_vals, vol_vals) in enumerate(violin_shapes):
@@ -177,7 +181,7 @@ class VWAPHistChart:
 
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.draw()

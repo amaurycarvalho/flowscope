@@ -86,7 +86,7 @@ def _monte_carlo_dates(ref_date: date, period_days: int, count: int) -> list[dat
     first = ref_date - timedelta(days=period_days)
     last = ref_date - timedelta(days=1)
     dates = [first, last]
-    available = list(date.fromordinal(d) for d in range(first.toordinal() + 1, last.toordinal()))
+    available = [date.fromordinal(d) for d in range(first.toordinal() + 1, last.toordinal())]
     if available:
         selected = random.sample(available, min(count, len(available)))
         dates.extend(selected)

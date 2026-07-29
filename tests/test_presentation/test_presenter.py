@@ -1,5 +1,5 @@
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
-from datetime import date, datetime
 
 from flowscope.application.logging_port import LogReference
 from flowscope.presentation.gui.presenter import FlowScopePresenter
@@ -64,7 +64,7 @@ class TestFlowScopePresenter:
         error = RuntimeError("timeout")
         ref = LogReference(
             source="flowscope.log",
-            identifier=datetime.now().isoformat(),
+            identifier=datetime.now(timezone.utc).isoformat(),
             hint="Consulte o arquivo de log em ~/.flowscope/logs/flowscope.log",
         )
         presenter.on_technical_error(error, ref)

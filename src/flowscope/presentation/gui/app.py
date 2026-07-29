@@ -2,31 +2,32 @@ import json
 import logging
 import platform
 import tkinter as tk
-import tkinter.ttk as ttk
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
+from tkinter import ttk
+from typing import ClassVar
+
+from PIL import Image, ImageTk
 from tkcalendar import DateEntry
 
+from flowscope import __version__
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
-from flowscope.presentation.gui.controller import FlowScopeController
-from flowscope.presentation.gui.presenter import FlowScopePresenter
-from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
-from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
-from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
+from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
+from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
+from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
+from flowscope.presentation.gui.controller import FlowScopeController
+from flowscope.presentation.gui.presenter import FlowScopePresenter
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
-from flowscope import __version__
-from PIL import Image, ImageTk
-
 from flowscope.presentation.main import (
     _create_desktop_shortcut,
     _desktop_shortcut_exists,
@@ -111,7 +112,7 @@ class FlowScopeGUI(tk.Tk):
         if self._prefs.get("last_date"):
             try:
                 self._date_entry.set_date(
-                    datetime.strptime(self._prefs["last_date"], "%Y-%m-%d").date()
+                    datetime.strptime(self._prefs["last_date"], "%Y-%m-%d").replace(tzinfo=timezone.utc).date()
                 )
             except (ValueError, TypeError):
                 pass
@@ -186,7 +187,7 @@ class FlowScopeGUI(tk.Tk):
         self._date_entry = DateEntry(
             top,
             date_pattern="yyyy-MM-dd",
-            maxdate=date.today(),
+            maxdate=datetime.now(timezone.utc).date(),
         )
         self._date_entry.pack(side=tk.LEFT, padx=PAD_SMALL)
         self._today_button = tk.Button(
@@ -342,49 +343,49 @@ class FlowScopeGUI(tk.Tk):
                 "VWAP — Volume Weighted Average Price",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Identificar o preço médio ponderado pelo volume negociado no período, revelando o valor justo da ação sob a ótica do fluxo de ordens.\n\n", ""),  # noqa: E501
+                    ("Identificar o preço médio ponderado pelo volume negociado no período, revelando o valor justo da ação sob a ótica do fluxo de ordens.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
                     ("\"Quem está acima do preço justo e quem está abaixo?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("VWAP (preço médio ponderado), volume por bucket de preço (volume profile), preço de fechamento (LastPric), preço mínimo e máximo (MinPric, MaxPric).\n\n", ""),  # noqa: E501
+                    ("VWAP (preço médio ponderado), volume por bucket de preço (volume profile), preço de fechamento (LastPric), preço mínimo e máximo (MinPric, MaxPric).\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("O VWAP é a referência de preço justo do período. Negociações acima do VWAP indicam viés comprador; abaixo, viés vendedor. "  # noqa: E501
-                     "A largura do violino mostra em quais faixas de preço houve maior concentração de volume. "  # noqa: E501
-                     "O último preço (losango vermelho) em relação ao VWAP indica se o fechamento reforça ou contradiz a tendência do período.", ""),  # noqa: E501
+                    (("O VWAP é a referência de preço justo do período. Negociações acima do VWAP indicam viés comprador; abaixo, viés vendedor. "
+                     "A largura do violino mostra em quais faixas de preço houve maior concentração de volume. "
+                     "O último preço (losango vermelho) em relação ao VWAP indica se o fechamento reforça ou contradiz a tendência do período."), ""),
                 ]
             ),
             ("Análise Geral", "Quadrantes"): (
                 "Quadrantes — CLV vs VWAP Distance",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Classificar ativos em quatro quadrantes com base no CLV (eixo X) e no desvio do VWAP (eixo Y), "
-                     "revelando a interação entre fluxo comprador/vendedor e posição relativa ao preço justo.\n\n", ""),
+                    (("Classificar ativos em quatro quadrantes com base no CLV (eixo X) e no desvio do VWAP (eixo Y), "
+                     "revelando a interação entre fluxo comprador/vendedor e posição relativa ao preço justo.\n\n"), ""),
                     ("Responde a pergunta: ", "bold"),
-                    ("\"Quem dominou o fechamento? O preço terminou acima ou abaixo do valor justo? Quanto volume financeiro sustentou esse comportamento?\"\n\n", "italic"),  # noqa: E501
+                    ("\"Quem dominou o fechamento? O preço terminou acima ou abaixo do valor justo? Quanto volume financeiro sustentou esse comportamento?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("CLV (Close Location Value), VWAP Distance (desvio percentual do último preço "
-                     "em relação ao VWAP diário), Volume (FinInstrmQty como tamanho da bolha).\n\n", ""),
+                    (("CLV (Close Location Value), VWAP Distance (desvio percentual do último preço "
+                     "em relação ao VWAP diário), Volume (FinInstrmQty como tamanho da bolha).\n\n"), ""),
                     ("Como interpretar:\n", "bold"),
-                    ("• Q1 (CLV > 0, acima do VWAP): compra forte confirmada — fechamento na metade superior do range e acima do VWAP.\n"  # noqa: E501
-                     "• Q2 (CLV < 0, acima do VWAP): venda relativa — ativo acima do VWAP mas perdeu força no fechamento (possível realização).\n"  # noqa: E501
+                    (("• Q1 (CLV > 0, acima do VWAP): compra forte confirmada — fechamento na metade superior do range e acima do VWAP.\n"
+                     "• Q2 (CLV < 0, acima do VWAP): venda relativa — ativo acima do VWAP mas perdeu força no fechamento (possível realização).\n"
                      "• Q3 (CLV < 0, abaixo do VWAP): venda forte confirmada — vendedores dominaram o dia.\n"
-                     "• Q4 (CLV > 0, abaixo do VWAP): compra em desconto — reação compradora insuficiente para recuperar o VWAP.\n\n"  # noqa: E501
-                     "As setas cinzas mostram a trajetória dos dias anteriores, evidenciando a evolução temporal de cada ativo.", ""),  # noqa: E501
+                     "• Q4 (CLV > 0, abaixo do VWAP): compra em desconto — reação compradora insuficiente para recuperar o VWAP.\n\n"
+                     "As setas cinzas mostram a trajetória dos dias anteriores, evidenciando a evolução temporal de cada ativo."), ""),
                 ]
             ),
             ("Análise Geral", "Dominância do Pregão"): (
                 "Dominância do Pregão — Ranking de Tickers por CLV",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.\n\n", ""),  # noqa: E501
+                    ("Visualizar rapidamente quais ativos tiveram dominância compradora ou vendedora no último pregão.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
                     ("\"Quem venceu a disputa diária pelo preço?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.\n\n", ""),  # noqa: E501
+                    ("CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "  # noqa: E501
-                     "Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. "  # noqa: E501
-                     "Passe o mouse sobre as barras para ver detalhes do ticker.", ""),
+                    (("Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). "
+                     "Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. "
+                     "Passe o mouse sobre as barras para ver detalhes do ticker."), ""),
                 ]
             ),
             ("Análise do Ticker", "Evolução da Dominância"): (
@@ -397,68 +398,68 @@ class FlowScopeGUI(tk.Tk):
                     ("Indicadores envolvidos: ", "bold"),
                     ("CLV (Close Location Value) nas barras, Daily Money Flow (traço horizontal sobre a barra).\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
-                     "O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento.", ""),  # noqa: E501
+                    (("Cada barra representa um pregão. Direita = compradores dominaram; Esquerda = vendedores dominaram. "
+                     "O traço horizontal indica o fluxo financeiro diário. Passe o mouse sobre as barras para ver detalhes da dominância e convicção do movimento."), ""),
                 ]
             ),
             ("Análise do Ticker", "Amplitude de Preço"): (
                 "Amplitude de Preço — Painel Visual",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Analisar se o preço apenas oscilou ou houve um movimento direcional convincente durante o pregão, "
-                     "mostrando como a posição do fechamento dentro do range evoluiu nos últimos dias.\n\n", ""),
+                    (("Analisar se o preço apenas oscilou ou houve um movimento direcional convincente durante o pregão, "
+                     "mostrando como a posição do fechamento dentro do range evoluiu nos últimos dias.\n\n"), ""),
                     ("Responde a pergunta: ", "bold"),
-                    ("\"Onde o preço andou (trajetória)? Quanto andou (amplitude)? Andou com convicção (eficiência)?\"\n\n", "italic"),  # noqa: E501
+                    ("\"Onde o preço andou (trajetória)? Quanto andou (amplitude)? Andou com convicção (eficiência)?\"\n\n", "italic"),
                     ("Indicadores envolvidos:\n", "bold"),
-                    ("• Trajetória: onde o preço se posicionou dentro da faixa do dia (0%=perto do preço mínimo, "
-                     "100%=perto do preço máximo), acompanhado dos marcadores ● (preço de fechamento, no tamanho da amplitude), "  # noqa: E501
+                    (("• Trajetória: onde o preço se posicionou dentro da faixa do dia (0%=perto do preço mínimo, "
+                     "100%=perto do preço máximo), acompanhado dos marcadores ● (preço de fechamento, no tamanho da amplitude), "
                      "M (Median), T (Typical), V (VWAP) e W (Weighted Close);\n"
                      "• Amplitude: quanto o preço oscilou, em percentual do preço médio (pequeno=pouco, grande=muito);\n"
                      "• Eficiência: o movimento teve convicção ou foi ruído (0%=muito ruído, 100%=muita convicção);\n"
                      "• CLV: Close Location Value, indicando pressão vendedora (negativo) ou compradora (positivo);\n"
-                     "• Classificação do pregão: \"Pregão Lateral\" (Amplitude Relativa ≤ mediana histórica e Eficiência ≤ 0,30), "  # noqa: E501
+                     "• Classificação do pregão: \"Pregão Lateral\" (Amplitude Relativa ≤ mediana histórica e Eficiência ≤ 0,30), "
                      "\"Volatilidade sem Direção\" (Amplitude Relativa > mediana e Eficiência ≤ 0,30), "
                      "\"Movimento Consistente\" (Amplitude Relativa ≤ mediana e Eficiência > 0,30) e "
-                     "\"Movimento Direcional Forte\" (Amplitude Relativa > mediana e Eficiência > 0,30).\n\n", ""),
-                    ("Como interpretar: ", "bold"),  # noqa: E501
-                    ("Uma Amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte. "  # noqa: E501
+                     "\"Movimento Direcional Forte\" (Amplitude Relativa > mediana e Eficiência > 0,30).\n\n"), ""),
+                    ("Como interpretar: ", "bold"),
+                    (("Uma Amplitude elevada indica maior volatilidade, mas não significa necessariamente uma tendência forte. "
                      "A Eficiência elevada mostra que a oscilação foi convertida em avanço efetivo, sugerindo convicção. "
-                     "Um CLV próximo de +1 indica fechamento perto da máxima (pressão compradora); próximo de -1, perto da mínima "  # noqa: E501
+                     "Um CLV próximo de +1 indica fechamento perto da máxima (pressão compradora); próximo de -1, perto da mínima "
                      "(pressão vendedora). Dias com barra de fundo verde consecutiva = sequência direcional forte.\n\n"
                      "Classificações:\n"
                      "• \"Pregão Lateral\": amplitude baixa e eficiência baixa — o preço andou pouco e sem convicção. "
                      "Indecisão total, mercado sem direção.\n"
-                     "• \"Volatilidade sem Direção\": amplitude alta e eficiência baixa — o preço oscilou muito mas sem rumo. "  # noqa: E501
+                     "• \"Volatilidade sem Direção\": amplitude alta e eficiência baixa — o preço oscilou muito mas sem rumo. "
                      "Mercado nervoso, barulho sem sinal direcional.\n"
-                     "• \"Movimento Consistente\": amplitude baixa e eficiência alta — movimento eficiente com pouca oscilação. "  # noqa: E501
+                     "• \"Movimento Consistente\": amplitude baixa e eficiência alta — movimento eficiente com pouca oscilação. "
                      "Compradores ou vendedores agiram com foco e sem dispersão.\n"
                      "• \"Movimento Direcional Forte\": amplitude alta e eficiência alta — volatilidade com convicção. "
                      "Movimento forte e direcionado, indicando consenso no fluxo de ordens.\n\n"
-                     "Passe o mouse sobre os marcadores para ver valores detalhados.", ""),
+                     "Passe o mouse sobre os marcadores para ver valores detalhados."), ""),
                 ]
             ),
             ("Análise do Ticker", "Fluxo Financeiro"): (
                 "Fluxo Financeiro — Daily Money Flow",
                 [
                     ("Objetivo: ", "bold"),
-                    ("Mostrar se o movimento do preço foi acompanhado por fluxo financeiro suficiente para indicar convicção compradora ou vendedora.\n\n", ""),  # noqa: E501
+                    ("Mostrar se o movimento do preço foi acompanhado por fluxo financeiro suficiente para indicar convicção compradora ou vendedora.\n\n", ""),
                     ("Responde a pergunta: ", "bold"),
                     ("\"O movimento de hoje foi sustentado por fluxo financeiro?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("• Daily Money Flow (DMF): fluxo líquido do pregão = CLV × Volume Financeiro\n"
+                    (("• Daily Money Flow (DMF): fluxo líquido do pregão = CLV × Volume Financeiro\n"
                      "• Money Flow Volume acumulado: soma do DMF no período\n"
                      "• CLV (Close Location Value): posição do fechamento no range\n"
                      "• Buying Pressure / Selling Pressure: domínio do range\n"
                      "• Score normalizado: DMF / Volume Financeiro (comparável entre ativos)\n"
-                     "• Range Percentual: amplitude relativa do dia\n\n", ""),
+                     "• Range Percentual: amplitude relativa do dia\n\n"), ""),
                     ("Como interpretar: ", "bold"),
-                    ("O DMF é o indicador principal: positivo indica fluxo comprador; negativo, fluxo vendedor. "
-                     "O score normalizado (DMF / Volume Financeiro) permite comparar a intensidade do fluxo entre ativos de diferentes liquidez. "  # noqa: E501
+                    (("O DMF é o indicador principal: positivo indica fluxo comprador; negativo, fluxo vendedor. "
+                     "O score normalizado (DMF / Volume Financeiro) permite comparar a intensidade do fluxo entre ativos de diferentes liquidez. "
                      "Um DMF elevado com score > 8% sugere fluxo forte. "
                      "O MFV acumulado mostra se a tendência de hoje reforça ou contradiz o fluxo dos dias anteriores. "
                      "O CLV (subplot central) indica onde o preço fechou no range. "
                      "Buying + Selling Pressure mostram quem dominou o range. "
-                     "DMF e MFV acumulado são exibidos em milhões de reais.", ""),
+                     "DMF e MFV acumulado são exibidos em milhões de reais."), ""),
                 ]
             ),
             ("Análise do Ticker", "Participação Institucional"): (
@@ -471,8 +472,8 @@ class FlowScopeGUI(tk.Tk):
                     ("Indicadores envolvidos: ", "bold"),
                     ("Average Trade Size (ações por negócio), Average Financial Ticket (valor por negócio).\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("Tickets médios mais altos sugerem participação institucional (grandes blocos). Tickets baixos sugerem "
-                     "predomínio de pessoa física. Acompanhar a evolução ao longo dos dias revela mudanças na composição do fluxo.", ""),  # noqa: E501
+                    (("Tickets médios mais altos sugerem participação institucional (grandes blocos). Tickets baixos sugerem "
+                     "predomínio de pessoa física. Acompanhar a evolução ao longo dos dias revela mudanças na composição do fluxo."), ""),
                 ]
             ),
             ("Análise do Ticker", "Eficiência do Movimento"): (
@@ -485,8 +486,8 @@ class FlowScopeGUI(tk.Tk):
                     ("Indicadores envolvidos: ", "bold"),
                     ("Daily Efficiency = |Fechamento − Preço Médio| / Range.\n\n", ""),
                     ("Como interpretar: ", "bold"),
-                    ("Próximo de 0 → pregão lateral (preço andou mas voltou). Próximo de 1 → movimento direcional "
-                     "(o range inteiro resultou em deslocamento). Valores baixos indicam indecisão; altos, convicção.", ""),
+                    (("Próximo de 0 → pregão lateral (preço andou mas voltou). Próximo de 1 → movimento direcional "
+                     "(o range inteiro resultou em deslocamento). Valores baixos indicam indecisão; altos, convicção."), ""),
                 ]
             ),
             ("Análise do Ticker", "Resumo Geral"): (
@@ -497,12 +498,12 @@ class FlowScopeGUI(tk.Tk):
                     ("Responde a pergunta: ", "bold"),
                     ("\"O que realmente aconteceu neste ativo?\"\n\n", "italic"),
                     ("Indicadores envolvidos: ", "bold"),
-                    ("Range, Range%, Typical Price, Median Price, Weighted Close, CLV, "
+                    (("Range, Range%, Typical Price, Median Price, Weighted Close, CLV, "
                      "Money Flow Multiplier, Money Flow Volume, Buying/Selling Pressure, Average Trade Size, "
-                     "Average Financial Ticket, Daily Efficiency, Financial Density, Trade Density, Volume Density.\n\n", ""),
+                     "Average Financial Ticket, Daily Efficiency, Financial Density, Trade Density, Volume Density.\n\n"), ""),
                     ("Como interpretar: ", "bold"),
-                    ("Use este painel para uma visão panorâmica de todos os indicadores disponíveis "
-                     "para o ticker selecionado.", ""),
+                    (("Use este painel para uma visão panorâmica de todos os indicadores disponíveis "
+                     "para o ticker selecionado."), ""),
                 ]
             ),
         }
@@ -543,7 +544,7 @@ class FlowScopeGUI(tk.Tk):
                 pos = self._prefs["sash_positions"]
                 if isinstance(pos, (list, tuple)) and len(pos) >= 4:
                     self.after(100, lambda: self._restore_sashes(pos))
-            except Exception:
+            except tk.TclError:
                 pass
 
         self._GENERAL = {
@@ -570,7 +571,7 @@ class FlowScopeGUI(tk.Tk):
                 if notebook.tab(i, "text") == last_subtab:
                     notebook.select(i)
                     break
-        except Exception:
+        except tk.TclError:
             pass
         self._on_tab_changed()
 
@@ -580,7 +581,7 @@ class FlowScopeGUI(tk.Tk):
                 self._main_pw.sash_place(0, positions[0], 0)
             if len(positions) >= 4 and hasattr(self, "_left_pw"):
                 self._left_pw.sash_place(0, 0, positions[1])
-        except Exception:
+        except tk.TclError:
             pass
 
     def _build_action_buttons(self):
@@ -716,13 +717,13 @@ class FlowScopeGUI(tk.Tk):
                 pass
         self._button_states = {}
 
-    _PERIOD_STATUS = {
+    _PERIOD_STATUS: ClassVar[dict[str, str]] = {
         "Últimos 30 dias": "Janela de 30 dias corridos. Os dados serão baixados da B3 e armazenados em cache.",
         "Últimos 60 dias (cache)": "Janela de 60 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3.",
         "Últimos 90 dias (cache)": "Janela de 90 dias corridos. Apenas dados já em cache serão utilizados — sem download da B3.",
     }
 
-    _SAMPLING_STATUS = {
+    _SAMPLING_STATUS: ClassVar[dict[str, str]] = {
         "Fibonacci": "Amostra concentrada nas datas mais recentes.",
         "Fibonacci reverso": "Amostra concentrada nas datas mais distantes.",
         "Fibonacci duplo": "Amostra concentrada nas margens do período.",
@@ -768,7 +769,7 @@ class FlowScopeGUI(tk.Tk):
         )
 
     def _on_today(self):
-        self._date_entry.set_date(date.today())
+        self._date_entry.set_date(datetime.now(timezone.utc).date())
         self._controller.on_load_data()
 
     def _on_load_data(self):
@@ -796,7 +797,7 @@ class FlowScopeGUI(tk.Tk):
             else:
                 sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
             return self._resolve_chart(main_tab, sub_tab)
-        except Exception:
+        except tk.TclError:
             return None
 
     def _do_update(self, chart) -> None:
@@ -833,7 +834,7 @@ class FlowScopeGUI(tk.Tk):
         all_inds = data.get("all_indicators", {})
         indicators = []
         for key in ("range", "range_percentual", "typical_price", "median_price",
-                    "weighted_close", "clv", "money_flow_multiplier",  # noqa: E501
+                    "weighted_close", "clv", "money_flow_multiplier",
                     "money_flow_volume", "buying_pressure", "selling_pressure",
                     "average_trade_size", "average_financial_ticket",
                     "daily_efficiency", "dominance_score", "financial_density",
@@ -866,7 +867,7 @@ class FlowScopeGUI(tk.Tk):
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
                 sub_tab = self._ticker_notebook.tab(self._ticker_notebook.select(), "text")
-        except Exception:
+        except tk.TclError:
             return
 
         if self._current_data:
@@ -899,7 +900,7 @@ class FlowScopeGUI(tk.Tk):
                     "Quadrantes — CLV vs VWAP Distance",
                     body + [("\n\n---\n\n" + summary, "")],
                 )
-        except Exception:
+        except (tk.TclError, KeyError):
             pass
 
     def _on_flow_summary(self, summary: str) -> None:
@@ -912,7 +913,7 @@ class FlowScopeGUI(tk.Tk):
                     "Fluxo Financeiro — Daily Money Flow",
                     body + [("\n\n---\n\n" + summary, "")],
                 )
-        except Exception:
+        except (tk.TclError, KeyError):
             pass
 
     def _update_ticker_counter(self):
@@ -929,7 +930,7 @@ class FlowScopeGUI(tk.Tk):
     def _build_raw_csv(self) -> str:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
-        except Exception:
+        except tk.TclError:
             main_tab = "Análise Geral"
 
         if main_tab == "Análise do Ticker":
@@ -987,7 +988,7 @@ class FlowScopeGUI(tk.Tk):
 
             pyxclip.copy(csv_text)
             self._flash_status("Dados copiados!")
-        except Exception:
+        except (OSError, ImportError):
             self._fallback_clipboard_text()
 
     def _fallback_clipboard_text(self):
@@ -999,7 +1000,7 @@ class FlowScopeGUI(tk.Tk):
         self._flash_status("Dados copiados! (fallback)")
 
     def _on_create_shortcut(self):
-        if not platform.system() == "Linux":
+        if platform.system() != "Linux":
             return
         if _create_desktop_shortcut():
             self._flash_status("Atalho criado!")
@@ -1010,7 +1011,10 @@ class FlowScopeGUI(tk.Tk):
             self._set_status("Erro ao criar atalho.", "⚠")
 
     def _copy_chart(self, figure):
-        from flowscope.infrastructure.clipboard_image import ClipboardError, copy_image_to_clipboard
+        from flowscope.infrastructure.clipboard_image import (
+            ClipboardError,
+            copy_image_to_clipboard,
+        )
 
         self._set_wait_cursor()
         try:
@@ -1040,7 +1044,7 @@ class FlowScopeGUI(tk.Tk):
                 pos = self._left_pw.sash_coord(0)
                 positions.extend([pos[0], pos[1]])
             self._prefs["sash_positions"] = positions if positions else None
-        except Exception:
+        except (tk.TclError, IndexError):
             pass
         save_preferences(self._prefs)
         self.destroy()

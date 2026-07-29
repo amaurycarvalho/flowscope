@@ -4,28 +4,28 @@ from decimal import Decimal
 import pytest
 
 from flowscope.domain.engine import IndicatorEngine
+from flowscope.domain.entities import TradeDay
 from flowscope.domain.strategies import (
-    RangeStrategy,
-    TypicalPriceStrategy,
-    MedianPriceStrategy,
-    WeightedCloseStrategy,
-    CLVStrategy,
-    MoneyFlowMultiplierStrategy,
-    BuyingPressureStrategy,
-    SellingPressureStrategy,
-    MoneyFlowVolumeStrategy,
-    AverageTradeSizeStrategy,
     AverageFinancialTicketStrategy,
-    RangePercentualStrategy,
+    AverageTradeSizeStrategy,
+    BuyingPressureStrategy,
+    CLVStrategy,
     DailyEfficiencyStrategy,
     FinancialDensityStrategy,
-    TradeDensityStrategy,
-    VolumeDensityStrategy,
-    VWAPStrategy,
-    VolumeProfileStrategy,
+    MedianPriceStrategy,
+    MoneyFlowMultiplierStrategy,
+    MoneyFlowVolumeStrategy,
+    RangePercentualStrategy,
+    RangeStrategy,
+    SellingPressureStrategy,
     TopTickersStrategy,
+    TradeDensityStrategy,
+    TypicalPriceStrategy,
+    VolumeDensityStrategy,
+    VolumeProfileStrategy,
+    VWAPStrategy,
+    WeightedCloseStrategy,
 )
-from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
 
 
@@ -48,8 +48,9 @@ class TestIndicatorEngine:
         assert "buying_pressure" in result
 
     def test_circular_dependency(self):
-        from flowscope.domain.strategies.base import IndicatorStrategy
         from typing import ClassVar
+
+        from flowscope.domain.strategies.base import IndicatorStrategy
 
         class A(IndicatorStrategy):
             id = "a"
@@ -83,8 +84,9 @@ class TestIndicatorEngine:
             assert ticker in result["selling_pressure"]
 
     def test_unknown_dependency(self):
-        from flowscope.domain.strategies.base import IndicatorStrategy
         from typing import ClassVar
+
+        from flowscope.domain.strategies.base import IndicatorStrategy
 
         class Bad(IndicatorStrategy):
             id = "bad"
@@ -110,11 +112,11 @@ class TestRangeStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("10"),
             avg_price=Price("10"), last_price=Price("10"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("0")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(0)
 
 
 class TestCLVStrategy:
@@ -124,11 +126,11 @@ class TestCLVStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("70"), max_price=Price("80"),
             avg_price=Price("75"), last_price=Price("80"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("1")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(1)
 
     def test_at_low(self):
         s = CLVStrategy()
@@ -136,11 +138,11 @@ class TestCLVStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("70"), max_price=Price("80"),
             avg_price=Price("75"), last_price=Price("70"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("-1")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(-1)
 
     def test_at_center(self):
         s = CLVStrategy()
@@ -148,11 +150,11 @@ class TestCLVStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("70"), max_price=Price("80"),
             avg_price=Price("75"), last_price=Price("75"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("0")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(0)
 
     def test_range_zero(self):
         s = CLVStrategy()
@@ -160,7 +162,7 @@ class TestCLVStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("75"), max_price=Price("75"),
             avg_price=Price("75"), last_price=Price("75"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
@@ -174,11 +176,11 @@ class TestPriceIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        expected = (Decimal("20") + Decimal("10") + Decimal("18")) / Decimal("3")
+        expected = (Decimal(20) + Decimal(10) + Decimal(18)) / Decimal(3)
         assert result["TEST"][date(2026, 6, 25)] == expected
 
     def test_median_price(self):
@@ -187,11 +189,11 @@ class TestPriceIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("15")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(15)
 
     def test_weighted_close(self):
         s = WeightedCloseStrategy()
@@ -199,11 +201,11 @@ class TestPriceIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})
-        expected = (Decimal("20") + Decimal("10") + Decimal("2") * Decimal("18")) / Decimal("4")
+        expected = (Decimal(20) + Decimal(10) + Decimal(2) * Decimal(18)) / Decimal(4)
         assert result["TEST"][date(2026, 6, 25)] == expected
 
 
@@ -241,11 +243,11 @@ class TestAverageTradeSize:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(1000), fin_vol=Decimal("10000"),
+            trades_qty=Volume(1000), fin_vol=Decimal(10000),
             fin_instr_qty=50000,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("50")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(50)
 
     def test_zero_trades(self):
         s = AverageTradeSizeStrategy()
@@ -253,7 +255,7 @@ class TestAverageTradeSize:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(0), fin_vol=Decimal("10000"),
+            trades_qty=Volume(0), fin_vol=Decimal(10000),
             fin_instr_qty=50000,
         )
         result = s.compute([trade], {})
@@ -267,11 +269,11 @@ class TestAverageFinancialTicket:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(1000), fin_vol=Decimal("100000"),
+            trades_qty=Volume(1000), fin_vol=Decimal(100000),
             fin_instr_qty=50000,
         )
         result = s.compute([trade], {})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("100")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(100)
 
     def test_zero_trades(self):
         s = AverageFinancialTicketStrategy()
@@ -279,7 +281,7 @@ class TestAverageFinancialTicket:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(0), fin_vol=Decimal("100000"),
+            trades_qty=Volume(0), fin_vol=Decimal(100000),
             fin_instr_qty=50000,
         )
         result = s.compute([trade], {})
@@ -293,7 +295,7 @@ class TestRangePercentual:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("77.91"), max_price=Price("78.88"),
             avg_price=Price("78.15"), last_price=Price("78.15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         range_data = {"TEST": {date(2026, 6, 25): Decimal("0.97")}}
@@ -307,10 +309,10 @@ class TestRangePercentual:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("0"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("10")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(10)}}
         result = s.compute([trade], {"range": range_data})
         assert result["TEST"][date(2026, 6, 25)] is None
 
@@ -322,12 +324,12 @@ class TestDailyEfficiency:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("18"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("10")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(10)}}
         result = s.compute([trade], {"range": range_data})
-        expected = abs(Decimal("18") - Decimal("15")) / Decimal("10")
+        expected = abs(Decimal(18) - Decimal(15)) / Decimal(10)
         assert result["TEST"][date(2026, 6, 25)] == expected
 
     def test_range_zero(self):
@@ -336,10 +338,10 @@ class TestDailyEfficiency:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("10"),
             avg_price=Price("10"), last_price=Price("10"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("0")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(0)}}
         result = s.compute([trade], {"range": range_data})
         assert result["TEST"][date(2026, 6, 25)] is None
 
@@ -358,19 +360,19 @@ class TestMoneyFlowVolume:
                 date=date(2026, 6, 24), ticker=Ticker("TEST"),
                 segment="CASH", min_price=Price("10"), max_price=Price("20"),
                 avg_price=Price("15"), last_price=Price("15"),
-                trades_qty=Volume(100), fin_vol=Decimal("1000"),
+                trades_qty=Volume(100), fin_vol=Decimal(1000),
                 fin_instr_qty=100,
             ),
             TradeDay(
                 date=date(2026, 6, 25), ticker=Ticker("TEST"),
                 segment="CASH", min_price=Price("10"), max_price=Price("20"),
                 avg_price=Price("15"), last_price=Price("15"),
-                trades_qty=Volume(100), fin_vol=Decimal("2000"),
+                trades_qty=Volume(100), fin_vol=Decimal(2000),
                 fin_instr_qty=100,
             ),
         ]
         result = s.compute(trades, {"money_flow_multiplier": mfm_data})
-        expected = Decimal("0.5") * Decimal("1000") + Decimal("-0.3") * Decimal("2000")
+        expected = Decimal("0.5") * Decimal(1000) + Decimal("-0.3") * Decimal(2000)
         assert result["TEST"] == expected
 
 
@@ -381,12 +383,12 @@ class TestDensityIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("10000"),
+            trades_qty=Volume(100), fin_vol=Decimal(10000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("10")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(10)}}
         result = s.compute([trade], {"range": range_data})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("1000")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(1000)
 
     def test_trade(self):
         s = TradeDensityStrategy()
@@ -394,12 +396,12 @@ class TestDensityIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(500), fin_vol=Decimal("10000"),
+            trades_qty=Volume(500), fin_vol=Decimal(10000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("10")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(10)}}
         result = s.compute([trade], {"range": range_data})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("50")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(50)
 
     def test_volume(self):
         s = VolumeDensityStrategy()
@@ -407,12 +409,12 @@ class TestDensityIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("10000"),
+            trades_qty=Volume(100), fin_vol=Decimal(10000),
             fin_instr_qty=2000,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("10")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(10)}}
         result = s.compute([trade], {"range": range_data})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("200")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(200)
 
     def test_range_zero(self):
         s = FinancialDensityStrategy()
@@ -420,10 +422,10 @@ class TestDensityIndicators:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("10"),
             avg_price=Price("10"), last_price=Price("10"),
-            trades_qty=Volume(100), fin_vol=Decimal("10000"),
+            trades_qty=Volume(100), fin_vol=Decimal(10000),
             fin_instr_qty=100,
         )
-        range_data = {"TEST": {date(2026, 6, 25): Decimal("0")}}
+        range_data = {"TEST": {date(2026, 6, 25): Decimal(0)}}
         result = s.compute([trade], {"range": range_data})
         assert result["TEST"][date(2026, 6, 25)] is None
 
@@ -436,10 +438,10 @@ class TestVWAPStrategy:
         assert "PETR4" in result
         vwap_val = result["PETR4"]["period_vwap"]
         total_price_qty = (
-            Decimal("28.80") * Decimal("15000")
-            + Decimal("28.40") * Decimal("12000")
+            Decimal("28.80") * Decimal(15000)
+            + Decimal("28.40") * Decimal(12000)
         )
-        total_qty = Decimal("15000") + Decimal("12000")
+        total_qty = Decimal(15000) + Decimal(12000)
         expected = total_price_qty / total_qty
         assert vwap_val == expected
         assert result["PETR4"]["total_fin_instr_qty"] == 27000
@@ -463,8 +465,8 @@ class TestVolumeProfileStrategy:
         assert "PETR4" in result
         profile = result["PETR4"]
         assert len(profile) > 0
-        total_distributed = sum(profile.values(), Decimal("0"))
-        total_fin_vol = Decimal("432000") + Decimal("340800")
+        total_distributed = sum(profile.values(), Decimal(0))
+        total_fin_vol = Decimal(432000) + Decimal(340800)
         assert total_distributed == total_fin_vol
 
     def test_empty(self):

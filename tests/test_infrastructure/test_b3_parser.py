@@ -11,7 +11,7 @@ class TestParseCSV:
         assert len(trades) == 3
         assert trades[0].ticker.value == "PETR4"
         assert trades[0].avg_price.value == Decimal("28.80")
-        assert trades[0].fin_vol == Decimal("432000")
+        assert trades[0].fin_vol == Decimal(432000)
         assert trades[0].trades_qty.value == 15000
 
     def test_parse_with_empty_fields(self, sample_csv_with_empty):

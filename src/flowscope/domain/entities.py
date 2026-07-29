@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from flowscope.domain.value_objects import Price, Volume, Ticker
+from flowscope.domain.value_objects import Price, Ticker, Volume
 
 
 @dataclass

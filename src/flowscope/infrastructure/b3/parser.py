@@ -5,7 +5,6 @@ from decimal import Decimal, InvalidOperation
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
 
-
 _EXPECTED_HEADER = [
     "RptDt", "TckrSymb", "SgmtNm", "MinPric", "MaxPric",
     "TradAvrgPric", "LastPric", "TradQty", "NtlFinVol", "FinInstrmQty",
@@ -77,7 +76,7 @@ def parse_index_csv(content: str) -> list[str]:
             continue
         if ticker in ("Código", "C\u00f3digo"):
             continue
-        if ticker.startswith("Quantidade") or ticker.startswith("Redutor"):
+        if ticker.startswith(("Quantidade", "Redutor")):
             continue
         if not (ticker.isascii() and ticker.isupper()):
             continue
@@ -103,5 +102,5 @@ def _parse_date(value: str, row_num: int) -> date:
 def _parse_decimal(value: str, row_num: int) -> Decimal:
     value = value.strip().replace(",", ".")
     if not value:
-        return Decimal("0")
+        return Decimal(0)
     return Decimal(value)

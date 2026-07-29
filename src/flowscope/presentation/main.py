@@ -1,9 +1,8 @@
 import logging
 import platform
 import shutil
-import sys
 import subprocess
-
+import sys
 from logging.handlers import RotatingFileHandler, SysLogHandler
 from pathlib import Path
 
@@ -63,6 +62,7 @@ def _desktop_path() -> Path:
         result = subprocess.run(
             ["xdg-user-dir", "DESKTOP"],
             capture_output=True, text=True, timeout=5,
+            check=False,
         )
         if result.returncode == 0:
             path = result.stdout.strip()
@@ -156,7 +156,7 @@ def _open_gui() -> None:
 
 
 def _export(indicator: str, ticker_filter: list[str] | None = None) -> None:
-    from datetime import date
+    from datetime import datetime, timezone
     from pathlib import Path
 
     from flowscope.application.use_cases import ExportVWAPUseCase
@@ -164,7 +164,7 @@ def _export(indicator: str, ticker_filter: list[str] | None = None) -> None:
     from flowscope.infrastructure.b3.repository import B3DataRepository
 
     repo = B3DataRepository(B3Client())
-    ref_date = date.today()
+    ref_date = datetime.now(timezone.utc).date()
 
     use_case = ExportVWAPUseCase(repo)
     content = use_case.execute(ref_date, ticker_filter=ticker_filter)

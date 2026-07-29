@@ -1,6 +1,6 @@
+from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from matplotlib.text import Text
-from matplotlib.axes import Axes
 
 
 def create_empty(fig: Figure, axes: list[Axes]) -> Text:

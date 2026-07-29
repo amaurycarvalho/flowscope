@@ -13,14 +13,14 @@ class TestVWAPDistanceStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("49"), max_price=Price("51"),
             avg_price=Price("50"), last_price=Price("52"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         dep_results = {
             "vwap": {
                 "TEST": {
-                    "period_vwap": Decimal("50"),
-                    "daily_vwap": {date(2026, 6, 25): Decimal("50")},
+                    "period_vwap": Decimal(50),
+                    "daily_vwap": {date(2026, 6, 25): Decimal(50)},
                     "total_fin_instr_qty": 100,
                 }
             }
@@ -34,14 +34,14 @@ class TestVWAPDistanceStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("47"), max_price=Price("50"),
             avg_price=Price("48"), last_price=Price("46"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         dep_results = {
             "vwap": {
                 "TEST": {
-                    "period_vwap": Decimal("48"),
-                    "daily_vwap": {date(2026, 6, 25): Decimal("48")},
+                    "period_vwap": Decimal(48),
+                    "daily_vwap": {date(2026, 6, 25): Decimal(48)},
                     "total_fin_instr_qty": 100,
                 }
             }
@@ -55,20 +55,20 @@ class TestVWAPDistanceStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("49"), max_price=Price("51"),
             avg_price=Price("50"), last_price=Price("50"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         dep_results = {
             "vwap": {
                 "TEST": {
-                    "period_vwap": Decimal("50"),
-                    "daily_vwap": {date(2026, 6, 25): Decimal("50")},
+                    "period_vwap": Decimal(50),
+                    "daily_vwap": {date(2026, 6, 25): Decimal(50)},
                     "total_fin_instr_qty": 100,
                 }
             }
         }
         result = s.compute([trade], dep_results)
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("0")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(0)
 
     def test_no_vwap_data(self):
         s = VWAPDistanceStrategy()
@@ -76,7 +76,7 @@ class TestVWAPDistanceStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("49"), max_price=Price("51"),
             avg_price=Price("50"), last_price=Price("52"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"),
+            trades_qty=Volume(100), fin_vol=Decimal(1000),
             fin_instr_qty=100,
         )
         result = s.compute([trade], {})

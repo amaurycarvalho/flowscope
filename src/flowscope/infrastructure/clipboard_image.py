@@ -1,6 +1,7 @@
 import platform
 import subprocess
 from pathlib import Path
+
 from matplotlib.figure import Figure
 
 
@@ -42,9 +43,10 @@ def _copy_linux(path: Path) -> None:
 
 def _copy_windows(path: Path) -> None:
     try:
+        import io
+
         import win32clipboard
         from PIL import Image
-        import io
 
         image = Image.open(path)
         output = io.BytesIO()
@@ -58,7 +60,7 @@ def _copy_windows(path: Path) -> None:
         win32clipboard.CloseClipboard()
     except ImportError:
         _fallback_powershell(path)
-    except Exception as e:
+    except (OSError, win32clipboard.error) as e:
         raise ClipboardError(f"Erro ao copiar imagem: {e}")
 
 
@@ -67,13 +69,13 @@ def _fallback_powershell(path: Path) -> None:
         subprocess.run(
             [
                 "powershell", "-command",
-                f"Add-Type -AssemblyName System.Drawing; "
+                (f"Add-Type -AssemblyName System.Drawing; "
                 f"$img = [System.Drawing.Image]::FromFile('{path}'); "
-                f"[System.Windows.Forms.Clipboard]::SetImage($img)",
+                f"[System.Windows.Forms.Clipboard]::SetImage($img)"),
             ],
             check=True,
         )
-    except Exception as e:
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
         raise ClipboardError(f"Erro ao copiar imagem via PowerShell: {e}")
 
 
@@ -87,6 +89,7 @@ def _copy_macos(path: Path) -> None:
             ],
             capture_output=True,
             text=True,
+            check=False,
         )
         if result.returncode != 0:
             raise ClipboardError(

@@ -6,8 +6,12 @@ from matplotlib.figure import Figure
 from matplotlib.patches import FancyBboxPatch
 
 from flowscope.domain.strategies.classifiers import classify_money_flow
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.empty_state import create_empty, show_empty, hide_empty
 
 
 class FinancialFlowPanel:
@@ -36,7 +40,7 @@ class FinancialFlowPanel:
         self._hover_data: list[dict] = []
         self._annot = self._ax_card.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="gray", alpha=0.8),
+            bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
@@ -205,8 +209,8 @@ class FinancialFlowPanel:
         clv_ha = "left" if clv >= 0 else "right"
         ax.text(clv_annot_x, bar_y, f"CLV {clv:+.2f}", ha=clv_ha, va="center",
                 fontsize=7, color="#555555", fontweight="bold",
-                bbox=dict(boxstyle="round,pad=0.15", fc="white", ec="#CCCCCC",
-                          alpha=0.85))
+                bbox={"boxstyle": "round,pad=0.15", "fc": "white", "ec": "#CCCCCC",
+                          "alpha": 0.85})
 
         ax.text(-1.15, bar_y, "◄ Vendedor", ha="left", va="center", fontsize=7.5,
                 color="#EF5350", fontweight="bold")
@@ -279,7 +283,7 @@ class FinancialFlowPanel:
         ax.spines["right"].set_visible(False)
         ax.spines["left"].set_visible(False)
 
-    def _generate_summary(self, dmf, score, classification, clv, bp, sp):  # noqa: C901
+    def _generate_summary(self, dmf, score, classification, clv, bp, sp):
         parts = []
         if dmf > 0:
             if classification.score >= 3:

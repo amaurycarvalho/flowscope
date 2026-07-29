@@ -27,7 +27,7 @@ _TRADES = [
         avg_price=Price("28.80"),
         last_price=Price("28.90"),
         trades_qty=Volume(15000),
-        fin_vol=Decimal("432000"),
+        fin_vol=Decimal(432000),
         fin_instr_qty=15000,
     ),
     TradeDay(
@@ -39,7 +39,7 @@ _TRADES = [
         avg_price=Price("28.40"),
         last_price=Price("28.30"),
         trades_qty=Volume(12000),
-        fin_vol=Decimal("340800"),
+        fin_vol=Decimal(340800),
         fin_instr_qty=12000,
     ),
     TradeDay(
@@ -51,7 +51,7 @@ _TRADES = [
         avg_price=Price("62.80"),
         last_price=Price("62.50"),
         trades_qty=Volume(8000),
-        fin_vol=Decimal("502400"),
+        fin_vol=Decimal(502400),
         fin_instr_qty=8000,
     ),
 ]

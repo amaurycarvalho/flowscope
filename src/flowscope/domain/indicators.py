@@ -1,28 +1,28 @@
+from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.strategies import (
-    RangeStrategy,
-    RangePercentualStrategy,
-    TypicalPriceStrategy,
-    MedianPriceStrategy,
-    WeightedCloseStrategy,
-    CLVStrategy,
-    MoneyFlowMultiplierStrategy,
-    BuyingPressureStrategy,
-    SellingPressureStrategy,
-    MoneyFlowVolumeStrategy,
-    AverageTradeSizeStrategy,
     AverageFinancialTicketStrategy,
-    VWAPStrategy,
-    VolumeProfileStrategy,
-    TopTickersStrategy,
+    AverageTradeSizeStrategy,
+    BuyingPressureStrategy,
+    CLVStrategy,
     DailyEfficiencyStrategy,
     DailyMoneyFlowStrategy,
     DominanceScoreStrategy,
     FinancialDensityStrategy,
+    MedianPriceStrategy,
+    MoneyFlowMultiplierStrategy,
+    MoneyFlowVolumeStrategy,
+    RangePercentualStrategy,
+    RangeStrategy,
+    SellingPressureStrategy,
+    TopTickersStrategy,
     TradeDensityStrategy,
+    TypicalPriceStrategy,
     VolumeDensityStrategy,
+    VolumeProfileStrategy,
     VWAPDistanceStrategy,
+    VWAPStrategy,
+    WeightedCloseStrategy,
 )
-from flowscope.domain.engine import IndicatorEngine
 
 
 def default_engine(tick_size: float = 0.01, top_n: int = 15) -> IndicatorEngine:

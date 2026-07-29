@@ -28,8 +28,8 @@ class VWAPStrategy(IndicatorStrategy):
             qty_total[ticker] += qty
 
         result = {}
-        for ticker in vwap_sum:
-            period_vwap = vwap_sum[ticker] / Decimal(str(qty_total[ticker]))
+        for ticker, vwap_total in vwap_sum.items():
+            period_vwap = vwap_total / Decimal(str(qty_total[ticker]))
             result[ticker] = {
                 "period_vwap": period_vwap,
                 "daily_vwap": dict(daily[ticker]),

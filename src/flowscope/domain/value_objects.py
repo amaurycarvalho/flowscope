@@ -1,8 +1,9 @@
 from decimal import Decimal
+from typing import ClassVar
 
 
 class Price:
-    def __init__(self, value: Decimal | str | float | int):
+    def __init__(self, value: Decimal | str | float):
         if isinstance(value, str):
             value = value.replace(",", ".")
         self._value = Decimal(str(value)) if not isinstance(value, Decimal) else value
@@ -66,7 +67,7 @@ class Delta:
 
 
 class Ticker:
-    _VALID_SEGMENTS = {"CASH", "ETF", "FUTURE", "OPTION", "BDR", "UNIT", "INDEX"}
+    _VALID_SEGMENTS: ClassVar[set[str]] = {"CASH", "ETF", "FUTURE", "OPTION", "BDR", "UNIT", "INDEX"}
 
     def __init__(self, value: str):
         value = value.strip().upper()

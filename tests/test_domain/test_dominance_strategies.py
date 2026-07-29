@@ -1,15 +1,15 @@
 from datetime import date
 from decimal import Decimal
 
+from flowscope.domain.entities import TradeDay
+from flowscope.domain.strategies.classifiers import (
+    ConvictionClassification,
+    DominanceClassification,
+    classify_conviction,
+    classify_dominance,
+)
 from flowscope.domain.strategies.daily_money_flow import DailyMoneyFlowStrategy
 from flowscope.domain.strategies.dominance_score import DominanceScoreStrategy
-from flowscope.domain.strategies.classifiers import (
-    classify_dominance,
-    classify_conviction,
-    DominanceClassification,
-    ConvictionClassification,
-)
-from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
 
 
@@ -21,10 +21,10 @@ class TestDailyMoneyFlowStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("500")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(500)
 
     def test_negative_flow(self):
         s = DailyMoneyFlowStrategy()
@@ -33,10 +33,10 @@ class TestDailyMoneyFlowStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("2000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(2000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data})
-        assert result["TEST"][date(2026, 6, 25)] == Decimal("-600")
+        assert result["TEST"][date(2026, 6, 25)] == Decimal(-600)
 
     def test_clv_is_none(self):
         s = DailyMoneyFlowStrategy()
@@ -45,7 +45,7 @@ class TestDailyMoneyFlowStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("10"),
             avg_price=Price("10"), last_price=Price("10"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data})
         assert result["TEST"][date(2026, 6, 25)] is None
@@ -61,18 +61,18 @@ class TestDailyMoneyFlowStrategy:
                 date=date(2026, 6, 25), ticker=Ticker("T1"),
                 segment="CASH", min_price=Price("10"), max_price=Price("20"),
                 avg_price=Price("15"), last_price=Price("15"),
-                trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+                trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
             ),
             TradeDay(
                 date=date(2026, 6, 25), ticker=Ticker("T2"),
                 segment="CASH", min_price=Price("10"), max_price=Price("20"),
                 avg_price=Price("15"), last_price=Price("15"),
-                trades_qty=Volume(100), fin_vol=Decimal("500"), fin_instr_qty=100,
+                trades_qty=Volume(100), fin_vol=Decimal(500), fin_instr_qty=100,
             ),
         ]
         result = s.compute(trades, {"clv": clv_data})
-        assert result["T1"][date(2026, 6, 25)] == Decimal("500")
-        assert result["T2"][date(2026, 6, 25)] == Decimal("-100")
+        assert result["T1"][date(2026, 6, 25)] == Decimal(500)
+        assert result["T2"][date(2026, 6, 25)] == Decimal(-100)
 
     def test_empty(self):
         s = DailyMoneyFlowStrategy()
@@ -88,7 +88,7 @@ class TestDominanceScoreStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data, "daily_efficiency": eff_data})
         assert result["TEST"][date(2026, 6, 25)] == Decimal("0.72")
@@ -101,7 +101,7 @@ class TestDominanceScoreStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data, "daily_efficiency": eff_data})
         assert result["TEST"][date(2026, 6, 25)] == Decimal("0.16")
@@ -114,7 +114,7 @@ class TestDominanceScoreStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("20"),
             avg_price=Price("15"), last_price=Price("15"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data, "daily_efficiency": eff_data})
         assert result["TEST"][date(2026, 6, 25)] == Decimal("-0.595")
@@ -127,7 +127,7 @@ class TestDominanceScoreStrategy:
             date=date(2026, 6, 25), ticker=Ticker("TEST"),
             segment="CASH", min_price=Price("10"), max_price=Price("10"),
             avg_price=Price("10"), last_price=Price("10"),
-            trades_qty=Volume(100), fin_vol=Decimal("1000"), fin_instr_qty=100,
+            trades_qty=Volume(100), fin_vol=Decimal(1000), fin_instr_qty=100,
         )
         result = s.compute([trade], {"clv": clv_data, "daily_efficiency": eff_data})
         assert result["TEST"][date(2026, 6, 25)] is None
@@ -277,7 +277,9 @@ class TestIndicatorIntegration:
     def test_dominance_score_in_engine(self, mock_trades):
         from flowscope.domain.engine import IndicatorEngine
         from flowscope.domain.strategies import (
-            CLVStrategy, RangeStrategy, DailyEfficiencyStrategy,
+            CLVStrategy,
+            DailyEfficiencyStrategy,
+            RangeStrategy,
         )
         engine = IndicatorEngine()
         engine.register(

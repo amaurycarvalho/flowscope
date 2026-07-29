@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from flowscope.application.load_portfolio_use_case import (
     LoadIndexPortfolioUseCase,
@@ -78,7 +78,7 @@ class FlowScopeController:
 
             except PortfolioNotFoundError:
                 self._presenter.on_operation_finished()
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 ref = self._logger.error(LogEntry(
                     message=str(e),
                     level="ERROR",
@@ -139,7 +139,7 @@ class FlowScopeController:
                     "Filtro vazio e não foi possível carregar a carteira IDIV.",
                     "⚠",
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 ref = self._logger.error(LogEntry(
                     message=str(e),
                     level="ERROR",
@@ -152,7 +152,7 @@ class FlowScopeController:
                 self._presenter.on_operation_finished()
 
     def on_today(self) -> None:
-        self._presenter._gui._date_entry.set_date(date.today())
+        self._presenter._gui._date_entry.set_date(datetime.now(timezone.utc).date())
         self.on_load_data()
 
     def on_ticker_edit(self) -> None:

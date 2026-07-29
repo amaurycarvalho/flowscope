@@ -1,6 +1,6 @@
 import json
 import platform
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -62,14 +62,14 @@ class CacheManager:
             try:
                 data = json.loads(meta_path.read_text(encoding="utf-8"))
                 cached_at = datetime.fromisoformat(data["cached_at"])
-                delta = datetime.now() - cached_at
+                delta = datetime.now(timezone.utc) - cached_at
                 if delta.days < ttl_days:
                     return data
             except (KeyError, ValueError, json.JSONDecodeError):
                 pass
         result = fetch_fn()
         self._cache_dir.mkdir(parents=True, exist_ok=True)
-        payload = {"cached_at": datetime.now().isoformat(), **result}
+        payload = {"cached_at": datetime.now(timezone.utc).isoformat(), **result}
         tmp = meta_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
         tmp.rename(meta_path)

@@ -7,7 +7,7 @@ from flowscope.domain.entities import TradeDay
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.calendar import fibonacci_dates, resolve_dates
 from flowscope.infrastructure.b3.client import B3Client
-from flowscope.infrastructure.b3.parser import parse_csv, ParseError
+from flowscope.infrastructure.b3.parser import ParseError, parse_csv
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ class B3DataRepository(DataRepository):
                 if progress_callback:
                     progress_callback(f"{d} (erro ao processar CSV)", True)
                 continue
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(
                     "Erro ao baixar dados da data %s: %s. Pulando esta data.", d, e
                 )
