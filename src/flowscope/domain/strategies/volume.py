@@ -1,3 +1,5 @@
+"""Estratégias de indicadores relacionadas a volume e VWAP."""
+
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -8,12 +10,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class VWAPStrategy(IndicatorStrategy):
+    """Calcula o VWAP por período e diário por ticker."""
+
     id = "vwap"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "VWAPStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict]:
+        """Agrega os trades e retorna o VWAP por ticker."""
         daily: dict[str, dict[date, Decimal]] = defaultdict(dict)
         qty_total: dict[str, int] = defaultdict(int)
         vwap_sum: dict[str, Decimal] = defaultdict(Decimal)
@@ -39,15 +44,19 @@ class VWAPStrategy(IndicatorStrategy):
 
 
 class VolumeProfileStrategy(IndicatorStrategy):
+    """Calcula o perfil de volume por faixa de preço."""
+
     id = "volume_profile"
     dependencies: ClassVar[list[str]] = []
 
-    def __init__(self, tick_size: float = 0.01):
+    def __init__(self: "VolumeProfileStrategy", tick_size: float = 0.01) -> None:
+        """Inicializa a estratégia com o tamanho do tick de preço."""
         self._tick_size = tick_size
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "VolumeProfileStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[Decimal, Decimal]]:
+        """Distribui o volume em buckets de preço por ticker."""
         tick_decimal = Decimal(str(self._tick_size))
         profiles: dict[str, defaultdict[Decimal, Decimal]] = defaultdict(
             lambda: defaultdict(Decimal)
@@ -74,15 +83,19 @@ class VolumeProfileStrategy(IndicatorStrategy):
 
 
 class TopTickersStrategy(IndicatorStrategy):
+    """Seleciona os tickers de maior volume financeiro."""
+
     id = "top_tickers"
     dependencies: ClassVar[list[str]] = []
 
-    def __init__(self, n: int = 15):
+    def __init__(self: "TopTickersStrategy", n: int = 15) -> None:
+        """Inicializa a estratégia com a quantidade de tickers a selecionar."""
         self._n = n
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "TopTickersStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, list[str]]:
+        """Ordena os tickers por volume financeiro e retorna os n maiores."""
         fin_vol_sums: dict[str, Decimal] = defaultdict(Decimal)
         for t in trades:
             fin_vol_sums[t.ticker.value] += t.fin_vol

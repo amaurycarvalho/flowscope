@@ -1,3 +1,5 @@
+"""Estratégia de eficiência diária do preço."""
+
 from datetime import date
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -7,12 +9,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class DailyEfficiencyStrategy(IndicatorStrategy):
+    """Calcula a eficiência diária pelo deslocamento em relação ao range."""
+
     id = "daily_efficiency"
     dependencies: ClassVar[list[str]] = ["range"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "DailyEfficiencyStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o deslocamento absoluto do preço dividido pelo range."""
         range_data = dep_results["range"]
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:

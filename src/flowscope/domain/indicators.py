@@ -1,3 +1,5 @@
+"""Fábrica do motor de indicadores padrão do FlowScope."""
+
 from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.strategies import (
     AverageFinancialTicketStrategy,
@@ -26,6 +28,7 @@ from flowscope.domain.strategies import (
 
 
 def default_engine(tick_size: float = 0.01, top_n: int = 15) -> IndicatorEngine:
+    """Constrói o motor padrão com todos os indicadores registrados."""
     engine = IndicatorEngine()
     engine.register(
         RangeStrategy(),

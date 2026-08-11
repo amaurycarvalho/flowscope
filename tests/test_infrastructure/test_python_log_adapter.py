@@ -72,3 +72,46 @@ class TestPythonLogAdapter:
         output = handler.stream.getvalue()
         assert "[Modulo] teste real" in output
         assert isinstance(ref, LogReference)
+
+    def test_log_passa_extra_com_component_e_context(self):
+        logger = MagicMock()
+        adapter = PythonLogAdapter(logger)
+        entry = LogEntry("msg", "ERROR", "Modulo", context={"key": "val"})
+
+        adapter.error(entry)
+
+        _, kwargs = logger.log.call_args
+        assert kwargs["extra"] == {"component": "Modulo", "context": {"key": "val"}}
+        assert kwargs["exc_info"] is False
+
+    def test_log_sem_context_usa_dict_vazio(self):
+        logger = MagicMock()
+        adapter = PythonLogAdapter(logger)
+        entry = LogEntry("msg", "ERROR", "Modulo")
+
+        adapter.error(entry)
+
+        _, kwargs = logger.log.call_args
+        assert kwargs["extra"] == {"component": "Modulo", "context": {}}
+
+    def test_log_com_exception_passa_exc_info(self):
+        logger = MagicMock()
+        adapter = PythonLogAdapter(logger)
+        exc = ValueError("boom")
+        entry = LogEntry("msg", "ERROR", "Modulo", exception=exc)
+
+        adapter.error(entry)
+
+        _, kwargs = logger.log.call_args
+        assert kwargs["exc_info"] is True
+
+    def test_make_reference_fields(self):
+        logger = MagicMock()
+        adapter = PythonLogAdapter(logger)
+        entry = LogEntry("msg", "ERROR", "Modulo")
+
+        ref = adapter._make_reference(entry)
+
+        assert ref.source == "flowscope.log"
+        assert ref.identifier == entry.timestamp.isoformat()
+        assert "~/.flowscope/logs/flowscope.log" in ref.hint

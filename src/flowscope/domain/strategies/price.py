@@ -1,3 +1,4 @@
+"""Estratégias de indicadores baseadas em preço."""
 
 from datetime import date
 from decimal import Decimal
@@ -8,12 +9,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class RangeStrategy(IndicatorStrategy):
+    """Calcula a amplitude diária (máxima menos mínima) por ticker."""
+
     id = "range"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "RangeStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal]]:
+        """Retorna a amplitude diária de cada ticker."""
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
@@ -25,12 +29,15 @@ class RangeStrategy(IndicatorStrategy):
 
 
 class TypicalPriceStrategy(IndicatorStrategy):
+    """Calcula o preço típico diário por ticker."""
+
     id = "typical_price"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "TypicalPriceStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal]]:
+        """Retorna o preço típico (média de máxima, mínima e última)."""
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
@@ -42,12 +49,15 @@ class TypicalPriceStrategy(IndicatorStrategy):
 
 
 class MedianPriceStrategy(IndicatorStrategy):
+    """Calcula o preço mediano diário por ticker."""
+
     id = "median_price"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "MedianPriceStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal]]:
+        """Retorna o preço mediano entre máxima e mínima."""
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
@@ -59,12 +69,15 @@ class MedianPriceStrategy(IndicatorStrategy):
 
 
 class WeightedCloseStrategy(IndicatorStrategy):
+    """Calcula o preço de fechamento ponderado diário por ticker."""
+
     id = "weighted_close"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "WeightedCloseStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal]]:
+        """Retorna o fechamento ponderado (2*última + máxima + mínima)/4."""
         result: dict[str, dict[date, Decimal]] = {}
         for t in trades:
             ticker = t.ticker.value
@@ -76,12 +89,15 @@ class WeightedCloseStrategy(IndicatorStrategy):
 
 
 class RangePercentualStrategy(IndicatorStrategy):
+    """Calcula o range percentual em relação ao preço médio."""
+
     id = "range_percentual"
     dependencies: ClassVar[list[str]] = ["range"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "RangePercentualStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o range dividido pelo preço médio, quando disponível."""
         range_data = dep_results["range"]
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:

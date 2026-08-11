@@ -1,3 +1,5 @@
+"""Subpacote com as estratégias de indicadores do FlowScope."""
+
 from flowscope.domain.strategies.base import IndicatorStrategy
 from flowscope.domain.strategies.daily_money_flow import DailyMoneyFlowStrategy
 from flowscope.domain.strategies.density import (

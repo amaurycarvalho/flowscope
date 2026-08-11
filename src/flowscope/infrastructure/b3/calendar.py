@@ -1,138 +1,92 @@
-import random
+"""Geração de datas de amostragem e resolução de dias úteis para a B3."""
+
+from collections.abc import Callable
 from datetime import date, timedelta
 
 from flowscope.domain.sampling import SamplingConfig
-
-FIBONACCI_OFFSETS = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]
-
-_FERIADOS_NACIONAIS = frozenset({
-    date(2026, 1, 1),
-    date(2026, 2, 17),
-    date(2026, 4, 3),
-    date(2026, 4, 21),
-    date(2026, 5, 1),
-    date(2026, 6, 4),
-    date(2026, 9, 7),
-    date(2026, 10, 12),
-    date(2026, 11, 2),
-    date(2026, 11, 15),
-    date(2026, 12, 25),
-    date(2027, 1, 1),
-    date(2027, 2, 7),
-    date(2027, 2, 8),
-    date(2027, 3, 26),
-    date(2027, 4, 21),
-    date(2027, 5, 1),
-    date(2027, 6, 16),
-    date(2027, 9, 7),
-    date(2027, 10, 12),
-    date(2027, 11, 2),
-    date(2027, 11, 15),
-    date(2027, 12, 25),
-})
+from flowscope.infrastructure.b3.generators import (
+    FIBONACCI_OFFSETS,
+    _all_dates,
+    _fibonacci_dates,
+    _fibonacci_double_dates,
+    _fibonacci_reverse_dates,
+    _monte_carlo_dates,
+)
+from flowscope.infrastructure.b3.holidays import (
+    FERIADOS_NACIONAIS as _FERIADOS_NACIONAIS,
+)
 
 
 def _is_business_day(d: date) -> bool:
+    """Retorna True quando a data é um dia útil no calendário da B3."""
     return d.weekday() < 5 and d not in _FERIADOS_NACIONAIS
 
 
 def _next_business_day(d: date) -> date:
+    """Avança a data até o próximo dia útil."""
     while not _is_business_day(d):
         d += timedelta(days=1)
     return d
 
 
 def _next_weekday(d: date) -> date:
+    """Avança a data até o próximo dia da semana."""
     while d.weekday() >= 5:
         d += timedelta(days=1)
     return d
 
 
-def _fibs_up_to(limit: int) -> list[int]:
-    return [f for f in FIBONACCI_OFFSETS if f <= limit]
+def _monte_carlo_five(ref_date: date, period_days: int) -> list[date]:
+    """Gera cinco datas aleatórias na janela do período."""
+    return _monte_carlo_dates(ref_date, period_days, count=5)
 
 
-def _fibonacci_dates(ref_date: date, period_days: int) -> list[date]:
-    offsets = _fibs_up_to(period_days)
-    return [ref_date - timedelta(days=o) for o in offsets]
+def _monte_carlo_twelve(ref_date: date, period_days: int) -> list[date]:
+    """Gera doze datas aleatórias na janela do período."""
+    return _monte_carlo_dates(ref_date, period_days, count=12)
 
 
-def _fibonacci_reverse_dates(ref_date: date, period_days: int) -> list[date]:
-    offsets = _fibs_up_to(period_days)
-    max_offset = max(offsets)
-    base = ref_date - timedelta(days=max_offset + 1)
-    return [base + timedelta(days=o) for o in offsets]
-
-
-def _fibonacci_double_dates(ref_date: date, period_days: int) -> list[date]:
-    offsets = _fibs_up_to(period_days)
-    max_offset = max(offsets)
-    base = ref_date - timedelta(days=max_offset + 1)
-
-    if period_days <= 30:
-        double_offsets = [1, 2, 3, 13, 19, 20, 21]
-    else:
-        first_three = offsets[:3]
-        last_three = offsets[-3:]
-        middle = [13] if 13 not in first_three and 13 not in last_three else [offsets[len(offsets) // 2]]
-        double_offsets = first_three + middle + last_three
-        if len(double_offsets) > 7:
-            double_offsets = double_offsets[:7]
-
-    return [base + timedelta(days=o) for o in double_offsets]
-
-
-def _monte_carlo_dates(ref_date: date, period_days: int, count: int) -> list[date]:
-    first = ref_date - timedelta(days=period_days)
-    last = ref_date - timedelta(days=1)
-    dates = [first, last]
-    available = [date.fromordinal(d) for d in range(first.toordinal() + 1, last.toordinal())]
-    if available:
-        selected = random.sample(available, min(count, len(available)))
-        dates.extend(selected)
-    return dates
-
-
-def _all_dates(ref_date: date, period_days: int) -> list[date]:
-    first = ref_date - timedelta(days=period_days)
-    return [first + timedelta(days=i) for i in range(period_days)]
+_GENERATORS = {
+    "fibonacci": _fibonacci_dates,
+    "fibonacci_reverse": _fibonacci_reverse_dates,
+    "fibonacci_double": _fibonacci_double_dates,
+    "monte_carlo": _monte_carlo_five,
+    "monte_carlo_double": _monte_carlo_twelve,
+    "all_days": _all_dates,
+}
 
 
 def generate_dates(ref_date: date, config: SamplingConfig | None = None) -> list[date]:
+    """Gera as datas de amostragem conforme o método e o período da configuração."""
     if config is None:
         config = SamplingConfig()
 
-    period = config.period_days
-    method = config.method
-
-    if method == "fibonacci":
-        return _fibonacci_dates(ref_date, period)
-    elif method == "fibonacci_reverse":
-        return _fibonacci_reverse_dates(ref_date, period)
-    elif method == "fibonacci_double":
-        return _fibonacci_double_dates(ref_date, period)
-    elif method == "monte_carlo":
-        return _monte_carlo_dates(ref_date, period, count=5)
-    elif method == "monte_carlo_double":
-        return _monte_carlo_dates(ref_date, period, count=12)
-    elif method == "all_days":
-        return _all_dates(ref_date, period)
-    else:
-        return _fibonacci_dates(ref_date, period)
+    generator = _GENERATORS.get(config.method)
+    if generator is None:
+        generator = _fibonacci_dates
+    return generator(ref_date, config.period_days)
 
 
 def _find_nearest_with_data(
-    date: date, has_data, already_selected: set[date], max_deviation: int = 7
+    date: date, has_data: Callable[[date], bool] | None, already_selected: set[date], max_deviation: int = 7,
+    max_date: date | None = None,
 ) -> date | None:
+    """Procura a data útil mais próxima que possua dados disponíveis.
+
+    Nunca retorna datas posteriores a ``max_date`` (a data de referência),
+    evitando que o sistema consulte datas futuras na B3.
+    """
     for delta in range(max_deviation + 1):
         candidate = date - timedelta(days=delta)
         if (candidate not in already_selected
+                and (max_date is None or candidate <= max_date)
                 and _is_business_day(candidate)
                 and has_data(candidate)):
             return candidate
         if delta > 0:
             candidate = date + timedelta(days=delta)
             if (candidate not in already_selected
+                    and (max_date is None or candidate <= max_date)
                     and _is_business_day(candidate)
                     and has_data(candidate)):
                 return candidate
@@ -140,14 +94,16 @@ def _find_nearest_with_data(
 
 
 def _resolve_with_data(
-    raw_dates: list[date], has_data, max_deviation: int = 7
+    raw_dates: list[date], has_data: Callable[[date], bool] | None, max_deviation: int = 7,
+    max_date: date | None = None,
 ) -> list[date]:
+    """Resolve as datas brutas para dias úteis com dados, eliminando duplicados."""
     resolved: list[date] = []
     seen: set[date] = set()
     for d in raw_dates:
         bd = _next_business_day(d)
         if has_data is not None:
-            data_date = _find_nearest_with_data(bd, has_data, seen, max_deviation)
+            data_date = _find_nearest_with_data(bd, has_data, seen, max_deviation, max_date)
             if data_date is None:
                 continue
             if data_date not in seen:
@@ -163,19 +119,21 @@ def _resolve_with_data(
 def resolve_dates(
     ref_date: date,
     config: SamplingConfig | None = None,
-    has_data=None,
+    has_data: Callable[[date], bool] | None = None,
 ) -> list[date]:
+    """Resolve as datas geradas para dias úteis, aproximando quando houver dados disponíveis."""
     raw = generate_dates(ref_date, config)
-    return _resolve_with_data(raw, has_data) if has_data is not None else sorted(
+    return _resolve_with_data(raw, has_data, max_date=ref_date) if has_data is not None else sorted(
         _next_business_day(d) for d in {_next_business_day(d)
                                          for d in raw}
     )
 
 
-def fibonacci_dates(ref_date: date, has_data=None) -> list[date]:
+def fibonacci_dates(ref_date: date, has_data: Callable[[date], bool] | None = None) -> list[date]:
+    """Retorna as datas de amostragem da sequência de Fibonacci a partir da data de referência."""
     raw = [ref_date - timedelta(days=o) for o in FIBONACCI_OFFSETS[:7]]
     if has_data is not None:
-        return _resolve_with_data(raw, has_data)
+        return _resolve_with_data(raw, has_data, max_date=ref_date)
     dates = []
     seen = set()
     for d in raw:

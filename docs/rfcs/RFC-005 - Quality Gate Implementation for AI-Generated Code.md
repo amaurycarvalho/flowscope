@@ -134,9 +134,10 @@ mutation-results (write mutants/mutmut-cicd-results.log with survived mutants).
       ├── caches .venv
       └── uploads coverage.xml and mutation_report.html artifacts
 
-.github/workflows/build-wheel.yml
-  ├── calls ci.yml as quality-gate job (gating)
-  └── build job: validates version tag, `make build`, publishes dist/*.whl via softprops/action-gh-release@v2
+.github/workflows/release.yml (gated by ci.yml)
+  ├── ci job: calls ./.github/workflows/ci.yml (workflow_call, gating)
+  ├── build job (needs: ci): matrix over linux/windows/macos, `make build` (PyInstaller)
+  └── release job (needs: build): publishes binaries via softprops/action-gh-release@v2
 ```
 
 ## 4. Implementation Details
@@ -214,13 +215,14 @@ jobs:
           path: mutation_report.html
 ```
 
-A second workflow, `.github/workflows/build-wheel.yml`, publishes wheel releases as
-the gate for shipping. It listens on `push` of `v*` tags and on a
-`workflow_dispatch` with a `version` input, calls `ci.yml` as the `quality-gate`
-job, then on a `build` job (which `needs: quality-gate`) validates that the
-version passes `^v?[0-9]+\.[0-9]+\.[0-9]+$`, runs `make build`, and publishes
-`dist/*.whl` through `softprops/action-gh-release@v2` using `CHANGELOG.md` as the
-body.
+The existing release workflow, `.github/workflows/release.yml`, is the gate for
+shipping. It listens on `push` of `v*` tags and on a `workflow_dispatch` with a
+`version` input. It starts with a `ci` job that calls `ci.yml` via
+`workflow_call`, then runs a `build` job (which `needs: ci`) with a matrix over
+linux/windows/macos, each running `make build` (PyInstaller) and uploading the
+resulting binary. A final `release` job (which `needs: build`) downloads all
+artifacts and publishes them through `softprops/action-gh-release@v2` using
+`CHANGELOG.md` as the body.
 
 ### 4.2 Enhanced Makefile
 
@@ -243,8 +245,8 @@ install: $(VENV)
 	$(PIP) install -e .
 
 build: $(VENV)
-	$(PIP) install -q build
-	$(PYTHON) -m build
+	$(PIP) install -q pyinstaller
+	$(PYTHON) -m PyInstaller flowscope.spec
 
 test: $(VENV)
 	$(PIP) install -q -e .[dev]
@@ -266,8 +268,8 @@ quality-gate: $(VENV)
 	$(MAKE) complexity
 	$(MAKE) duplication
 	$(MAKE) test
-	$(MAKE) mutation-check
 	$(MAKE) security
+	$(MAKE) mutation-check
 
 complexity: $(VENV)
 	@echo "Checking complexity metrics..."
@@ -532,6 +534,8 @@ do_not_mutate = [
     "tests/*",
     ".*/*",
     "build/*",
+    "src/flowscope/presentation/gui/*",
+    "src/flowscope/icons/*",
 ]
 do_not_mutate_patterns = [
     'logger\.\w+',
@@ -638,7 +642,7 @@ if __name__ == "__main__":
 ```
 # .gitignore
 # Mutation testing
-mutants/
+mutants/*
 .mutmut-cache
 !mutants/mutmut-cicd-stats.json
 ```
@@ -743,6 +747,13 @@ exception catch in plugin discovery), `S110` (best-effort housekeeping), and
 
 The `[tool.pytest.ini_options]` section sets `testpaths = ["tests"]`, marks tests
 as `slow` (deselected by default via `addopts = ["-m", "not slow"]`).
+
+The `[tool.coverage.run]` section sets `source = ["src"]` and omits the
+tkinter/matplotlib GUI layer (`src/flowscope/presentation/gui/*`) and the icons
+package (`src/flowscope/icons/*`), which are not exercised by automated tests
+(no display in CI). The gate therefore measures coverage of the domain,
+application, and infrastructure layers. The `[tool.coverage.report]` section
+sets `fail_under = 85`.
 
 ### 8.2 Installation Commands
 

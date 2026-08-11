@@ -1,9 +1,14 @@
+"""Painel de orientação com título e corpo formatado para a interface do FlowScope."""
+
 import tkinter as tk
 from tkinter import ttk
 
 
 class OrientationPanel:
-    def __init__(self, parent: tk.Widget):
+    """Painel de texto informativo com título e trechos formatados."""
+
+    def __init__(self: "OrientationPanel", parent: tk.Widget) -> None:
+        """Constrói o painel com título, área de texto e barra de rolagem."""
         self.frame = tk.Frame(parent)
 
         self._title_label = ttk.Label(
@@ -24,7 +29,8 @@ class OrientationPanel:
 
         self.set_content("", [])
 
-    def set_content(self, title: str, body: list[tuple[str, str]]) -> None:
+    def set_content(self: "OrientationPanel", title: str, body: list[tuple[str, str]]) -> None:
+        """Define o título e o corpo do painel, com tags de formatação."""
         self._title_label.config(text=title)
         self._text.configure(state=tk.NORMAL)
         self._text.delete("1.0", tk.END)

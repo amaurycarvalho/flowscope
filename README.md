@@ -68,6 +68,41 @@ Requisitos:
 make lint test
 ```
 
+#### Quality Gate
+
+O _quality gate_ impõe limites para complexidade, duplicação, cobertura, mutação e segurança (RFC-005).
+
+Execute-o localmente com:
+
+```bash
+make quality-gate
+```
+
+Verificações individuais: `make complexity`, `make duplication`, `make mutation`,
+`make security`. Saiba mais em [Quality Gate](docs/adrs/ADR-003.md).
+
+### Mutation testing
+
+Garanta que tudo esteja instalado:
+
+```bash
+make install-quality-tools
+```
+
+Execute-o localmente (isso pode levar muito tempo e exigir processamento significativo):
+
+```bash
+make mutation-run
+```
+
+Em seguida, gere o relatório de resultados e utilize-o com seu agente de IA para corrigir seus testes unitários:
+
+```bash
+make mutation-results
+```
+
+Por fim, execute novamente os testes de mutação e verifique se eles passam pelo _quality gate_.
+
 ### Como Usar
 
 #### A partir do código fonte

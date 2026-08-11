@@ -1,5 +1,14 @@
-import tkinter as tk
+"""Gráfico de evolução da dominância de um ativo ao longo do tempo.
 
+A classe DominanceTimelineChart apresenta o histórico de CLV de um
+ativo selecionado, com barras diárias e hastes proporcionais ao fluxo
+monetário de cada pregão.
+"""
+
+import tkinter as tk
+from collections.abc import Callable
+
+from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -7,17 +16,37 @@ from flowscope.domain.strategies.classifiers import (
     classify_conviction,
     classify_dominance,
 )
-from flowscope.presentation.gui.charts.dominance_ranking import _compute_stems
+from flowscope.presentation.gui.charts.dominance_data import (
+    bar_colors,
+    draw_stems,
+    find_closest_row,
+)
 from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
     hide_empty,
     show_empty,
 )
+from flowscope.presentation.gui.charts.timeline_data import (
+    build_rows,
+    direction_balance,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
 
 class DominanceTimelineChart:
-    def __init__(self, parent, *, copy_chart_callback=None):
+    """Exibe a linha do tempo da dominância de um ativo ao longo dos pregões."""
+
+    def __init__(
+        self: "DominanceTimelineChart",
+        parent: tk.Widget,
+        *,
+        copy_chart_callback: Callable[[Figure], None] | None = None,
+    ) -> None:
+        """Cria o gráfico de evolução da dominância com sua toolbar.
+
+        Configura a figura, os eixos e o rótulo de estado vazio, além
+        de conectar os eventos de seleção e movimento do mouse.
+        """
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 3), dpi=100)
         self._axes = self._figure.add_subplot(111)
@@ -41,72 +70,51 @@ class DominanceTimelineChart:
         self._canvas.mpl_connect("pick_event", self._on_pick)
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
-    def update(self, data: dict, ticker: str | None = None) -> None:
+    def update(self: "DominanceTimelineChart", data: dict,
+               ticker: str | None = None) -> None:
+        """Atualiza a linha do tempo de dominância do ativo selecionado."""
         self._hover_data.clear()
         self._bars = None
 
         if not data or not ticker or ticker not in data:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+            self._show_empty()
             return
 
         hide_empty(self._empty_label)
         self._axes.clear()
 
-        info = data[ticker]
-        all_inds = info.get("all_indicators", {})
-        clv_dict = all_inds.get("clv") or {}
-        eff_dict = all_inds.get("daily_efficiency") or {}
-        dmf_dict = all_inds.get("daily_money_flow") or {}
-
-        common_dates = sorted(
-            d for d in clv_dict
-            if clv_dict[d] is not None
-        )
-        if not common_dates:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+        rows = build_rows(data[ticker])
+        if not rows:
+            self._show_empty()
             return
 
-        rows = []
-        for dt in reversed(common_dates):
-            clv = float(clv_dict[dt])
-            eff = float(eff_dict.get(dt) or 0)
-            dmf = float(dmf_dict.get(dt) or 0)
-            rows.append({
-                "date": dt,
-                "clv": clv,
-                "efficiency": eff,
-                "daily_mfv": dmf,
-            })
+        self._plot_rows(rows, ticker)
+        self._figure.tight_layout()
+        self._attach_annot()
+        self._canvas.draw()
 
+    def _show_empty(self: "DominanceTimelineChart") -> None:
+        """Limpa os eixos e exibe o rótulo de estado vazio."""
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
+
+    def _plot_rows(self: "DominanceTimelineChart",
+                   rows: list[dict], ticker: str) -> None:
+        """Desenha as barras, hastes e rótulos da linha do tempo."""
         y_pos = list(range(len(rows)))
         clvs = [r["clv"] for r in rows]
         dmfs = [r["daily_mfv"] for r in rows]
         labels = [str(r["date"]) for r in rows]
 
-        bar_colors = []
-        for clv in clvs:
-            cls = classify_dominance(clv)
-            bar_colors.append(cls.color)
-
         self._axes.axvline(x=0, color="gray", linestyle="-", linewidth=0.8, zorder=1)
 
         self._bars = self._axes.barh(
-            y_pos, clvs, height=0.6, color=bar_colors,
+            y_pos, clvs, height=0.6, color=bar_colors(clvs),
             zorder=3, picker=True,
         )
 
         max_dmf = max(abs(d) for d in dmfs) if dmfs else 1.0
-        stem_ys, stem_xmins, stem_xmaxs, stem_colors = _compute_stems(
-            dmfs, clvs, y_pos, max_dmf, scale=0.15,
-        )
-
-        if stem_ys:
-            self._axes.hlines(
-                stem_ys, stem_xmins, stem_xmaxs,
-                colors=stem_colors, linewidth=2, zorder=5,
-            )
+        draw_stems(self._axes, dmfs, clvs, y_pos, max_dmf, scale=0.15)
 
         self._hover_data = rows
 
@@ -117,8 +125,12 @@ class DominanceTimelineChart:
         self._axes.set_xlim(-1.2, 1.2)
         self._axes.set_ylim(-0.5, len(rows) - 0.5)
 
-        buyer_days = sum(1 for r in rows if r["clv"] > 0)
-        seller_days = sum(1 for r in rows if r["clv"] < 0)
+        self._annotate_balance(rows)
+
+    def _annotate_balance(self: "DominanceTimelineChart",
+                          rows: list[dict]) -> None:
+        """Exibe o percentual de dias compradores e vendedores."""
+        buyer_days, seller_days = direction_balance(rows)
         total_dir = buyer_days + seller_days
         buyer_pct = (buyer_days / total_dir * 100) if total_dir else 0
         seller_pct = (seller_days / total_dir * 100) if total_dir else 0
@@ -130,18 +142,16 @@ class DominanceTimelineChart:
                         transform=self._axes.transAxes, ha="left", va="top",
                         fontsize=8, color="red", fontweight="bold")
 
-        self._figure.tight_layout()
-        self._attach_annot()
-        self._canvas.draw()
-
-    def _attach_annot(self):
+    def _attach_annot(self: "DominanceTimelineChart") -> None:
+        """Recria a anotação de hover após a limpeza dos eixos."""
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False, zorder=10,
         )
 
-    def _on_pick(self, event):
+    def _on_pick(self: "DominanceTimelineChart", event: PickEvent) -> None:
+        """Exibe a tooltip do pregão selecionado com o cursor."""
         if not hasattr(event, "ind") or not event.ind:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
@@ -152,36 +162,24 @@ class DominanceTimelineChart:
         pt = self._hover_data[idx]
         self._show_tooltip(pt, event.mouseevent.xdata, event.mouseevent.ydata)
 
-    def _on_motion(self, event):
+    def _on_motion(self: "DominanceTimelineChart", event: MouseEvent) -> None:
+        """Atualiza a tooltip conforme a barra mais próxima do cursor."""
         if event.inaxes != self._axes:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
             return
         if self._bars is None:
             return
-        closest = None
-        min_dist = 0.3
-        for pt in self._hover_data:
-            idx = self._hover_data.index(pt)
-            dy = abs(event.ydata - idx)
-            if dy > min_dist:
-                continue
-            if pt["clv"] >= 0:
-                if event.xdata < 0 or event.xdata > pt["clv"]:
-                    continue
-            else:
-                if event.xdata > 0 or event.xdata < pt["clv"]:
-                    continue
-            if dy < min_dist:
-                min_dist = dy
-                closest = pt
+        closest = find_closest_row(self._hover_data, event.xdata, event.ydata)
         if closest:
             self._show_tooltip(closest, event.xdata, event.ydata)
         else:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self, pt, x, y):
+    def _show_tooltip(self: "DominanceTimelineChart", pt: dict, x: float,
+                      y: float) -> None:
+        """Preenche a anotação com os dados do pregão sob o cursor."""
         dom_cls = classify_dominance(pt["clv"])
         conv_cls = classify_conviction(pt["efficiency"])
         dmf_str = f"R$ {pt['daily_mfv']:,.0f}" if pt["daily_mfv"] != 0 else "N/A"
@@ -195,9 +193,10 @@ class DominanceTimelineChart:
         self._annot.set_visible(True)
         self._canvas.draw_idle()
 
-    def reset(self):
-        show_empty(self._figure, self._all_axes, self._empty_label)
-        self._canvas.draw()
+    def reset(self: "DominanceTimelineChart") -> None:
+        """Limpa o gráfico e exibe o estado vazio."""
+        self._show_empty()
 
-    def get_figure(self):
+    def get_figure(self: "DominanceTimelineChart") -> Figure:
+        """Retorna a figura matplotlib utilizada pelo gráfico."""
         return self._figure

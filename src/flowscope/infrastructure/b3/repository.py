@@ -1,3 +1,5 @@
+"""Repositório de dados da B3 que combina o cliente HTTP e o cache local."""
+
 import logging
 from collections.abc import Callable, Iterable
 from datetime import date
@@ -13,11 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class B3DataRepository(DataRepository):
-    def __init__(self, client: B3Client | None = None):
+    """Implementa o port DataRepository buscando dados na B3 com cache local."""
+
+    def __init__(self: "B3DataRepository", client: B3Client | None = None) -> None:
+        """Inicializa o repositório com o cliente B3 informado ou um novo padrão."""
         self._client = client or B3Client()
 
-    def get_available_dates(self, ref_date: date,
+    def get_available_dates(self: "B3DataRepository", ref_date: date,
                             config: SamplingConfig | None = None) -> list[date]:
+        """Calcula as datas de amostragem disponíveis a partir da data de referência e da configuração."""
         _SAMPLING_METHODS = frozenset({
             "fibonacci", "fibonacci_reverse", "fibonacci_double",
             "monte_carlo", "monte_carlo_double",
@@ -33,7 +39,7 @@ class B3DataRepository(DataRepository):
 
         return resolve_dates(ref_date, config, has_data=has_data)
 
-    def _has_data(self, d: date) -> bool:
+    def _has_data(self: "B3DataRepository", d: date) -> bool:
         content = self._client._cache.get(d)
         if content is None:
             return True
@@ -43,15 +49,17 @@ class B3DataRepository(DataRepository):
         data_start = 1 if not lines[0].startswith("RptDt") else 0
         return len(lines) > data_start + 1
 
-    def get_index_tickers(self, index: str,
+    def get_index_tickers(self: "B3DataRepository", index: str,
                           progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
+        """Retorna a lista de tickers do índice, informando o progresso via callback."""
         return self._client.fetch_portfolio(index, progress_callback=progress_callback)
 
     def fetch_trades(
-        self, date_range: Iterable[date], tickers: list[str] | None = None,
+        self: "B3DataRepository", date_range: Iterable[date], tickers: list[str] | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
         cache_only: bool = False,
     ) -> list[TradeDay]:
+        """Baixa e combina as negociações das datas informadas, filtrando por tickers quando indicado."""
         all_trades: list[TradeDay] = []
         for d in date_range:
             try:
@@ -71,7 +79,7 @@ class B3DataRepository(DataRepository):
                 if progress_callback:
                     progress_callback(f"{d} (erro ao processar CSV)", True)
                 continue
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 logger.warning(
                     "Erro ao baixar dados da data %s: %s. Pulando esta data.", d, e
                 )

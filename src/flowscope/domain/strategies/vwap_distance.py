@@ -1,3 +1,5 @@
+"""Estratégia de distância do preço em relação ao VWAP."""
+
 from datetime import date
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -7,12 +9,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class VWAPDistanceStrategy(IndicatorStrategy):
+    """Calcula a distância percentual do último preço ao VWAP diário."""
+
     id = "vwap_distance"
     dependencies: ClassVar[list[str]] = ["vwap"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "VWAPDistanceStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna a distância normalizada entre o preço e o VWAP diário."""
         vwap_data = dep_results.get("vwap", {})
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:

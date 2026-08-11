@@ -1,3 +1,5 @@
+"""Adaptador do port de logging para o módulo logging padrão do Python."""
+
 import logging
 import traceback
 
@@ -5,22 +7,28 @@ from flowscope.application.logging_port import LogEntry, LogReference
 
 
 class PythonLogAdapter:
-    def __init__(self, logger: logging.Logger):
+    """Registra entradas de log no logger padrão do Python."""
+
+    def __init__(self: "PythonLogAdapter", logger: logging.Logger) -> None:
+        """Inicializa o adaptador com o logger Python que receberá as mensagens."""
         self._logger = logger
 
-    def error(self, entry: LogEntry) -> LogReference:
+    def error(self: "PythonLogAdapter", entry: LogEntry) -> LogReference:
+        """Registra a entrada no nível de erro e retorna sua referência."""
         self._log(logging.ERROR, entry)
         return self._make_reference(entry)
 
-    def warning(self, entry: LogEntry) -> LogReference:
+    def warning(self: "PythonLogAdapter", entry: LogEntry) -> LogReference:
+        """Registra a entrada no nível de aviso e retorna sua referência."""
         self._log(logging.WARNING, entry)
         return self._make_reference(entry)
 
-    def info(self, entry: LogEntry) -> LogReference:
+    def info(self: "PythonLogAdapter", entry: LogEntry) -> LogReference:
+        """Registra a entrada no nível informativo e retorna sua referência."""
         self._log(logging.INFO, entry)
         return self._make_reference(entry)
 
-    def _log(self, level: int, entry: LogEntry) -> None:
+    def _log(self: "PythonLogAdapter", level: int, entry: LogEntry) -> None:
         extra = {"component": entry.component, "context": entry.context or {}}
         message = f"[{entry.component}] {entry.message}"
         if entry.exception:
@@ -32,7 +40,7 @@ class PythonLogAdapter:
             )
         self._logger.log(level, message, exc_info=entry.exception is not None, extra=extra)
 
-    def _make_reference(self, entry: LogEntry) -> LogReference:
+    def _make_reference(self: "PythonLogAdapter", entry: LogEntry) -> LogReference:
         return LogReference(
             source="flowscope.log",
             identifier=entry.timestamp.isoformat(),

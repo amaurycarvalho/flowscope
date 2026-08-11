@@ -1,3 +1,5 @@
+"""Estratégia de score de dominância do fluxo."""
+
 from datetime import date
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -7,12 +9,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class DominanceScoreStrategy(IndicatorStrategy):
+    """Combina CLV e eficiência diária no score de dominância."""
+
     id = "dominance_score"
     dependencies: ClassVar[list[str]] = ["clv", "daily_efficiency"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "DominanceScoreStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o produto de CLV e eficiência diária por ticker."""
         clv_data = dep_results["clv"]
         eff_data = dep_results["daily_efficiency"]
         result: dict[str, dict[date, Decimal | None]] = {}

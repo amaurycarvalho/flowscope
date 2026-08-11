@@ -1,3 +1,5 @@
+"""Subpacote com as classificações dos indicadores do FlowScope."""
+
 from flowscope.domain.strategies.classifiers.conviction import (
     ConvictionClassification,
     classify_conviction,

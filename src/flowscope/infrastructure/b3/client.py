@@ -1,3 +1,5 @@
+"""Cliente HTTP para baixar arquivos de negociação e carteiras da B3."""
+
 import base64
 import json
 import logging
@@ -12,17 +14,20 @@ logger = logging.getLogger(__name__)
 
 
 class B3Client:
+    """Baixa e armazena em cache arquivos de negociação e carteiras da B3."""
+
     _BASE_URL = "https://arquivos.b3.com.br"
     _BASE_PORTFOLIO_URL = (
         "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/"
         "GetDownloadPortfolioDay/"
     )
 
-    def __init__(self, cache: CacheManager | None = None):
+    def __init__(self: "B3Client", cache: CacheManager | None = None) -> None:
+        """Inicializa o cliente com o gerenciador de cache informado ou um novo padrão."""
         self._cache = cache or CacheManager()
         self._bust_stale_portfolio_cache()
 
-    def _bust_stale_portfolio_cache(self) -> None:
+    def _bust_stale_portfolio_cache(self: "B3Client") -> None:
         for index in ("IBOV", "IDIV", "IFIX"):
             key = f"portfolio_{index}"
             meta_path = self._cache._cache_dir / f"{key}.json"
@@ -36,7 +41,7 @@ class B3Client:
                 except (json.JSONDecodeError, KeyError, OSError):
                     pass
 
-    def _request_token(self, file_name: str, ref_date: date) -> dict[str, Any]:
+    def _request_token(self: "B3Client", file_name: str, ref_date: date) -> dict[str, Any]:
         import requests
 
         url = f"{self._BASE_URL}/api/download/requestname"
@@ -53,7 +58,7 @@ class B3Client:
             ) from e
         return resp.json()
 
-    def _download_csv(self, token: str) -> str:
+    def _download_csv(self: "B3Client", token: str) -> str:
         import requests
 
         url = f"{self._BASE_URL}/api/download/"
@@ -67,9 +72,10 @@ class B3Client:
         resp.encoding = resp.apparent_encoding or "utf-8"
         return resp.text
 
-    def fetch_file(self, date_key: date, file_name: str = "TradeInformationConsolidated",
+    def fetch_file(self: "B3Client", date_key: date, file_name: str = "TradeInformationConsolidated",
                    progress_callback: Callable[[str, bool], None] | None = None,
                    cache_only: bool = False) -> str | None:
+        """Baixa o arquivo de negociação da data, usando o cache quando disponível."""
         cached = self._cache.get(date_key)
         if cached is not None:
             if progress_callback:
@@ -87,14 +93,15 @@ class B3Client:
             progress_callback(str(date_key), False)
         return content
 
-    def _build_portfolio_url(self, index: str, language: str = "pt-br") -> str:
+    def _build_portfolio_url(self: "B3Client", index: str, language: str = "pt-br") -> str:
         payload = json.dumps({"index": index, "language": language}, separators=(",", ":"))
         b64 = base64.b64encode(payload.encode()).decode()
         return f"{self._BASE_PORTFOLIO_URL}{b64}"
 
-    def fetch_portfolio(self, index: str, language: str = "pt-br",
+    def fetch_portfolio(self: "B3Client", index: str, language: str = "pt-br",
                         progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
-        def _fetch():
+        """Baixa e retorna a lista de tickers do índice, usando o cache com validade de 7 dias."""
+        def _fetch() -> dict[str, object]:
             import requests
 
             url = self._build_portfolio_url(index, language)

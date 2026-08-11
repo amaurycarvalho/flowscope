@@ -138,59 +138,79 @@ class TestClassifyDominance:
         cls = classify_dominance(-0.85)
         assert cls.label == "Venda Muito Forte"
         assert cls.short_label == "Muito Forte"
+        assert cls.color == "#B71C1C"
         assert cls.score == -3
 
     def test_venda_muito_forte_boundary_neg_1(self):
         cls = classify_dominance(-1.5)
         assert cls.label == "Venda Muito Forte"
+        assert cls.short_label == "Muito Forte"
+        assert cls.color == "#B71C1C"
         assert cls.score == -3
 
     def test_venda_forte(self):
         cls = classify_dominance(-0.55)
         assert cls.label == "Venda Forte"
+        assert cls.short_label == "Forte"
+        assert cls.color == "#D32F2F"
         assert cls.score == -2
 
     def test_venda_moderada(self):
         cls = classify_dominance(-0.30)
         assert cls.label == "Venda Moderada"
+        assert cls.short_label == "Moderada"
+        assert cls.color == "#EF9A9A"
         assert cls.score == -1
 
     def test_equilibrio(self):
         cls = classify_dominance(0.0)
         assert cls.label == "Equilíbrio"
+        assert cls.short_label == "Equilíbrio"
+        assert cls.color == "#BDBDBD"
         assert cls.score == 0
 
     def test_equilibrio_boundary(self):
         cls = classify_dominance(0.14)
         assert cls.label == "Equilíbrio"
+        assert cls.short_label == "Equilíbrio"
         assert cls.score == 0
 
     def test_compra_moderada(self):
         cls = classify_dominance(0.25)
         assert cls.label == "Compra Moderada"
+        assert cls.short_label == "Moderada"
+        assert cls.color == "#A5D6A7"
         assert cls.score == 1
 
     def test_compra_forte(self):
         cls = classify_dominance(0.55)
         assert cls.label == "Compra Forte"
+        assert cls.short_label == "Forte"
+        assert cls.color == "#388E3C"
         assert cls.score == 2
 
     def test_compra_muito_forte(self):
         cls = classify_dominance(0.85)
         assert cls.label == "Compra Muito Forte"
+        assert cls.short_label == "Muito Forte"
+        assert cls.color == "#1B5E20"
         assert cls.score == 3
 
     def test_compra_muito_forte_boundary_pos_1(self):
         cls = classify_dominance(1.5)
         assert cls.label == "Compra Muito Forte"
+        assert cls.short_label == "Muito Forte"
+        assert cls.color == "#1B5E20"
         assert cls.score == 3
 
     def test_equilibrio_exact_boundary(self):
         lower = classify_dominance(-0.15)
         assert lower.label == "Equilíbrio"
+        assert lower.short_label == "Equilíbrio"
         assert lower.score == 0
         upper = classify_dominance(0.15)
         assert upper.label == "Compra Moderada"
+        assert upper.short_label == "Moderada"
         assert upper.score == 1
 
     def test_returns_dataclass(self):
@@ -204,44 +224,60 @@ class TestClassifyConviction:
     def test_muito_baixa(self):
         cls = classify_conviction(0.10)
         assert cls.label == "Muito Baixa"
+        assert cls.short_label == "Muito Baixa"
+        assert cls.color == "#BDBDBD"
         assert cls.score == -2
 
     def test_muito_baixa_below_zero(self):
         cls = classify_conviction(-0.1)
         assert cls.label == "Muito Baixa"
+        assert cls.short_label == "Muito Baixa"
+        assert cls.color == "#BDBDBD"
         assert cls.score == -2
 
     def test_baixa(self):
         cls = classify_conviction(0.30)
         assert cls.label == "Baixa"
+        assert cls.short_label == "Baixa"
+        assert cls.color == "#E0E0E0"
         assert cls.score == -1
 
     def test_moderada(self):
         cls = classify_conviction(0.50)
         assert cls.label == "Moderada"
+        assert cls.short_label == "Moderada"
+        assert cls.color == "#FFE082"
         assert cls.score == 0
 
     def test_alta(self):
         cls = classify_conviction(0.70)
         assert cls.label == "Alta"
+        assert cls.short_label == "Alta"
+        assert cls.color == "#81C784"
         assert cls.score == 1
 
     def test_muito_alta(self):
         cls = classify_conviction(0.90)
         assert cls.label == "Muito Alta"
+        assert cls.short_label == "Muito Alta"
+        assert cls.color == "#2E7D32"
         assert cls.score == 2
 
     def test_muito_alta_above_one(self):
         cls = classify_conviction(1.5)
         assert cls.label == "Muito Alta"
+        assert cls.short_label == "Muito Alta"
+        assert cls.color == "#2E7D32"
         assert cls.score == 2
 
     def test_boundary_exact(self):
         lower = classify_conviction(0.19)
         assert lower.label == "Muito Baixa"
+        assert lower.short_label == "Muito Baixa"
         assert lower.score == -2
         upper = classify_conviction(0.20)
         assert upper.label == "Baixa"
+        assert upper.short_label == "Baixa"
         assert upper.score == -1
 
     def test_returns_dataclass(self):

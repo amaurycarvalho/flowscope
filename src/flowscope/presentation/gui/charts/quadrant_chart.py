@@ -1,7 +1,15 @@
+"""Gráfico de quadrantes comparando CLV e desvio do VWAP entre ativos.
+
+A classe QuadrantChart desenha os pontos finais dos ativos sobre os
+quatro quadrantes formados pelos eixos do CLV e do desvio do VWAP.
+"""
+
 import math
 import tkinter as tk
+from collections.abc import Callable
 
 import matplotlib
+from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
@@ -10,11 +18,29 @@ from flowscope.presentation.gui.charts.empty_state import (
     hide_empty,
     show_empty,
 )
+from flowscope.presentation.gui.charts.quadrant_data import (
+    build_trajectories,
+    compute_scatter_data,
+    generate_summary,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
 
 class QuadrantChart:
-    def __init__(self, parent, *, copy_chart_callback=None, summary_callback=None):
+    """Dispõe os ativos em quadrantes conforme CLV e desvio percentual do VWAP."""
+
+    def __init__(
+        self: "QuadrantChart",
+        parent: tk.Widget,
+        *,
+        copy_chart_callback: Callable[[Figure], None] | None = None,
+        summary_callback: Callable[[str], None] | None = None,
+    ) -> None:
+        """Cria o gráfico de quadrantes com sua toolbar.
+
+        Configura a figura, os eixos e o rótulo de estado vazio, além
+        de conectar os eventos de seleção e movimento do mouse.
+        """
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 3), dpi=100)
         self._axes = self._figure.add_subplot(111)
@@ -39,83 +65,47 @@ class QuadrantChart:
         self._canvas.mpl_connect("pick_event", self._on_pick)
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
-    def update(self, data: dict, *, show_arrows: bool = False) -> None:
+    def update(self: "QuadrantChart", data: dict,
+               *, show_arrows: bool = False) -> None:
+        """Atualiza o gráfico com as trajetórias dos ativos nos quadrantes."""
         self._hover_data.clear()
         self._scatter = None
 
         if not data:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+            self._show_empty()
             return
 
         hide_empty(self._empty_label)
         self._axes.clear()
 
-        ticker_trajectories: list[list[dict]] = []
-
-        for ticker, info in data.items():
-            daily = info.get("daily_data", [])
-            if not daily:
-                continue
-            clv_by_date = info.get("all_indicators", {}).get("clv") or {}
-            vwap_dist_by_date = info.get("all_indicators", {}).get("vwap_distance") or {}
-
-            points = []
-            for d in sorted(daily, key=lambda x: x["date"]):
-                dt = d["date"]
-                clv = clv_by_date.get(dt)
-                vd = vwap_dist_by_date.get(dt)
-                if clv is None or vd is None:
-                    continue
-                points.append({
-                    "ticker": ticker,
-                    "date": dt,
-                    "clv": float(clv),
-                    "vwap_dist": float(vd) * 100,
-                    "fin_instr_qty": d["fin_instr_qty"],
-                })
-
-            if points:
-                ticker_trajectories.append(points)
-
-        if not ticker_trajectories:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+        trajectories = build_trajectories(data)
+        if not trajectories:
+            self._show_empty()
             return
 
-        all_x: list[float] = []
-        all_y: list[float] = []
+        self._plot_trajectories(trajectories, show_arrows)
+        self._figure.tight_layout()
+        self._attach_annot()
+        self._canvas.draw()
 
-        for points in ticker_trajectories:
-            if show_arrows:
-                for i in range(len(points) - 1):
-                    p0, p1 = points[i], points[i + 1]
-                    self._axes.arrow(
-                        p0["clv"], p0["vwap_dist"],
-                        p1["clv"] - p0["clv"], p1["vwap_dist"] - p0["vwap_dist"],
-                        head_width=0.02, head_length=0.02,
-                        fc="gray", ec="gray", alpha=0.3,
-                        length_includes_head=True, zorder=2,
-                    )
-            for p in points:
-                all_x.append(p["clv"])
-                all_y.append(p["vwap_dist"])
+        if self._summary_callback:
+            self._summary_callback(self._generate_summary(trajectories))
 
-        max_qty = max(
-            max(p["fin_instr_qty"] for p in pts)
-            for pts in ticker_trajectories
-        )
-        size_scale = 200
+    def _show_empty(self: "QuadrantChart") -> None:
+        """Limpa os eixos e exibe o rótulo de estado vazio."""
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
 
-        last_x, last_y, last_sizes, last_colors = [], [], [], []
-        for points in ticker_trajectories:
-            last = points[-1]
-            last_x.append(last["clv"])
-            last_y.append(last["vwap_dist"])
-            norm = math.sqrt(last["fin_instr_qty"] / max_qty) if max_qty > 0 else 0.1
-            last_sizes.append(max(norm * size_scale, 10))
-            last_colors.append(last["clv"])
-            self._hover_data.append(last)
+    def _plot_trajectories(self: "QuadrantChart",
+                           trajectories: list[list[dict]],
+                           show_arrows: bool) -> None:
+        """Desenha as trajetórias e o marcador final de cada ativo."""
+        if show_arrows:
+            self._draw_arrows(trajectories)
+
+        (last_x, last_y, last_sizes, last_colors,
+         all_y, last_points) = compute_scatter_data(trajectories)
+        self._hover_data = last_points
 
         cmap = matplotlib.colormaps["RdYlGn"]
         self._scatter = self._axes.scatter(
@@ -125,7 +115,35 @@ class QuadrantChart:
         )
 
         self._annotate_tickers()
+        self._style_axes(all_y)
 
+    def _draw_arrows(self: "QuadrantChart",
+                     trajectories: list[list[dict]]) -> None:
+        """Desenha as setas que ligam os pontos consecutivos da trajetória."""
+        for points in trajectories:
+            for i in range(len(points) - 1):
+                p0, p1 = points[i], points[i + 1]
+                self._axes.arrow(
+                    p0["clv"], p0["vwap_dist"],
+                    p1["clv"] - p0["clv"], p1["vwap_dist"] - p0["vwap_dist"],
+                    head_width=0.02, head_length=0.02,
+                    fc="gray", ec="gray", alpha=0.3,
+                    length_includes_head=True, zorder=2,
+                )
+
+    def _annotate_tickers(self: "QuadrantChart") -> None:
+        """Rotula cada ponto final com o ticker do ativo correspondente."""
+        for pt in self._hover_data:
+            self._axes.annotate(
+                pt["ticker"],
+                xy=(pt["clv"], pt["vwap_dist"]),
+                xytext=(5, 5), textcoords="offset points",
+                fontsize=7, alpha=0.8,
+                bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.5},
+            )
+
+    def _style_axes(self: "QuadrantChart", all_y: list[float]) -> None:
+        """Aplica rótulos, limites e textos auxiliares nos eixos."""
         self._axes.axhline(y=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
         self._axes.axvline(x=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
 
@@ -155,85 +173,21 @@ class QuadrantChart:
                         transform=self._axes.transAxes, ha="left", va="top",
                         fontsize=9, color="red", fontweight="bold")
 
-        self._figure.tight_layout()
-
+    def _attach_annot(self: "QuadrantChart") -> None:
+        """Recria a anotação de hover após a limpeza dos eixos."""
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False,
         )
-        self._canvas.draw()
 
-        if self._summary_callback:
-            self._summary_callback(self._generate_summary(ticker_trajectories))
+    def _generate_summary(self: "QuadrantChart",
+                          trajectories: list[list[dict]]) -> str:
+        """Gera o resumo textual da distribuição entre os quadrantes."""
+        return generate_summary(trajectories)
 
-    def _annotate_tickers(self):
-        for pt in self._hover_data:
-            self._axes.annotate(
-                pt["ticker"],
-                xy=(pt["clv"], pt["vwap_dist"]),
-                xytext=(5, 5), textcoords="offset points",
-                fontsize=7, alpha=0.8,
-                bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.5},
-            )
-
-    def _generate_summary(self, trajectories):
-        counts = {"Q1": 0, "Q2": 0, "Q3": 0, "Q4": 0}
-        for points in trajectories:
-            last = points[-1]
-            if last["clv"] > 0 and last["vwap_dist"] > 0:
-                counts["Q1"] += 1
-            elif last["clv"] < 0 and last["vwap_dist"] > 0:
-                counts["Q2"] += 1
-            elif last["clv"] < 0 and last["vwap_dist"] < 0:
-                counts["Q3"] += 1
-            elif last["clv"] > 0 and last["vwap_dist"] < 0:
-                counts["Q4"] += 1
-
-        total = sum(counts.values())
-        if total == 0:
-            return ""
-
-        parts = [
-            (f"Distribuição: Q1={counts['Q1']}, Q2={counts['Q2']}, "
-            f"Q3={counts['Q3']}, Q4={counts['Q4']} (total: {total})")
-        ]
-
-        q1 = counts["Q1"] / total
-        q3 = counts["Q3"] / total
-        q2 = counts["Q2"] / total
-        q4 = counts["Q4"] / total
-
-        if q1 > 0.5:
-            parts.append(
-                "Predominância de ativos com fechamento acima do VWAP e forte "
-                "pressão compradora, indicando um pregão amplamente construtivo."
-            )
-        elif q3 > 0.5:
-            parts.append(
-                "Maioria dos ativos encerrou abaixo do VWAP com pressão vendedora "
-                "dominante, caracterizando um pregão de distribuição."
-            )
-        elif q2 > 0.4 and q2 > q4:
-            parts.append(
-                "Apesar de muitos ativos permanecerem acima do VWAP, houve "
-                "enfraquecimento no fechamento, sugerindo realização de lucros."
-            )
-        elif q4 > 0.4 and q4 > q2:
-            parts.append(
-                "Diversos ativos reagiram no fechamento, mas ainda terminaram "
-                "abaixo do VWAP, indicando possível início de recuperação, "
-                "ainda sem confirmação."
-            )
-        else:
-            parts.append(
-                "Distribuição equilibrada entre os quadrantes, "
-                "sem sinal direcional claro."
-            )
-
-        return "\n\n".join(parts)
-
-    def _on_pick(self, event):
+    def _on_pick(self: "QuadrantChart", event: PickEvent) -> None:
+        """Exibe a tooltip do ativo selecionado com o cursor."""
         if not hasattr(event, "ind") or not event.ind:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
@@ -244,7 +198,8 @@ class QuadrantChart:
         pt = self._hover_data[idx]
         self._show_tooltip(pt, event.mouseevent.xdata, event.mouseevent.ydata)
 
-    def _on_motion(self, event):
+    def _on_motion(self: "QuadrantChart", event: MouseEvent) -> None:
+        """Atualiza a tooltip conforme o ativo mais próximo do cursor."""
         if event.inaxes != self._axes or not self._scatter:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
@@ -267,7 +222,8 @@ class QuadrantChart:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self, pt, x, y):
+    def _show_tooltip(self: "QuadrantChart", pt: dict, x: float, y: float) -> None:
+        """Preenche a anotação com os dados do ponto sob o cursor."""
         vol_str = (
             str(pt["fin_instr_qty"])
             if pt["fin_instr_qty"] < 1e6
@@ -284,9 +240,10 @@ class QuadrantChart:
         self._annot.set_visible(True)
         self._canvas.draw_idle()
 
-    def reset(self):
-        show_empty(self._figure, self._all_axes, self._empty_label)
-        self._canvas.draw()
+    def reset(self: "QuadrantChart") -> None:
+        """Limpa o gráfico e exibe o estado vazio."""
+        self._show_empty()
 
-    def get_figure(self):
+    def get_figure(self: "QuadrantChart") -> Figure:
+        """Retorna a figura matplotlib utilizada pelo gráfico."""
         return self._figure

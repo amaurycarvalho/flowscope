@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define the continuous integration quality gate pipeline: a reusable CI workflow with dedicated lint, test matrix, and quality gate jobs enforcing lint, complexity, duplication, coverage, mutation, and security thresholds as defined in RFC-005.
+
+## Requirements
 
 ### Requirement: CI workflow reutilizavel via workflow_call
 
@@ -143,6 +147,8 @@ O `pyproject.toml` DEVE conter:
 - Secao `[tool.pytest.ini_options]` com `testpaths = ["tests"]` e markers para `slow`
 - Secao `[tool.mutmut]` com `source_paths = ["src/"]`, runner = "pytest", paths a nao mutar e padroes
 - Secao `[tool.coverage.run]` e `[tool.coverage.report]`
+- Secao `[tool.coverage.run]` com `source = ["src"]` e `omit` para `src/flowscope/presentation/gui/*` e `src/flowscope/icons/*` (camada GUI tkinter/matplotlib nao e coberta por testes automatizados; o gate mede a cobertura do codigo de dominio, aplicacao e infraestrutura)
+- Secao `[tool.coverage.report]` com `fail_under = 85`
 
 #### Scenario: pip install -e ".[dev]" instala ferramentas de desenvolvimento
 - **WHEN** `pip install -e ".[dev]"` e executado

@@ -1,3 +1,5 @@
+"""Interface de linha de comando do FlowScope."""
+
 import argparse
 import sys
 from datetime import datetime, timezone
@@ -5,6 +7,7 @@ from pathlib import Path
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Constrói o parser de argumentos da linha de comando."""
     parser = argparse.ArgumentParser(
         prog="flowscope",
         description="Plataforma de análise quantitativa de fluxo de ordens",
@@ -57,6 +60,7 @@ def _load_tickers(path: str) -> list[str]:
 
 
 def run_cli(args: argparse.Namespace) -> None:
+    """Executa a análise dos tickers informados e exibe os resultados."""
     from flowscope.application.use_cases import AnalyzeTickersUseCase
     from flowscope.infrastructure.b3.client import B3Client
     from flowscope.infrastructure.b3.repository import B3DataRepository
@@ -92,6 +96,7 @@ def export_vwap_csv(
     metrics: dict,
     output_path: str | None = None,
 ) -> str:
+    """Gera o conteúdo CSV com o VWAP por ticker e opcionalmente grava em arquivo."""
     lines = ["Ticker;VWAP_Periodo"]
     for ticker in tickers:
         data = metrics.get(ticker, {}).get("vwap")

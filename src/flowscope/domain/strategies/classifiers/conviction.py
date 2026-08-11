@@ -1,8 +1,12 @@
+"""Classificações de convicção do fluxo."""
+
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class ConvictionClassification:
+    """Classificação de convicção com rótulo, cor e score."""
+
     label: str
     short_label: str
     color: str
@@ -19,6 +23,7 @@ _EFFICIENCY_THRESHOLDS = [
 
 
 def classify_conviction(efficiency: float) -> ConvictionClassification:
+    """Classifica a eficiência em uma das categorias de convicção."""
     if efficiency < _EFFICIENCY_THRESHOLDS[0][0]:
         lo, hi, label, short, color, score = _EFFICIENCY_THRESHOLDS[0]
         return ConvictionClassification(label, short, color, score)

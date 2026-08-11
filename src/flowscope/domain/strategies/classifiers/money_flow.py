@@ -1,8 +1,12 @@
+"""Classificações de fluxo monetário."""
+
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class MoneyFlowClassification:
+    """Classificação de fluxo monetário com rótulo, cor e score."""
+
     label: str
     short_label: str
     color: str
@@ -23,6 +27,7 @@ _MFV_THRESHOLDS = [
 
 
 def classify_money_flow(score: float) -> MoneyFlowClassification:
+    """Classifica o MFV em uma das categorias de fluxo monetário."""
     for lo, hi, label, short, color, level in _MFV_THRESHOLDS:
         if lo <= score < hi:
             return MoneyFlowClassification(label, short, color, level)

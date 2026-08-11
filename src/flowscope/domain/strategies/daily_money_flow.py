@@ -1,3 +1,5 @@
+"""Estratégia de fluxo monetário diário."""
+
 from datetime import date
 from decimal import Decimal
 from typing import Any, ClassVar
@@ -7,12 +9,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class DailyMoneyFlowStrategy(IndicatorStrategy):
+    """Calcula o fluxo monetário diário a partir do CLV."""
+
     id = "daily_money_flow"
     dependencies: ClassVar[list[str]] = ["clv"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "DailyMoneyFlowStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o CLV multiplicado pelo volume financeiro diário."""
         clv_data = dep_results["clv"]
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:

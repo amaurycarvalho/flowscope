@@ -1,3 +1,6 @@
+"""Controlador da interface gráfica do FlowScope."""
+
+from collections.abc import Callable
 from datetime import date, datetime, timezone
 
 from flowscope.application.load_portfolio_use_case import (
@@ -12,21 +15,26 @@ from flowscope.presentation.gui.progress import ProgressReporter
 
 
 class FlowScopeController:
+    """Controlador que orquestra as operações de carga e análise de dados."""
+
     def __init__(
-        self,
+        self: "FlowScopeController",
         guard: OperationGuard,
         load_portfolio: LoadIndexPortfolioUseCase,
         analyze: AnalyzeTickersUseCase,
         presenter: FlowScopePresenter,
         logger: LogPort,
-    ):
+    ) -> None:
+        """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
         self._load_portfolio = load_portfolio
         self._analyze = analyze
         self._presenter = presenter
         self._logger = logger
 
-    def _make_progress_cb(self, reporter: ProgressReporter):
+    def _make_progress_cb(
+        self: "FlowScopeController", reporter: ProgressReporter,
+    ) -> Callable[[str, bool], None]:
         def _cb(detail: str, failed: bool) -> None:
             if failed:
                 reporter.fail(1, detail)
@@ -34,7 +42,8 @@ class FlowScopeController:
                 reporter.advance(1, detail)
         return _cb
 
-    def on_index_clicked(self, index: str) -> None:
+    def on_index_clicked(self: "FlowScopeController", index: str) -> None:
+        """Carrega o portfólio e os dados históricos do índice selecionado."""
         with self._guard.acquire() as ok:
             if not ok:
                 return
@@ -78,7 +87,7 @@ class FlowScopeController:
 
             except PortfolioNotFoundError:
                 self._presenter.on_operation_finished()
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 ref = self._logger.error(LogEntry(
                     message=str(e),
                     level="ERROR",
@@ -90,7 +99,8 @@ class FlowScopeController:
             finally:
                 self._presenter.on_operation_finished()
 
-    def on_load_data(self, ref_date: date | None = None) -> None:
+    def on_load_data(self: "FlowScopeController", ref_date: date | None = None) -> None:
+        """Carrega os dados dos tickers atuais, carregando a carteira se vazia."""
         with self._guard.acquire() as ok:
             if not ok:
                 return
@@ -139,7 +149,7 @@ class FlowScopeController:
                     "Filtro vazio e não foi possível carregar a carteira IDIV.",
                     "⚠",
                 )
-            except Exception as e:  # noqa: BLE001
+            except Exception as e:
                 ref = self._logger.error(LogEntry(
                     message=str(e),
                     level="ERROR",
@@ -151,11 +161,13 @@ class FlowScopeController:
             finally:
                 self._presenter.on_operation_finished()
 
-    def on_today(self) -> None:
+    def on_today(self: "FlowScopeController") -> None:
+        """Carrega os dados para a data atual."""
         self._presenter._gui._date_entry.set_date(datetime.now(timezone.utc).date())
         self.on_load_data()
 
-    def on_ticker_edit(self) -> None:
+    def on_ticker_edit(self: "FlowScopeController") -> None:
+        """Atualiza a análise ao editar a lista de tickers."""
         tickers = self._presenter.get_current_tickers()
         if not tickers:
             try:

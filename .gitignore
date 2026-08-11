@@ -250,3 +250,8 @@ __pycache__/
 .vscode/mcp.json
 # CocoIndex Code (ccc)
 /.cocoindex_code/
+
+# Mutation testing
+mutants/*
+.mutmut-cache
+!mutants/mutmut-cicd-stats.json

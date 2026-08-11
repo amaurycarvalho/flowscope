@@ -1,3 +1,5 @@
+"""Motor de execução de indicadores com resolução de dependências."""
+
 from collections import defaultdict, deque
 from collections.abc import Callable
 from typing import Any
@@ -7,19 +9,24 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class IndicatorEngine:
-    def __init__(self):
+    """Registra e executa indicadores respeitando a ordem de dependências."""
+
+    def __init__(self: "IndicatorEngine") -> None:
+        """Inicializa o registro de indicadores vazio."""
         self._registry: dict[str, IndicatorStrategy] = {}
 
-    def register(self, *strategies: IndicatorStrategy) -> None:
+    def register(self: "IndicatorEngine", *strategies: IndicatorStrategy) -> None:
+        """Registra um ou mais indicadores no motor."""
         for s in strategies:
             if s.id in self._registry:
                 raise ValueError(f"Indicator '{s.id}' already registered")
             self._registry[s.id] = s
 
     def execute(
-        self, trades: list[TradeDay],
+        self: "IndicatorEngine", trades: list[TradeDay],
         progress_callback: Callable[[str, bool], None] | None = None,
     ) -> dict[str, dict[str, Any]]:
+        """Executa todos os indicadores registrados e retorna o cache de resultados."""
         if not self._registry:
             return {}
 
@@ -39,7 +46,8 @@ class IndicatorEngine:
 
         return cache
 
-    def _resolve_order(self) -> list[str]:
+    def _resolve_order(self: "IndicatorEngine") -> list[str]:
+        """Resolve a ordem topológica de execução dos indicadores."""
         dependents: dict[str, set[str]] = defaultdict(set)
         in_degree: dict[str, int] = {}
 

@@ -1,3 +1,5 @@
+"""Estratégias de indicadores de fluxo de ordens."""
+
 from collections import defaultdict
 from datetime import date
 from decimal import Decimal
@@ -8,12 +10,15 @@ from flowscope.domain.strategies.base import IndicatorStrategy
 
 
 class CLVStrategy(IndicatorStrategy):
+    """Calcula a posição do fechamento no range (CLV) diário."""
+
     id = "clv"
     dependencies: ClassVar[list[str]] = []
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "CLVStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o CLV diário por ticker."""
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:
             ticker = t.ticker.value
@@ -34,22 +39,28 @@ class CLVStrategy(IndicatorStrategy):
 
 
 class MoneyFlowMultiplierStrategy(IndicatorStrategy):
+    """Propaga o multiplicador de fluxo monetário (MFM)."""
+
     id = "money_flow_multiplier"
     dependencies: ClassVar[list[str]] = ["clv"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "MoneyFlowMultiplierStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna o resultado do indicador CLV como multiplicador de fluxo."""
         return dep_results["clv"]
 
 
 class BuyingPressureStrategy(IndicatorStrategy):
+    """Calcula a pressão compradora diária por ticker."""
+
     id = "buying_pressure"
     dependencies: ClassVar[list[str]] = ["range"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "BuyingPressureStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna a pressão de compra normalizada pelo range."""
         range_data = dep_results["range"]
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:
@@ -66,12 +77,15 @@ class BuyingPressureStrategy(IndicatorStrategy):
 
 
 class SellingPressureStrategy(IndicatorStrategy):
+    """Calcula a pressão vendedora diária por ticker."""
+
     id = "selling_pressure"
     dependencies: ClassVar[list[str]] = ["range"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "SellingPressureStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, dict[date, Decimal | None]]:
+        """Retorna a pressão de venda normalizada pelo range."""
         range_data = dep_results["range"]
         result: dict[str, dict[date, Decimal | None]] = {}
         for t in trades:
@@ -88,12 +102,15 @@ class SellingPressureStrategy(IndicatorStrategy):
 
 
 class MoneyFlowVolumeStrategy(IndicatorStrategy):
+    """Calcula o volume de fluxo monetário acumulado por ticker."""
+
     id = "money_flow_volume"
     dependencies: ClassVar[list[str]] = ["money_flow_multiplier"]
 
     def compute(
-        self, trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
+        self: "MoneyFlowVolumeStrategy", trades: list[TradeDay], dep_results: dict[str, dict[str, Any]]
     ) -> dict[str, Decimal]:
+        """Acumula o multiplicador de fluxo monetário multiplicado pelo volume financeiro."""
         mfm_data = dep_results["money_flow_multiplier"]
         result: dict[str, Decimal] = defaultdict(Decimal)
         for t in trades:

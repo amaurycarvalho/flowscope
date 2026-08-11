@@ -1,57 +1,50 @@
-import math
-import tkinter as tk
+"""Gráfico de dominância do pregão ordenado por ativo.
 
+A classe DominanceRankingChart apresenta o ranking dos ativos segundo
+o último CLV, com barras coloridas e hastes proporcionais ao fluxo
+monetário de cada um.
+"""
+
+import tkinter as tk
+from collections.abc import Callable
+
+from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
 from flowscope.domain.strategies.classifiers import classify_dominance
+from flowscope.presentation.gui.charts.dominance_data import (
+    bar_colors,
+    draw_stems,
+    find_closest_row,
+)
 from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
     hide_empty,
     show_empty,
 )
+from flowscope.presentation.gui.charts.ranking_data import (
+    build_rows,
+    draw_ticker_labels,
+    stem_lengths,
+)
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
 
-def _compute_stems(
-    values: list[float],
-    clvs: list[float],
-    y_pos: list[int],
-    max_val: float,
-    scale: float = 0.10,
-) -> tuple[list[int], list[float], list[float], list[str]]:
-    stem_ys: list[int] = []
-    stem_xmins: list[float] = []
-    stem_xmaxs: list[float] = []
-    stem_colors: list[str] = []
-    for i, (clv, val) in enumerate(zip(clvs, values)):
-        if val == 0.0 or abs(clv) < 0.05:
-            continue
-        norm = abs(val) / max_val if max_val > 0 else 0
-        stem_len = max(math.sqrt(norm) * scale, 0.015)
-        cls = classify_dominance(clv)
-        stem_ys.append(y_pos[i])
-        intensity = abs(cls.score)
-        if intensity == 0:
-            gray = "#C0C0C0"
-        elif intensity == 1:
-            gray = "#555555"
-        elif intensity == 2:
-            gray = "#222222"
-        else:
-            gray = "#0A0A0A"
-        stem_colors.append(gray)
-        if clv >= 0:
-            stem_xmins.append(0.0)
-            stem_xmaxs.append(clv + stem_len)
-        else:
-            stem_xmins.append(clv - stem_len)
-            stem_xmaxs.append(0.0)
-    return stem_ys, stem_xmins, stem_xmaxs, stem_colors
-
-
 class DominanceRankingChart:
-    def __init__(self, parent, *, copy_chart_callback=None):
+    """Exibe o ranking de dominância do pregão para todos os ativos."""
+
+    def __init__(
+        self: "DominanceRankingChart",
+        parent: tk.Widget,
+        *,
+        copy_chart_callback: Callable[[Figure], None] | None = None,
+    ) -> None:
+        """Cria o gráfico de ranking de dominância com sua toolbar.
+
+        Configura a figura, os eixos e o rótulo de estado vazio, além
+        de conectar os eventos de seleção e movimento do mouse.
+        """
         self.frame = tk.Frame(parent)
         self._figure = Figure(figsize=(5, 3), dpi=100)
         self._axes = self._figure.add_subplot(111)
@@ -76,100 +69,52 @@ class DominanceRankingChart:
         self._canvas.mpl_connect("pick_event", self._on_pick)
         self._canvas.mpl_connect("motion_notify_event", self._on_motion)
 
-    def update(self, data: dict) -> None:
+    def update(self: "DominanceRankingChart", data: dict) -> None:
+        """Atualiza o ranking de dominância com os dados do pregão."""
         self._hover_data.clear()
         self._bars = None
         self._circles = None
 
         if not data:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+            self._show_empty()
             return
 
         hide_empty(self._empty_label)
         self._axes.clear()
 
-        rows = []
-        max_mfv = 0.0
-        for ticker, info in data.items():
-            all_inds = info.get("all_indicators", {})
-            clv_dict = all_inds.get("clv")
-            if not clv_dict:
-                continue
-            last_date = max(clv_dict.keys())
-            clv = clv_dict[last_date]
-            if clv is None:
-                continue
-            clv_f = float(clv)
-            mfv = info.get("money_flow_volume")
-            mfv_f = float(mfv) if mfv is not None else 0.0
-            max_mfv = max(max_mfv, abs(mfv_f))
-            rows.append({
-                "ticker": ticker,
-                "clv": clv_f,
-                "mfv": mfv_f,
-                "date": last_date,
-            })
-
+        rows = build_rows(data)
         if not rows:
-            show_empty(self._figure, self._all_axes, self._empty_label)
-            self._canvas.draw()
+            self._show_empty()
             return
 
-        rows.sort(key=lambda r: r["clv"])
+        self._plot_rows(rows)
+        self._figure.tight_layout()
+        self._attach_annot()
+        self._canvas.draw()
 
+    def _show_empty(self: "DominanceRankingChart") -> None:
+        """Limpa os eixos e exibe o rótulo de estado vazio."""
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._canvas.draw()
+
+    def _plot_rows(self: "DominanceRankingChart", rows: list[dict]) -> None:
+        """Desenha as barras, hastes e rótulos do ranking de dominância."""
+        rows.sort(key=lambda r: r["clv"])
         tickers = [r["ticker"] for r in rows]
         clvs = [r["clv"] for r in rows]
         mfvs = [r["mfv"] for r in rows]
         y_pos = list(range(len(rows)))
 
-        bar_colors = []
-        for clv in clvs:
-            cls = classify_dominance(clv)
-            bar_colors.append(cls.color)
-
         self._axes.axvline(x=0, color="gray", linestyle="-", linewidth=0.8, zorder=1)
 
         self._bars = self._axes.barh(
-            y_pos, clvs, height=0.6, color=bar_colors, zorder=3, picker=True,
+            y_pos, clvs, height=0.6, color=bar_colors(clvs), zorder=3, picker=True,
         )
 
-        stem_lens = []
-        for mfv in mfvs:
-            if mfv == 0.0:
-                stem_lens.append(0.0)
-            else:
-                norm = abs(mfv) / max_mfv if max_mfv > 0 else 0
-                stem_lens.append(max(math.sqrt(norm) * 0.10, 0.015))
-
-        for i, (ticker, clv) in enumerate(zip(tickers, clvs)):
-            stem_len = stem_lens[i]
-            if clv >= 0:
-                label_x = clv + stem_len + 0.02
-                ha = "left"
-            else:
-                label_x = clv - stem_len - 0.02
-                ha = "right"
-            if label_x > 1.18:
-                label_x = 1.18
-                ha = "right"
-            elif label_x < -1.18:
-                label_x = -1.18
-                ha = "left"
-            self._axes.text(
-                label_x, y_pos[i], ticker,
-                ha=ha, va="center", fontsize=8, zorder=4,
-            )
-
-        stem_ys, stem_xmins, stem_xmaxs, stem_colors = _compute_stems(
-            mfvs, clvs, y_pos, max_mfv, scale=0.10,
-        )
-
-        if stem_ys:
-            self._axes.hlines(
-                stem_ys, stem_xmins, stem_xmaxs,
-                colors=stem_colors, linewidth=2, zorder=5,
-            )
+        max_mfv = max(abs(v) for v in mfvs) if mfvs else 0.0
+        stem_lens = stem_lengths(mfvs, max_mfv)
+        draw_ticker_labels(self._axes, tickers, clvs, stem_lens, y_pos)
+        draw_stems(self._axes, mfvs, clvs, y_pos, max_mfv)
 
         self._hover_data = rows
 
@@ -187,18 +132,16 @@ class DominanceRankingChart:
                         transform=self._axes.transAxes, ha="left", va="top",
                         fontsize=9, color="red", fontweight="bold")
 
-        self._figure.tight_layout()
-        self._attach_annot()
-        self._canvas.draw()
-
-    def _attach_annot(self):
+    def _attach_annot(self: "DominanceRankingChart") -> None:
+        """Recria a anotação de hover após a limpeza dos eixos."""
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
             bbox={"boxstyle": "round,pad=0.3", "fc": "yellow", "ec": "gray", "alpha": 0.8},
             fontsize=9, visible=False, zorder=10,
         )
 
-    def _on_pick(self, event):
+    def _on_pick(self: "DominanceRankingChart", event: PickEvent) -> None:
+        """Exibe a tooltip do ativo selecionado com o cursor."""
         if not hasattr(event, "ind") or not event.ind:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
@@ -209,36 +152,24 @@ class DominanceRankingChart:
         pt = self._hover_data[idx]
         self._show_tooltip(pt, event.mouseevent.xdata, event.mouseevent.ydata)
 
-    def _on_motion(self, event):
+    def _on_motion(self: "DominanceRankingChart", event: MouseEvent) -> None:
+        """Atualiza a tooltip conforme a barra mais próxima do cursor."""
         if event.inaxes != self._axes:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
             return
         if self._bars is None:
             return
-        closest = None
-        min_dist = 0.3
-        for pt in self._hover_data:
-            idx = self._hover_data.index(pt)
-            dy = abs(event.ydata - idx)
-            if dy > min_dist:
-                continue
-            if pt["clv"] >= 0:
-                if event.xdata < 0 or event.xdata > pt["clv"]:
-                    continue
-            else:
-                if event.xdata > 0 or event.xdata < pt["clv"]:
-                    continue
-            if dy < min_dist:
-                min_dist = dy
-                closest = pt
+        closest = find_closest_row(self._hover_data, event.xdata, event.ydata)
         if closest:
             self._show_tooltip(closest, event.xdata, event.ydata)
         else:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self, pt, x, y):
+    def _show_tooltip(self: "DominanceRankingChart", pt: dict, x: float,
+                      y: float) -> None:
+        """Preenche a anotação com os dados do ativo sob o cursor."""
         cls = classify_dominance(pt["clv"])
         mfv_str = f"R$ {pt['mfv']:,.0f}" if pt["mfv"] != 0 else "N/A"
         self._annot.set_text(
@@ -252,9 +183,10 @@ class DominanceRankingChart:
         self._annot.set_visible(True)
         self._canvas.draw_idle()
 
-    def reset(self):
-        show_empty(self._figure, self._all_axes, self._empty_label)
-        self._canvas.draw()
+    def reset(self: "DominanceRankingChart") -> None:
+        """Limpa o gráfico e exibe o estado vazio."""
+        self._show_empty()
 
-    def get_figure(self):
+    def get_figure(self: "DominanceRankingChart") -> Figure:
+        """Retorna a figura matplotlib utilizada pelo gráfico."""
         return self._figure

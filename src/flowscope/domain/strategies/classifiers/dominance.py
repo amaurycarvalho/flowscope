@@ -1,8 +1,12 @@
+"""Classificações de dominância do fluxo."""
+
 from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
 class DominanceClassification:
+    """Classificação de dominância com rótulo, cor e score."""
+
     label: str
     short_label: str
     color: str
@@ -21,6 +25,7 @@ _CLV_THRESHOLDS = [
 
 
 def classify_dominance(clv: float) -> DominanceClassification:
+    """Classifica o CLV em uma das categorias de dominância."""
     if clv < _CLV_THRESHOLDS[0][0]:
         lo, hi, label, short, color, score = _CLV_THRESHOLDS[0]
         return DominanceClassification(label, short, color, score)

@@ -1,3 +1,5 @@
+"""Copia figuras do matplotlib para a área de transferência do sistema operacional."""
+
 import platform
 import subprocess
 from pathlib import Path
@@ -6,10 +8,11 @@ from matplotlib.figure import Figure
 
 
 class ClipboardError(Exception):
-    pass
+    """Erro ao tentar copiar uma imagem para a área de transferência."""
 
 
 def copy_image_to_clipboard(figure: Figure) -> None:
+    """Salva a figura como imagem PNG e a copia para a área de transferência conforme o SO."""
     system = platform.system()
     tmp_path = Path("/tmp") / "flowscope_chart.png"
 
