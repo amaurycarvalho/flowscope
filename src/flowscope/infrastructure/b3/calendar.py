@@ -67,6 +67,19 @@ def generate_dates(ref_date: date, config: SamplingConfig | None = None) -> list
     return generator(ref_date, config.period_days)
 
 
+def _is_valid_candidate(
+    candidate: date,
+    already_selected: set[date],
+    has_data: Callable[[date], bool],
+    max_date: date | None,
+) -> bool:
+    """Verifica se a data é elegível: útil, com dados e dentro do limite."""
+    return (candidate not in already_selected
+            and (max_date is None or candidate <= max_date)
+            and _is_business_day(candidate)
+            and has_data(candidate))
+
+
 def _find_nearest_with_data(
     date: date, has_data: Callable[[date], bool] | None, already_selected: set[date], max_deviation: int = 7,
     max_date: date | None = None,
@@ -78,17 +91,11 @@ def _find_nearest_with_data(
     """
     for delta in range(max_deviation + 1):
         candidate = date - timedelta(days=delta)
-        if (candidate not in already_selected
-                and (max_date is None or candidate <= max_date)
-                and _is_business_day(candidate)
-                and has_data(candidate)):
+        if _is_valid_candidate(candidate, already_selected, has_data, max_date):
             return candidate
         if delta > 0:
             candidate = date + timedelta(days=delta)
-            if (candidate not in already_selected
-                    and (max_date is None or candidate <= max_date)
-                    and _is_business_day(candidate)
-                    and has_data(candidate)):
+            if _is_valid_candidate(candidate, already_selected, has_data, max_date):
                 return candidate
     return None
 
