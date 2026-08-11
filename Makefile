@@ -28,7 +28,7 @@ install: $(ACTIVATE)
 	$(PIP) install -q -e ".[dev]"
 
 install-quality-tools: $(ACTIVATE)
-	$(PIP) install -q -e ".[quality]"
+	$(PIP) install -q -e ".[dev,quality]"
 	npm install -g jscpd@4.0.1
 	mkdir -p mutants/
 
