@@ -17,7 +17,10 @@ else
 endif
 
 $(ACTIVATE): pyproject.toml
-	$(PYTHON_CMD) -m venv $(VENV)
+	@if [ ! -x "$(PYTHON)" ]; then \
+		rm -rf $(VENV); \
+		$(PYTHON_CMD) -m venv $(VENV); \
+	fi
 	$(PYTHON) -m pip install -q --upgrade pip
 	touch $(ACTIVATE)
 
