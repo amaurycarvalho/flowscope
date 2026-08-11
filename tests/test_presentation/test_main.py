@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -142,6 +143,18 @@ class TestConfigureLogging:
             log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
             content = log_file.read_text()
             assert "teste log" in content
+
+    def test_linha_comeca_com_timestamp_com_milissegundos(self, tmp_path):
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            import logging
+            logging.getLogger("flowscope").error("teste log")
+            log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
+            line = log_file.read_text().splitlines()[0]
+            assert re.match(
+                r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \| ERROR \|", line
+            )
 
     def test_linux_adiciona_syslog_handler(self, tmp_path):
         with (

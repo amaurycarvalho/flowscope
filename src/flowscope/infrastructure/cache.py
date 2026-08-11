@@ -62,6 +62,8 @@ class CacheManager:
             try:
                 data = json.loads(meta_path.read_text(encoding="utf-8"))
                 cached_at = datetime.fromisoformat(data["cached_at"])
+                if cached_at.tzinfo is None:
+                    cached_at = cached_at.replace(tzinfo=timezone.utc)
                 delta = datetime.now(timezone.utc) - cached_at
                 if delta.days < ttl_days:
                     return data

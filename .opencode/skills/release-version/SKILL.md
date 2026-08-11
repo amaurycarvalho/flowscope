@@ -54,11 +54,22 @@ Update the application release version across the codebase and regenerate all ch
    'CFBundleVersion': '<new-version>',
    ```
 
-4. **Verify consistency**
+4. **Update app_version in **init**.py**
+
+   Read `pyproject.toml` and find the line containing `version = `.
+
+   Replace the current value with the new version string:
+
+   ```
+   version = "<new-version>"
+   ```
+
+5. **Verify consistency**
 
    Read back the modified files and confirm:
-   - `b3_selic_pre.py` has `__version__ = "<new-version>"`
-   - `b3-selic-pre.spec` has the correct `'CFBundleShortVersionString':` and `'CFBundleVersion':`  fields
+   - `src/flowscope/__init__.py` has `__version__ = "<new-version>"`
+   - `flowscope.spec` has the correct `'CFBundleShortVersionString':` and `'CFBundleVersion':`  fields
+   - `pyproject.toml` has `version = "<new-version>"`
 
 **Output On Success**
 
@@ -68,6 +79,7 @@ Release version updated to <version>
 Files updated:
 - src/flowscope/__init__.py (__version__)
 - flowscope.spec
+- pyproject.toml
 
 Commentary: changelog skill can now be used manually to update the changelog files.
 ```

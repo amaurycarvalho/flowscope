@@ -3,6 +3,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler, SysLogHandler
 from pathlib import Path
 
@@ -121,6 +122,19 @@ def _create_desktop_shortcut() -> bool:
         return False
 
 
+class _MillisecondFormatter(logging.Formatter):
+    def formatTime(self, record, datefmt=None):
+        created = datetime.fromtimestamp(record.created, tz=timezone.utc).astimezone()
+        if datefmt is None:
+            datefmt = "%Y-%m-%d %H:%M:%S"
+        formatted = created.strftime(datefmt)
+        if "%f" in datefmt:
+            formatted = formatted.replace(
+                created.strftime("%f"), f"{created.microsecond // 1000:03d}"
+            )
+        return formatted
+
+
 def _configure_logging() -> None:
     log_dir = Path.home() / ".flowscope" / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -142,6 +156,13 @@ def _configure_logging() -> None:
             handlers.append(NTEventLogHandler("FlowScope"))
         except ImportError:
             pass
+
+    formatter = _MillisecondFormatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S,%f",
+    )
+    for handler in handlers:
+        handler.setFormatter(formatter)
 
     logging.basicConfig(level=logging.WARNING, handlers=handlers, force=True)
 

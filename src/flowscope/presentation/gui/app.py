@@ -50,17 +50,24 @@ DEFAULT_CONFIG = {
     "window_geometry": None,
     "sash_positions": None,
     "last_ticker_dir": None,
+    "last_tickers": None,
 }
 
 
 def load_preferences() -> dict:
+    prefs = dict(DEFAULT_CONFIG)
     try:
         if CONFIG_PATH.exists():
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            return {**DEFAULT_CONFIG, **data}
+            prefs.update(data)
     except (json.JSONDecodeError, OSError):
         pass
-    return dict(DEFAULT_CONFIG)
+    last_tickers = prefs.get("last_tickers")
+    if not isinstance(last_tickers, list):
+        prefs["last_tickers"] = None
+    else:
+        prefs["last_tickers"] = [t for t in last_tickers if isinstance(t, str) and t.strip()]
+    return prefs
 
 
 def save_preferences(data: dict) -> None:
@@ -116,6 +123,11 @@ class FlowScopeGUI(tk.Tk):
                 )
             except (ValueError, TypeError):
                 pass
+
+        last_tickers = self._prefs.get("last_tickers") or []
+        if last_tickers:
+            self._ticker_list.set_tickers(list(last_tickers))
+            self._update_ticker_counter()
 
         self._wire_controller()
 
@@ -885,6 +897,7 @@ class FlowScopeGUI(tk.Tk):
 
     def _on_ticker_dir_changed(self, directory: Path) -> None:
         self._prefs["last_ticker_dir"] = str(directory)
+        self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
         save_preferences(self._prefs)
 
     def _on_ticker_edit(self):
@@ -918,9 +931,13 @@ class FlowScopeGUI(tk.Tk):
 
     def _update_ticker_counter(self):
         all_listbox = self._ticker_list.get_all_listbox_tickers()
+        n_total = len(all_listbox)
+        if not self._current_data:
+            if n_total > 0:
+                self._ticker_list.set_counter(f"Tickers ({n_total})")
+            return
         filtered = self._ticker_list.get_tickers()
         active = [t for t in filtered if t in self._current_data]
-        n_total = len(all_listbox)
         n_filtered = len(active)
         if n_filtered < n_total and n_total > 0:
             self._ticker_list.set_counter(f"Exibindo {n_filtered} de {n_total} ativos")
@@ -1035,6 +1052,7 @@ class FlowScopeGUI(tk.Tk):
         self._prefs["last_date"] = str(self._date_entry.get_date())
         self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
         self._prefs["last_subtab"] = self._prefs.get("last_subtab", "VWAP")
+        self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
         try:
             positions = []
             if hasattr(self, "_main_pw"):
