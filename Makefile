@@ -21,38 +21,44 @@ $(ACTIVATE): pyproject.toml
 		rm -rf $(VENV); \
 		$(PYTHON_CMD) -m venv $(VENV); \
 	fi
-	$(PYTHON) -m pip install -q --upgrade pip
-	touch $(ACTIVATE)
+	@$(PYTHON) -m pip install -q --upgrade pip
+	@touch $(ACTIVATE)
 
 venv: $(ACTIVATE)
 
 install: $(ACTIVATE)
-	$(PIP) install -q -e .
-	$(PIP) install -q -e ".[dev]"
+	@echo "Installing dependencies..."
+	@$(PIP) install -q -e .
+	@$(PIP) install -q -e ".[dev]"
 
 install-quality-tools: $(ACTIVATE)
-	$(PIP) install -q -e ".[dev,quality]"
-	npm install -g jscpd@4.0.1
-	mkdir -p mutants/
+	@echo "Installing quality gate dependencies..."
+	@$(PIP) install -q -e ".[dev,quality]"
+	@npm install -g jscpd@4.0.1
+	@mkdir -p mutants/
 
 quality-gate: $(ACTIVATE)
-	$(MAKE) lint
-	$(MAKE) complexity
-	$(MAKE) duplication
-	$(MAKE) test
-	$(MAKE) security
-	$(MAKE) mutation-check
+	@echo "Running quality gate..."
+	@$(MAKE) lint
+	@$(MAKE) complexity
+	@$(MAKE) duplication
+	@$(MAKE) test
+	@$(MAKE) security
+	@$(MAKE) mutation-check
 
 build: $(ACTIVATE)
-	$(PIP) install -q pyinstaller
-	$(PYTHON) -m PyInstaller flowscope.spec
+	@echo "Building..."
+	@$(PIP) install -q pyinstaller
+	@$(PYTHON) -m PyInstaller flowscope.spec
 
 test: $(ACTIVATE)
-	$(PYTHON) -m pytest --tb=short --cov --cov-report=xml:coverage.xml --cov-report=term-missing --cov-fail-under=85
+	@echo "Testing and code coverage..."
+	@$(PYTHON) -m pytest --tb=short --cov --cov-report=xml:coverage.xml --cov-report=term-missing --cov-fail-under=85
 
 lint: $(ACTIVATE)
-	$(BIN)/ruff check src/
-	$(BIN)/flake8 --max-complexity=10 --select=B,A,D --extend-exclude=tests ./src/
+	@echo "Linting..."
+	@$(BIN)/ruff check src/
+	@$(BIN)/flake8 --max-complexity=10 --select=B,A,D --extend-exclude=tests ./src/
 
 complexity: $(ACTIVATE)
 	@echo "Checking complexity metrics..."
@@ -112,15 +118,17 @@ security: security-all
 
 security-changed: $(ACTIVATE)
 	@echo "Running security checks on changed files..."
-	@$(BIN)/semgrep ci --oss-only --quiet --config auto --include "src/"
+	@$(BIN)/semgrep ci --oss-only --quiet --config auto --include "src/" || exit 1
 
 security-all: $(ACTIVATE)
 	@echo "Running security checks..."
-	@$(BIN)/semgrep scan --oss-only --quiet --config auto --severity ERROR --error src/
+	@echo "High-severity findings (blocking):"
+	@$(BIN)/semgrep scan --oss-only --quiet --config auto --severity ERROR --error src/ || exit 1
 	@echo "Medium-severity findings (non-blocking):"
-	@$(BIN)/semgrep scan --oss-only --quiet --config auto --severity WARNING --json src/ 2>/dev/null | $(PYTHON) -c "import json,sys; d=json.load(sys.stdin); n=len(d.get('results',[])); print(f'  {n} medium finding(s)')" || true
+	@$(BIN)/semgrep scan --oss-only --quiet --config auto --severity WARNING src/ 
 
 clean:
-	rm -rf $(VENV) build/ dist/ __pycache__/ *.spec mutants/
-	find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
-	find . -name '*.pyc' -delete
+	@echo "Cleaning..."
+	@rm -rf $(VENV) build/ dist/ __pycache__/ *.spec mutants/
+	@find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
+	@find . -name '*.pyc' -delete
