@@ -62,6 +62,25 @@ TAB_CONTENT = {
              "Passe o mouse sobre as barras para ver detalhes do ticker."), ""),
         ]
     ),
+    ("Análise Geral", "Fundamentos"): (
+        "Fundamentos — Métricas Fundamentalistas e Dividendos",
+        [
+            ("Objetivo: ", "bold"),
+            ("Consolidar, por ticker da watchlist, a identidade, a classificação, os dividendos e — para FIIs elegíveis — as métricas fundamentalistas de FFO.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Quais ativos estão na carteira, que tipo são e, para FIIs de tijolo/híbrido, quão barato ou caro está o fundo frente ao FFO e ao patrimônio?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Identidade: ticker, nome, tipo (ação/FII/ETF/BDR) e sub-tipo (FII: tijolo/papel/híbrido/fiagro/fiinfra; ação: ordinária/preferencial/ETF);\n"
+             "• Dividendos: última data-com, último dividendo (Rendimento) e tendência do dividendo (último vs. anterior, banda ±5%);\n"
+             "• Métricas FFO (apenas FII elegível): FFO Yield, Dividend Yield 12m, P/FFO, P/VP e FFO Trend.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Ativos não elegíveis (ações, ETF, papel, fiagro, fiinfra e desconhecidos) exibem N/A nas colunas FFO. "
+             "A tendência do dividendo compara o último rendimento com o anterior dentro de uma banda de ±5% (SUBINDO/CAINDO/MANTEVE). "
+             "O FFO Yield mede o retorno do FFO sobre o valor de mercado e o P/VP compara o valor de mercado com o patrimônio líquido; "
+             "valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. Os valores são calculados com precisão decimal completa "
+             "e arredondados somente na apresentação."), ""),
+        ]
+    ),
     ("Análise do Ticker", "Evolução da Dominância"): (
         "Evolução da Dominância — Histórico de CLV por Pregão",
         [

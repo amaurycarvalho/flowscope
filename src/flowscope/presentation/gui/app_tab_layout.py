@@ -7,6 +7,7 @@ from flowscope.presentation.gui.app_tabs import ENABLED_TABS, TAB_CONFIGS
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
 from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
+from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
@@ -36,6 +37,11 @@ class TabsLayoutMixin:
             general_dominance_frame, copy_chart_callback=self._copy_chart,
         )
         self._dominance_ranking.frame.pack(fill=tk.BOTH, expand=True)
+
+        general_fundamental_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_fundamental_frame, text="Fundamentos")
+        self._fundamental_table = FundamentalTablePanel(general_fundamental_frame)
+        self._fundamental_table.frame.pack(fill=tk.BOTH, expand=True)
 
     def _build_ticker_tabs(self: "TabsLayoutMixin") -> None:
         ticker_main_frame = ttk.Frame(self._main_notebook)
