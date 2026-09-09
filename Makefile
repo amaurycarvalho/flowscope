@@ -55,6 +55,10 @@ test: $(ACTIVATE)
 	@echo "Testing and code coverage..."
 	@$(PYTHON) -m pytest --tb=short --cov --cov-report=xml:coverage.xml --cov-report=term-missing --cov-fail-under=85
 
+test-slow: $(ACTIVATE)
+	@echo "Testing (slow scenarios)..."
+	@$(PYTHON) -m pytest -m "slow" --tb=short
+
 lint: $(ACTIVATE)
 	@echo "Linting..."
 	@$(BIN)/ruff check src/

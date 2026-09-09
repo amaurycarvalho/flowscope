@@ -78,7 +78,7 @@ Execute-o localmente com:
 make quality-gate
 ```
 
-Verificações individuais: `make complexity`, `make duplication`, `make mutation`,
+Verificações individuais: `make complexity`, `make duplication`, `make mutation-check`,
 `make security`. Saiba mais em [Quality Gate](docs/adrs/ADR-003.md).
 
 ### Mutation testing
