@@ -42,7 +42,9 @@ def main() -> None:
         _open_gui()
         return
 
-    has_cli_args = args.tickers is not None or args.vwap
+    has_cli_args = (
+        args.tickers is not None or args.vwap or args.structured_earnings is not None
+    )
     if has_cli_args:
         _handle_cli_args(args)
         return
@@ -63,7 +65,12 @@ def _create_shortcut_or_exit() -> None:
 
 
 def _handle_cli_args(args: argparse.Namespace) -> None:
-    """Delega para o modo CLI, exportando o VWAP em CSV quando solicitado."""
+    """Delega para o modo CLI, exportando o VWAP ou extraindo proventos quando solicitado."""
+    if args.structured_earnings is not None:
+        from flowscope.presentation.cli import run_structured_earnings
+        run_structured_earnings(args)
+        return
+
     ticker_filter = None
     if args.tickers:
         from flowscope.presentation.cli import _load_tickers

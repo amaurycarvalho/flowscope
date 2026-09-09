@@ -1,9 +1,13 @@
 """Interface de linha de comando do FlowScope."""
 
 import argparse
+import json
 import sys
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from decimal import Decimal
 from pathlib import Path
+
+from flowscope.domain.structured import DocumentoProvento
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +33,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Exportar VWAP em CSV",
     )
+    parser.add_argument(
+        "--structured-earnings",
+        type=str,
+        metavar="TICKER",
+        help="Extrair rendimentos e amortizações estruturados do ticker",
+    )
+    parser.add_argument(
+        "--data-inicio",
+        type=_parse_data,
+        metavar="AAAA-MM-DD",
+        help="Data de início da consulta de proventos",
+    )
+    parser.add_argument(
+        "--data-fim",
+        type=_parse_data,
+        metavar="AAAA-MM-DD",
+        help="Data de fim da consulta de proventos",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        metavar="ARQUIVO",
+        help="Arquivo JSON de saída da extração estruturada",
+    )
 
     parser.add_argument(
         "--version",
@@ -41,6 +69,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Criar atalho no desktop (Linux)",
     )
     return parser
+
+
+def _parse_data(valor: str) -> date:
+    """Interpreta o argumento de data no formato ``AAAA-MM-DD``."""
+    try:
+        return date.fromisoformat(valor)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"Data inválida: {valor!r} (use o formato AAAA-MM-DD)"
+        ) from None
 
 
 def _load_tickers(path: str) -> list[str]:
@@ -106,3 +144,59 @@ def export_vwap_csv(
     if output_path:
         Path(output_path).write_text(content, encoding="utf-8")
     return content
+
+
+def run_structured_earnings(args: argparse.Namespace) -> list[DocumentoProvento]:
+    """Executa a extração estruturada de proventos do ticker informado."""
+    from flowscope.application.structured_use_cases import ExtrairProventosUseCase
+    from flowscope.infrastructure.b3.funds_client import B3FundosClient
+    from flowscope.infrastructure.b3.structured_repository import FundosRepository
+
+    ticker = args.structured_earnings.upper()
+    repo = FundosRepository(B3FundosClient())
+    use_case = ExtrairProventosUseCase(repo)
+    documentos = use_case.execute(
+        ticker,
+        data_inicio=args.data_inicio,
+        data_fim=args.data_fim,
+        progress_callback=_progresso,
+    )
+
+    if args.output:
+        Path(args.output).write_text(
+            json.dumps(
+                [d.to_dict() for d in documentos],
+                indent=2,
+                ensure_ascii=False,
+                default=_json_default,
+            ),
+            encoding="utf-8",
+        )
+        if documentos:
+            print(f"Extração concluída: {len(documentos)} provento(s) em {args.output}")
+    else:
+        if not documentos:
+            print(f"Nenhum dado disponível para {ticker}")
+        else:
+            print(
+                json.dumps(
+                    [d.to_dict() for d in documentos],
+                    indent=2,
+                    ensure_ascii=False,
+                    default=_json_default,
+                )
+            )
+    return documentos
+
+
+def _progresso(mensagem: str, erro: bool) -> None:
+    """Exibe o progresso da extração em stderr, sem poluir a saída JSON."""
+    prefixo = "ERRO: " if erro else ""
+    print(f"{prefixo}{mensagem}", file=sys.stderr)
+
+
+def _json_default(valor: object) -> str:
+    """Serializa valores não nativos do JSON, como ``Decimal`` e ``date``."""
+    if isinstance(valor, (Decimal, date)):
+        return str(valor)
+    raise TypeError(f"Objeto não serializável: {type(valor).__name__}")

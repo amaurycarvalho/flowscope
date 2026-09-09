@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Define as entidades e objetos de valor do domínio de dados estruturados da B3 — `Entidade`, `Provento`, `DocumentoProvento` e os value objects `CNPJ`, `ISIN` e `ValorProvento` — usados na representação de documentos de proventos independentes da API de origem.
+
+## Requirements
 
 ### Requirement: Entidade Entidade
 O sistema DEVE possuir uma entidade de domínio `Entidade` representando uma empresa ou fundo listado, contendo obrigatoriamente os campos `nome`, `cnpj` (CNPJ), `nome_administrador`, `cnpj_administrador` (CNPJ), `responsavel`, `telefone`.
@@ -8,7 +12,7 @@ O sistema DEVE possuir uma entidade de domínio `Entidade` representando uma emp
 - **THEN** todos os campos DEVEM ser acessíveis como atributos da entidade
 
 ### Requirement: Entidade Provento
-O sistema DEVE possuir uma entidade de domínio `Provento` representando um pagamento de rendimento ou amortização, contendo obrigatoriamente `codigo_isin` (ISIN), `codigo_negociacao`, `tipo` (Rendimento/Amortização), `data_base`, `valor_por_unidade` (ValorProvento), `data_pagamento`, `periodo_referencia`, `isento_ir`, `nota_isencao`.
+O sistema DEVE possuir uma entidade de domínio `Provento` representando um pagamento de rendimento ou amortização, contendo obrigatoriamente `codigo_isin` (ISIN), `codigo_negociacao`, `tipo` (Rendimento/Amortização), `data_base`, `valor_por_unidade` (ValorProvento), `data_pagamento`, `periodo_referencia`, `isento_ir`, `nota_isencao`. A entidade DEVE também carregar `data_informacao` e `ano_referencia` (opcionais) para suportar a serialização dos metadados `dataInformacao` e `anoReferencia` exigidos na extração e no JSON de saída.
 
 #### Scenario: Provento do tipo Rendimento
 - **WHEN** um provento é criado com `tipo="Rendimento"` e `valor_por_unidade=0.08355`

@@ -18,58 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - [regulacao-mercado](openspec/changes/regulacao-mercado) Dados regulatórios e de mercado da B3 (fatos relevantes, notícias, censuras, condições excepcionais) integrados ao llm-chat
 - [structured-earnings](openspec/changes/structured-earnings) Extração de rendimentos e amortizações de FIIs via API B3 com entidades de domínio, cache e CLI
 
-## [0.7.0] — 2026-08-11
+## [0.8.0] — 2026-09-09
 
-### [kill-mutation-survivors](openspec/changes/archive/2026-08-11-kill-mutation-survivors) Eleva o mutation score de 61.95% para >= 80% com novos testes unitários, asserts mais fortes e padrões do_not_mutate para os 886 mutantes sobreviventes
-
-#### Added
-
-- Novos testes unitários para funções/métodos que hoje não possuem cobertura de teste, focando nos 886 mutantes sobreviventes agrupados por módulo
-- Padrões adicionados ao `do_not_mutate_patterns` do mutmut para mutações impossíveis de matar com testes unitários
-
-#### Changed
-
-- Fortalecimento de asserts em testes existentes que cobrem o código mas não são sensíveis o suficiente para detectar mutações (ex: mocks que validam apenas que a chamada ocorreu, sem verificar argumentos específicos)
-
-### [log-timestamps](openspec/changes/archive/2026-08-11-log-timestamps) Logs passam a incluir timestamp (data/hora) via basicConfig configurado globalmente no main.py
-
-#### Changed
-
-- `logging.basicConfig` configurado em `src/flowscope/presentation/main.py` com formato de log que inclui timestamp
-- Timestamps em formato ISO 8601 com milissegundos (ex.: `2026-08-11 14:23:07,120`)
-- Formato aplicado globalmente a todos os handlers via `basicConfig` (um único `format` para todo o processo)
-- Testes de logging ajustados para o novo formato quando asserem na saída de log
-
-### [quality-gate-ci](openspec/changes/archive/2026-08-11-quality-gate-ci) Implementa o quality gate completo da RFC-005 (lint, complexidade, duplicação, cobertura, mutação, segurança) e acopla-o ao pipeline de release
-
-#### Changed
-
-- `ci.yml` reescrito como workflow reutilizável (`workflow_call`) com 3 jobs encadeados (lint → test → quality-gate), usando Python 3.12 e 3.13
-- `release.yml` ganha job `ci` que invoca o workflow reutilizável antes do build; jobs `build` e `release` passam a depender de `ci`
-- Makefile com 30+ targets de qualidade: `venv`, `install-quality-tools`, `quality-gate`, `complexity`, `duplication`, `mutation-*`, `security*`
-- `pyproject.toml` com dependências `dev` e `quality` e configurações `[tool.ruff]`, `[tool.pytest.ini_options]`, `[tool.mutmut]`, `[tool.coverage]`
-- RFC-005 corrigida (target `build` como PyInstaller, remoção de menções a `build-wheel.yml`)
+### [fundamental-metrics-table](openspec/changes/fundamental-metrics-table) Tabela fundamentalista "Fundamentos" na aba "Análise Geral" com FFO Yield, Dividend Yield, P/FFO e P/VP para FIIs elegíveis
 
 #### Added
 
-- Scripts `scripts/quality_gate.py`, `scripts/complexity_metrics.py`, `scripts/check-mutation-score.py`
-- Entradas `.gitignore` para `mutants/` e `.mutmut-cache`
-
-### [remember-last-tickers](openspec/changes/archive/2026-08-11-remember-last-tickers) Persiste e restaura a última lista de tickers usada em `~/.flowscope/config.json`
-
-#### Added
-
-- Persistência da última lista de tickers em `~/.flowscope/config.json` sob a chave `last_tickers`
-- Restauração da lista salva no startup sem disparar download de dados
-- Testes unitários para `load_preferences` / `save_preferences` cobrindo o round-trip de `last_tickers`
+- Nova sub-aba "Fundamentos" no sub-notebook da aba "Análise Geral", com uma tabela (`ttk.Treeview`) alimentada pela watchlist de tickers
+- Colunas de identidade para todos os tickers: ticker, nome, tipo (ação/FII/ETF/BDR) e sub-tipo (FII: tijolo/papel/híbrido/fiagro/fiinfra; ação: ordinária/preferencial/ETF)
+- Classificação de tipo/sub-tipo: tipo e sub-tipo de ação derivados sintaticamente do ticker e cruzados com `code-cvm-resolution`; sub-tipo de FII via taxonomia versionada
+- Colunas de dividendo para todos os tickers: última data-com, último dividendo (somente `Rendimento`; amortização excluída) e tendência do dividendo (último vs. anterior, banda de ±5% configurável, `N/A` sem dividendo anterior)
+- Colunas fundamentalistas apenas para FIIs elegíveis (tijolo/híbrido): FFO Yield, Dividend Yield 12m, P/FFO, P/VP, FFO Trend, nº de cotistas + classe e patrimônio + classe — conforme RFC-006/007; ações/ETF/papel/fiagro exibem `N/A`
+- Adapter CVM para NAV, nº de cotas e nº de cotistas; provedor Fundamentus para FFO 12m/3m
+- Camada de domínio isolada (funções puras, `decimal.Decimal`, evidência por métrica) conforme RFC-007
 
 #### Changed
 
-- Salvamento da lista ao fechar o app (`_on_close`)
-- Persistência da lista também quando muda via load-from-file / troca de diretório, sobrevivendo a crashes e saídas não-graciosas
-- Contador de tickers no startup mostra `Tickers (N)` em vez de `Exibindo 0 de N ativos`
+- Reuso do preço de fechamento dos dados B3 já baixados (sem novo adapter de mercado)
 
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.7.0...HEAD
-[0.7.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.7.0
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.8.0
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
