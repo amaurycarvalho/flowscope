@@ -57,6 +57,38 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ARQUIVO",
         help="Arquivo JSON de saída da extração estruturada",
     )
+    parser.add_argument(
+        "--fatos-relevantes",
+        type=str,
+        metavar="TICKER",
+        help="Extrair fatos relevantes, assembleias e avisos do ticker via GetMaterialFacts",
+    )
+    parser.add_argument(
+        "--noticias",
+        action="store_true",
+        help="Listar notícias do Plantão B3",
+    )
+    parser.add_argument(
+        "--regulacao",
+        action="store_true",
+        help="Extrair censuras públicas e condições excepcionais da B3",
+    )
+    parser.add_argument(
+        "--categoria",
+        type=str,
+        metavar="CODIGO",
+        help=(
+            "Filtrar categoria de documento para --fatos-relevantes "
+            "(1=Assembleias, 3=Aviso Acionistas, 4=Fatos Relevantes, "
+            "48=Aviso Debenturistas, 107=Relatório Proventos)"
+        ),
+    )
+    parser.add_argument(
+        "--palavra",
+        type=str,
+        metavar="TERMO",
+        help="Filtrar notícias por palavra-chave (usado com --noticias)",
+    )
 
     parser.add_argument(
         "--version",
@@ -187,6 +219,69 @@ def run_structured_earnings(args: argparse.Namespace) -> list[DocumentoProvento]
                 )
             )
     return documentos
+
+
+def run_fatos_relevantes(args: argparse.Namespace) -> dict:
+    """Executa a extração de fatos relevantes do ticker via ``GetMaterialFacts``."""
+    from flowscope.application.structured_use_cases import (
+        ExtrairDadosRegulatoriosUseCase,
+    )
+    from flowscope.infrastructure.b3.funds_client import B3FundosClient
+
+    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
+    resultado = use_case.execute(
+        "fatos",
+        ticker=args.fatos_relevantes.upper(),
+        categoria=args.categoria,
+        data_inicio=args.data_inicio,
+        data_fim=args.data_fim,
+    )
+    _imprimir_json(resultado)
+    return resultado
+
+
+def run_noticias(args: argparse.Namespace) -> dict:
+    """Executa a listagem de notícias do Plantão B3."""
+    from flowscope.application.structured_use_cases import (
+        ExtrairDadosRegulatoriosUseCase,
+    )
+    from flowscope.infrastructure.b3.funds_client import B3FundosClient
+
+    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
+    resultado = use_case.execute(
+        "noticias",
+        agencia="18",
+        palavra=args.palavra,
+        data_inicio=args.data_inicio,
+        data_fim=args.data_fim,
+    )
+    _imprimir_json(resultado)
+    return resultado
+
+
+def run_regulacao(args: argparse.Namespace) -> dict:
+    """Executa a extração de censuras públicas e condições excepcionais."""
+    from flowscope.application.structured_use_cases import (
+        ExtrairDadosRegulatoriosUseCase,
+    )
+    from flowscope.infrastructure.b3.funds_client import B3FundosClient
+
+    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
+    resultado = use_case.execute("regulacao")
+    _imprimir_json(resultado)
+    return resultado
+
+
+def _imprimir_json(dados: dict) -> None:
+    """Exibe um dicionário como JSON formatado no stdout."""
+    print(
+        json.dumps(
+            dados,
+            indent=2,
+            ensure_ascii=False,
+            default=_json_default,
+        )
+    )
 
 
 def _progresso(mensagem: str, erro: bool) -> None:

@@ -43,7 +43,12 @@ def main() -> None:
         return
 
     has_cli_args = (
-        args.tickers is not None or args.vwap or args.structured_earnings is not None
+        args.tickers is not None
+        or args.vwap
+        or args.structured_earnings is not None
+        or args.fatos_relevantes is not None
+        or args.noticias
+        or args.regulacao
     )
     if has_cli_args:
         _handle_cli_args(args)
@@ -69,6 +74,21 @@ def _handle_cli_args(args: argparse.Namespace) -> None:
     if args.structured_earnings is not None:
         from flowscope.presentation.cli import run_structured_earnings
         run_structured_earnings(args)
+        return
+
+    if args.fatos_relevantes is not None:
+        from flowscope.presentation.cli import run_fatos_relevantes
+        run_fatos_relevantes(args)
+        return
+
+    if args.noticias:
+        from flowscope.presentation.cli import run_noticias
+        run_noticias(args)
+        return
+
+    if args.regulacao:
+        from flowscope.presentation.cli import run_regulacao
+        run_regulacao(args)
         return
 
     ticker_filter = None

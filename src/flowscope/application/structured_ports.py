@@ -4,7 +4,14 @@ from collections.abc import Callable
 from datetime import date
 from typing import Protocol
 
-from flowscope.domain.structured import DocumentoProvento
+from flowscope.domain.structured import (
+    CategoriaMaterialFact,
+    CensuraPublica,
+    CondicaoExcepcional,
+    DocumentoMaterialFact,
+    DocumentoProvento,
+    NoticiaB3,
+)
 
 
 class ProventosRepository(Protocol):
@@ -33,6 +40,45 @@ class ProventosRepository(Protocol):
         pode conter metadados adicionais (ticker, idFNET) anexados pelo caso de
         uso para compor o documento extraído.
         """
+        ...
+
+
+class RegulacaoRepository(Protocol):
+    """Contrato para acesso a dados regulatórios e de mercado da B3."""
+
+    def resolver_code_cvm(self: "RegulacaoRepository", ticker: str) -> str | None:
+        """Retorna o codeCVM do ticker informado, ou ``None`` quando não listado."""
+        ...
+
+    def listar_fatos_relevantes(
+        self: "RegulacaoRepository",
+        code_cvm: str,
+        categoria: CategoriaMaterialFact | str,
+        data_inicio: date,
+        data_fim: date,
+        ticker: str = "",
+    ) -> list[DocumentoMaterialFact]:
+        """Lista os documentos do ``GetMaterialFacts`` da categoria e período."""
+        ...
+
+    def listar_noticias(
+        self: "RegulacaoRepository",
+        agencia: str = "18",
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+        palavra: str | None = None,
+    ) -> list[NoticiaB3]:
+        """Lista as notícias do Plantão B3 no período e com o filtro informado."""
+        ...
+
+    def listar_censuras(self: "RegulacaoRepository") -> list[CensuraPublica]:
+        """Lista as censuras públicas da B3."""
+        ...
+
+    def listar_condicoes_excepcionais(
+        self: "RegulacaoRepository",
+    ) -> list[CondicaoExcepcional]:
+        """Lista as condições excepcionais da B3."""
         ...
 
 

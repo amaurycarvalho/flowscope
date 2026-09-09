@@ -2,10 +2,12 @@
 
 import re
 from decimal import Decimal
+from enum import Enum
 
 _CNPJ_RE = re.compile(r"^\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2}$")
 _ISIN_RE = re.compile(r"^BR[A-Z0-9]{10}$")
 _MONETARY_RE = re.compile(r"[^\d,.-]")
+_CODIGO_CVM_RE = re.compile(r"^\d{1,6}$")
 
 
 def _parse_monetary(value: str) -> Decimal:
@@ -114,3 +116,54 @@ class ValorProvento:
     def __repr__(self: "ValorProvento") -> str:
         """Representação textual do valor do provento."""
         return f"ValorProvento({self._value})"
+
+
+class CodeCVM:
+    """Código CVM da empresa listada, validado como campo numérico da B3."""
+
+    def __init__(self: "CodeCVM", value: str) -> None:
+        """Valida o formato numérico e armazena o código CVM."""
+        value = value.strip()
+        if not _CODIGO_CVM_RE.match(value):
+            raise ValueError(f"Código CVM inválido: {value!r}")
+        self._value = value
+
+    @property
+    def value(self: "CodeCVM") -> str:
+        """Retorna o código CVM normalizado."""
+        return self._value
+
+    def __str__(self: "CodeCVM") -> str:
+        """Retorna o código CVM como string."""
+        return self._value
+
+    def __eq__(self: "CodeCVM", other: object) -> bool:
+        """Compara igualdade com outro código CVM."""
+        if not isinstance(other, CodeCVM):
+            return NotImplemented
+        return self._value == other._value
+
+    def __hash__(self: "CodeCVM") -> int:
+        """Retorna o hash baseado no valor do código CVM."""
+        return hash(self._value)
+
+    def __repr__(self: "CodeCVM") -> str:
+        """Representação textual do código CVM."""
+        return f"CodeCVM({self._value})"
+
+
+class CategoriaMaterialFact(Enum):
+    """Categorias de documentos do endpoint ``GetMaterialFacts`` da B3."""
+
+    ASSEMBLEIAS = "1"
+    AVISO_ACIONISTAS = "3"
+    FATOS_RELEVANTES = "4"
+    AVISO_DEBENTURISTAS = "48"
+    RELATORIO_PROVENTOS = "107"
+
+    def __str__(self: "CategoriaMaterialFact") -> str:
+        """Retorna o código numérico da categoria como string."""
+        return self.value
+
+
+CategoriaDocumento = CategoriaMaterialFact
