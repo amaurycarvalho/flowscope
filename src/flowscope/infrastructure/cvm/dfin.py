@@ -101,6 +101,23 @@ def _anos(reference_date: date) -> list[int]:
     )
 
 
+def _candidato_linha(
+    bruta: dict[str, str],
+    colunas: set[str],
+    alvo: str,
+    reference_date: date,
+) -> tuple[date, Decimal] | None:
+    """Avalia uma linha do CSV, retornando sua competência e resultado."""
+    canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
+    if normalizar_cnpj(canonica.get("cnpj")) != alvo:
+        return None
+    competencia = parse_data(canonica.get("competencia"))
+    valor = parse_decimal(canonica.get("resultado"))
+    if competencia is None or valor is None or competencia > reference_date:
+        return None
+    return competencia, valor
+
+
 def _buscar(
     conteudo: bytes, alvo: str, reference_date: date
 ) -> tuple[date, Decimal] | None:
@@ -115,13 +132,7 @@ def _buscar(
     validar_aliases(colunas, _ALIASES, _OBRIGATORIAS)
     melhor: tuple[date, Decimal] | None = None
     for bruta in leitor:
-        canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
-        if normalizar_cnpj(canonica.get("cnpj")) != alvo:
-            continue
-        competencia = parse_data(canonica.get("competencia"))
-        valor = parse_decimal(canonica.get("resultado"))
-        if competencia is None or valor is None or competencia > reference_date:
-            continue
-        if melhor is None or competencia > melhor[0]:
-            melhor = (competencia, valor)
+        candidato = _candidato_linha(bruta, colunas, alvo, reference_date)
+        if candidato is not None and (melhor is None or candidato[0] > melhor[0]):
+            melhor = candidato
     return melhor

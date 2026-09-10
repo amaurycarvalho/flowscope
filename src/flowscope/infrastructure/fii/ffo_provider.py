@@ -9,7 +9,7 @@ import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from flowscope.domain.fii.analysis import FfoObservacao
 from flowscope.infrastructure.fii.fundamentus.provider import (
@@ -50,30 +50,54 @@ def extrair_ffo(html: str) -> FfoObservacao | None:
     extração retorna ``None``.
     """
     soup = BeautifulSoup(html, "html.parser")
-    ffo_12m = None
-    ffo_3m = None
-    for linha in soup.find_all("tr"):
-        celulas = [celula.get_text(" ", strip=True) for celula in linha.find_all("td")]
-        if len(celulas) < 2:
-            continue
-        rotulo = _normalizar(celulas[0])
-        if "ffo" not in rotulo:
-            continue
-        valor = _ler_valor(celulas[1])
-        if valor is None:
-            continue
-        if "12 meses" in rotulo or "12m" in rotulo:
-            ffo_12m = valor
-        elif "3 meses" in rotulo or "3m" in rotulo:
-            ffo_3m = valor
-    if ffo_12m is None or ffo_3m is None:
+    valores = _coletar_ffo(soup)
+    if valores is None:
         return None
+    ffo_12m, ffo_3m = valores
     return FfoObservacao(
         ffo_12m=ffo_12m,
         ffo_3m=ffo_3m,
         fonte=FONTE_FUNDAMENTUS,
         metodologia=METODOLOGIA,
     )
+
+
+def _coletar_ffo(soup: BeautifulSoup) -> tuple[Decimal, Decimal] | None:
+    """Percorre as linhas e retorna o par (FFO 12m, FFO 3m), se completo."""
+    ffo_12m = None
+    ffo_3m = None
+    for linha in soup.find_all("tr"):
+        rotulo, valor = _rotulo_e_valor(linha)
+        if rotulo is None or valor is None:
+            continue
+        if _eh_12_meses(rotulo):
+            ffo_12m = valor
+        elif _eh_3_meses(rotulo):
+            ffo_3m = valor
+    if ffo_12m is None or ffo_3m is None:
+        return None
+    return ffo_12m, ffo_3m
+
+
+def _rotulo_e_valor(linha: Tag) -> tuple[str | None, Decimal | None]:
+    """Retorna o rótulo normalizado e o valor de uma linha de FFO."""
+    celulas = [celula.get_text(" ", strip=True) for celula in linha.find_all("td")]
+    if len(celulas) < 2:
+        return None, None
+    rotulo = _normalizar(celulas[0])
+    if "ffo" not in rotulo:
+        return None, None
+    return rotulo, _ler_valor(celulas[1])
+
+
+def _eh_12_meses(rotulo: str) -> bool:
+    """Indica se o rótulo se refere à janela de 12 meses."""
+    return "12 meses" in rotulo or "12m" in rotulo
+
+
+def _eh_3_meses(rotulo: str) -> bool:
+    """Indica se o rótulo se refere à janela de 3 meses."""
+    return "3 meses" in rotulo or "3m" in rotulo
 
 
 def _ler_valor(texto: str) -> Decimal | None:

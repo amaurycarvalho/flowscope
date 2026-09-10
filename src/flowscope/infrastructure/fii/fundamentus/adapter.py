@@ -91,60 +91,47 @@ class FundamentusFundamentalDataProvider:
         return campos_do_ativo(ativo), OrigemDados.REDE
 
 
+def _adicionar(
+    campos: dict[str, CampoFundamental], chave: str, valor: object
+) -> None:
+    """Adiciona um campo com a fonte do Fundamentus quando o valor existe."""
+    if valor is not None:
+        campos[chave] = CampoFundamental(valor, FONTE_FUNDAMENTUS)
+
+
 def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     """Mapeia um ``AtivoFundamental`` para os campos da análise."""
     campos: dict[str, CampoFundamental] = {}
     if ativo.nome:
         campos[CAMPO_NOME] = CampoFundamental(ativo.nome, FONTE_FUNDAMENTUS)
-    if ativo.cotacao is not None:
-        campos[CAMPO_COTACAO] = CampoFundamental(ativo.cotacao, FONTE_FUNDAMENTUS)
+    _adicionar(campos, CAMPO_COTACAO, ativo.cotacao)
 
     campos.update(_campos_classificacao(ativo))
 
     indicadores = ativo.indicadores
     dividend_yield = _percentual(indicadores.get(_INDICADOR_DIV_YIELD))
-    if dividend_yield is not None:
-        campos[CAMPO_DIVIDEND_YIELD] = CampoFundamental(
-            dividend_yield, FONTE_FUNDAMENTUS
-        )
+    _adicionar(campos, CAMPO_DIVIDEND_YIELD, dividend_yield)
     ffo_yield = _percentual(indicadores.get(_INDICADOR_FFO_YIELD))
-    if ffo_yield is not None:
-        campos[CAMPO_FFO_YIELD] = CampoFundamental(ffo_yield, FONTE_FUNDAMENTUS)
-    p_vp = indicadores.get(_INDICADOR_P_VP)
-    if p_vp is not None:
-        campos[CAMPO_P_VP] = CampoFundamental(p_vp, FONTE_FUNDAMENTUS)
-    p_l = indicadores.get(_INDICADOR_P_L)
-    if p_l is not None:
-        campos[CAMPO_P_L] = CampoFundamental(p_l, FONTE_FUNDAMENTUS)
+    _adicionar(campos, CAMPO_FFO_YIELD, ffo_yield)
+    _adicionar(campos, CAMPO_P_VP, indicadores.get(_INDICADOR_P_VP))
+    _adicionar(campos, CAMPO_P_L, indicadores.get(_INDICADOR_P_L))
     vp_cota = _valor_indicador(indicadores, _INDICADOR_VP_COTA, _INDICADOR_VPA)
-    if vp_cota is not None:
-        campos[CAMPO_VP_COTA] = CampoFundamental(vp_cota, FONTE_FUNDAMENTUS)
-    dividendo_cota = indicadores.get(_INDICADOR_DIVIDENDO_COTA)
-    if dividendo_cota is not None:
-        campos[CAMPO_DIVIDENDO_POR_COTA] = CampoFundamental(
-            dividendo_cota, FONTE_FUNDAMENTUS
-        )
-    p_ffo = _p_ffo(ativo, indicadores, ffo_yield)
-    if p_ffo is not None:
-        campos[CAMPO_P_FFO] = CampoFundamental(p_ffo, FONTE_FUNDAMENTUS)
+    _adicionar(campos, CAMPO_VP_COTA, vp_cota)
+    _adicionar(
+        campos,
+        CAMPO_DIVIDENDO_POR_COTA,
+        indicadores.get(_INDICADOR_DIVIDENDO_COTA),
+    )
+    _adicionar(campos, CAMPO_P_FFO, _p_ffo(ativo, indicadores, ffo_yield))
 
     ffo_12m = ativo.demonstrativos_12m.get(_DEMONSTRATIVO_FFO)
     ffo_3m = ativo.demonstrativos_3m.get(_DEMONSTRATIVO_FFO)
-    if ffo_12m is not None:
-        campos[CAMPO_FFO_12M] = CampoFundamental(ffo_12m, FONTE_FUNDAMENTUS)
-    if ffo_3m is not None:
-        campos[CAMPO_FFO_3M] = CampoFundamental(ffo_3m, FONTE_FUNDAMENTUS)
-    trend = _ffo_trend(ffo_12m, ffo_3m)
-    if trend is not None:
-        campos[CAMPO_FFO_TREND] = CampoFundamental(trend, FONTE_FUNDAMENTUS)
+    _adicionar(campos, CAMPO_FFO_12M, ffo_12m)
+    _adicionar(campos, CAMPO_FFO_3M, ffo_3m)
+    _adicionar(campos, CAMPO_FFO_TREND, _ffo_trend(ffo_12m, ffo_3m))
     _adicionar_patrimonio(ativo, campos)
-    qtd_imoveis = ativo.imoveis.get(_IMOVEL_QTD)
-    if qtd_imoveis is not None:
-        campos[CAMPO_QTD_IMOVEIS] = CampoFundamental(qtd_imoveis, FONTE_FUNDAMENTUS)
-    if ativo.data_ultima_cotacao is not None:
-        campos[CAMPO_DATA_REFERENCIA] = CampoFundamental(
-            ativo.data_ultima_cotacao, FONTE_FUNDAMENTUS
-        )
+    _adicionar(campos, CAMPO_QTD_IMOVEIS, ativo.imoveis.get(_IMOVEL_QTD))
+    _adicionar(campos, CAMPO_DATA_REFERENCIA, ativo.data_ultima_cotacao)
     return campos
 
 

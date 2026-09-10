@@ -176,6 +176,141 @@ def _evidencia(
     )
 
 
+@dataclass(frozen=True)
+class _Indicadores:
+    """Indicadores intermediários do cálculo de um snapshot."""
+
+    ffo_na: bool
+    yield_ffo: Decimal | None
+    multiplo_ffo: Decimal | None
+    variacao: Decimal | None
+    tendencia: TendenciaFfo | None
+    nav_positivo: bool
+    valor_vp: Decimal | None
+    rendimento: Decimal
+    payout: Decimal | None
+
+
+def _calcular_indicadores(
+    snapshot: FiiSnapshot, valor_mercado: Decimal
+) -> _Indicadores:
+    """Calcula os indicadores derivados, respeitando as regras de N/A."""
+    ffo_positivo = snapshot.ffo_12m > Decimal(0)
+    ffo_na = not ffo_positivo
+    yield_ffo = None if ffo_na else ffo_yield(snapshot.ffo_12m, valor_mercado)
+    multiplo_ffo = None if ffo_na else p_ffo(valor_mercado, snapshot.ffo_12m)
+    variacao: Decimal | None = None
+    tendencia: TendenciaFfo | None = None
+    if ffo_positivo:
+        variacao = ffo_momentum(snapshot.ffo_3m, snapshot.ffo_12m)
+        tendencia = classificar_tendencia_ffo(variacao)
+    nav_positivo = snapshot.net_asset_value > Decimal(0)
+    valor_vp = None if not nav_positivo else p_vp(valor_mercado, snapshot.net_asset_value)
+    rendimento = dividend_yield(snapshot.dividends_12m, valor_mercado)
+    payout = None
+    if ffo_positivo and snapshot.dividends_12m >= Decimal(0):
+        payout = ffo_payout(snapshot.dividends_12m, snapshot.ffo_12m)
+    return _Indicadores(
+        ffo_na=ffo_na,
+        yield_ffo=yield_ffo,
+        multiplo_ffo=multiplo_ffo,
+        variacao=variacao,
+        tendencia=tendencia,
+        nav_positivo=nav_positivo,
+        valor_vp=valor_vp,
+        rendimento=rendimento,
+        payout=payout,
+    )
+
+
+def _montar_evidencias(
+    snapshot: FiiSnapshot,
+    valor_mercado: Decimal,
+    ind: _Indicadores,
+    fontes: tuple[str, ...],
+) -> list[MetricEvidence]:
+    """Monta a lista de evidências das métricas calculadas."""
+    evidencias = [
+        _evidencia(
+            "MARKET_VALUE",
+            valor_mercado,
+            "price * shares_outstanding",
+            {"price": snapshot.price, "shares_outstanding": snapshot.shares_outstanding},
+            fontes,
+            snapshot,
+        )
+    ]
+    if ind.yield_ffo is not None:
+        evidencias.append(
+            _evidencia(
+                "FFO_YIELD",
+                ind.yield_ffo,
+                "ffo_12m / market_value",
+                {"ffo_12m": snapshot.ffo_12m, "market_value": valor_mercado},
+                fontes,
+                snapshot,
+            )
+        )
+    if ind.multiplo_ffo is not None:
+        evidencias.append(
+            _evidencia(
+                "P_FFO",
+                ind.multiplo_ffo,
+                "market_value / ffo_12m",
+                {"market_value": valor_mercado, "ffo_12m": snapshot.ffo_12m},
+                fontes,
+                snapshot,
+            )
+        )
+    if ind.valor_vp is not None:
+        evidencias.append(
+            _evidencia(
+                "P_VP",
+                ind.valor_vp,
+                "market_value / net_asset_value",
+                {"market_value": valor_mercado, "net_asset_value": snapshot.net_asset_value},
+                fontes,
+                snapshot,
+            )
+        )
+    evidencias.append(
+        _evidencia(
+            "DIVIDEND_YIELD",
+            ind.rendimento,
+            "dividends_12m / market_value",
+            {"dividends_12m": snapshot.dividends_12m, "market_value": valor_mercado},
+            fontes,
+            snapshot,
+        )
+    )
+    if ind.variacao is not None:
+        evidencias.append(
+            _evidencia(
+                "FFO_MOMENTUM",
+                ind.variacao,
+                "(ffo_3m * 4) / ffo_12m - 1",
+                {"ffo_3m": snapshot.ffo_3m, "ffo_12m": snapshot.ffo_12m},
+                fontes,
+                snapshot,
+            )
+        )
+    return evidencias
+
+
+def _coletar_alertas(ind: _Indicadores, tolerance: Decimal) -> list[str]:
+    """Coleta as inconsistências e alertas aplicáveis ao snapshot."""
+    warnings: list[str] = []
+    if ind.ffo_na:
+        warnings.append(Inconsistencia.NEGATIVE_FFO.value)
+    if ind.yield_ffo is not None and ind.rendimento > ind.yield_ffo * FATOR_ALERTA_DISTRIBUICAO:
+        warnings.append(Inconsistencia.HIGH_DISTRIBUTION_VS_FFO.value)
+    if not verificar_consistencia(ind.multiplo_ffo, ind.yield_ffo, tolerance):
+        warnings.append(Inconsistencia.DATA_INCONSISTENCY.value)
+    if ind.ffo_na and not warnings:
+        warnings.append(Inconsistencia.FFO_NOT_AVAILABLE.value)
+    return warnings
+
+
 def analisar_snapshot(
     snapshot: FiiSnapshot,
     *,
@@ -189,9 +324,6 @@ def analisar_snapshot(
     disponíveis, a inconsistência ``P/FFO × FFO Yield ≈ 1`` é verificada e, em
     caso de violação, uma evidência de ``DATA_INCONSISTENCY`` é gerada.
     """
-    warnings: list[str] = []
-    evidencias: list[MetricEvidence] = []
-
     valor_mercado = market_value(snapshot.price, snapshot.shares_outstanding)
     if valor_mercado <= Decimal(0):
         return MetricasFii(
@@ -209,118 +341,24 @@ def analisar_snapshot(
             evidence=(),
         )
 
-    evidencias.append(
-        _evidencia(
-            "MARKET_VALUE",
-            valor_mercado,
-            "price * shares_outstanding",
-            {"price": snapshot.price, "shares_outstanding": snapshot.shares_outstanding},
-            fontes,
-            snapshot,
-        )
-    )
-
-    ffo_positivo = snapshot.ffo_12m > Decimal(0)
-    ffo_na = not ffo_positivo
-    if ffo_na:
-        warnings.append(Inconsistencia.NEGATIVE_FFO.value)
-
-    yield_ffo = None if ffo_na else ffo_yield(snapshot.ffo_12m, valor_mercado)
-    multiplo_ffo = None if ffo_na else p_ffo(valor_mercado, snapshot.ffo_12m)
-    variacao: Decimal | None = None
-    tendencia: TendenciaFfo | None = None
-    if ffo_positivo:
-        variacao = ffo_momentum(snapshot.ffo_3m, snapshot.ffo_12m)
-        tendencia = classificar_tendencia_ffo(variacao)
-
-    nav_positivo = snapshot.net_asset_value > Decimal(0)
-    valor_vp = None if not nav_positivo else p_vp(valor_mercado, snapshot.net_asset_value)
-
-    rendimento = dividend_yield(snapshot.dividends_12m, valor_mercado)
-
-    payout = None
-    if ffo_positivo and snapshot.dividends_12m >= Decimal(0):
-        payout = ffo_payout(snapshot.dividends_12m, snapshot.ffo_12m)
-
-    if yield_ffo is not None:
-        evidencias.append(
-            _evidencia(
-                "FFO_YIELD",
-                yield_ffo,
-                "ffo_12m / market_value",
-                {"ffo_12m": snapshot.ffo_12m, "market_value": valor_mercado},
-                fontes,
-                snapshot,
-            )
-        )
-    if multiplo_ffo is not None:
-        evidencias.append(
-            _evidencia(
-                "P_FFO",
-                multiplo_ffo,
-                "market_value / ffo_12m",
-                {"market_value": valor_mercado, "ffo_12m": snapshot.ffo_12m},
-                fontes,
-                snapshot,
-            )
-        )
-    if valor_vp is not None:
-        evidencias.append(
-            _evidencia(
-                "P_VP",
-                valor_vp,
-                "market_value / net_asset_value",
-                {"market_value": valor_mercado, "net_asset_value": snapshot.net_asset_value},
-                fontes,
-                snapshot,
-            )
-        )
-    evidencias.append(
-        _evidencia(
-            "DIVIDEND_YIELD",
-            rendimento,
-            "dividends_12m / market_value",
-            {"dividends_12m": snapshot.dividends_12m, "market_value": valor_mercado},
-            fontes,
-            snapshot,
-        )
-    )
-    if variacao is not None:
-        evidencias.append(
-            _evidencia(
-                "FFO_MOMENTUM",
-                variacao,
-                "(ffo_3m * 4) / ffo_12m - 1",
-                {"ffo_3m": snapshot.ffo_3m, "ffo_12m": snapshot.ffo_12m},
-                fontes,
-                snapshot,
-            )
-        )
-
-    if yield_ffo is not None and rendimento > yield_ffo * FATOR_ALERTA_DISTRIBUICAO:
-        warnings.append(Inconsistencia.HIGH_DISTRIBUTION_VS_FFO.value)
-
-    if not verificar_consistencia(multiplo_ffo, yield_ffo, tolerance):
-        warnings.append(Inconsistencia.DATA_INCONSISTENCY.value)
-
-    if ffo_na and not warnings:
-        warnings.append(Inconsistencia.FFO_NOT_AVAILABLE.value)
-
+    ind = _calcular_indicadores(snapshot, valor_mercado)
+    evidencias = _montar_evidencias(snapshot, valor_mercado, ind, fontes)
+    warnings = _coletar_alertas(ind, tolerance)
     qualidade = _qualidade(
-        ffo_na=ffo_na,
-        nav_positivo=nav_positivo,
+        ffo_na=ind.ffo_na,
+        nav_positivo=ind.nav_positivo,
         warnings=tuple(warnings),
     )
     return MetricasFii(
         market_value=valor_mercado,
-        ffo_yield=yield_ffo,
-        dividend_yield=rendimento,
-        p_ffo=multiplo_ffo,
-        p_vp=valor_vp,
-        ffo_momentum=variacao,
-        ffo_trend=tendencia,
-        ffo_trend_change=variacao,
-        ffo_payout=payout,
+        ffo_yield=ind.yield_ffo,
+        dividend_yield=ind.rendimento,
+        p_ffo=ind.multiplo_ffo,
+        p_vp=ind.valor_vp,
+        ffo_momentum=ind.variacao,
+        ffo_trend=ind.tendencia,
+        ffo_trend_change=ind.variacao,
+        ffo_payout=ind.payout,
         quality=qualidade,
         warnings=tuple(warnings),
         evidence=tuple(evidencias),

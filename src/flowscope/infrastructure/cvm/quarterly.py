@@ -126,6 +126,33 @@ def _anos(reference_date: date) -> list[int]:
     )
 
 
+def _registro_linha(
+    bruta: dict[str, str],
+    colunas: set[str],
+    alvo: str,
+    reference_date: date,
+    arquivo: str,
+) -> _Registro | None:
+    """Normaliza uma linha do CSV em ``_Registro``, ou ``None`` se descartável."""
+    canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
+    if normalizar_cnpj(canonica.get("cnpj")) != alvo:
+        return None
+    competencia = parse_data(canonica.get("competencia"))
+    if competencia is None or competencia > reference_date:
+        return None
+    valor = parse_decimal(canonica.get("valor"))
+    if valor is None:
+        return None
+    return _Registro(
+        competencia=competencia,
+        codigo=str(canonica.get("codigo") or ""),
+        descricao=str(canonica.get("descricao") or ""),
+        valor=valor,
+        versao=parse_inteiro(canonica.get("versao")),
+        arquivo=arquivo,
+    )
+
+
 def _ler_registros(
     conteudo: bytes,
     arquivo: str,
@@ -143,25 +170,11 @@ def _ler_registros(
     validar_aliases(colunas, _ALIASES, _OBRIGATORIAS)
     registros: list[_Registro] = []
     for bruta in leitor:
-        canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
-        if normalizar_cnpj(canonica.get("cnpj")) != alvo:
-            continue
-        competencia = parse_data(canonica.get("competencia"))
-        if competencia is None or competencia > reference_date:
-            continue
-        valor = parse_decimal(canonica.get("valor"))
-        if valor is None:
-            continue
-        registros.append(
-            _Registro(
-                competencia=competencia,
-                codigo=str(canonica.get("codigo") or ""),
-                descricao=str(canonica.get("descricao") or ""),
-                valor=valor,
-                versao=parse_inteiro(canonica.get("versao")),
-                arquivo=arquivo,
-            )
+        registro = _registro_linha(
+            bruta, colunas, alvo, reference_date, arquivo
         )
+        if registro is not None:
+            registros.append(registro)
     return registros
 
 

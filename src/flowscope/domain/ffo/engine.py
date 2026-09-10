@@ -72,6 +72,47 @@ def media_ponderada_cotas(
     return ponderado / Decimal(total_dias)
 
 
+def _resolver_shares(
+    weighted_average_shares: Decimal | None,
+    cotas_observacoes: Sequence[tuple[Decimal, int]] | None,
+) -> Decimal | None:
+    """Resolve as cotas médias, recorrendo às observações quando necessário."""
+    if weighted_average_shares is not None:
+        return weighted_average_shares
+    if cotas_observacoes:
+        return media_ponderada_cotas(cotas_observacoes)
+    return None
+
+
+def _ffo_por_cota(ffo_12m: Decimal | None, shares: Decimal | None) -> Decimal | None:
+    """Calcula o FFO por cota quando base e cotas são positivas."""
+    if ffo_12m is not None and shares is not None and shares > 0:
+        return ffo_12m / shares
+    return None
+
+
+def _yields(
+    ffo_per_share: Decimal | None, market_price: Decimal | None
+) -> tuple[Decimal | None, Decimal | None]:
+    """Calcula FFO Yield e P/FFO quando preço e FFO por cota são válidos."""
+    if (
+        ffo_per_share is not None
+        and market_price is not None
+        and market_price > 0
+    ):
+        return ffo_per_share / market_price, market_price / ffo_per_share
+    return None, None
+
+
+def _reconciliar_se_aplicavel(
+    reported: Decimal | None, ffo_12m: Decimal | None, limite: Decimal
+) -> str | None:
+    """Reconcilia o FFO calculado com o reportado, quando ambos existem."""
+    if reported is not None and ffo_12m is not None:
+        return _reconciliar(ffo_12m, reported, limite)
+    return None
+
+
 def calcular_ffo(
     components: Iterable[FFOComponent],
     reference_date: date,
@@ -96,31 +137,16 @@ def calcular_ffo(
     ffo_3m = _soma_janela(por_mes, reference_date, _MESES_3)
     ffo_month = por_mes.get(_mes(reference_date))
 
-    shares = weighted_average_shares
-    if shares is None and cotas_observacoes:
-        shares = media_ponderada_cotas(cotas_observacoes)
-
-    ffo_per_share = None
-    if ffo_12m is not None and shares is not None and shares > 0:
-        ffo_per_share = ffo_12m / shares
-
-    ffo_yield = None
-    p_ffo = None
-    if (
-        ffo_per_share is not None
-        and market_price is not None
-        and market_price > 0
-    ):
-        ffo_yield = ffo_per_share / market_price
-        p_ffo = market_price / ffo_per_share
+    shares = _resolver_shares(weighted_average_shares, cotas_observacoes)
+    ffo_per_share = _ffo_por_cota(ffo_12m, shares)
+    ffo_yield, p_ffo = _yields(ffo_per_share, market_price)
 
     quality = _qualidade(
         componentes, limite_materialidade_medio, limite_materialidade_baixo
     )
-    if reported is not None and ffo_12m is not None:
-        aviso = _reconciliar(ffo_12m, reported, limite_reconciliacao)
-        if aviso is not None:
-            warnings.append(aviso)
+    aviso = _reconciliar_se_aplicavel(reported, ffo_12m, limite_reconciliacao)
+    if aviso is not None:
+        warnings.append(aviso)
 
     return FFOResult(
         reference_date=reference_date,

@@ -82,10 +82,7 @@ class ConditionalCache:
         """Devolve o valor, revalidando a fonte conforme as políticas."""
         record = self._load(key, parser_version, retention)
         if force_refresh or record is None:
-            outcome = CacheOutcome.UPDATED if record is not None else CacheOutcome.MISS
-            return self._fetch_and_store(
-                key, fetch, parser_version, outcome=outcome
-            )
+            return self._fetch_inicial(key, fetch, parser_version, record)
 
         agora = self._now()
         if agora - record.fetched_at <= freshness:
@@ -96,27 +93,67 @@ class ConditionalCache:
                 key, fetch, parser_version, outcome=CacheOutcome.UPDATED
             )
 
-        revalidado_em = _parse_datetime(record.validators.get(REVALIDATED_AT))
-        if (
-            revalidado_em is not None
-            and agora - revalidado_em < revalidate_after
-        ):
+        if self._revalidacao_recente(record, agora, revalidate_after):
             return CacheResult(record.payload, CacheOutcome.HIT)
 
         resultado = self._run_validators(record, validators)
         if resultado is not None:
-            if resultado.status is RevalidationStatus.CHANGED:
-                payload = (
-                    resultado.payload if resultado.payload is not None else record.payload
-                )
-                return self._store(
-                    key,
-                    Fetched(payload, resultado.validators),
-                    parser_version,
-                    CacheOutcome.UPDATED,
-                )
-            return self._touch(key, record, resultado.validators)
+            return self._aplicar_resultado(key, record, resultado, parser_version)
 
+        return self._fetch_com_fallback_local(key, fetch, parser_version, record)
+
+    def _fetch_inicial(
+        self: ConditionalCache,
+        key: str,
+        fetch: Callable[[], Fetched],
+        parser_version: str,
+        record: CacheRecord | None,
+    ) -> CacheResult:
+        """Busca e armazena o valor em ausência de registro válido."""
+        outcome = CacheOutcome.UPDATED if record is not None else CacheOutcome.MISS
+        return self._fetch_and_store(key, fetch, parser_version, outcome=outcome)
+
+    def _revalidacao_recente(
+        self: ConditionalCache,
+        record: CacheRecord,
+        agora: datetime,
+        revalidate_after: timedelta,
+    ) -> bool:
+        """Indica se a última revalidação ocorreu dentro da janela configurada."""
+        revalidado_em = _parse_datetime(record.validators.get(REVALIDATED_AT))
+        return (
+            revalidado_em is not None
+            and agora - revalidado_em < revalidate_after
+        )
+
+    def _aplicar_resultado(
+        self: ConditionalCache,
+        key: str,
+        record: CacheRecord,
+        resultado: RevalidationResult,
+        parser_version: str,
+    ) -> CacheResult:
+        """Aplica o resultado de um validador ao cache."""
+        if resultado.status is RevalidationStatus.CHANGED:
+            payload = (
+                resultado.payload if resultado.payload is not None else record.payload
+            )
+            return self._store(
+                key,
+                Fetched(payload, resultado.validators),
+                parser_version,
+                CacheOutcome.UPDATED,
+            )
+        return self._touch(key, record, resultado.validators)
+
+    def _fetch_com_fallback_local(
+        self: ConditionalCache,
+        key: str,
+        fetch: Callable[[], Fetched],
+        parser_version: str,
+        record: CacheRecord,
+    ) -> CacheResult:
+        """Busca na fonte e, em falha, serve o registro local."""
         try:
             return self._fetch_and_store(
                 key, fetch, parser_version, outcome=CacheOutcome.UPDATED
@@ -144,43 +181,94 @@ class ConditionalCache:
         existe = caminho.exists()
 
         if force_refresh or not existe:
-            data, validators = fetch()
-            _atomic_write_bytes(caminho, data)
-            if write_metadata is not None:
-                write_metadata(data, validators, self._now())
-            outcome = CacheOutcome.UPDATED if existe else CacheOutcome.MISS
-            return FileCacheResult(data, outcome, validators)
+            return self._primeiro_fetch_arquivo(
+                caminho, fetch, write_metadata, existe
+            )
 
         if probe is None:
             return FileCacheResult(caminho.read_bytes(), CacheOutcome.HIT, armazenados)
 
-        revalidado_em = _parse_datetime(armazenados.get(REVALIDATED_AT))
-        if revalidado_em is not None and self._now() - revalidado_em < revalidate_after:
+        if self._revalidacao_arquivo_recente(armazenados, revalidate_after):
             return FileCacheResult(caminho.read_bytes(), CacheOutcome.HIT, armazenados)
 
+        resultado = self._executar_probe(probe, armazenados, caminho)
+        if resultado is None:
+            return FileCacheResult(caminho.read_bytes(), CacheOutcome.HIT, armazenados)
+
+        return self._aplicar_resultado_arquivo(
+            caminho, resultado, armazenados, fetch, write_metadata
+        )
+
+    def _primeiro_fetch_arquivo(
+        self: ConditionalCache,
+        caminho: Path,
+        fetch: Callable[[], tuple[bytes, Mapping[str, str]]],
+        write_metadata: Callable[[bytes, Mapping[str, str], datetime], None] | None,
+        existe: bool,
+    ) -> FileCacheResult:
+        """Busca e grava o arquivo quando ausente ou forçado."""
+        data, validators = fetch()
+        self._gravar_arquivo(caminho, data, validators, write_metadata)
+        outcome = CacheOutcome.UPDATED if existe else CacheOutcome.MISS
+        return FileCacheResult(data, outcome, validators)
+
+    def _gravar_arquivo(
+        self: ConditionalCache,
+        caminho: Path,
+        data: bytes,
+        validators: Mapping[str, str],
+        write_metadata: Callable[[bytes, Mapping[str, str], datetime], None] | None,
+    ) -> None:
+        """Grava o arquivo atomicamente e, se configurado, os metadados."""
+        _atomic_write_bytes(caminho, data)
+        if write_metadata is not None:
+            write_metadata(data, validators, self._now())
+
+    def _revalidacao_arquivo_recente(
+        self: ConditionalCache,
+        armazenados: Mapping[str, str],
+        revalidate_after: timedelta,
+    ) -> bool:
+        """Indica se o arquivo foi revalidado dentro da janela configurada."""
+        revalidado_em = _parse_datetime(armazenados.get(REVALIDATED_AT))
+        return revalidado_em is not None and self._now() - revalidado_em < revalidate_after
+
+    def _executar_probe(
+        self: ConditionalCache,
+        probe: Callable[[Mapping[str, str]], RevalidationResult],
+        armazenados: Mapping[str, str],
+        caminho: Path,
+    ) -> RevalidationResult | None:
+        """Executa o probe, servindo o arquivo local em falha de rede."""
         try:
-            resultado = probe(armazenados)
+            return probe(armazenados)
         except Exception:  # falha de rede: stale-on-failure
             logger.warning(
                 "Falha ao revalidar %s; usando arquivo local", caminho, exc_info=True
             )
-            return FileCacheResult(caminho.read_bytes(), CacheOutcome.HIT, armazenados)
+            return None
 
+    def _aplicar_resultado_arquivo(
+        self: ConditionalCache,
+        caminho: Path,
+        resultado: RevalidationResult,
+        armazenados: Mapping[str, str],
+        fetch: Callable[[], tuple[bytes, Mapping[str, str]]],
+        write_metadata: Callable[[bytes, Mapping[str, str], datetime], None] | None,
+    ) -> FileCacheResult:
+        """Aplica o resultado do probe ao arquivo e seus metadados."""
         if resultado.status is RevalidationStatus.CHANGED:
             data, validators = fetch()
-            _atomic_write_bytes(caminho, data)
-            if write_metadata is not None:
-                write_metadata(data, validators, self._now())
+            self._gravar_arquivo(caminho, data, validators, write_metadata)
             return FileCacheResult(data, CacheOutcome.UPDATED, validators)
 
         mesclados = {**armazenados, **resultado.validators}
+        dados = caminho.read_bytes()
         if resultado.status is RevalidationStatus.UNCHANGED:
             if write_metadata is not None:
-                write_metadata(caminho.read_bytes(), mesclados, self._now())
-            return FileCacheResult(
-                caminho.read_bytes(), CacheOutcome.REVALIDATED, mesclados
-            )
-        return FileCacheResult(caminho.read_bytes(), CacheOutcome.HIT, mesclados)
+                write_metadata(dados, mesclados, self._now())
+            return FileCacheResult(dados, CacheOutcome.REVALIDATED, mesclados)
+        return FileCacheResult(dados, CacheOutcome.HIT, mesclados)
 
     def _load(
         self: ConditionalCache, key: str, parser_version: str, retention: timedelta
