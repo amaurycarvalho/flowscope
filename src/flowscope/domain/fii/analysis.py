@@ -30,6 +30,7 @@ class PatrimonioFii:
     shares_outstanding: Decimal
     cotistas: int | None
     fonte: str
+    vp_cota: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -61,6 +62,8 @@ class AnaliseFundamental:
     ultimo_dividendo: UltimoDividendo
     dividendos_12m_por_cota: Decimal | None
     metricas: MetricasFii | None
+    cotacao: Decimal | None = None
+    vp_cota: Decimal | None = None
     classificacao_exibicao: ClassificacaoExibicao | None = None
     cotistas: int | None = None
     patrimonio: Decimal | None = None

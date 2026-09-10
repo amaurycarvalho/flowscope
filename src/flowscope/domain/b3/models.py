@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,24 @@ class B3ReportReference:
     status: str
     viewer_url: str
     version: int = 1
+
+
+@dataclass(frozen=True)
+class B3InformeMensal:
+    """Informe Mensal Estruturado extraído de um documento FundosNet.
+
+    Reúne os campos de cotistas, patrimônio líquido, cotas emitidas e valor
+    patrimonial por cota reportados pelo fundo no mês de referência.
+    """
+
+    document_id: int
+    reference_date: date | None
+    reference_month: str | None
+    cotistas: int | None
+    patrimonio_liquido: Decimal | None
+    cotas_emitidas: Decimal | None
+    valor_patrimonial_cota: Decimal | None
+    fonte: str = "B3"
 
 
 @dataclass(frozen=True)

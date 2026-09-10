@@ -52,6 +52,19 @@ CSV_LEGADO = (
     "28737771000185;31/07/2026;2942000000,00;144355726;100000\n"
 )
 
+CSV_COMPLEMENTO = (
+    "CNPJ_Fundo_Classe;Data_Referencia;Versao;Data_Informacao_Numero_Cotistas;"
+    "Total_Numero_Cotistas;Patrimonio_Liquido;Cotas_Emitidas;"
+    "Valor_Patrimonial_Cotas\n"
+    "28.737.771/0001-85;2026-07-01;1;2026-07-31;206111;1773014664.80;"
+    "164444501;10.781842\n"
+)
+
+CSV_GERAL = (
+    "CNPJ_Fundo_Classe;Data_Referencia;Versao;Quantidade_Cotas_Emitidas\n"
+    "28.737.771/0001-85;2026-07-01;1;164444501\n"
+)
+
 
 def _zip(csvs: dict[str, str]) -> bytes:
     buffer = io.BytesIO()
@@ -390,9 +403,64 @@ class TestIntegracaoRepositorio:
             B3FundamentalRepository,
         )
 
+        class _RelatoriosSemInforme:
+            def extrair_proventos(self, *args, **kwargs):
+                return []
+
         repositorio = B3FundamentalRepository(
-            patrimonio_source=self._source(tmp_path)
+            reports_repository=_RelatoriosSemInforme(),
+            patrimonio_source=self._source(tmp_path),
         )
         patrimonio = repositorio.obter_patrimonio("ALZR11", REFERENCIA)
         assert patrimonio is not None
+        assert patrimonio.fonte == FONTE_CVM
         assert patrimonio.shares_outstanding == Decimal("144355726")
+
+
+class TestLayoutComplemento:
+    def _downloader(self, tmp_path, csvs):
+        def fetch(ano):
+            return _zip(csvs)
+
+        return CvmMonthlyDownloader(cache_dir=tmp_path, fetch=fetch)
+
+    def test_complemento_alimenta_patrimonio(self, tmp_path):
+        downloader = self._downloader(
+            tmp_path,
+            {
+                "inf_mensal_fii_complemento_2026.csv": CSV_COMPLEMENTO,
+                "inf_mensal_fii_geral_2026.csv": CSV_GERAL,
+            },
+        )
+        repo = CvmMonthlyReportRepository(downloader=downloader)
+        report = repo.get(CNPJ, REFERENCIA, ticker="ALZR11")
+        assert report is not None
+        assert report.raw_rows["patrimonio"] == "1773014664.80"
+        assert report.raw_rows["cotas"] == "164444501"
+        assert report.raw_rows["cotistas"] == "206111"
+        assert report.raw_rows["vp_cota"] == "10.781842"
+
+    def test_complemento_normaliza_cotistas_e_vp_cota(self, tmp_path):
+        downloader = self._downloader(
+            tmp_path, {"inf_mensal_fii_complemento_2026.csv": CSV_COMPLEMENTO}
+        )
+        source = CvmMonthlyPatrimonioSource(
+            repository=CvmMonthlyReportRepository(downloader=downloader),
+            resolver=lambda _t: FundIdentity(
+                ticker="ALZR11", cnpj_fundo_classe=CNPJ
+            ),
+        )
+        patrimonio = source.patrimonio("ALZR11", REFERENCIA)
+        assert patrimonio is not None
+        assert patrimonio.cotistas == 206111
+        assert patrimonio.net_asset_value == Decimal("1773014664.80")
+        assert patrimonio.shares_outstanding == Decimal(164444501)
+        assert patrimonio.vp_cota == Decimal("10.781842")
+        assert patrimonio.fonte == FONTE_CVM
+
+    def test_geral_sem_patrimonio_e_ignorado(self, tmp_path):
+        downloader = self._downloader(
+            tmp_path, {"inf_mensal_fii_geral_2026.csv": CSV_GERAL}
+        )
+        repo = CvmMonthlyReportRepository(downloader=downloader)
+        assert repo.get(CNPJ, REFERENCIA) is None

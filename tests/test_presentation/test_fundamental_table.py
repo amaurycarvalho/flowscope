@@ -147,7 +147,7 @@ class TestClassificacaoExibicao:
             qtd_imoveis=16,
         )
         assert resultado.tipo == "FII"
-        assert resultado.sub_tipo == "Tijolo: Shoppings; Ativa"
+        assert resultado.sub_tipo == "Tijolo: Shoppings, Ativa"
 
     def test_fii_papel_usa_prefixo_papel(self):
         resultado = classificar_exibicao(
@@ -156,7 +156,7 @@ class TestClassificacaoExibicao:
             gestao="Ativa",
             qtd_imoveis=0,
         )
-        assert resultado.sub_tipo == "Papel: Multicategoria; Ativa"
+        assert resultado.sub_tipo == "Papel: Multicategoria, Ativa"
 
     def test_fii_sem_imoveis_usa_papel(self):
         resultado = classificar_exibicao(
@@ -176,7 +176,7 @@ class TestClassificacaoExibicao:
         )
         assert resultado.tipo == "Papel"
         assert resultado.sub_tipo == (
-            "PN; Petróleo, Gás e Biocombustíveis; Exploração, Refino e Distribuição"
+            "PN, Petróleo, Gás e Biocombustíveis, Exploração, Refino e Distribuição"
         )
 
     def test_fallback_taxonomia_quando_sem_discriminador(self):
@@ -210,12 +210,16 @@ class TestMontarLinhas:
         assert colunas[3] == "Tijolo"
         assert colunas[4] == "10/07/2026"
         assert colunas[5] == "0,55"
-        assert colunas[6] == "Crescimento"
-        assert colunas[7] == "8,16%"
-        assert colunas[8] == "7,9%"
-        assert colunas[9] == "12,25x"
-        assert colunas[10] == "0,92x"
+        assert colunas[6] == "0,5"
+        assert colunas[7] == "Crescimento"
+        assert colunas[8] == "8,16%"
+        assert colunas[9] == "7,9%"
+        assert colunas[10] == "96,5%"
         assert colunas[11] == "ALTA"
+        assert colunas[12] == NA
+        assert colunas[13] == NA
+        assert colunas[14] == "12,25x"
+        assert colunas[15] == "0,92x"
 
     def test_linha_de_acao_fica_na_nas_colunas_ffo_e_dividendo(self):
         linhas = montar_linhas({"PETR4": _analise_acao()})
@@ -224,8 +228,9 @@ class TestMontarLinhas:
         assert colunas[3] == "Preferencial"
         assert colunas[4] == NA
         assert colunas[5] == NA
-        assert colunas[6] == "N/A"
-        assert all(coluna == NA for coluna in colunas[7:])
+        assert colunas[6] == NA
+        assert colunas[7] == "N/A"
+        assert all(coluna == NA for coluna in colunas[8:])
 
     def test_ordem_das_linhas_preserva_ordem_da_watchlist(self):
         linhas = montar_linhas(
@@ -247,9 +252,10 @@ class TestMontarCsv:
         csv = montar_csv({"HGBS11": _analise_hgbs11()})
         assert csv.split("\n")[0] == (
             "Ticker;Nome;Tipo;Sub-tipo;Última data-com;Último dividendo;"
-            "Tendência do dividendo;FFO Yield;Dividend Yield;P/FFO;P/VP;FFO Trend;"
-            "Nº de cotistas;Classe de cotistas;Patrimônio;Classe de patrimônio;"
-            "Data de referência"
+            "Dividendo anterior;Tendência do dividendo;FFO Yield;Dividend Yield;"
+            "Dividend Payout (DY/FFOY);FFO Trend;P (Cotação);VP (VP/Cota);"
+            "P/FFO;P/VP;Nº de cotistas;Classe de cotistas;Patrimônio;"
+            "Classe de patrimônio;Data de referência"
         )
 
     def test_linhas_preservam_ordem_e_valores_formatados(self):
@@ -258,7 +264,7 @@ class TestMontarCsv:
         )
         linhas = csv.split("\n")
         assert linhas[1].startswith(
-            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;Crescimento;8,16%"
+            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;0,5;Crescimento;8,16%"
         )
         assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
 
@@ -289,7 +295,7 @@ class TestFundamentalTablePanel:
             assert len(filhos) == 2
             valores = painel._tree.item(filhos[0], "values")
             assert valores[0] == "HGBS11"
-            assert valores[7] == "8,16%"
+            assert valores[8] == "8,16%"
         finally:
             root.destroy()
 
@@ -333,6 +339,30 @@ class TestFundamentalTablePanel:
             painel._tree.column("ticker", width=222)
             painel._on_column_resized()
             assert registradas and registradas[-1]["ticker"] == 222
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_painel_alinhamento_das_colunas(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            direita = {
+                "ultimo_dividendo",
+                "dividendo_anterior",
+                "ffo_yield",
+                "dividend_yield",
+                "dividend_payout",
+                "p",
+                "vp",
+                "p_ffo",
+                "p_vp",
+                "cotistas",
+                "patrimonio",
+            }
+            for coluna_id in painel._columns:
+                esperado = "e" if coluna_id in direita else "w"
+                assert str(painel._tree.column(coluna_id, "anchor")) == esperado
         finally:
             root.destroy()
 
@@ -412,28 +442,32 @@ class TestIntegracaoWatchlist:
         assert petr[2] == "Papel"
         assert petr[4] == NA
         assert petr[5] == NA
-        assert petr[6] == "N/A"
-        assert all(coluna == NA for coluna in petr[7:])
+        assert petr[6] == NA
+        assert petr[7] == "N/A"
+        assert all(coluna == NA for coluna in petr[8:])
 
         hcri = por_ticker["HCRI11"]
         assert hcri[2] == "FII"
         assert hcri[3] == "Papel"
         assert hcri[5] == "1"
-        assert all(coluna == NA for coluna in hcri[7:])
+        assert all(coluna == NA for coluna in hcri[8:])
 
         hgbs = por_ticker["HGBS11"]
         assert hgbs[2] == "FII"
         assert hgbs[3] == "Tijolo"
         assert hgbs[5] == "0,55"
-        assert hgbs[6] == "Crescimento"
-        assert hgbs[7] == "8,16%"
-        assert hgbs[9] == "12,25x"
-        assert hgbs[10] == "0,92x"
+        assert hgbs[6] == "0,5"
+        assert hgbs[7] == "Crescimento"
+        assert hgbs[8] == "8,16%"
+        assert hgbs[9] == "5,6%"
+        assert hgbs[10] == "68,7%"
         assert hgbs[11] == "ALTA"
-        assert hgbs[12] == "100.000"
-        assert hgbs[13] == "Muito grande"
-        assert hgbs[14] == "R$ 2,94 bi"
-        assert hgbs[15] == "Gigante"
+        assert hgbs[14] == "12,25x"
+        assert hgbs[15] == "0,92x"
+        assert hgbs[16] == "100.000"
+        assert hgbs[17] == "Muito grande"
+        assert hgbs[18] == "R$ 2,94 bi"
+        assert hgbs[19] == "Gigante"
 
 
 class TestWiringSubAba:

@@ -47,17 +47,38 @@ _COLUNAS = (
     ("subtipo", "Sub-tipo"),
     ("ultima_data_com", "Última data-com"),
     ("ultimo_dividendo", "Último dividendo"),
+    ("dividendo_anterior", "Dividendo anterior"),
     ("tendencia_dividendo", "Tendência do dividendo"),
     ("ffo_yield", "FFO Yield"),
     ("dividend_yield", "Dividend Yield"),
+    ("dividend_payout", "Dividend Payout (DY/FFOY)"),
+    ("ffo_trend", "FFO Trend"),
+    ("p", "P (Cotação)"),
+    ("vp", "VP (VP/Cota)"),
     ("p_ffo", "P/FFO"),
     ("p_vp", "P/VP"),
-    ("ffo_trend", "FFO Trend"),
     ("cotistas", "Nº de cotistas"),
     ("classe_cotistas", "Classe de cotistas"),
     ("patrimonio", "Patrimônio"),
     ("classe_patrimonio", "Classe de patrimônio"),
     ("data_referencia", "Data de referência"),
+)
+
+#: Colunas cujo conteúdo é alinhado à direita.
+_COLUNAS_DIREITA = frozenset(
+    {
+        "ultimo_dividendo",
+        "dividendo_anterior",
+        "ffo_yield",
+        "dividend_yield",
+        "dividend_payout",
+        "p",
+        "vp",
+        "p_ffo",
+        "p_vp",
+        "cotistas",
+        "patrimonio",
+    }
 )
 
 _CLASSE_COTISTAS = {
@@ -197,6 +218,15 @@ def rotulo_classe_patrimonio(classe: ClassePatrimonio | None) -> str:
     return _CLASSE_PATRIMONIO.get(classe, classe.name)
 
 
+def _payout(
+    dividend_yield: Decimal | None, ffo_yield: Decimal | None
+) -> Decimal | None:
+    """Calcula o Dividend Payout como ``DY / FFOY``, ou ``None``."""
+    if dividend_yield is None or ffo_yield is None or ffo_yield == 0:
+        return None
+    return dividend_yield / ffo_yield
+
+
 def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     """Monta a linha de uma análise fundamentalista completa."""
     classificacao = analise.classificacao
@@ -219,12 +249,16 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         sub_tipo or NA,
         formatar_data(dividendo.data_com),
         formatar_valor(dividendo.valor),
+        formatar_valor(dividendo.valor_anterior),
         _rotulo_dividendo(dividendo.tendencia),
         formatar_percentual(ffo_yield, 2),
         formatar_percentual(dy, 1),
+        formatar_percentual(_payout(dy, ffo_yield), 1),
+        _rotulo_ffo_trend(tendencia_ffo),
+        formatar_valor(analise.cotacao),
+        formatar_valor(analise.vp_cota),
         formatar_ratio(p_ffo, 2),
         formatar_ratio(p_vp, 2),
-        _rotulo_ffo_trend(tendencia_ffo),
         formatar_inteiro(analise.cotistas),
         rotulo_classe_cotistas(analise.classe_cotistas),
         formatar_patrimonio(analise.patrimonio),
@@ -242,6 +276,10 @@ def _linha_sintetica(ticker: str, dados: object) -> tuple[str, ...]:
         NA,
         exibicao.tipo,
         exibicao.sub_tipo or NA,
+        NA,
+        NA,
+        NA,
+        NA,
         NA,
         NA,
         NA,
@@ -313,6 +351,7 @@ class FundamentalTablePanel:
                 width=_largura_coluna(widths, coluna_id),
                 minwidth=80,
                 stretch=False,
+                anchor="e" if coluna_id in _COLUNAS_DIREITA else "w",
             )
         scrollbar_v = ttk.Scrollbar(
             self.frame, orient="vertical", command=self._tree.yview

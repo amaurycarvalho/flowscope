@@ -27,6 +27,7 @@ from flowscope.application.fundamental_ports import (
     CAMPO_SEGMENTO,
     CAMPO_SETOR,
     CAMPO_SUBSETOR,
+    CAMPO_VP_COTA,
     CampoFundamental,
     OrigemDados,
 )
@@ -40,6 +41,7 @@ _INDICADOR_FFO_YIELD = "FFO Yield"
 _INDICADOR_FFO_COTA = "FFO/Cota"
 _INDICADOR_DIVIDENDO_COTA = "Dividendo/cota"
 _INDICADOR_P_VP = "P/VP"
+_INDICADOR_VP_COTA = "VP/Cota"
 _DEMONSTRATIVO_FFO = "FFO"
 _BALANCO_PATRIMONIO_LIQ = "Patrim. Líq"
 _BALANCO_PATRIMONIO_LIQUIDO = "Patrim Líquido"
@@ -108,6 +110,9 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     p_vp = indicadores.get(_INDICADOR_P_VP)
     if p_vp is not None:
         campos[CAMPO_P_VP] = CampoFundamental(p_vp, FONTE_FUNDAMENTUS)
+    vp_cota = indicadores.get(_INDICADOR_VP_COTA)
+    if vp_cota is not None:
+        campos[CAMPO_VP_COTA] = CampoFundamental(vp_cota, FONTE_FUNDAMENTUS)
     dividendo_cota = indicadores.get(_INDICADOR_DIVIDENDO_COTA)
     if dividendo_cota is not None:
         campos[CAMPO_DIVIDENDO_POR_COTA] = CampoFundamental(

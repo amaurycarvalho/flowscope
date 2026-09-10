@@ -1,14 +1,15 @@
 """Repositório fundamentalista apoiado na camada B3 (RFC-008).
 
-Fornece nome e proventos a partir da identidade e dos documentos da B3. O
-patrimônio permanece indisponível nesta fase (fonte CVM na change seguinte).
+Fornece nome, proventos e patrimônio a partir da identidade e dos documentos da
+B3. O patrimônio usa o Informe Mensal Estruturado (B3) como fonte primária e a
+CVM como fallback.
 """
 
 import logging
 from calendar import monthrange
 from datetime import date
 
-from flowscope.domain.b3 import B3Fund
+from flowscope.domain.b3 import B3Fund, B3InformeMensal
 from flowscope.domain.fii.analysis import PatrimonioFii
 from flowscope.domain.structured import Provento
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
@@ -57,7 +58,38 @@ class B3FundamentalRepository:
     def obter_patrimonio(
         self: "B3FundamentalRepository", ticker: str, reference_date: date
     ) -> PatrimonioFii | None:
-        """Retorna o patrimônio da fonte configurada, ou ``None``."""
+        """Retorna o patrimônio consolidando B3 (primário) e CVM (fallback)."""
+        b3 = self._obter_patrimonio_b3(ticker, reference_date)
+        if b3 is not None:
+            return b3
+        return self._obter_patrimonio_cvm(ticker, reference_date)
+
+    def _obter_patrimonio_b3(
+        self: "B3FundamentalRepository", ticker: str, reference_date: date
+    ) -> PatrimonioFii | None:
+        """Obtém o patrimônio do Informe Mensal Estruturado da B3."""
+        extrair = getattr(self._relatorios, "extrair_informe", None)
+        if not callable(extrair):
+            return None
+        fundo = self._resolver(ticker)
+        if fundo is None:
+            return None
+        inicio = _subtrair_meses(reference_date, _MESES_JANELA)
+        try:
+            informe = extrair(
+                str(fundo.fnet_id), inicio, reference_date, reference_date
+            )
+        except Exception:  # indisponibilidade da B3, distinta de ausência
+            logger.warning(
+                "Falha ao obter informe mensal B3 de %s", ticker, exc_info=True
+            )
+            return None
+        return _informe_para_patrimonio(informe)
+
+    def _obter_patrimonio_cvm(
+        self: "B3FundamentalRepository", ticker: str, reference_date: date
+    ) -> PatrimonioFii | None:
+        """Obtém o patrimônio da fonte CVM configurada."""
         if self._patrimonio_source is None:
             return None
         try:
@@ -82,6 +114,24 @@ class B3FundamentalRepository:
                 )
                 self._fundos_cache[chave] = None
         return self._fundos_cache[chave]
+
+
+def _informe_para_patrimonio(
+    informe: B3InformeMensal | None,
+) -> PatrimonioFii | None:
+    """Retorna uma observação de patrimônio a partir de um informe, ou ``None``."""
+    if informe is None or informe.reference_date is None:
+        return None
+    if informe.patrimonio_liquido is None or informe.cotas_emitidas is None:
+        return None
+    return PatrimonioFii(
+        reference_date=informe.reference_date,
+        net_asset_value=informe.patrimonio_liquido,
+        shares_outstanding=informe.cotas_emitidas,
+        cotistas=informe.cotistas,
+        fonte=informe.fonte,
+        vp_cota=informe.valor_patrimonial_cota,
+    )
 
 
 def _subtrair_meses(data: date, meses: int) -> date:

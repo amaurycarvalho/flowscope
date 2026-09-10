@@ -11,6 +11,7 @@ from flowscope.infrastructure.cvm.downloader import (
     hash_sha256,
 )
 from flowscope.infrastructure.cvm.schema import (
+    CvmSchemaError,
     mapear_linha,
     tem_coluna_identidade,
     validar_schema,
@@ -133,7 +134,10 @@ def _ler_linhas(conteudo: bytes) -> list[dict]:
     colunas = {coluna.strip() for coluna in leitor.fieldnames}
     if not tem_coluna_identidade(colunas):
         return []
-    validar_schema(colunas)
+    try:
+        validar_schema(colunas)
+    except CvmSchemaError:
+        return []
     linhas: list[dict] = []
     for bruta in leitor:
         if not any(bruta.values()):

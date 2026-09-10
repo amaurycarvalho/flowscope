@@ -12,16 +12,23 @@ from urllib.parse import parse_qs, urlparse
 from flowscope.domain.b3 import (
     AcquisitionMetadata,
     AcquisitionResult,
+    B3InformeMensal,
     B3ReportReference,
 )
 from flowscope.domain.structured import DocumentoProvento
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
+from flowscope.infrastructure.b3.informe_mensal_parser import (
+    extrair_informe_mensal,
+)
 from flowscope.infrastructure.b3.structured_repository import FundosRepository
 
 logger = logging.getLogger("flowscope")
 
 #: Tipo de relatório estruturado de rendimentos e amortizações.
 TIPO_RENDIMENTOS = 41
+
+#: Tipo de relatório estruturado de informe mensal.
+TIPO_INFORME_MENSAL = 40
 
 #: Fonte registrada nos metadados de aquisição.
 FONTE_B3 = "B3"
@@ -51,6 +58,52 @@ class B3ReportsRepository:
             id_fnet, data_inicio, data_fim, TIPO_RENDIMENTOS
         )
         return _referencias(documentos)
+
+    def get_monthly_reports(
+        self: "B3ReportsRepository",
+        id_fnet: str,
+        data_inicio: date,
+        data_fim: date,
+    ) -> list[B3ReportReference]:
+        """Lista as referências de informes mensais do período."""
+        documentos = self._client.listar_documentos(
+            id_fnet, data_inicio, data_fim, TIPO_INFORME_MENSAL
+        )
+        return _referencias(documentos)
+
+    def extrair_informe(
+        self: "B3ReportsRepository",
+        id_fnet: str,
+        data_inicio: date,
+        data_fim: date,
+        reference_date: date,
+    ) -> B3InformeMensal | None:
+        """Extrai o informe mensal ativo mais recente até a data de referência.
+
+        Retorna ``None`` quando não há informe aplicável (ausência de dados).
+        Uma falha de listagem ou download propaga a exceção, distinguindo-a de
+        ausência.
+        """
+        documentos = self._client.listar_documentos(
+            id_fnet, data_inicio, data_fim, TIPO_INFORME_MENSAL, tolerante=False
+        )
+        candidatos = _informes_aplicaveis(documentos, reference_date)
+        if not candidatos:
+            return None
+        referencia, documento = max(
+            candidatos, key=lambda item: item[0]
+        )
+        url = str(documento.get("urlViewerFundosNet") or "")
+        id_documento = _id_da_url(url)
+        if id_documento is None:
+            raise ValueError(f"Informe sem identificador de documento: {url!r}")
+        html = self._client.buscar_html_documento(str(id_documento))
+        return extrair_informe_mensal(
+            html,
+            document_id=id_documento,
+            reference_date=referencia,
+            reference_month=documento.get("referenceDateFormat"),
+        )
 
     def acquire_distributions(
         self: "B3ReportsRepository",
@@ -173,3 +226,23 @@ def _data_iso(valor: object) -> date | None:
         return date.fromisoformat(str(valor)[:10])
     except ValueError:
         return None
+
+
+def _informes_aplicaveis(
+    documentos: list[dict], reference_date: date
+) -> list[tuple[date, dict]]:
+    """Filtra informes ativos com referência não posterior à data informada."""
+    candidatos: list[tuple[date, dict]] = []
+    for documento in documentos:
+        if not _is_active(str(documento.get("status") or "")):
+            continue
+        referencia = _data_iso(documento.get("referenceDate"))
+        if referencia is None or referencia > reference_date:
+            continue
+        candidatos.append((referencia, documento))
+    return candidatos
+
+
+def _is_active(status: str) -> bool:
+    """Indica se o documento está ativo."""
+    return status.startswith("1 (Ativo)")

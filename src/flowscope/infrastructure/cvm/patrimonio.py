@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Callable
 from datetime import date
-from decimal import InvalidOperation
+from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.cvm import FundIdentity, MonthlyReport
 from flowscope.domain.fii.analysis import PatrimonioFii
@@ -52,10 +52,9 @@ class CvmMonthlyPatrimonioSource:
 
 def para_patrimonio(report: MonthlyReport) -> PatrimonioFii | None:
     """Retorna uma observação de patrimônio a partir de um registro do informe."""
-    try:
-        patrimonio = moeda_para_decimal(str(report.raw_rows.get("patrimonio")))
-        cotas = moeda_para_decimal(str(report.raw_rows.get("cotas")))
-    except (InvalidOperation, TypeError):
+    patrimonio = _decimal_cvm(report.raw_rows.get("patrimonio"))
+    cotas = _decimal_cvm(report.raw_rows.get("cotas"))
+    if patrimonio is None or cotas is None:
         return None
     return PatrimonioFii(
         reference_date=report.reference_date,
@@ -63,6 +62,7 @@ def para_patrimonio(report: MonthlyReport) -> PatrimonioFii | None:
         shares_outstanding=cotas,
         cotistas=_cotistas(report.raw_rows.get("cotistas")),
         fonte=FONTE_CVM,
+        vp_cota=_decimal_cvm(report.raw_rows.get("vp_cota")),
     )
 
 
@@ -73,4 +73,23 @@ def _cotistas(valor: object) -> int | None:
     try:
         return int(str(valor).strip())
     except ValueError:
+        return None
+
+
+def _decimal_cvm(valor: object) -> Decimal | None:
+    """Interpreta um número da CVM aceitando ponto ou vírgula como decimal.
+
+    O dataset atual usa ponto como separador decimal e não usa separador de
+    milhar; layouts legados usam vírgula decimal com ponto de milhar.
+    """
+    if valor is None:
+        return None
+    texto = str(valor).strip().replace(" ", "")
+    if not texto:
+        return None
+    try:
+        if "," in texto:
+            return moeda_para_decimal(texto)
+        return Decimal(texto)
+    except (InvalidOperation, TypeError, ValueError):
         return None

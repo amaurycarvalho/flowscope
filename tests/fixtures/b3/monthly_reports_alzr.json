@@ -1,0 +1,28 @@
+{
+  "page": {
+    "pageNumber": 1,
+    "pageSize": 20,
+    "totalRecords": 2,
+    "totalPages": 1
+  },
+  "results": [
+    {
+      "urlViewerFundosNet": "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1293566",
+      "referenceDateFormat": "07/2026",
+      "deliveryDateFormat": "14/08/2026",
+      "referenceDate": "2026-07-01T00:00:00-03:00",
+      "version": 1,
+      "describleType": "Informe Mensal Estruturado",
+      "status": "1 (Ativo)"
+    },
+    {
+      "urlViewerFundosNet": "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1250291",
+      "referenceDateFormat": "06/2026",
+      "deliveryDateFormat": "15/07/2026",
+      "referenceDate": "2026-06-01T00:00:00-03:00",
+      "version": 1,
+      "describleType": "Informe Mensal Estruturado",
+      "status": "1 (Ativo)"
+    }
+  ]
+}

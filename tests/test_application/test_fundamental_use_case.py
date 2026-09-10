@@ -5,7 +5,9 @@ import pytest
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.fundamental_ports import (
+    CAMPO_COTACAO,
     CAMPO_DIVIDENDO_POR_COTA,
+    CAMPO_VP_COTA,
     CampoFundamental,
     OrigemDados,
 )
@@ -191,6 +193,26 @@ class TestFundamentalAnalysisUseCase:
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
         assert resultado.metricas is None
         assert resultado.avisos == ("FFO_NOT_AVAILABLE",)
+
+    def test_cotacao_e_vp_cota_propagados_da_fonte(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {
+                CAMPO_COTACAO: CampoFundamental(Decimal("104.13")),
+                CAMPO_VP_COTA: CampoFundamental(Decimal("115.82")),
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.cotacao == Decimal("104.13")
+        assert resultado.vp_cota == Decimal("115.82")
+
+    def test_cotacao_e_vp_cota_ausentes_retornam_none(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.cotacao is None
+        assert resultado.vp_cota is None
 
     def test_falha_de_um_ticker_nao_invalida_os_demais(self):
         repo = _repo_hgbs11()

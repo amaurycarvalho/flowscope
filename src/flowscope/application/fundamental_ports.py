@@ -19,6 +19,7 @@ from flowscope.domain.structured import Provento
 #: Chaves dos campos normalizados da composição de fontes fundamentalistas.
 CAMPO_NOME = "nome"
 CAMPO_COTACAO = "cotacao"
+CAMPO_VP_COTA = "vp_cota"
 CAMPO_DIVIDEND_YIELD = "dividend_yield"
 CAMPO_FFO_YIELD = "ffo_yield"
 CAMPO_P_VP = "p_vp"
@@ -42,6 +43,7 @@ CAMPOS_FUNDAMENTAIS = frozenset(
     {
         CAMPO_NOME,
         CAMPO_COTACAO,
+        CAMPO_VP_COTA,
         CAMPO_DIVIDEND_YIELD,
         CAMPO_FFO_YIELD,
         CAMPO_P_VP,

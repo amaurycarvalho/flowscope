@@ -96,19 +96,76 @@ class B3FundosClient:
         logger.info("Consultando %s", url)
         return self._requisicao_get(url).json()
 
+    def listar_fundos(
+        self: "B3FundosClient", type_fund: str = "FII"
+    ) -> list[dict]:
+        """Lista todos os fundos listados do tipo, paginando e cacheando.
+
+        O ``GetListFunds`` é a fonte do ``id`` primário usado por
+        ``GetListClassFund``; o resultado é cacheado por 30 dias.
+        """
+        key = f"fundos_listados_{type_fund}"
+
+        def _fetch() -> dict[str, object]:
+            return {"results": self._coletar_fundos(type_fund)}
+
+        try:
+            payload = self._cache.get_or_fetch(key, ttl_days=30, fetch_fn=_fetch)
+        except requests.RequestException:
+            logger.warning("Falha ao listar fundos da B3", exc_info=True)
+            return []
+        resultados = payload.get("results") or []
+        fundos = [item for item in resultados if isinstance(item, dict)]
+        if not fundos:
+            self._cache.invalidate(key)
+        return fundos
+
+    def _coletar_fundos(
+        self: "B3FundosClient", type_fund: str
+    ) -> list[dict]:
+        """Coleta todas as páginas do ``GetListFunds``."""
+        fundos: list[dict] = []
+        page_number = 1
+        while True:
+            dados = self._get_json(
+                "GetListFunds",
+                {
+                    "language": "pt-br",
+                    "typeFund": type_fund,
+                    "pageNumber": page_number,
+                    "pageSize": _PAGE_SIZE,
+                },
+            )
+            pagina = dados.get("page", {}) if isinstance(dados, dict) else {}
+            resultados = dados.get("results") if isinstance(dados, dict) else []
+            if isinstance(resultados, list):
+                fundos.extend(item for item in resultados if isinstance(item, dict))
+            total_pages = int(pagina.get("totalPages", 1) or 1) if pagina else 1
+            if page_number >= total_pages:
+                break
+            page_number += 1
+        return fundos
+
     def listar_candidatos(
         self: "B3FundosClient",
         ticker: str,
         type_fund: str = "FII",
     ) -> list[dict]:
-        """Lista os registros de fundo candidatos ao ticker na B3."""
-        id_cem = _fund_root(ticker)
+        """Lista as classes do fundo do ticker na B3.
+
+        Resolve o ``id`` primário via ``GetListFunds`` e consulta
+        ``GetListClassFund`` com esse ``id`` como ``idFNET``.
+        """
+        primario = self._resolver_primario(ticker, type_fund)
+        if primario is None:
+            return []
         try:
             dados = self._get_json(
                 "GetListClassFund",
                 {
                     "language": "pt-br",
-                    "idCEM": id_cem,
+                    "idFNET": str(primario.get("id")),
+                    "idCEM": _fund_root(ticker),
                     "typeFund": type_fund,
                 },
             )
@@ -118,6 +175,16 @@ class B3FundosClient:
         if not isinstance(dados, list):
             return []
         return [item for item in dados if isinstance(item, dict)]
+
+    def _resolver_primario(
+        self: "B3FundosClient", ticker: str, type_fund: str
+    ) -> dict | None:
+        """Localiza o registro primário do ticker em ``GetListFunds``."""
+        alvo = _fund_root(ticker)
+        for fundo in self.listar_fundos(type_fund):
+            if str(fundo.get("acronym", "")).strip().upper() == alvo:
+                return fundo
+        return None
 
     def selecionar_candidato(
         self: "B3FundosClient",
@@ -135,7 +202,8 @@ class B3FundosClient:
         """Resolve o ticker para o ``idFNET`` na B3.
 
         Retorna ``None`` para tickers sem dados na API de fundos, sem lançar
-        exceção. O resultado, inclusive ``None``, é cacheado por 30 dias.
+        exceção. O resultado bem-sucedido é cacheado por 30 dias; uma ausência
+        não é cacheada, para não congelar falhas transitórias.
         """
 
         def _fetch() -> dict[str, object]:
@@ -149,7 +217,11 @@ class B3FundosClient:
         except requests.RequestException:
             logger.warning("Falha ao resolver ticker %s", ticker, exc_info=True)
             return None
-        return payload.get("idFNET")
+        id_fnet = payload.get("idFNET")
+        if not id_fnet:
+            self._cache.invalidate(key)
+            return None
+        return str(id_fnet)
 
     def listar_documentos(
         self: "B3FundosClient",

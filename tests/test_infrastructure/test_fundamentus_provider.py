@@ -154,6 +154,18 @@ class TestAdapterClassificacao:
         assert campos["gestao"].valor == "Ativa"
         assert campos["qtd_imoveis"].valor == 11
 
+    def test_campos_de_fii_incluem_vp_cota(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert campos["vp_cota"].valor == Decimal("20.38")
+
+    def test_campos_de_acao_sem_vp_cota(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert "vp_cota" not in campos
+
 
 class _FakeResponse:
     def __init__(self, text: str, status: int = 200, headers: dict | None = None) -> None:

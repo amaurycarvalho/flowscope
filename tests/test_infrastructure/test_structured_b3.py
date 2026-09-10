@@ -204,15 +204,40 @@ class TestIsentoIR:
 class TestB3FundosClient:
     @responses.activate
     def test_resolver_ticker_sucesso(self, tmp_path):
-        import requests
-
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
-        payload = {"language": "pt-br", "idCEM": "ALZR", "typeFund": "FII"}
+        fundos = {
+            "language": "pt-br",
+            "typeFund": "FII",
+            "pageNumber": 1,
+            "pageSize": 20,
+        }
         responses.get(
-            f"{_BASE}/GetListClassFund/{_token(payload)}",
+            f"{_BASE}/GetListFunds/{_token(fundos)}",
+            json={
+                "page": {"totalPages": 1},
+                "results": [{"acronym": "ALZR", "id": 870}],
+            },
+            status=200,
+        )
+        classes = {
+            "language": "pt-br",
+            "idFNET": "870",
+            "idCEM": "ALZR",
+            "typeFund": "FII",
+        }
+        responses.get(
+            f"{_BASE}/GetListClassFund/{_token(classes)}",
             json=[
-                {"id": "870", "tradingName": "Fundo: 28.737.771/0001-85"},
-                {"id": "20294", "tradingName": "28.737.771/0001-85"},
+                {
+                    "id": "870",
+                    "idMain": None,
+                    "tradingName": "Fundo: 28.737.771/0001-85",
+                },
+                {
+                    "id": "20294",
+                    "idMain": "870",
+                    "tradingName": "28.737.771/0001-85",
+                },
             ],
             status=200,
         )
@@ -221,21 +246,35 @@ class TestB3FundosClient:
     @responses.activate
     def test_resolver_ticker_sem_dados_retorna_none(self, tmp_path):
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
-        payload = {"language": "pt-br", "idCEM": "PETR", "typeFund": "FII"}
+        fundos = {
+            "language": "pt-br",
+            "typeFund": "FII",
+            "pageNumber": 1,
+            "pageSize": 20,
+        }
         responses.get(
-            f"{_BASE}/GetListClassFund/{_token(payload)}", json=[], status=200
+            f"{_BASE}/GetListFunds/{_token(fundos)}",
+            json={"page": {"totalPages": 1}, "results": []},
+            status=200,
         )
         assert client.resolver_ticker("PETR4") is None
 
     @responses.activate
-    def test_resolver_ticker_cacheia_none(self, tmp_path):
+    def test_resolver_ticker_nao_cacheia_ausencia(self, tmp_path):
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
-        payload = {"language": "pt-br", "idCEM": "PETR", "typeFund": "FII"}
-        url = f"{_BASE}/GetListClassFund/{_token(payload)}"
-        responses.get(url, json=[], status=200)
+        fundos = {
+            "language": "pt-br",
+            "typeFund": "FII",
+            "pageNumber": 1,
+            "pageSize": 20,
+        }
+        url = f"{_BASE}/GetListFunds/{_token(fundos)}"
+        responses.get(
+            url, json={"page": {"totalPages": 1}, "results": []}, status=200
+        )
         assert client.resolver_ticker("PETR4") is None
         assert client.resolver_ticker("PETR4") is None
-        assert len(responses.calls) == 1
+        assert len(responses.calls) == 2
 
     @responses.activate
     def test_listar_documentos_pagina_unica(self, tmp_path):

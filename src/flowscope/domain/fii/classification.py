@@ -311,8 +311,8 @@ class ClassificacaoExibicao:
 
 
 def _juntar(*partes: str | None) -> str:
-    """Concatena partes não vazias separadas por ``"; "``."""
-    return "; ".join(parte.strip() for parte in partes if parte and parte.strip())
+    """Concatena partes não vazias separadas por ``", "``."""
+    return ", ".join(parte.strip() for parte in partes if parte and parte.strip())
 
 
 def classificar_exibicao(

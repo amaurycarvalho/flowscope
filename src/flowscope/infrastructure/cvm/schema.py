@@ -6,9 +6,15 @@ COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
     "nome": ("Nome_Fundo_Classe", "Nome_Fundo"),
     "tipo": ("Tipo_Fundo_Classe", "Tipo_Fundo"),
     "competencia": ("Data_Referencia", "DT_COMPTC"),
-    "patrimonio": ("VL_PATRIM_LIQ",),
-    "cotas": ("QT_COTA", "QUANT_COTA"),
-    "cotistas": ("NR_COTST",),
+    "patrimonio": ("VL_PATRIM_LIQ", "Patrimonio_Liquido"),
+    "cotas": (
+        "QT_COTA",
+        "QUANT_COTA",
+        "Cotas_Emitidas",
+        "Quantidade_Cotas_Emitidas",
+    ),
+    "cotistas": ("NR_COTST", "Total_Numero_Cotistas"),
+    "vp_cota": ("Valor_Patrimonial_Cotas",),
     "versao": ("Versao", "VERSAO", "Nu_Versao"),
     "recebimento": ("Data_Recebimento", "DT_RECEB", "Data_Entrega"),
 }

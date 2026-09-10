@@ -11,6 +11,7 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from flowscope.application.fundamental_ports import (
+    CAMPO_COTACAO,
     CAMPO_DATA_REFERENCIA,
     CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDEND_YIELD,
@@ -27,6 +28,7 @@ from flowscope.application.fundamental_ports import (
     CAMPO_SEGMENTO,
     CAMPO_SETOR,
     CAMPO_SUBSETOR,
+    CAMPO_VP_COTA,
     CampoFundamental,
     DividendHistoryProvider,
     FfoProvider,
@@ -184,6 +186,8 @@ class FundamentalAnalysisUseCase:
             ultimo_dividendo=ultimo_dividendo,
             dividendos_12m_por_cota=total_por_cota,
             metricas=metricas,
+            cotacao=_decimal_campo(dados, CAMPO_COTACAO),
+            vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
             classificacao_exibicao=_classificacao_exibicao(dados, classificacao),
             cotistas=cotistas,
             patrimonio=patrimonio,
