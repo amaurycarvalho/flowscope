@@ -190,7 +190,7 @@ class FundamentalTablePanel:
     """Tabela fundamentalista alimentada pela watchlist de tickers."""
 
     def __init__(self: "FundamentalTablePanel", parent: tk.Widget) -> None:
-        """Constrói o painel com o ``Treeview`` e a barra de rolagem."""
+        """Constrói o painel com o ``Treeview`` e as barras de rolagem."""
         self.frame = ttk.Frame(parent)
         self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
         self._tree = ttk.Treeview(
@@ -198,12 +198,22 @@ class FundamentalTablePanel:
         )
         for coluna_id, cabecalho in _COLUNAS:
             self._tree.heading(coluna_id, text=cabecalho)
-        scrollbar = ttk.Scrollbar(
+            self._tree.column(coluna_id, width=140, minwidth=80, stretch=False)
+        scrollbar_v = ttk.Scrollbar(
             self.frame, orient="vertical", command=self._tree.yview
         )
-        self._tree.configure(yscrollcommand=scrollbar.set)
-        self._tree.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        scrollbar_h = ttk.Scrollbar(
+            self.frame, orient="horizontal", command=self._tree.xview
+        )
+        self._tree.configure(
+            yscrollcommand=scrollbar_v.set,
+            xscrollcommand=scrollbar_h.set,
+        )
+        self._tree.grid(row=0, column=0, sticky="nsew")
+        scrollbar_v.grid(row=0, column=1, sticky="ns")
+        scrollbar_h.grid(row=1, column=0, sticky="ew")
+        self.frame.rowconfigure(0, weight=1)
+        self.frame.columnconfigure(0, weight=1)
 
     def update(self: "FundamentalTablePanel", data: Mapping[str, object]) -> None:
         """Substitui as linhas exibidas pelos dados informados por ticker."""
