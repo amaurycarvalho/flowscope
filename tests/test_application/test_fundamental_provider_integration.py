@@ -75,12 +75,15 @@ class TestIntegracaoProviderPrimario:
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
         assert resultado.nome == "Nome do repositório"
 
-    def test_acao_nao_recebe_metricas_de_ffo(self):
+    def test_acao_recebe_metricas_quando_fonte_fornece(self):
         caso = FundamentalAnalysisUseCase(
             _Repo(), fundamental_provider=_Fonte(_campos_fundamentus())
         )
         resultado = caso.execute(["PETR4"], REFERENCIA)[0]
-        assert resultado.metricas is None
+        assert resultado.metricas is not None
+        assert resultado.metricas.ffo_yield == Decimal("0.0816")
+        assert resultado.metricas.dividend_yield == Decimal("0.079")
+        assert resultado.metricas.p_vp == Decimal("0.92")
 
     def test_fundamentus_indisponivel_cai_para_fallback(self):
         primario = _Fonte(falhar=True)

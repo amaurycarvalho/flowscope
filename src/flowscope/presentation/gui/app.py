@@ -52,6 +52,7 @@ DEFAULT_CONFIG = {
     "sash_positions": None,
     "last_ticker_dir": None,
     "last_tickers": None,
+    "fundamental_column_widths": None,
 }
 
 
@@ -69,6 +70,8 @@ def load_preferences() -> dict:
         prefs["last_tickers"] = None
     else:
         prefs["last_tickers"] = [t for t in last_tickers if isinstance(t, str) and t.strip()]
+    if not isinstance(prefs.get("fundamental_column_widths"), dict):
+        prefs["fundamental_column_widths"] = None
     return prefs
 
 
@@ -210,6 +213,10 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
         self._prefs["last_subtab"] = self._prefs.get("last_subtab", "VWAP")
         self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
+        if hasattr(self, "_fundamental_table"):
+            self._prefs["fundamental_column_widths"] = (
+                self._fundamental_table.get_column_widths()
+            )
         try:
             positions = []
             if hasattr(self, "_main_pw"):

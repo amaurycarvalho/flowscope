@@ -1,9 +1,9 @@
 """Métricas de dividendo por ticker, limitadas a proventos de Rendimento.
 
-A Fase A da tabela fundamentalista consome apenas proventos do tipo
-``Rendimento``; ``Amortização`` é sempre ignorada. A tendência compara o
-último rendimento com o imediatamente anterior usando uma banda configurável
-(padrão ±5%), espelhando a RFC-006.
+Os dividendos são consolidados a partir de B3 (primário), CVM (secundário) e
+Fundamentus (fallback), preservando a origem de cada valor. A tendência compara
+o último dividendo com o imediatamente anterior por comparação direta
+(``Crescimento``/``Redução``/``Neutro``), sem banda de tolerância.
 """
 
 from calendar import monthrange
@@ -17,9 +17,6 @@ from flowscope.domain.structured import Provento
 #: Tipo de provento considerado como dividendo.
 TIPO_RENDIMENTO = "Rendimento"
 
-#: Banda de tolerância padrão da tendência do dividendo.
-BANDA_PADRAO = Decimal("0.05")
-
 #: Meses do período de acumulação do Dividend Yield de 12 meses.
 JANELA_MESES_12M = 12
 
@@ -27,10 +24,19 @@ JANELA_MESES_12M = 12
 class TendenciaDividendo(Enum):
     """Tendência do último dividendo em relação ao anterior."""
 
-    SUBINDO = "SUBINDO"
-    CAINDO = "CAINDO"
-    MANTEVE = "MANTEVE"
+    CRESCIMENTO = "Crescimento"
+    REDUCAO = "Redução"
+    NEUTRO = "Neutro"
     N_A = "N/A"
+
+
+@dataclass(frozen=True)
+class DividendoConsolidado:
+    """Dividendo normalizado com a fonte que o forneceu."""
+
+    data_base: date | None
+    valor: Decimal
+    fonte: str
 
 
 @dataclass(frozen=True)
@@ -43,77 +49,104 @@ class UltimoDividendo:
     tendencia: TendenciaDividendo
 
 
-def _rendimentos_ordenados(
-    proventos: list[Provento], reference_date: date | None
-) -> list[Provento]:
-    """Filtra rendimentos válidos e os ordena por data-base crescente."""
-    rendimentos: list[Provento] = []
+def dividendos_de_proventos(
+    proventos: list[Provento], fonte: str = "B3"
+) -> list[DividendoConsolidado]:
+    """Dividendos consolidados a partir de proventos de ``Rendimento``.
+
+    Proventos de ``Amortização`` e sem data-base são ignorados.
+    """
+    dividendos: list[DividendoConsolidado] = []
     for provento in proventos:
         if provento.tipo != TIPO_RENDIMENTO or provento.data_base is None:
             continue
-        if reference_date is not None and provento.data_base > reference_date:
-            continue
-        rendimentos.append(provento)
-    rendimentos.sort(key=lambda provento: provento.data_base or date.min)
-    return rendimentos
+        dividendos.append(
+            DividendoConsolidado(
+                data_base=provento.data_base,
+                valor=provento.valor_por_unidade.value,
+                fonte=fonte,
+            )
+        )
+    return dividendos
 
 
-def ultima_data_com(rendimentos: list[Provento]) -> date | None:
-    """Retorna a data-base (data-com) do rendimento mais recente."""
-    if not rendimentos:
-        return None
-    return rendimentos[-1].data_base
+def consolidar_dividendos(
+    *fontes: list[DividendoConsolidado],
+) -> list[DividendoConsolidado]:
+    """Consolida dividendos de várias fontes, preservando a origem.
 
-
-def ultimo_valor(rendimentos: list[Provento]) -> Decimal | None:
-    """Retorna o valor do rendimento mais recente."""
-    if not rendimentos:
-        return None
-    return rendimentos[-1].valor_por_unidade.value
+    As fontes são aplicadas em ordem de prioridade e duplicatas por
+    ``(data_base, valor)`` mantêm a primeira ocorrência. O resultado é ordenado
+    por ``data_base`` crescente.
+    """
+    vistos: set[tuple[date | None, Decimal]] = set()
+    resultado: list[DividendoConsolidado] = []
+    for fonte in fontes:
+        for dividendo in fonte:
+            chave = (dividendo.data_base, dividendo.valor)
+            if chave in vistos:
+                continue
+            vistos.add(chave)
+            resultado.append(dividendo)
+    resultado.sort(key=lambda dividendo: dividendo.data_base or date.min)
+    return resultado
 
 
 def calcular_tendencia(
-    rendimentos: list[Provento], banda: Decimal = BANDA_PADRAO
+    dividendos: list[DividendoConsolidado],
 ) -> TendenciaDividendo:
-    """Classifica a tendência comparando o último com o anterior.
+    """Classifica a tendência comparando o último dividendo com o anterior.
 
-    ``SUBINDO`` quando ``último ≥ anterior × (1 + banda)``, ``CAINDO`` quando
-    ``último ≤ anterior × (1 − banda)`` e ``MANTEVE`` caso contrário. Sem
-    dividendo anterior a tendência é ``N/A``.
+    ``CRESCIMENTO`` quando o último é maior, ``REDUCAO`` quando é menor e
+    ``NEUTRO`` quando é igual. Sem dividendo anterior a tendência é ``N/A``.
     """
-    if len(rendimentos) < 2:
+    if len(dividendos) < 2:
         return TendenciaDividendo.N_A
-    ultimo = rendimentos[-1].valor_por_unidade.value
-    anterior = rendimentos[-2].valor_por_unidade.value
-    if ultimo >= anterior * (Decimal(1) + banda):
-        return TendenciaDividendo.SUBINDO
-    if ultimo <= anterior * (Decimal(1) - banda):
-        return TendenciaDividendo.CAINDO
-    return TendenciaDividendo.MANTEVE
+    ultimo = dividendos[-1].valor
+    anterior = dividendos[-2].valor
+    if ultimo > anterior:
+        return TendenciaDividendo.CRESCIMENTO
+    if ultimo < anterior:
+        return TendenciaDividendo.REDUCAO
+    return TendenciaDividendo.NEUTRO
 
 
-def calcular_ultimo_dividendo(
-    proventos: list[Provento],
+def calcular_ultimo_dividendo_consolidado(
+    dividendos: list[DividendoConsolidado],
     reference_date: date | None = None,
-    banda: Decimal = BANDA_PADRAO,
 ) -> UltimoDividendo:
     """Calcula a última data-com, o último dividendo e sua tendência."""
-    rendimentos = _rendimentos_ordenados(proventos, reference_date)
-    if not rendimentos:
+    validos = [
+        dividendo
+        for dividendo in dividendos
+        if dividendo.data_base is None
+        or reference_date is None
+        or dividendo.data_base <= reference_date
+    ]
+    validos.sort(key=lambda dividendo: dividendo.data_base or date.min)
+    if not validos:
         return UltimoDividendo(
             data_com=None,
             valor=None,
             valor_anterior=None,
             tendencia=TendenciaDividendo.N_A,
         )
-    anterior = (
-        rendimentos[-2].valor_por_unidade.value if len(rendimentos) > 1 else None
-    )
+    anterior = validos[-2].valor if len(validos) > 1 else None
     return UltimoDividendo(
-        data_com=ultima_data_com(rendimentos),
-        valor=ultimo_valor(rendimentos),
+        data_com=validos[-1].data_base,
+        valor=validos[-1].valor,
         valor_anterior=anterior,
-        tendencia=calcular_tendencia(rendimentos, banda),
+        tendencia=calcular_tendencia(validos),
+    )
+
+
+def calcular_ultimo_dividendo(
+    proventos: list[Provento],
+    reference_date: date | None = None,
+) -> UltimoDividendo:
+    """Calcula a última data-com, o último dividendo e sua tendência (B3)."""
+    return calcular_ultimo_dividendo_consolidado(
+        dividendos_de_proventos(proventos), reference_date
     )
 
 

@@ -14,6 +14,7 @@ from flowscope.application.fundamental_ports import (
     CampoFundamental,
     FfoProvider,
     FundamentalDataProvider,
+    OrigemDados,
 )
 from flowscope.domain.fii.analysis import FfoObservacao
 
@@ -46,22 +47,22 @@ class CompositeFundamentalProvider:
 
     def obter_com_resultado(
         self: "CompositeFundamentalProvider", ticker: str, reference_date: date
-    ) -> tuple[dict[str, CampoFundamental], bool]:
-        """Compõe os campos e agrega se alguma fonte atualizou os dados."""
+    ) -> tuple[dict[str, CampoFundamental], OrigemDados]:
+        """Compõe os campos e reporta a origem do primeiro contribuinte."""
         resultado: dict[str, CampoFundamental] = {}
-        atualizou = False
+        origem = OrigemDados.REDE
         for provider in self._providers:
             if CAMPOS_FUNDAMENTAIS.issubset(resultado):
                 break
             try:
                 obter_com_resultado = getattr(provider, "obter_com_resultado", None)
                 if callable(obter_com_resultado):
-                    campos, fonte_atualizou = obter_com_resultado(
+                    campos, origem_fonte = obter_com_resultado(
                         ticker, reference_date
                     )
-                    atualizou = atualizou or fonte_atualizou
                 else:
                     campos = provider.obter(ticker, reference_date)
+                    origem_fonte = OrigemDados.REDE
             except Exception:  # fonte indisponível: segue para o fallback
                 logger.warning(
                     "Fonte fundamentalista %s indisponível para %s",
@@ -70,10 +71,12 @@ class CompositeFundamentalProvider:
                     exc_info=True,
                 )
                 continue
+            if campos and not resultado:
+                origem = origem_fonte
             for chave, campo in campos.items():
                 if chave not in resultado and campo.valor is not None:
                     resultado[chave] = campo
-        return resultado, atualizou
+        return resultado, origem
 
 
 class CompositeFfoProvider:

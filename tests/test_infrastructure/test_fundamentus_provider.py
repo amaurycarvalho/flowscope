@@ -120,6 +120,40 @@ class TestParser:
         ) == date(2026, 9, 10)
         assert extrair_data_ultima_cotacao(_fixture("fii_hgbs11.html")) is not None
 
+    def test_parse_acao_extrai_classificacao(self):
+        ativo = parse_ativo("petr4", _fixture("acao_petr4.html"))
+        assert ativo.discriminador == "papel"
+        assert ativo.especie == "PN"
+        assert ativo.setor == "Petróleo, Gás e Biocombustíveis"
+        assert ativo.subsetor == "Exploração, Refino e Distribuição"
+
+    def test_parse_fii_extrai_classificacao(self):
+        ativo = parse_ativo("hgbs11", _fixture("fii_hgbs11.html"))
+        assert ativo.discriminador == "fii"
+        assert ativo.segmento == "Shoppings"
+        assert ativo.gestao == "Ativa"
+
+
+class TestAdapterClassificacao:
+    def test_campos_de_acao_incluem_classificacao_patrimonio_e_data(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert campos["discriminador"].valor == "papel"
+        assert campos["especie"].valor == "PN"
+        assert campos["setor"].valor == "Petróleo, Gás e Biocombustíveis"
+        assert campos["patrimonio"].valor == Decimal(480950000000)
+        assert campos["data_referencia"].valor == date(2026, 9, 10)
+
+    def test_campos_de_fii_incluem_qtd_imoveis(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert campos["discriminador"].valor == "fii"
+        assert campos["segmento"].valor == "Shoppings"
+        assert campos["gestao"].valor == "Ativa"
+        assert campos["qtd_imoveis"].valor == 11
+
 
 class _FakeResponse:
     def __init__(self, text: str, status: int = 200, headers: dict | None = None) -> None:
@@ -409,7 +443,8 @@ class TestProviderCondicional:
 
 
 class TestAdapterResultado:
-    def test_obter_com_resultado_mapeia_atualizacao(self, tmp_path):
+    def test_obter_com_resultado_mapeia_origem_rede(self, tmp_path):
+        from flowscope.application.fundamental_ports import OrigemDados
         from flowscope.infrastructure.fii.fundamentus.adapter import (
             FundamentusFundamentalDataProvider,
         )
@@ -418,6 +453,32 @@ class TestAdapterResultado:
         client = _FakeClient([_FakeResponse(_fixture("fii_hgbs11.html"))])
         provider = _provider(tmp_path, client, clock)
         adapter = FundamentusFundamentalDataProvider(provider=provider)
-        campos, atualizou = adapter.obter_com_resultado("HGBS11", date(2026, 9, 4))
-        assert atualizou is True
+        campos, origem = adapter.obter_com_resultado("HGBS11", date(2026, 9, 4))
+        assert origem is OrigemDados.REDE
         assert campos
+
+    def test_obter_com_resultado_mapeia_origem_cache(self, tmp_path):
+        from flowscope.application.fundamental_ports import OrigemDados
+        from flowscope.infrastructure.fii.fundamentus.adapter import (
+            FundamentusFundamentalDataProvider,
+        )
+
+        clock = _Relogio()
+        client = _FakeClient(
+            [
+                _FakeResponse(_html_data("10/09/2026")),
+                _FakeResponse(_html_data("10/09/2026")),
+            ]
+        )
+        provider = _provider(
+            tmp_path,
+            client,
+            clock,
+            freshness=timedelta(0),
+            revalidate_after=timedelta(0),
+        )
+        provider.get("TESTE")
+        clock.avancar(timedelta(hours=2))
+        adapter = FundamentusFundamentalDataProvider(provider=provider)
+        _, origem = adapter.obter_com_resultado("TESTE", date(2026, 9, 4))
+        assert origem is OrigemDados.CACHE

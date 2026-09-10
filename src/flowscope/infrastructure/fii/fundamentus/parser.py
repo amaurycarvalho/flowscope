@@ -13,6 +13,8 @@ from decimal import Decimal
 from bs4 import BeautifulSoup, Tag
 
 from flowscope.domain.fii.fundamentus import (
+    DISCRIMINADOR_FII,
+    DISCRIMINADOR_PAPEL,
     TIPO_ACAO,
     TIPO_FII,
     AtivoFundamental,
@@ -27,6 +29,11 @@ _ROTULO_DATA_COTACAO = "Data últ cot"
 _ROTULO_MIN_52 = "Min 52 sem"
 _ROTULO_MAX_52 = "Max 52 sem"
 _ROTULO_VOLUME_2M = "Vol $ méd (2m)"
+_ROTULO_ESPECIE = "Tipo"
+_ROTULO_SETOR = "Setor"
+_ROTULO_SUBSETOR = "Subsetor"
+_ROTULO_SEGMENTO = "Segmento"
+_ROTULO_GESTAO = "Gestão"
 
 _OSCILACOES = (
     "Dia",
@@ -156,6 +163,12 @@ def parse_ativo(ticker: str, html: str) -> AtivoFundamental:
     return AtivoFundamental(
         ticker=ticker.strip().upper(),
         tipo=_detectar_tipo(soup, raw),
+        discriminador=_detectar_discriminador(raw),
+        especie=_primeiro(raw, [_ROTULO_ESPECIE]),
+        setor=_primeiro(raw, [_ROTULO_SETOR]),
+        subsetor=_primeiro(raw, [_ROTULO_SUBSETOR]),
+        segmento=_primeiro(raw, [_ROTULO_SEGMENTO]),
+        gestao=_primeiro(raw, [_ROTULO_GESTAO]),
         nome=nome,
         cotacao=cotacao,
         data_ultima_cotacao=para_data(_primeiro(raw, [_ROTULO_DATA_COTACAO])),
@@ -200,8 +213,30 @@ def _extrair_mapa(
     return resultado
 
 
+def _detectar_discriminador(raw: dict[str, str]) -> str | None:
+    """Detecta o discriminador pelo rótulo do campo de ticker da página.
+
+    O Fundamentus usa o rótulo ``FII`` para fundos imobiliários e ``Papel`` para
+    ações; quando nenhum está presente o discriminador é ``None``.
+    """
+    if "FII" in raw:
+        return DISCRIMINADOR_FII
+    if "Papel" in raw:
+        return DISCRIMINADOR_PAPEL
+    return None
+
+
 def _detectar_tipo(soup: BeautifulSoup, raw: dict[str, str]) -> str:
-    """Detecta FII ou ação pelo cabeçalho e pelos indicadores presentes."""
+    """Detecta FII ou ação pelo rótulo do campo de ticker da página.
+
+    O rótulo ``FII``/``Papel`` é a fonte primária; o cabeçalho e os indicadores
+    característicos permanecem como fallback para layouts legados.
+    """
+    discriminador = _detectar_discriminador(raw)
+    if discriminador == DISCRIMINADOR_FII:
+        return TIPO_FII
+    if discriminador == DISCRIMINADOR_PAPEL:
+        return TIPO_ACAO
     rotulos_cabecalho = {th.get_text(" ", strip=True) for th in soup.find_all("th")}
     if "FII" in rotulos_cabecalho:
         return TIPO_FII

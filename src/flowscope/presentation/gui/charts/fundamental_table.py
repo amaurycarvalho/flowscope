@@ -14,13 +14,31 @@ from tkinter import ttk
 
 from flowscope.domain.fii import (
     AnaliseFundamental,
+    ClasseCotistas,
+    ClassePatrimonio,
     SubTipoAcao,
     SubTipoFii,
     TipoAtivo,
+    classificar_exibicao,
     classificar_ticker,
 )
 
 NA = "N/A"
+
+_LARGURA_PADRAO = 140
+
+
+def _largura_coluna(
+    widths: Mapping[str, object] | None, coluna_id: str
+) -> int:
+    """Resolve a largura inicial de uma coluna, com fallback para o padrão."""
+    if not widths:
+        return _LARGURA_PADRAO
+    try:
+        largura = int(widths.get(coluna_id, _LARGURA_PADRAO))
+    except (TypeError, ValueError):
+        return _LARGURA_PADRAO
+    return largura if largura > 0 else _LARGURA_PADRAO
 
 _COLUNAS = (
     ("ticker", "Ticker"),
@@ -35,7 +53,31 @@ _COLUNAS = (
     ("p_ffo", "P/FFO"),
     ("p_vp", "P/VP"),
     ("ffo_trend", "FFO Trend"),
+    ("cotistas", "Nº de cotistas"),
+    ("classe_cotistas", "Classe de cotistas"),
+    ("patrimonio", "Patrimônio"),
+    ("classe_patrimonio", "Classe de patrimônio"),
+    ("data_referencia", "Data de referência"),
 )
+
+_CLASSE_COTISTAS = {
+    ClasseCotistas.MICRO: "Micro",
+    ClasseCotistas.MUITO_PEQUENO: "Muito pequeno",
+    ClasseCotistas.PEQUENO: "Pequeno",
+    ClasseCotistas.MEDIO: "Médio",
+    ClasseCotistas.GRANDE: "Grande",
+    ClasseCotistas.MUITO_GRANDE: "Muito grande",
+    ClasseCotistas.GIGANTE: "Gigante",
+}
+
+_CLASSE_PATRIMONIO = {
+    ClassePatrimonio.MICRO: "Micro",
+    ClassePatrimonio.PEQUENO: "Pequeno",
+    ClassePatrimonio.MEDIO: "Médio",
+    ClassePatrimonio.GRANDE: "Grande",
+    ClassePatrimonio.MUITO_GRANDE: "Muito grande",
+    ClassePatrimonio.GIGANTE: "Gigante",
+}
 
 _TIPOS = {
     TipoAtivo.ACAO: "Ação",
@@ -116,9 +158,53 @@ def formatar_ratio(valor: Decimal | None, casas: int = 2) -> str:
     return f"{_com_virgula(valor, casas)}x"
 
 
+def formatar_inteiro(valor: int | None) -> str:
+    """Formata um inteiro com separador de milhar brasileiro, ou ``N/A``."""
+    if valor is None:
+        return NA
+    return f"{valor:,}".replace(",", ".")
+
+
+def formatar_patrimonio(valor: Decimal | None) -> str:
+    """Formata o patrimônio líquido de forma legível (mi/bi), ou ``N/A``."""
+    if valor is None:
+        return NA
+    if valor >= Decimal(1000000000):
+        return f"R$ {_com_virgula(valor / Decimal(1000000000), 2)} bi"
+    if valor >= Decimal(1000000):
+        return f"R$ {_com_virgula(valor / Decimal(1000000), 2)} mi"
+    return f"R$ {_agrupar(valor, 2)}"
+
+
+def _agrupar(valor: Decimal, casas: int) -> str:
+    """Formata um decimal com separador de milhar e vírgula decimal."""
+    quantizado = valor.quantize(Decimal(1).scaleb(-casas))
+    texto = f"{quantizado:,.{casas}f}"
+    return texto.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def rotulo_classe_cotistas(classe: ClasseCotistas | None) -> str:
+    """Retorna o rótulo amigável da classe por número de cotistas."""
+    if classe is None:
+        return NA
+    return _CLASSE_COTISTAS.get(classe, classe.name)
+
+
+def rotulo_classe_patrimonio(classe: ClassePatrimonio | None) -> str:
+    """Retorna o rótulo amigável da classe por tamanho patrimonial."""
+    if classe is None:
+        return NA
+    return _CLASSE_PATRIMONIO.get(classe, classe.name)
+
+
 def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     """Monta a linha de uma análise fundamentalista completa."""
     classificacao = analise.classificacao
+    exibicao = analise.classificacao_exibicao
+    if exibicao is None:
+        exibicao = classificar_exibicao(discriminador=None, fallback=classificacao)
+    tipo = exibicao.tipo
+    sub_tipo = exibicao.sub_tipo
     dividendo = analise.ultimo_dividendo
     metricas = analise.metricas
     ffo_yield = metricas.ffo_yield if metricas else None
@@ -129,8 +215,8 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     return (
         ticker,
         analise.nome or NA,
-        rotulo_tipo(classificacao.tipo),
-        rotulo_sub_tipo(classificacao.sub_tipo),
+        tipo,
+        sub_tipo or NA,
         formatar_data(dividendo.data_com),
         formatar_valor(dividendo.valor),
         _rotulo_dividendo(dividendo.tendencia),
@@ -139,17 +225,28 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         formatar_ratio(p_ffo, 2),
         formatar_ratio(p_vp, 2),
         _rotulo_ffo_trend(tendencia_ffo),
+        formatar_inteiro(analise.cotistas),
+        rotulo_classe_cotistas(analise.classe_cotistas),
+        formatar_patrimonio(analise.patrimonio),
+        rotulo_classe_patrimonio(analise.classe_patrimonio),
+        formatar_data(analise.data_referencia),
     )
 
 
 def _linha_sintetica(ticker: str, dados: object) -> tuple[str, ...]:
     """Monta uma linha apenas com a classificação sintática do ticker."""
     classificacao = classificar_ticker(ticker)
+    exibicao = classificar_exibicao(discriminador=None, fallback=classificacao)
     return (
         ticker,
         NA,
-        rotulo_tipo(classificacao.tipo),
-        rotulo_sub_tipo(classificacao.sub_tipo),
+        exibicao.tipo,
+        exibicao.sub_tipo or NA,
+        NA,
+        NA,
+        NA,
+        NA,
+        NA,
         NA,
         NA,
         NA,
@@ -196,16 +293,27 @@ def _rotulo_ffo_trend(tendencia: Enum | None) -> str:
 class FundamentalTablePanel:
     """Tabela fundamentalista alimentada pela watchlist de tickers."""
 
-    def __init__(self: "FundamentalTablePanel", parent: tk.Widget) -> None:
+    def __init__(
+        self: "FundamentalTablePanel",
+        parent: tk.Widget,
+        widths: Mapping[str, object] | None = None,
+        on_widths_changed: object | None = None,
+    ) -> None:
         """Constrói o painel com o ``Treeview`` e as barras de rolagem."""
         self.frame = ttk.Frame(parent)
         self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
+        self._on_widths_changed = on_widths_changed
         self._tree = ttk.Treeview(
             self.frame, columns=self._columns, show="headings"
         )
         for coluna_id, cabecalho in _COLUNAS:
             self._tree.heading(coluna_id, text=cabecalho)
-            self._tree.column(coluna_id, width=140, minwidth=80, stretch=False)
+            self._tree.column(
+                coluna_id,
+                width=_largura_coluna(widths, coluna_id),
+                minwidth=80,
+                stretch=False,
+            )
         scrollbar_v = ttk.Scrollbar(
             self.frame, orient="vertical", command=self._tree.yview
         )
@@ -221,6 +329,24 @@ class FundamentalTablePanel:
         scrollbar_h.grid(row=1, column=0, sticky="ew")
         self.frame.rowconfigure(0, weight=1)
         self.frame.columnconfigure(0, weight=1)
+        self._tree.bind("<ButtonRelease-1>", self._on_column_resized, add="+")
+        self._last_widths = self.get_column_widths()
+
+    def get_column_widths(self: "FundamentalTablePanel") -> dict[str, int]:
+        """Retorna a largura atual de cada coluna, indexada pelo id."""
+        return {
+            coluna_id: int(self._tree.column(coluna_id, "width"))
+            for coluna_id in self._columns
+        }
+
+    def _on_column_resized(self: "FundamentalTablePanel", event: object = None) -> None:
+        """Notifica o callback quando a largura das colunas muda."""
+        atuais = self.get_column_widths()
+        if atuais == self._last_widths:
+            return
+        self._last_widths = atuais
+        if callable(self._on_widths_changed):
+            self._on_widths_changed(atuais)
 
     def update(self: "FundamentalTablePanel", data: Mapping[str, object]) -> None:
         """Substitui as linhas exibidas pelos dados informados por ticker."""

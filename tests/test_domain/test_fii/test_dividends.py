@@ -2,12 +2,15 @@ from datetime import date
 from decimal import Decimal
 
 from flowscope.domain.fii import (
-    BANDA_PADRAO,
     TIPO_RENDIMENTO,
+    DividendoConsolidado,
     TendenciaDividendo,
     calcular_tendencia,
     calcular_ultimo_dividendo,
+    calcular_ultimo_dividendo_consolidado,
+    consolidar_dividendos,
     dividendos_12m,
+    dividendos_de_proventos,
 )
 from flowscope.domain.structured import ISIN, Provento, ValorProvento
 
@@ -29,6 +32,12 @@ def _provento(
         data_pagamento=data_pagamento or data_base,
         periodo_referencia="",
         isento_ir=True,
+    )
+
+
+def _dividendo(valor: str, data_base: date | None, fonte: str = "B3") -> DividendoConsolidado:
+    return DividendoConsolidado(
+        data_base=data_base, valor=Decimal(valor), fonte=fonte
     )
 
 
@@ -89,36 +98,35 @@ class TestUltimoDividendo:
 
 
 class TestTendenciaDividendo:
-    def test_subindo_acima_da_banda(self):
+    def test_crescimento_quando_ultimo_maior(self):
         proventos = [
             _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
             _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "1.06"),
         ]
         resultado = calcular_ultimo_dividendo(proventos)
-        assert resultado.tendencia is TendenciaDividendo.SUBINDO
+        assert resultado.tendencia is TendenciaDividendo.CRESCIMENTO
 
-    def test_subindo_no_limite_superior(self):
-        proventos = [
-            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
-            _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "1.05"),
+    def test_crescimento_para_diferenca_minima(self):
+        dividendos = [
+            _dividendo("1.00", date(2026, 1, 15)),
+            _dividendo("1.01", date(2026, 7, 10)),
         ]
-        assert calcular_tendencia(proventos) is TendenciaDividendo.SUBINDO
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.CRESCIMENTO
 
-    def test_caindo_abaixo_da_banda(self):
+    def test_reducao_quando_ultimo_menor(self):
         proventos = [
             _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
             _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "0.94"),
         ]
         resultado = calcular_ultimo_dividendo(proventos)
-        assert resultado.tendencia is TendenciaDividendo.CAINDO
+        assert resultado.tendencia is TendenciaDividendo.REDUCAO
 
-    def test_manteve_dentro_da_banda(self):
-        proventos = [
-            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
-            _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "1.02"),
+    def test_neutro_quando_igual(self):
+        dividendos = [
+            _dividendo("1.00", date(2026, 1, 15)),
+            _dividendo("1.00", date(2026, 7, 10)),
         ]
-        resultado = calcular_ultimo_dividendo(proventos)
-        assert resultado.tendencia is TendenciaDividendo.MANTEVE
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.NEUTRO
 
     def test_na_sem_dividendo_anterior(self):
         resultado = calcular_ultimo_dividendo(
@@ -126,14 +134,61 @@ class TestTendenciaDividendo:
         )
         assert resultado.tendencia is TendenciaDividendo.N_A
 
-    def test_banda_configuravel(self):
-        proventos = [
-            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
-            _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "1.10"),
+
+class TestConsolidacao:
+    def test_deduplica_por_data_base_e_valor(self):
+        b3 = [_dividendo("1.00", date(2026, 1, 15), "B3")]
+        cvm = [
+            _dividendo("1.00", date(2026, 1, 15), "CVM"),
+            _dividendo("0.50", date(2026, 2, 15), "CVM"),
         ]
-        assert BANDA_PADRAO == Decimal("0.05")
-        assert calcular_tendencia(proventos, banda=Decimal("0.20")) is TendenciaDividendo.MANTEVE
-        assert calcular_tendencia(proventos, banda=Decimal("0.05")) is TendenciaDividendo.SUBINDO
+        consolidados = consolidar_dividendos(b3, cvm)
+        assert len(consolidados) == 2
+        assert [d.valor for d in consolidados] == [Decimal("1.00"), Decimal("0.50")]
+
+    def test_fonte_ausente_em_b3_preenchida_pela_cvm(self):
+        b3: list[DividendoConsolidado] = []
+        cvm = [_dividendo("0.50", date(2026, 2, 15), "CVM")]
+        consolidados = consolidar_dividendos(b3, cvm)
+        assert len(consolidados) == 1
+        assert consolidados[0].fonte == "CVM"
+
+    def test_origem_preservada(self):
+        b3 = [_dividendo("1.00", date(2026, 1, 15), "B3")]
+        cvm = [_dividendo("0.50", date(2026, 2, 15), "CVM")]
+        fundamentus = [_dividendo("0.55", date(2026, 3, 15), "FUNDAMENTUS")]
+        consolidados = consolidar_dividendos(b3, cvm, fundamentus)
+        assert [d.fonte for d in consolidados] == ["B3", "CVM", "FUNDAMENTUS"]
+
+    def test_resultado_ordenado_por_data_base(self):
+        cvm = [
+            _dividendo("0.55", date(2026, 3, 15), "CVM"),
+            _dividendo("0.50", date(2026, 2, 15), "CVM"),
+        ]
+        consolidados = consolidar_dividendos(cvm)
+        assert [d.data_base for d in consolidados] == [
+            date(2026, 2, 15),
+            date(2026, 3, 15),
+        ]
+
+    def test_ultimo_dividendo_consolidado_com_tendencia(self):
+        consolidados = consolidar_dividendos(
+            [_dividendo("0.50", date(2026, 1, 15), "B3")],
+            [_dividendo("0.60", date(2026, 2, 15), "CVM")],
+        )
+        resultado = calcular_ultimo_dividendo_consolidado(consolidados)
+        assert resultado.valor == Decimal("0.60")
+        assert resultado.valor_anterior == Decimal("0.50")
+        assert resultado.tendencia is TendenciaDividendo.CRESCIMENTO
+
+    def test_dividendos_de_proventos_ignora_amortizacao_e_sem_data(self):
+        proventos = [
+            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "0.50"),
+            _provento("Amortização", date(2026, 2, 15), "2.00"),
+        ]
+        dividendos = dividendos_de_proventos(proventos, "B3")
+        assert len(dividendos) == 1
+        assert dividendos[0].fonte == "B3"
 
 
 class TestDividendos12m:

@@ -9,6 +9,8 @@ import pytest
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.domain.fii import (
     AnaliseFundamental,
+    ClasseCotistas,
+    ClassePatrimonio,
     FiiSnapshot,
     FfoObservacao,
     PatrimonioFii,
@@ -16,6 +18,7 @@ from flowscope.domain.fii import (
     TendenciaDividendo,
     UltimoDividendo,
     analisar_snapshot,
+    classificar_exibicao,
     classificar_ticker,
 )
 from flowscope.domain.structured import ISIN, Provento, ValorProvento
@@ -24,11 +27,15 @@ from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.charts.fundamental_table import (
     FundamentalTablePanel,
     formatar_data,
+    formatar_inteiro,
+    formatar_patrimonio,
     formatar_percentual,
     formatar_ratio,
     formatar_valor,
     montar_csv,
     montar_linhas,
+    rotulo_classe_cotistas,
+    rotulo_classe_patrimonio,
 )
 
 NA = "N/A"
@@ -69,7 +76,7 @@ def _analise_hgbs11() -> AnaliseFundamental:
             data_com=date(2026, 7, 10),
             valor=Decimal("0.55"),
             valor_anterior=Decimal("0.50"),
-            tendencia=TendenciaDividendo.SUBINDO,
+            tendencia=TendenciaDividendo.CRESCIMENTO,
         ),
         dividendos_12m_por_cota=Decimal("1.05"),
         metricas=metricas,
@@ -114,6 +121,83 @@ class TestFormatadores:
         assert formatar_ratio(Decimal("12.25")) == "12,25x"
         assert formatar_ratio(None) == NA
 
+    def test_formatar_inteiro(self):
+        assert formatar_inteiro(100000) == "100.000"
+        assert formatar_inteiro(None) == NA
+
+    def test_formatar_patrimonio(self):
+        assert formatar_patrimonio(Decimal("2942000000")) == "R$ 2,94 bi"
+        assert formatar_patrimonio(Decimal("150000000")) == "R$ 150,00 mi"
+        assert formatar_patrimonio(Decimal("250000")) == "R$ 250.000,00"
+        assert formatar_patrimonio(None) == NA
+
+    def test_rotulos_de_classe(self):
+        assert rotulo_classe_cotistas(ClasseCotistas.MEDIO) == "Médio"
+        assert rotulo_classe_patrimonio(ClassePatrimonio.GIGANTE) == "Gigante"
+        assert rotulo_classe_cotistas(None) == NA
+        assert rotulo_classe_patrimonio(None) == NA
+
+
+class TestClassificacaoExibicao:
+    def test_fii_tijolo_usa_prefixo_tijolo(self):
+        resultado = classificar_exibicao(
+            discriminador="fii",
+            segmento="Shoppings",
+            gestao="Ativa",
+            qtd_imoveis=16,
+        )
+        assert resultado.tipo == "FII"
+        assert resultado.sub_tipo == "Tijolo: Shoppings; Ativa"
+
+    def test_fii_papel_usa_prefixo_papel(self):
+        resultado = classificar_exibicao(
+            discriminador="fii",
+            segmento="Multicategoria",
+            gestao="Ativa",
+            qtd_imoveis=0,
+        )
+        assert resultado.sub_tipo == "Papel: Multicategoria; Ativa"
+
+    def test_fii_sem_imoveis_usa_papel(self):
+        resultado = classificar_exibicao(
+            discriminador="fii",
+            segmento="Shoppings",
+            gestao="Ativa",
+            qtd_imoveis=None,
+        )
+        assert resultado.sub_tipo.startswith("Papel: ")
+
+    def test_papel_concatena_especie_setor_subsetor(self):
+        resultado = classificar_exibicao(
+            discriminador="papel",
+            especie="PN",
+            setor="Petróleo, Gás e Biocombustíveis",
+            subsetor="Exploração, Refino e Distribuição",
+        )
+        assert resultado.tipo == "Papel"
+        assert resultado.sub_tipo == (
+            "PN; Petróleo, Gás e Biocombustíveis; Exploração, Refino e Distribuição"
+        )
+
+    def test_fallback_taxonomia_quando_sem_discriminador(self):
+        resultado = classificar_exibicao(
+            discriminador=None, fallback=classificar_ticker("HGBS11")
+        )
+        assert resultado.tipo == "FII"
+        assert resultado.sub_tipo == "Tijolo"
+
+    def test_fallback_acao(self):
+        resultado = classificar_exibicao(
+            discriminador=None, fallback=classificar_ticker("PETR4")
+        )
+        assert resultado.tipo == "Papel"
+        assert resultado.sub_tipo == "Preferencial"
+
+    def test_sem_fallback_e_desconhecido(self):
+        resultado = classificar_exibicao(discriminador=None)
+        assert resultado.tipo == "Desconhecido"
+        assert resultado.sub_tipo is None
+
 
 class TestMontarLinhas:
     def test_linha_de_fii_elegivel_preenche_ffo(self):
@@ -126,7 +210,7 @@ class TestMontarLinhas:
         assert colunas[3] == "Tijolo"
         assert colunas[4] == "10/07/2026"
         assert colunas[5] == "0,55"
-        assert colunas[6] == "SUBINDO"
+        assert colunas[6] == "Crescimento"
         assert colunas[7] == "8,16%"
         assert colunas[8] == "7,9%"
         assert colunas[9] == "12,25x"
@@ -136,7 +220,7 @@ class TestMontarLinhas:
     def test_linha_de_acao_fica_na_nas_colunas_ffo_e_dividendo(self):
         linhas = montar_linhas({"PETR4": _analise_acao()})
         colunas = linhas[0]
-        assert colunas[2] == "Ação"
+        assert colunas[2] == "Papel"
         assert colunas[3] == "Preferencial"
         assert colunas[4] == NA
         assert colunas[5] == NA
@@ -153,7 +237,7 @@ class TestMontarLinhas:
         linhas = montar_linhas({"VALE3": {"daily_data": []}})
         colunas = linhas[0]
         assert colunas[0] == "VALE3"
-        assert colunas[2] == "Ação"
+        assert colunas[2] == "Papel"
         assert colunas[3] == "Ordinária"
         assert all(coluna == NA for coluna in colunas[4:])
 
@@ -163,7 +247,9 @@ class TestMontarCsv:
         csv = montar_csv({"HGBS11": _analise_hgbs11()})
         assert csv.split("\n")[0] == (
             "Ticker;Nome;Tipo;Sub-tipo;Última data-com;Último dividendo;"
-            "Tendência do dividendo;FFO Yield;Dividend Yield;P/FFO;P/VP;FFO Trend"
+            "Tendência do dividendo;FFO Yield;Dividend Yield;P/FFO;P/VP;FFO Trend;"
+            "Nº de cotistas;Classe de cotistas;Patrimônio;Classe de patrimônio;"
+            "Data de referência"
         )
 
     def test_linhas_preservam_ordem_e_valores_formatados(self):
@@ -172,9 +258,9 @@ class TestMontarCsv:
         )
         linhas = csv.split("\n")
         assert linhas[1].startswith(
-            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;SUBINDO;8,16%"
+            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;Crescimento;8,16%"
         )
-        assert linhas[2].startswith("PETR4;Petrobras PN;Ação;Preferencial;")
+        assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
 
     def test_vazio_retorna_apenas_cabecalho(self):
         csv = montar_csv({})
@@ -215,6 +301,38 @@ class TestFundamentalTablePanel:
             painel.update({"HGBS11": _analise_hgbs11()})
             painel.reset()
             assert len(painel._tree.get_children()) == 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_painel_aplica_larguras_iniciais(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root, widths={"ticker": 200})
+            assert painel.get_column_widths()["ticker"] == 200
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_painel_usa_largura_padrao_sem_preferencia(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            assert painel.get_column_widths()["ticker"] == 140
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_painel_notifica_mudanca_de_largura(self):
+        root = tk.Tk()
+        try:
+            registradas = []
+            painel = FundamentalTablePanel(
+                root, on_widths_changed=registradas.append
+            )
+            painel._tree.column("ticker", width=222)
+            painel._on_column_resized()
+            assert registradas and registradas[-1]["ticker"] == 222
         finally:
             root.destroy()
 
@@ -291,8 +409,11 @@ class TestIntegracaoWatchlist:
         por_ticker = {linha[0]: linha for linha in linhas}
 
         petr = por_ticker["PETR4"]
-        assert petr[2] == "Ação"
-        assert petr[4:] == (NA, NA, "N/A", NA, NA, NA, NA, NA)
+        assert petr[2] == "Papel"
+        assert petr[4] == NA
+        assert petr[5] == NA
+        assert petr[6] == "N/A"
+        assert all(coluna == NA for coluna in petr[7:])
 
         hcri = por_ticker["HCRI11"]
         assert hcri[2] == "FII"
@@ -304,11 +425,15 @@ class TestIntegracaoWatchlist:
         assert hgbs[2] == "FII"
         assert hgbs[3] == "Tijolo"
         assert hgbs[5] == "0,55"
-        assert hgbs[6] == "SUBINDO"
+        assert hgbs[6] == "Crescimento"
         assert hgbs[7] == "8,16%"
         assert hgbs[9] == "12,25x"
         assert hgbs[10] == "0,92x"
         assert hgbs[11] == "ALTA"
+        assert hgbs[12] == "100.000"
+        assert hgbs[13] == "Muito grande"
+        assert hgbs[14] == "R$ 2,94 bi"
+        assert hgbs[15] == "Gigante"
 
 
 class TestWiringSubAba:

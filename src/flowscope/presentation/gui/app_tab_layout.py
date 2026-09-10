@@ -40,8 +40,17 @@ class TabsLayoutMixin:
 
         general_fundamental_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_fundamental_frame, text="Fundamentos")
-        self._fundamental_table = FundamentalTablePanel(general_fundamental_frame)
+        self._fundamental_table = FundamentalTablePanel(
+            general_fundamental_frame,
+            widths=getattr(self, "_prefs", {}).get("fundamental_column_widths"),
+            on_widths_changed=self._on_fundamental_widths_changed,
+        )
         self._fundamental_table.frame.pack(fill=tk.BOTH, expand=True)
+
+    def _on_fundamental_widths_changed(self: "TabsLayoutMixin", widths: dict) -> None:
+        """Guarda as larguras das colunas para persistir no fechamento."""
+        if hasattr(self, "_prefs"):
+            self._prefs["fundamental_column_widths"] = widths
 
     def _build_ticker_tabs(self: "TabsLayoutMixin") -> None:
         ticker_main_frame = ttk.Frame(self._main_notebook)

@@ -11,19 +11,34 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from flowscope.application.fundamental_ports import (
+    CAMPO_DATA_REFERENCIA,
+    CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDEND_YIELD,
+    CAMPO_DIVIDENDO_POR_COTA,
+    CAMPO_ESPECIE,
     CAMPO_FFO_TREND,
     CAMPO_FFO_YIELD,
+    CAMPO_GESTAO,
     CAMPO_NOME,
     CAMPO_P_FFO,
     CAMPO_P_VP,
+    CAMPO_PATRIMONIO,
+    CAMPO_QTD_IMOVEIS,
+    CAMPO_SEGMENTO,
+    CAMPO_SETOR,
+    CAMPO_SUBSETOR,
     CampoFundamental,
+    DividendHistoryProvider,
     FfoProvider,
     FiiFundamentalRepository,
     FundamentalDataProvider,
     MarketPricePort,
+    OrigemDados,
 )
 from flowscope.domain.fii import (
+    ClassificacaoAtivo,
+    ClassificacaoExibicao,
+    DividendoConsolidado,
     FfoObservacao,
     Inconsistencia,
     MetricasFii,
@@ -34,10 +49,15 @@ from flowscope.domain.fii import (
     TendenciaDividendo,
     UltimoDividendo,
     analisar_snapshot,
-    calcular_ultimo_dividendo,
+    calcular_ultimo_dividendo_consolidado,
+    classificar_cotistas,
+    classificar_exibicao,
+    classificar_patrimonio,
     classificar_tendencia_ffo,
     classificar_ticker,
+    consolidar_dividendos,
     dividendos_12m,
+    dividendos_de_proventos,
     normalizar_ticker,
 )
 from flowscope.domain.fii.analysis import AnaliseFundamental
@@ -66,6 +86,7 @@ class FundamentalAnalysisUseCase:
         mercado: MarketPricePort | None = None,
         taxonomia_fii: TaxonomiaFii | None = None,
         fundamental_provider: FundamentalDataProvider | None = None,
+        historico_dividendos: DividendHistoryProvider | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -73,7 +94,9 @@ class FundamentalAnalysisUseCase:
         self._mercado = mercado
         self._taxonomia = taxonomia_fii
         self._fundamental_provider = fundamental_provider
+        self._historico_dividendos = historico_dividendos
         self.houve_atualizacao = False
+        self.houve_falha_recuperavel = False
 
     def execute(
         self: "FundamentalAnalysisUseCase",
@@ -84,17 +107,21 @@ class FundamentalAnalysisUseCase:
         """Analisa cada ticker de forma isolada e retorna uma linha por ativo."""
         referencia = reference_date or datetime.now(timezone.utc).date()
         self.houve_atualizacao = False
+        self.houve_falha_recuperavel = False
         resultados: list[AnaliseFundamental] = []
         total = len(tickers)
         for indice, ticker in enumerate(tickers, start=1):
             normalizado = normalizar_ticker(ticker)
-            if progress_callback is not None:
-                progress_callback(
-                    f"Fundamentos: {normalizado} ({indice}/{total})", False
-                )
             try:
-                resultados.append(self._analisar_ticker(normalizado, referencia))
+                resultado, de_cache = self._analisar_ticker(normalizado, referencia)
+                if progress_callback is not None:
+                    detalhe = f"Fundamentos: {normalizado} ({indice}/{total})"
+                    if de_cache:
+                        detalhe += " - cached"
+                    progress_callback(detalhe, False)
+                resultados.append(resultado)
             except Exception as exc:
+                self.houve_falha_recuperavel = True
                 logger.warning("Falha ao analisar %s: %s", normalizado, exc)
                 if progress_callback is not None:
                     progress_callback(f"Falha em {normalizado}", True)
@@ -118,32 +145,38 @@ class FundamentalAnalysisUseCase:
         self: "FundamentalAnalysisUseCase",
         ticker: str,
         reference_date: date,
-    ) -> AnaliseFundamental:
-        """Analisa um único ticker da identidade às métricas FFO."""
+    ) -> tuple[AnaliseFundamental, bool]:
+        """Analisa um único ticker da identidade às métricas FFO.
+
+        Retorna a análise e se os dados vieram do cache.
+        """
         classificacao = classificar_ticker(
             ticker, taxonomia_fii=self._taxonomia
         )
-        dados = self._obter_dados(ticker, reference_date)
+        dados, de_cache = self._obter_dados(ticker, reference_date)
         nome = _texto(dados, CAMPO_NOME) or self._repository.obter_nome(ticker)
         proventos = self._repository.obter_proventos(ticker, reference_date)
-        ultimo_dividendo = calcular_ultimo_dividendo(proventos, reference_date)
+        ultimo_dividendo = self._ultimo_dividendo(
+            dados, ticker, reference_date, proventos
+        )
         total_por_cota = (
             dividendos_12m(proventos, reference_date) if proventos else None
         )
-        elegivel = classificacao.elegivel_ffo()
-        metricas = _metricas_dos_dados(dados) if elegivel else None
+        patrimonio_repo = self._repository.obter_patrimonio(ticker, reference_date)
+        patrimonio = _decimal_campo(dados, CAMPO_PATRIMONIO)
+        if patrimonio is None and patrimonio_repo is not None:
+            patrimonio = patrimonio_repo.net_asset_value
+        cotistas = patrimonio_repo.cotistas if patrimonio_repo is not None else None
+        metricas = _metricas_dos_dados(dados)
         if metricas is None:
             metricas = self._analisar_ffo(
-                ticker,
-                reference_date,
-                elegivel,
-                total_por_cota,
+                ticker, reference_date, total_por_cota, patrimonio_repo
             )
-        if metricas is None and elegivel:
+        if metricas is None:
             metricas = self._metricas_parciais(
-                ticker, reference_date, total_por_cota
+                ticker, reference_date, total_por_cota, patrimonio_repo
             )
-        avisos = _avisos_ffo_ausente(metricas, elegivel)
+        avisos = _avisos_ffo_ausente(metricas)
         return AnaliseFundamental(
             ticker=ticker,
             nome=nome,
@@ -151,38 +184,96 @@ class FundamentalAnalysisUseCase:
             ultimo_dividendo=ultimo_dividendo,
             dividendos_12m_por_cota=total_por_cota,
             metricas=metricas,
+            classificacao_exibicao=_classificacao_exibicao(dados, classificacao),
+            cotistas=cotistas,
+            patrimonio=patrimonio,
+            classe_cotistas=(
+                classificar_cotistas(cotistas) if cotistas is not None else None
+            ),
+            classe_patrimonio=(
+                classificar_patrimonio(patrimonio)
+                if patrimonio is not None
+                else None
+            ),
+            data_referencia=_data_campo(dados, CAMPO_DATA_REFERENCIA),
             avisos=avisos,
-        )
+        ), de_cache
 
     def _obter_dados(
         self: "FundamentalAnalysisUseCase", ticker: str, reference_date: date
-    ) -> dict[str, CampoFundamental]:
-        """Obtém os campos fundamentalistas compostos, tolerando falhas."""
+    ) -> tuple[dict[str, CampoFundamental], bool]:
+        """Obtém os campos fundamentalistas compostos, tolerando falhas.
+
+        Retorna os campos e se a origem foi o cache.
+        """
         if self._fundamental_provider is None:
-            return {}
+            return {}, False
         obter_com_resultado = getattr(
             self._fundamental_provider, "obter_com_resultado", None
         )
         try:
             if callable(obter_com_resultado):
-                campos, atualizou = obter_com_resultado(ticker, reference_date)
-                if atualizou:
+                campos, origem = obter_com_resultado(ticker, reference_date)
+                if origem is OrigemDados.REDE:
                     self.houve_atualizacao = True
-                return campos
-            return self._fundamental_provider.obter(ticker, reference_date)
+                return campos, origem is OrigemDados.CACHE
+            return self._fundamental_provider.obter(ticker, reference_date), False
         except Exception:  # aquisição tolerante por ticker
             logger.warning(
                 "Falha ao obter dados fundamentalistas de %s",
                 ticker,
                 exc_info=True,
             )
-            return {}
+            return {}, False
+
+    def _ultimo_dividendo(
+        self: "FundamentalAnalysisUseCase",
+        dados: dict[str, CampoFundamental],
+        ticker: str,
+        reference_date: date,
+        proventos: list,
+    ) -> UltimoDividendo:
+        """Consolida B3, CVM e Fundamentus e calcula o último dividendo."""
+        b3 = dividendos_de_proventos(proventos, "B3")
+        consolidados = consolidar_dividendos(
+            b3, self._dividendos_secundarios(ticker, reference_date)
+        )
+        if not consolidados:
+            valor = _decimal_campo(dados, CAMPO_DIVIDENDO_POR_COTA)
+            if valor is not None:
+                consolidados = [
+                    DividendoConsolidado(
+                        data_base=None, valor=valor, fonte="FUNDAMENTUS"
+                    )
+                ]
+        return calcular_ultimo_dividendo_consolidado(consolidados, reference_date)
+
+    def _dividendos_secundarios(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+    ) -> list[DividendoConsolidado]:
+        """Obtém o histórico secundário (ex.: CVM), tolerando indisponibilidade."""
+        if self._historico_dividendos is None:
+            return []
+        try:
+            return list(
+                self._historico_dividendos.obter_dividendos(ticker, reference_date)
+            )
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter histórico de dividendos de %s",
+                ticker,
+                exc_info=True,
+            )
+            return []
 
     def _metricas_parciais(
         self: "FundamentalAnalysisUseCase",
         ticker: str,
         reference_date: date,
         dividendos_12m_por_cota: Decimal | None,
+        patrimonio: PatrimonioFii | None = None,
     ) -> MetricasFii | None:
         """Calcula Dividend Yield e P/VP sem exigir dados de FFO."""
         if self._mercado is None:
@@ -195,7 +286,8 @@ class FundamentalAnalysisUseCase:
             if dividendos_12m_por_cota is not None
             else None
         )
-        patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
+        if patrimonio is None:
+            patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
         market_value: Decimal | None = None
         p_vp: Decimal | None = None
         if patrimonio is not None and patrimonio.net_asset_value > 0:
@@ -222,15 +314,14 @@ class FundamentalAnalysisUseCase:
         self: "FundamentalAnalysisUseCase",
         ticker: str,
         reference_date: date,
-        elegivel: bool,
         dividendos_12m_por_cota: Decimal | None,
+        patrimonio: PatrimonioFii | None = None,
     ) -> MetricasFii | None:
-        """Calcula as métricas FFO apenas para FIIs elegíveis com dados."""
-        if not elegivel:
-            return None
+        """Calcula as métricas FFO quando a fonte fornecer os dados."""
         if self._ffo_provider is None or self._mercado is None:
             return None
-        patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
+        if patrimonio is None:
+            patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
         ffo = self._ffo_provider.obter_ffo(ticker, reference_date)
         preco = self._mercado.preco_fechamento(ticker, reference_date)
         if (
@@ -257,9 +348,9 @@ class FundamentalAnalysisUseCase:
         return analisar_snapshot(snapshot, fontes=fontes)
 
 
-def _avisos_ffo_ausente(metricas: MetricasFii | None, elegivel: bool) -> tuple[str, ...]:
-    """Retorna os avisos quando métricas FFO esperadas não foram calculadas."""
-    if elegivel and metricas is None:
+def _avisos_ffo_ausente(metricas: MetricasFii | None) -> tuple[str, ...]:
+    """Retorna os avisos quando as métricas FFO esperadas não foram calculadas."""
+    if metricas is None:
         return (Inconsistencia.FFO_NOT_AVAILABLE.value,)
     return ()
 
@@ -296,6 +387,55 @@ def _decimal_campo(
         return Decimal(str(campo.valor))
     except (InvalidOperation, ValueError):
         return None
+
+
+def _int_campo(
+    dados: dict[str, CampoFundamental], chave: str
+) -> int | None:
+    """Retorna o valor inteiro de um campo composto, ou ``None``."""
+    campo = dados.get(chave)
+    if campo is None or campo.valor is None:
+        return None
+    try:
+        return int(campo.valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _data_campo(
+    dados: dict[str, CampoFundamental], chave: str
+) -> date | None:
+    """Retorna o valor de data de um campo composto, ou ``None``."""
+    campo = dados.get(chave)
+    if campo is None:
+        return None
+    valor = campo.valor
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if isinstance(valor, str):
+        try:
+            return date.fromisoformat(valor)
+        except ValueError:
+            return None
+    return None
+
+
+def _classificacao_exibicao(
+    dados: dict[str, CampoFundamental], fallback: ClassificacaoAtivo | None
+) -> ClassificacaoExibicao:
+    """Compõe Tipo/Sub-tipo a partir dos campos do Fundamentus, com fallback."""
+    return classificar_exibicao(
+        discriminador=_texto(dados, CAMPO_DISCRIMINADOR),
+        especie=_texto(dados, CAMPO_ESPECIE),
+        setor=_texto(dados, CAMPO_SETOR),
+        subsetor=_texto(dados, CAMPO_SUBSETOR),
+        segmento=_texto(dados, CAMPO_SEGMENTO),
+        gestao=_texto(dados, CAMPO_GESTAO),
+        qtd_imoveis=_int_campo(dados, CAMPO_QTD_IMOVEIS),
+        fallback=fallback,
+    )
 
 
 def _metricas_dos_dados(

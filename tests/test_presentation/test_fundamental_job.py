@@ -82,10 +82,42 @@ class TestGenerationToken:
         controller._drenar_fundamental(job)
         presenter.on_fundamental_result.assert_called_once()
 
-    def test_resultado_atualizado_propaga_flag(self):
+    def test_resultado_propaga_flag_de_falha(self):
         controller, presenter = self._controller(generation=1)
         job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
         job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}, True))
         controller._fundamental_job = job
         controller._drenar_fundamental(job)
         assert presenter.on_fundamental_result.call_args[0][1] is True
+
+    def test_drenar_encerra_cursor_no_resultado(self):
+        controller, presenter = self._controller(generation=1)
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}))
+        controller._fundamental_job = job
+        controller._drenar_fundamental(job)
+        presenter.on_fundamental_finished.assert_called_once()
+
+    def test_drenar_erro_notifica_presenter_e_encerra_cursor(self):
+        controller, presenter = self._controller(generation=1)
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put(("erro", "boom"))
+        controller._fundamental_job = job
+        controller._drenar_fundamental(job)
+        presenter.on_fundamental_error.assert_called_once()
+        presenter.on_fundamental_finished.assert_called_once()
+
+
+class TestJobFalhaRecuperavel:
+    def test_job_publica_falha_recuperavel(self):
+        class _CasoComFalha(_CasoFake):
+            houve_falha_recuperavel = True
+
+        job = FundamentalJob(_CasoComFalha(), ["HGBS11"], REFERENCIA, 1)
+        thread = job.iniciar()
+        thread.join(timeout=2)
+        mensagens = []
+        while not job.fila.empty():
+            mensagens.append(job.fila.get_nowait())
+        resultado = [m for m in mensagens if m[0] == MENSAGEM_RESULTADO][0]
+        assert resultado[2] is True

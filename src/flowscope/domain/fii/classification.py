@@ -12,6 +12,11 @@ from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
 
+from flowscope.domain.fii.fundamentus import (
+    DISCRIMINADOR_FII,
+    DISCRIMINADOR_PAPEL,
+)
+
 _PADRAO_TICKER = re.compile(r"^([A-Z]+)(\d+)$")
 
 #: Sufixos de dois dígitos reservados a BDRs (níveis I/II/III e programas 2x/3x).
@@ -274,3 +279,85 @@ def _classificar_sufixo_onze(
 def elegivel_ffo(classificacao: ClassificacaoAtivo) -> bool:
     """Indica se a classificação torna o ativo elegível para métricas FFO."""
     return classificacao.elegivel_ffo()
+
+
+#: Rótulos de exibição do tipo de ativo na tabela de Fundamentos.
+TIPO_EXIBICAO_PAPEL = "Papel"
+TIPO_EXIBICAO_FII = "FII"
+TIPO_EXIBICAO_DESCONHECIDO = "Desconhecido"
+
+_LABEL_SUB_TIPO_FII: Mapping[SubTipoFii, str | None] = {
+    SubTipoFii.TIJOLO: "Tijolo",
+    SubTipoFii.PAPEL: "Papel",
+    SubTipoFii.HIBRIDO: "Híbrido",
+    SubTipoFii.FIAGRO: "Fiagro",
+    SubTipoFii.FIINFRA: "Fiinfra",
+    SubTipoFii.DESCONHECIDO: None,
+}
+
+_LABEL_SUB_TIPO_ACAO: Mapping[SubTipoAcao, str] = {
+    SubTipoAcao.ORDINARIA: "Ordinária",
+    SubTipoAcao.PREFERENCIAL: "Preferencial",
+    SubTipoAcao.ETF: "ETF",
+}
+
+
+@dataclass(frozen=True)
+class ClassificacaoExibicao:
+    """Rótulos de Tipo e Sub-tipo exibidos na tabela de Fundamentos."""
+
+    tipo: str
+    sub_tipo: str | None = None
+
+
+def _juntar(*partes: str | None) -> str:
+    """Concatena partes não vazias separadas por ``"; "``."""
+    return "; ".join(parte.strip() for parte in partes if parte and parte.strip())
+
+
+def classificar_exibicao(
+    *,
+    discriminador: str | None,
+    especie: str | None = None,
+    setor: str | None = None,
+    subsetor: str | None = None,
+    segmento: str | None = None,
+    gestao: str | None = None,
+    qtd_imoveis: int | None = None,
+    fallback: ClassificacaoAtivo | None = None,
+) -> ClassificacaoExibicao:
+    """Compõe o Tipo e o Sub-tipo a partir dos campos do Fundamentus.
+
+    Quando o discriminador está ausente, usa a classificação determinística
+    informada em ``fallback`` (sintaxe/codeCVM/taxonomia).
+    """
+    if discriminador == DISCRIMINADOR_FII:
+        prefixo = "Tijolo: " if (qtd_imoveis or 0) > 0 else "Papel: "
+        base = _juntar(segmento, gestao)
+        return ClassificacaoExibicao(
+            TIPO_EXIBICAO_FII, f"{prefixo}{base}" if base else prefixo.strip()
+        )
+    if discriminador == DISCRIMINADOR_PAPEL:
+        base = _juntar(especie, setor, subsetor)
+        return ClassificacaoExibicao(TIPO_EXIBICAO_PAPEL, base or None)
+    return _exibicao_do_fallback(fallback)
+
+
+def _exibicao_do_fallback(
+    fallback: ClassificacaoAtivo | None,
+) -> ClassificacaoExibicao:
+    """Traduz a classificação determinística para os rótulos de exibição."""
+    if fallback is None or fallback.tipo is TipoAtivo.DESCONHECIDO:
+        return ClassificacaoExibicao(TIPO_EXIBICAO_DESCONHECIDO)
+    if fallback.tipo is TipoAtivo.FII:
+        return ClassificacaoExibicao(
+            TIPO_EXIBICAO_FII, _LABEL_SUB_TIPO_FII.get(fallback.sub_tipo)
+        )
+    sub_tipo = (
+        fallback.sub_tipo
+        if isinstance(fallback.sub_tipo, SubTipoAcao)
+        else None
+    )
+    return ClassificacaoExibicao(
+        TIPO_EXIBICAO_PAPEL, _LABEL_SUB_TIPO_ACAO.get(sub_tipo)
+    )

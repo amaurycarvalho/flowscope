@@ -9,7 +9,14 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
-from flowscope.domain.fii.classification import ClassificacaoAtivo
+from flowscope.domain.fii.classification import (
+    ClassificacaoAtivo,
+    ClassificacaoExibicao,
+)
+from flowscope.domain.fii.classification_faixas import (
+    ClasseCotistas,
+    ClassePatrimonio,
+)
 from flowscope.domain.fii.dividends import UltimoDividendo
 from flowscope.domain.fii.metrics import MetricasFii
 
@@ -54,5 +61,11 @@ class AnaliseFundamental:
     ultimo_dividendo: UltimoDividendo
     dividendos_12m_por_cota: Decimal | None
     metricas: MetricasFii | None
+    classificacao_exibicao: ClassificacaoExibicao | None = None
+    cotistas: int | None = None
+    patrimonio: Decimal | None = None
+    classe_cotistas: ClasseCotistas | None = None
+    classe_patrimonio: ClassePatrimonio | None = None
+    data_referencia: date | None = None
     avisos: tuple[str, ...] = ()
     erro: str | None = None

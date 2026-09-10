@@ -84,6 +84,7 @@ class FlowScopeController:
             caso, tickers, ref_date, self._fundamental_generation
         )
         self._fundamental_job = job
+        self._presenter.on_fundamental_started()
         job.iniciar()
         self._drenar_fundamental(job)
 
@@ -103,16 +104,21 @@ class FlowScopeController:
                     self._presenter.on_fundamental_progress(mensagem[1])
                 elif tipo == MENSAGEM_RESULTADO:
                     if job.generation == self._fundamental_generation:
-                        atualizou = mensagem[2] if len(mensagem) > 2 else False
-                        self._presenter.on_fundamental_result(mensagem[1], atualizou)
+                        houve_falha = mensagem[2] if len(mensagem) > 2 else False
+                        self._presenter.on_fundamental_result(
+                            mensagem[1], houve_falha
+                        )
                     terminou = True
                 elif tipo == MENSAGEM_ERRO:
+                    if job.generation == self._fundamental_generation:
+                        self._presenter.on_fundamental_error()
                     terminou = True
         except queue.Empty:
             pass
         if terminou:
             if job is self._fundamental_job:
                 self._fundamental_job = None
+            self._presenter.on_fundamental_finished()
             return
         self._presenter.agendar(100, lambda: self._drenar_fundamental(job))
 

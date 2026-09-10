@@ -9,9 +9,11 @@ fechamento de dados de mercado já existentes.
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
+from enum import Enum
 from typing import Protocol, runtime_checkable
 
 from flowscope.domain.fii.analysis import FfoObservacao, PatrimonioFii, PrecoObservacao
+from flowscope.domain.fii.dividends import DividendoConsolidado
 from flowscope.domain.structured import Provento
 
 #: Chaves dos campos normalizados da composição de fontes fundamentalistas.
@@ -25,6 +27,15 @@ CAMPO_FFO_TREND = "ffo_trend"
 CAMPO_FFO_12M = "ffo_12m"
 CAMPO_FFO_3M = "ffo_3m"
 CAMPO_DIVIDENDO_POR_COTA = "dividendo_por_cota"
+CAMPO_DISCRIMINADOR = "discriminador"
+CAMPO_ESPECIE = "especie"
+CAMPO_SETOR = "setor"
+CAMPO_SUBSETOR = "subsetor"
+CAMPO_SEGMENTO = "segmento"
+CAMPO_GESTAO = "gestao"
+CAMPO_QTD_IMOVEIS = "qtd_imoveis"
+CAMPO_PATRIMONIO = "patrimonio"
+CAMPO_DATA_REFERENCIA = "data_referencia"
 
 #: Conjunto canônico de campos que a composição de fontes tenta resolver.
 CAMPOS_FUNDAMENTAIS = frozenset(
@@ -39,6 +50,15 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_FFO_12M,
         CAMPO_FFO_3M,
         CAMPO_DIVIDENDO_POR_COTA,
+        CAMPO_DISCRIMINADOR,
+        CAMPO_ESPECIE,
+        CAMPO_SETOR,
+        CAMPO_SUBSETOR,
+        CAMPO_SEGMENTO,
+        CAMPO_GESTAO,
+        CAMPO_QTD_IMOVEIS,
+        CAMPO_PATRIMONIO,
+        CAMPO_DATA_REFERENCIA,
     }
 )
 
@@ -47,8 +67,15 @@ CAMPOS_FUNDAMENTAIS = frozenset(
 class CampoFundamental:
     """Valor de um campo fundamentalista e a fonte que o forneceu."""
 
-    valor: Decimal | int | str | None
+    valor: Decimal | int | str | date | None
     fonte: str | None = None
+
+
+class OrigemDados(Enum):
+    """Origem do dado fundamentalista devolvido por uma fonte."""
+
+    CACHE = "cache"
+    REDE = "rede"
 
 
 @runtime_checkable
@@ -80,6 +107,21 @@ class FiiFundamentalRepository(Protocol):
         self: "FiiFundamentalRepository", ticker: str, reference_date: date
     ) -> PatrimonioFii | None:
         """Retorna patrimônio, cotas e cotistas, ou ``None`` quando indisponível."""
+        ...
+
+
+@runtime_checkable
+class DividendHistoryProvider(Protocol):
+    """Contrato de um histórico de dividendos com origem por entrada.
+
+    Complementa a fonte primária (B3) com dados de outras origens (ex.: CVM),
+    preservando em ``DividendoConsolidado.fonte`` a procedência de cada valor.
+    """
+
+    def obter_dividendos(
+        self: "DividendHistoryProvider", ticker: str, reference_date: date
+    ) -> list[DividendoConsolidado]:
+        """Retorna os dividendos do ticker até a data de referência."""
         ...
 
 

@@ -9,16 +9,26 @@ from decimal import Decimal
 
 from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
+    CAMPO_DATA_REFERENCIA,
+    CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDEND_YIELD,
     CAMPO_DIVIDENDO_POR_COTA,
+    CAMPO_ESPECIE,
     CAMPO_FFO_3M,
     CAMPO_FFO_12M,
     CAMPO_FFO_TREND,
     CAMPO_FFO_YIELD,
+    CAMPO_GESTAO,
     CAMPO_NOME,
     CAMPO_P_FFO,
     CAMPO_P_VP,
+    CAMPO_PATRIMONIO,
+    CAMPO_QTD_IMOVEIS,
+    CAMPO_SEGMENTO,
+    CAMPO_SETOR,
+    CAMPO_SUBSETOR,
     CampoFundamental,
+    OrigemDados,
 )
 from flowscope.domain.fii.fundamentus import AtivoFundamental
 from flowscope.infrastructure.conditional_cache import CacheOutcome
@@ -31,6 +41,9 @@ _INDICADOR_FFO_COTA = "FFO/Cota"
 _INDICADOR_DIVIDENDO_COTA = "Dividendo/cota"
 _INDICADOR_P_VP = "P/VP"
 _DEMONSTRATIVO_FFO = "FFO"
+_BALANCO_PATRIMONIO_LIQ = "Patrim. Líq"
+_BALANCO_PATRIMONIO_LIQUIDO = "Patrim Líquido"
+_IMOVEL_QTD = "qtd_imoveis"
 _CEM = Decimal(100)
 _QUATRO = Decimal(4)
 
@@ -58,15 +71,19 @@ class FundamentusFundamentalDataProvider:
         self: "FundamentusFundamentalDataProvider",
         ticker: str,
         reference_date: date,
-    ) -> tuple[dict[str, CampoFundamental], bool]:
-        """Obtém os campos e indica se o snapshot foi atualizado na fonte."""
+    ) -> tuple[dict[str, CampoFundamental], OrigemDados]:
+        """Obtém os campos e a origem (cache ou rede) do snapshot."""
         get_with_outcome = getattr(self._provider, "get_with_outcome", None)
         if callable(get_with_outcome):
             ativo, outcome = get_with_outcome(ticker)
-            atualizou = outcome in (CacheOutcome.UPDATED, CacheOutcome.MISS)
-            return campos_do_ativo(ativo), atualizou
+            origem = (
+                OrigemDados.CACHE
+                if outcome in (CacheOutcome.HIT, CacheOutcome.REVALIDATED)
+                else OrigemDados.REDE
+            )
+            return campos_do_ativo(ativo), origem
         ativo = self._provider.get(ticker)
-        return campos_do_ativo(ativo), False
+        return campos_do_ativo(ativo), OrigemDados.REDE
 
 
 def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
@@ -76,6 +93,8 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
         campos[CAMPO_NOME] = CampoFundamental(ativo.nome, FONTE_FUNDAMENTUS)
     if ativo.cotacao is not None:
         campos[CAMPO_COTACAO] = CampoFundamental(ativo.cotacao, FONTE_FUNDAMENTUS)
+
+    campos.update(_campos_classificacao(ativo))
 
     indicadores = ativo.indicadores
     dividend_yield = _percentual(indicadores.get(_INDICADOR_DIV_YIELD))
@@ -107,7 +126,47 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     trend = _ffo_trend(ffo_12m, ffo_3m)
     if trend is not None:
         campos[CAMPO_FFO_TREND] = CampoFundamental(trend, FONTE_FUNDAMENTUS)
+    _adicionar_patrimonio(ativo, campos)
+    qtd_imoveis = ativo.imoveis.get(_IMOVEL_QTD)
+    if qtd_imoveis is not None:
+        campos[CAMPO_QTD_IMOVEIS] = CampoFundamental(qtd_imoveis, FONTE_FUNDAMENTUS)
+    if ativo.data_ultima_cotacao is not None:
+        campos[CAMPO_DATA_REFERENCIA] = CampoFundamental(
+            ativo.data_ultima_cotacao, FONTE_FUNDAMENTUS
+        )
     return campos
+
+
+def _campos_classificacao(
+    ativo: AtivoFundamental,
+) -> dict[str, CampoFundamental]:
+    """Mapeia discriminador e rótulos de classificação do ativo."""
+    campos: dict[str, CampoFundamental] = {}
+    if ativo.discriminador:
+        campos[CAMPO_DISCRIMINADOR] = CampoFundamental(
+            ativo.discriminador, FONTE_FUNDAMENTUS
+        )
+    for chave, valor in (
+        (CAMPO_ESPECIE, ativo.especie),
+        (CAMPO_SETOR, ativo.setor),
+        (CAMPO_SUBSETOR, ativo.subsetor),
+        (CAMPO_SEGMENTO, ativo.segmento),
+        (CAMPO_GESTAO, ativo.gestao),
+    ):
+        if valor:
+            campos[chave] = CampoFundamental(valor, FONTE_FUNDAMENTUS)
+    return campos
+
+
+def _adicionar_patrimonio(
+    ativo: AtivoFundamental, campos: dict[str, CampoFundamental]
+) -> None:
+    """Adiciona o patrimônio líquido reportado no balanço, quando presente."""
+    patrimonio = ativo.balanco.get(_BALANCO_PATRIMONIO_LIQ)
+    if patrimonio is None:
+        patrimonio = ativo.balanco.get(_BALANCO_PATRIMONIO_LIQUIDO)
+    if patrimonio is not None:
+        campos[CAMPO_PATRIMONIO] = CampoFundamental(patrimonio, FONTE_FUNDAMENTUS)
 
 
 def _percentual(valor: Decimal | None) -> Decimal | None:

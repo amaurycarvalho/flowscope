@@ -58,22 +58,42 @@ class TestFlowScopePresenter:
         assert "dados inválidos" in args[0]
         assert args[1] == "⚠"
 
-    def test_on_fundamental_result_atualizado_exibe_status(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        presenter.on_fundamental_result({"X": 1}, atualizou=True)
-        view.set_fundamental_data.assert_called_once_with({"X": 1})
-        view.set_status.assert_called_once()
-        args = view.set_status.call_args[0]
-        assert args[0] == "Dados atualizados"
-        assert args[1] == "✓"
-
-    def test_on_fundamental_result_sem_atualizacao_nao_exibe_status(self):
+    def test_on_fundamental_result_sem_falha_exibe_sucesso(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
         presenter.on_fundamental_result({"X": 1})
         view.set_fundamental_data.assert_called_once_with({"X": 1})
-        view.set_status.assert_not_called()
+        view.set_status.assert_called_once()
+        args = view.set_status.call_args[0]
+        assert args[0] == "Dados atualizados com sucesso."
+        assert args[1] == "✓"
+
+    def test_on_fundamental_result_com_falha_exibe_mitigacao(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_result({"X": 1}, houve_falha=True)
+        args = view.set_status.call_args[0]
+        assert args[0] == "Dados atualizados com mitigação de falhas."
+        assert args[1] == "⚠"
+
+    def test_on_fundamental_error_exibe_falha(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_error()
+        args = view.set_status.call_args[0]
+        assert args[0] == "Falha ao atualizar dados"
+        assert args[1] == "⚠"
+
+    def test_cursor_permanece_ate_analise_fundamental_terminar(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        view.set_wait_cursor.assert_called()
+        presenter.on_operation_finished()
+        view.clear_wait_cursor.assert_not_called()
+        presenter.on_fundamental_finished()
+        view.clear_wait_cursor.assert_called_once()
 
     def test_on_technical_error_mostra_mensagem_do_log(self):
         view = MagicMock()

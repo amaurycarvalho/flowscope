@@ -4,7 +4,13 @@ from decimal import Decimal
 import pytest
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
+from flowscope.application.fundamental_ports import (
+    CAMPO_DIVIDENDO_POR_COTA,
+    CampoFundamental,
+    OrigemDados,
+)
 from flowscope.domain.fii import (
+    DividendoConsolidado,
     FfoObservacao,
     PatrimonioFii,
     PrecoObservacao,
@@ -59,6 +65,22 @@ class FakeFfoProvider:
 
     def obter_ffo(self, ticker: str, reference_date: date):
         return self.ffo_por_ticker.get(ticker)
+
+
+class FakeDividendHistory:
+    def __init__(self, dividendos_por_ticker=None):
+        self.dividendos_por_ticker = dividendos_por_ticker or {}
+
+    def obter_dividendos(self, ticker: str, reference_date: date):
+        return self.dividendos_por_ticker.get(ticker, [])
+
+
+class FakeFundamentusFonte:
+    def __init__(self, campos):
+        self.campos = campos
+
+    def obter(self, ticker: str, reference_date: date):
+        return self.campos
 
 
 class FakeMarket:
@@ -197,21 +219,21 @@ class TestFundamentalAnalysisUseCase:
 
 
 class _ProviderComResultado:
-    def __init__(self, atualizou: bool) -> None:
-        self._atualizou = atualizou
+    def __init__(self, origem: OrigemDados) -> None:
+        self._origem = origem
 
     def obter(self, ticker, reference_date):
         return {}
 
     def obter_com_resultado(self, ticker, reference_date):
-        return {}, self._atualizou
+        return {}, self._origem
 
 
 class TestAgregacaoAtualizacao:
     def test_houve_atualizacao_quando_provider_atualiza(self):
         caso = FundamentalAnalysisUseCase(
             _repo_hgbs11(),
-            fundamental_provider=_ProviderComResultado(True),
+            fundamental_provider=_ProviderComResultado(OrigemDados.REDE),
         )
         caso.execute(["HGBS11"], REFERENCIA)
         assert caso.houve_atualizacao is True
@@ -219,7 +241,7 @@ class TestAgregacaoAtualizacao:
     def test_sem_atualizacao_quando_provider_nao_atualiza(self):
         caso = FundamentalAnalysisUseCase(
             _repo_hgbs11(),
-            fundamental_provider=_ProviderComResultado(False),
+            fundamental_provider=_ProviderComResultado(OrigemDados.CACHE),
         )
         caso.execute(["HGBS11"], REFERENCIA)
         assert caso.houve_atualizacao is False
@@ -227,9 +249,87 @@ class TestAgregacaoAtualizacao:
     def test_flag_resetada_entre_execucoes(self):
         caso = FundamentalAnalysisUseCase(
             _repo_hgbs11(),
-            fundamental_provider=_ProviderComResultado(True),
+            fundamental_provider=_ProviderComResultado(OrigemDados.REDE),
         )
         caso.execute(["HGBS11"], REFERENCIA)
-        caso._fundamental_provider = _ProviderComResultado(False)
+        caso._fundamental_provider = _ProviderComResultado(OrigemDados.CACHE)
         caso.execute(["HGBS11"], REFERENCIA)
         assert caso.houve_atualizacao is False
+
+    def test_progresso_marca_dado_em_cache(self):
+        detalhes = []
+        caso = FundamentalAnalysisUseCase(
+            _repo_hgbs11(),
+            fundamental_provider=_ProviderComResultado(OrigemDados.CACHE),
+        )
+        caso.execute(
+            ["HGBS11"],
+            REFERENCIA,
+            progress_callback=lambda detalhe, falhou: detalhes.append(detalhe),
+        )
+        assert detalhes and detalhes[0].endswith(" - cached")
+
+    def test_progresso_sem_cache_nao_marca(self):
+        detalhes = []
+        caso = FundamentalAnalysisUseCase(
+            _repo_hgbs11(),
+            fundamental_provider=_ProviderComResultado(OrigemDados.REDE),
+        )
+        caso.execute(
+            ["HGBS11"],
+            REFERENCIA,
+            progress_callback=lambda detalhe, falhou: detalhes.append(detalhe),
+        )
+        assert detalhes and not detalhes[0].endswith(" - cached")
+
+
+class TestConsolidacaoDividendos:
+    def test_cvm_preenche_quando_b3_vazio(self):
+        repo = FakeFundamentalRepository(proventos_por_ticker={"HGLG11": []})
+        historico = FakeDividendHistory(
+            {
+                "HGLG11": [
+                    DividendoConsolidado(date(2026, 1, 10), Decimal("1.00"), "CVM")
+                ]
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, historico_dividendos=historico)
+        resultado = caso.execute(["HGLG11"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.valor == Decimal("1.00")
+        assert resultado.ultimo_dividendo.data_com == date(2026, 1, 10)
+
+    def test_fundamentus_fallback_quando_sem_historico(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_DIVIDENDO_POR_COTA: CampoFundamental(Decimal("0.55"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGLG11"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.valor == Decimal("0.55")
+        assert resultado.ultimo_dividendo.data_com is None
+
+    def test_b3_tem_prioridade_sobre_fundamentus(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "HGBS11": [_provento("Rendimento", date(2026, 1, 15), "0.50")]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {CAMPO_DIVIDENDO_POR_COTA: CampoFundamental(Decimal("9.99"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.valor == Decimal("0.50")
+
+    def test_tendencia_usa_novos_rotulos(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "HGBS11": [
+                    _provento("Rendimento", date(2026, 1, 15), "0.50"),
+                    _provento("Rendimento", date(2026, 7, 10), "0.60"),
+                ]
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO

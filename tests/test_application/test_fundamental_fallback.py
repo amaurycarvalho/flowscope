@@ -9,6 +9,7 @@ from flowscope.application.fundamental_ports import (
     CAMPOS_FUNDAMENTAIS,
     CampoFundamental,
     FundamentalDataProvider,
+    OrigemDados,
 )
 
 REFERENCIA = date(2026, 9, 4)
@@ -88,27 +89,33 @@ class TestCompositeFundamentalProvider:
 
 
 class _FonteComResultado(_Fonte):
-    def __init__(self, nome, campos=None, atualizou=False):
+    def __init__(self, nome, campos=None, origem=OrigemDados.REDE):
         super().__init__(nome, campos)
-        self._atualizou = atualizou
+        self._origem = origem
 
     def obter_com_resultado(self, ticker, reference_date):
         self.chamadas += 1
-        return self._campos, self._atualizou
+        return self._campos, self._origem
 
 
 class TestAgregacaoResultado:
-    def test_atualizacao_agregada_do_primario(self):
-        primario = _FonteComResultado("FUNDAMENTUS", atualizou=True)
+    def test_origem_rede_do_primario(self):
+        campos = {CAMPO_P_VP: CampoFundamental(Decimal("0.9"), "FUNDAMENTUS")}
+        primario = _FonteComResultado(
+            "FUNDAMENTUS", campos=campos, origem=OrigemDados.REDE
+        )
         fallback = _Fonte("CVM")
-        _, atualizou = CompositeFundamentalProvider([primario, fallback]).obter_com_resultado(
+        _, origem = CompositeFundamentalProvider([primario, fallback]).obter_com_resultado(
             "HGBS11", REFERENCIA
         )
-        assert atualizou is True
+        assert origem is OrigemDados.REDE
 
-    def test_sem_atualizacao(self):
-        primario = _FonteComResultado("FUNDAMENTUS", atualizou=False)
-        _, atualizou = CompositeFundamentalProvider([primario]).obter_com_resultado(
+    def test_origem_cache(self):
+        campos = {CAMPO_P_VP: CampoFundamental(Decimal("0.9"), "FUNDAMENTUS")}
+        primario = _FonteComResultado(
+            "FUNDAMENTUS", campos=campos, origem=OrigemDados.CACHE
+        )
+        _, origem = CompositeFundamentalProvider([primario]).obter_com_resultado(
             "HGBS11", REFERENCIA
         )
-        assert atualizou is False
+        assert origem is OrigemDados.CACHE

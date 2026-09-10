@@ -13,6 +13,10 @@ from decimal import Decimal
 TIPO_ACAO = "acao"
 TIPO_FII = "fii"
 
+#: Discriminador do rótulo do campo de ticker na página do Fundamentus.
+DISCRIMINADOR_PAPEL = "papel"
+DISCRIMINADOR_FII = "fii"
+
 
 @dataclass(frozen=True)
 class AtivoFundamental:
@@ -20,6 +24,12 @@ class AtivoFundamental:
 
     ticker: str
     tipo: str
+    discriminador: str | None = None
+    especie: str | None = None
+    setor: str | None = None
+    subsetor: str | None = None
+    segmento: str | None = None
+    gestao: str | None = None
     nome: str | None = None
     cotacao: Decimal | None = None
     data_ultima_cotacao: date | None = None

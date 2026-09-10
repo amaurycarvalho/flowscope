@@ -54,8 +54,10 @@ class FundamentalJob:
                 progress_callback=_progresso,
             )
             dados = {resultado.ticker: resultado for resultado in resultados}
-            atualizou = bool(getattr(self._caso, "houve_atualizacao", False))
-            self.fila.put((MENSAGEM_RESULTADO, dados, atualizou))
+            houve_falha = bool(
+                getattr(self._caso, "houve_falha_recuperavel", False)
+            )
+            self.fila.put((MENSAGEM_RESULTADO, dados, houve_falha))
         except Exception as exc:  # falha inesperada do job
             logger.warning("Falha na análise fundamentalista", exc_info=True)
             self.fila.put((MENSAGEM_ERRO, str(exc)))

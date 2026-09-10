@@ -94,16 +94,20 @@ class FlowScopePresenter:
     def __init__(self: "FlowScopePresenter", view: GUIView) -> None:
         """Inicializa o apresentador com a view de referência."""
         self._view = view
+        self._operacoes_ativas = 0
 
     def on_operation_started(self: "FlowScopePresenter") -> None:
         """Notifica a view sobre o início de uma operação."""
+        self._operacoes_ativas += 1
         self._view.disable_all_buttons()
         self._view.set_wait_cursor()
 
     def on_operation_finished(self: "FlowScopePresenter") -> None:
         """Notifica a view sobre o fim de uma operação."""
+        self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
         self._view.restore_all_buttons()
-        self._view.clear_wait_cursor()
+        if self._operacoes_ativas == 0:
+            self._view.clear_wait_cursor()
         self._view.clear_progress()
 
     def on_portfolio_loaded(self: "FlowScopePresenter", tickers: list[str]) -> None:
@@ -163,18 +167,37 @@ class FlowScopePresenter:
         """Agenda a execução de ``callback`` na thread do Tk."""
         return self._view.agendar(ms, callback)
 
+    def on_fundamental_started(self: "FlowScopePresenter") -> None:
+        """Sinaliza o início da análise fundamentalista em background."""
+        self._operacoes_ativas += 1
+        self._view.set_wait_cursor()
+
+    def on_fundamental_finished(self: "FlowScopePresenter") -> None:
+        """Sinaliza o fim da análise fundamentalista e libera o cursor."""
+        self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
+        if self._operacoes_ativas == 0:
+            self._view.clear_wait_cursor()
+
     def on_fundamental_progress(self: "FlowScopePresenter", detalhe: str) -> None:
         """Exibe o progresso da análise fundamentalista na barra de status."""
         self._view.set_status(detalhe, "ℹ")
 
     def on_fundamental_result(
-        self: "FlowScopePresenter", dados: dict, atualizou: bool = False
+        self: "FlowScopePresenter", dados: dict, houve_falha: bool = False
     ) -> None:
-        """Armazena os resultados e sinaliza quando os dados foram atualizados."""
+        """Armazena os resultados e exibe o desfecho da carga."""
         self._view.set_fundamental_data(dados)
-        if atualizou:
-            self._view.set_status("Dados atualizados", "✓")
+        if houve_falha:
+            self._view.set_status(
+                "Dados atualizados com mitigação de falhas.", "⚠"
+            )
+        else:
+            self._view.set_status("Dados atualizados com sucesso.", "✓")
         self._view.on_tab_changed()
+
+    def on_fundamental_error(self: "FlowScopePresenter") -> None:
+        """Exibe a falha catastrófica da análise fundamentalista."""
+        self._view.set_status("Falha ao atualizar dados", "⚠")
 
     @property
     def _gui(self: "FlowScopePresenter") -> GUIView:
