@@ -7,11 +7,21 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from flowscope.application.fundamental_fallback import CompositeFundamentalProvider
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.infrastructure.fii.b3_fundamental_provider import (
+    B3FundamentalDataProvider,
+)
+from flowscope.infrastructure.fii.b3_fundamental_repository import (
+    B3FundamentalRepository,
+)
+from flowscope.infrastructure.fii.fundamentus.adapter import (
+    FundamentusFundamentalDataProvider,
+)
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_constants import TITLE_PREFIX
@@ -96,6 +106,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._sampling_dates: list[date] = []
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
+        self._fundamental_data: dict = {}
         self._loading_after_id = None
         self._flash_after_id = None
 
@@ -131,12 +142,21 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
+        fundamental_repo = B3FundamentalRepository()
+        fundamental_provider = CompositeFundamentalProvider(
+            [
+                FundamentusFundamentalDataProvider(),
+                B3FundamentalDataProvider(fundamental_repo),
+            ]
+        )
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
             analyze=analyze,
             presenter=presenter,
             logger=logger,
+            fundamental_repo=fundamental_repo,
+            fundamental_provider=fundamental_provider,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,

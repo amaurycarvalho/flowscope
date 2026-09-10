@@ -79,6 +79,14 @@ class GUIView(Protocol):
         """Retorna a configuração de amostragem selecionada na interface."""
         ...
 
+    def agendar(self: "GUIView", ms: int, callback: object) -> object:
+        """Agenda a execução de ``callback`` na thread do Tk."""
+        ...
+
+    def set_fundamental_data(self: "GUIView", dados: dict) -> None:
+        """Armazena os resultados da análise fundamentalista por ticker."""
+        ...
+
 
 class FlowScopePresenter:
     """Apresentador que orquestra a interação entre casos de uso e a view."""
@@ -150,6 +158,19 @@ class FlowScopePresenter:
     def set_status(self: "FlowScopePresenter", msg: str, icon: str = "") -> None:
         """Define a mensagem exibida na barra de status."""
         self._view.set_status(msg, icon)
+
+    def agendar(self: "FlowScopePresenter", ms: int, callback: object) -> object:
+        """Agenda a execução de ``callback`` na thread do Tk."""
+        return self._view.agendar(ms, callback)
+
+    def on_fundamental_progress(self: "FlowScopePresenter", detalhe: str) -> None:
+        """Exibe o progresso da análise fundamentalista na barra de status."""
+        self._view.set_status(detalhe, "ℹ")
+
+    def on_fundamental_result(self: "FlowScopePresenter", dados: dict) -> None:
+        """Armazena e apresenta os resultados da análise fundamentalista."""
+        self._view.set_fundamental_data(dados)
+        self._view.on_tab_changed()
 
     @property
     def _gui(self: "FlowScopePresenter") -> GUIView:

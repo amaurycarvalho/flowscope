@@ -1,8 +1,10 @@
 """Controlador da interface gráfica do FlowScope."""
 
+import queue
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 
+from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.load_portfolio_use_case import (
     LoadIndexPortfolioUseCase,
     PortfolioNotFoundError,
@@ -10,6 +12,13 @@ from flowscope.application.load_portfolio_use_case import (
 from flowscope.application.logging_port import LogEntry, LogPort
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
+from flowscope.infrastructure.fii.b3_price import B3MarketPriceFromResult
+from flowscope.presentation.gui.fundamental_job import (
+    MENSAGEM_ERRO,
+    MENSAGEM_PROGRESSO,
+    MENSAGEM_RESULTADO,
+    FundamentalJob,
+)
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 from flowscope.presentation.gui.progress import ProgressReporter
 
@@ -24,6 +33,8 @@ class FlowScopeController:
         analyze: AnalyzeTickersUseCase,
         presenter: FlowScopePresenter,
         logger: LogPort,
+        fundamental_repo: object | None = None,
+        fundamental_provider: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -31,6 +42,10 @@ class FlowScopeController:
         self._analyze = analyze
         self._presenter = presenter
         self._logger = logger
+        self._fundamental_repo = fundamental_repo
+        self._fundamental_provider = fundamental_provider
+        self._fundamental_generation = 0
+        self._fundamental_job: FundamentalJob | None = None
 
     def _make_progress_cb(
         self: "FlowScopeController", reporter: ProgressReporter,
@@ -41,6 +56,61 @@ class FlowScopeController:
             else:
                 reporter.advance(1, detail)
         return _cb
+
+    def _iniciar_analise_fundamental(
+        self: "FlowScopeController",
+        tickers: list[str],
+        ref_date: date,
+        result: dict,
+    ) -> None:
+        """Dispara a análise fundamentalista em background, se configurada."""
+        if self._fundamental_repo is None:
+            return
+        daily = {
+            ticker: dados.get("daily_data", [])
+            for ticker, dados in result.items()
+            if isinstance(dados, dict)
+        }
+        self._fundamental_generation += 1
+        caso = FundamentalAnalysisUseCase(
+            repository=self._fundamental_repo,
+            mercado=B3MarketPriceFromResult(daily),
+            fundamental_provider=self._fundamental_provider,
+        )
+        job = FundamentalJob(
+            caso, tickers, ref_date, self._fundamental_generation
+        )
+        self._fundamental_job = job
+        job.iniciar()
+        self._drenar_fundamental(job)
+
+    def _drenar_fundamental(
+        self: "FlowScopeController", job: FundamentalJob | None = None
+    ) -> None:
+        """Consome a fila do job na thread do Tk e agenda a próxima leitura."""
+        job = job or self._fundamental_job
+        if job is None or job is not self._fundamental_job:
+            return
+        terminou = False
+        try:
+            while True:
+                mensagem = job.fila.get_nowait()
+                tipo = mensagem[0]
+                if tipo == MENSAGEM_PROGRESSO:
+                    self._presenter.on_fundamental_progress(mensagem[1])
+                elif tipo == MENSAGEM_RESULTADO:
+                    if job.generation == self._fundamental_generation:
+                        self._presenter.on_fundamental_result(mensagem[1])
+                    terminou = True
+                elif tipo == MENSAGEM_ERRO:
+                    terminou = True
+        except queue.Empty:
+            pass
+        if terminou:
+            if job is self._fundamental_job:
+                self._fundamental_job = None
+            return
+        self._presenter.agendar(100, lambda: self._drenar_fundamental(job))
 
     def on_index_clicked(self: "FlowScopeController", index: str) -> None:
         """Carrega o portfólio e os dados históricos do índice selecionado."""
@@ -84,6 +154,7 @@ class FlowScopeController:
                 reporter.finish_phase()
 
                 self._presenter.on_result(result, tickers, ref_date)
+                self._iniciar_analise_fundamental(tickers, ref_date, result)
 
             except PortfolioNotFoundError:
                 self._presenter.on_operation_finished()
@@ -143,6 +214,7 @@ class FlowScopeController:
                 reporter.finish_phase()
 
                 self._presenter.on_result(result, tickers, ref_date)
+                self._iniciar_analise_fundamental(tickers, ref_date, result)
 
             except PortfolioNotFoundError:
                 self._presenter.set_status(

@@ -76,7 +76,9 @@ class TestResolverCodeCvm:
 
     @responses.activate
     def test_api_indisponivel_usa_cadastro_csv(self, tmp_path):
-        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path), retry_delays=(0,)
+        )
         payload = {"language": "pt-br", "pageNumber": 1, "pageSize": 20, "tradingName": "ITUB4"}
         responses.get(
             f"{_LISTED}/GetListedCompany/{_token(payload)}", status=500

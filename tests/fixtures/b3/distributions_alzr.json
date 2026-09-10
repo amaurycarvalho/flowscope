@@ -1,0 +1,28 @@
+{
+  "page": {
+    "pageNumber": 1,
+    "pageSize": 20,
+    "totalRecords": 2,
+    "totalPages": 1
+  },
+  "results": [
+    {
+      "urlViewerFundosNet": "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1252542",
+      "referenceDateFormat": "17/07/2026",
+      "deliveryDateFormat": "18/07/2026",
+      "referenceDate": "2026-07-17T00:00:00-03:00",
+      "version": 1,
+      "describleType": "Rendimentos e Amortizações",
+      "status": "1 (Ativo)"
+    },
+    {
+      "urlViewerFundosNet": "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1252543",
+      "referenceDateFormat": "10/06/2026",
+      "deliveryDateFormat": "11/06/2026",
+      "referenceDate": "2026-06-10T00:00:00-03:00",
+      "version": 1,
+      "describleType": "Rendimentos e Amortizações",
+      "status": "1 (Cancelado)"
+    }
+  ]
+}

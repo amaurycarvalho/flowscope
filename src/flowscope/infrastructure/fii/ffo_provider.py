@@ -1,20 +1,23 @@
-"""Provedor de FFO do Fundamentus (metodologia ``SOURCE_REPORTED``).
+"""Adaptador de compatibilidade do FFO via Fundamentus.
 
-O Fundamentus publica o FFO dos últimos 12 e 3 meses. O provedor isola o
-acesso à página atrás de um loader e usa ``SOURCE_SCHEMA_VERSION`` para o
-formato esperado da extração. Quando o FFO não é encontrado na página, o
-provedor retorna ``None`` sem estimar o valor (RFC-007 §20/§21).
+Mantém a extração do FFO 12m/3m (metodologia ``SOURCE_REPORTED``) sobre o
+provider completo do Fundamentus (RFC-011), preservando a interface
+``obter_ffo`` consumida pelo ``FfoProvider``.
 """
 
 import logging
-from collections.abc import Callable
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from bs4 import BeautifulSoup
 
 from flowscope.domain.fii.analysis import FfoObservacao
-from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.fii.fundamentus.provider import (
+    FONTE_FUNDAMENTUS,
+)
+from flowscope.infrastructure.fii.fundamentus.provider import (
+    FundamentusProvider as _FundamentusProvider,
+)
 from flowscope.infrastructure.fii.parsing import moeda_para_decimal
 
 logger = logging.getLogger("flowscope")
@@ -22,17 +25,16 @@ logger = logging.getLogger("flowscope")
 #: Versão esperada da estrutura da página de detalhes do Fundamentus.
 SOURCE_SCHEMA_VERSION = "2026-01"
 
-#: Fonte registrada nos objetos de FFO produzidos pelo provedor.
-FONTE_FUNDAMENTUS = "FUNDAMENTUS"
-
 #: Metodologia de obtenção do FFO (reportado pela fonte).
 METODOLOGIA = "SOURCE_REPORTED"
 
-#: URL da página de detalhes do Fundamentus.
-_BASE_URL = "https://www.fundamentus.com.br/detalhes.php"
-
-#: TTL do cache da página de detalhes.
-_TTL_DIAS = 7
+__all__ = [
+    "FONTE_FUNDAMENTUS",
+    "METODOLOGIA",
+    "SOURCE_SCHEMA_VERSION",
+    "FundamentusProvider",
+    "extrair_ffo",
+]
 
 
 def _normalizar(texto: str) -> str:
@@ -82,35 +84,21 @@ def _ler_valor(texto: str) -> Decimal | None:
         return None
 
 
-def _fetch_detalhes(ticker: str) -> str:
-    """Baixa a página de detalhes do ticker no Fundamentus."""
-    import requests
-
-    url = f"{_BASE_URL}"
-    resp = requests.get(url, params={"papel": ticker}, timeout=30)
-    resp.raise_for_status()
-    resp.encoding = resp.apparent_encoding or "utf-8"
-    return resp.text
-
-
-class FundamentusProvider:
-    """Fornece o FFO reportado de um ticker a partir do Fundamentus."""
-
-    def __init__(
-        self: "FundamentusProvider",
-        loader: Callable[[str], str] | None = None,
-        cache: CacheManager | None = None,
-    ) -> None:
-        """Inicializa o provedor com o loader da página e o cache."""
-        self._loader = loader or _fetch_detalhes
-        self._cache = cache
+class FundamentusProvider(_FundamentusProvider):
+    """Provider de compatibilidade que expõe ``obter_ffo``."""
 
     def obter_ffo(
         self: "FundamentusProvider", ticker: str, reference_date: date
     ) -> FfoObservacao | None:
-        """Extrai o FFO do ticker, usando cache quando disponível."""
+        """Extrai o FFO do ticker, retornando ``None`` quando indisponível."""
         normalizado = ticker.strip().upper()
-        html = self._carregar_detalhes(normalizado)
+        try:
+            html = self._carregar(normalizado)
+        except Exception:  # aquisição tolerante para o port FfoProvider
+            logger.warning(
+                "Falha ao carregar Fundamentus de %s", normalizado, exc_info=True
+            )
+            return None
         if not html:
             return None
         try:
@@ -120,23 +108,3 @@ class FundamentusProvider:
                 "Falha ao extrair FFO de %s no Fundamentus", normalizado, exc_info=True
             )
             return None
-
-    def _carregar_detalhes(self: "FundamentusProvider", ticker: str) -> str:
-        """Carrega a página, usando o cache quando disponível."""
-        if self._cache is None:
-            return self._carregar_com_tolerancia(ticker)
-        payload = self._cache.get_or_fetch(
-            f"fundamentus_ffo_{ticker}",
-            ttl_days=_TTL_DIAS,
-            fetch_fn=lambda: {"conteudo": self._carregar_com_tolerancia(ticker)},
-        )
-        return str(payload.get("conteudo", ""))
-
-    def _carregar_com_tolerancia(self: "FundamentusProvider", ticker: str) -> str:
-        """Chama o loader, devolvendo vazio quando a aquisição falha."""
-        try:
-            conteudo = self._loader(ticker)
-        except Exception:  # aquisição tolerante
-            logger.warning("Falha ao carregar Fundamentus de %s", ticker, exc_info=True)
-            return ""
-        return conteudo or ""

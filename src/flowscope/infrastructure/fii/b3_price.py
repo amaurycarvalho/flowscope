@@ -5,7 +5,9 @@ existentes, sem novo adapter de mercado. Retorna o último fechamento válido
 cuja data é menor ou igual à data de referência.
 """
 
+from collections.abc import Mapping
 from datetime import date
+from decimal import Decimal
 
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.fii.analysis import PrecoObservacao
@@ -40,5 +42,45 @@ class B3MarketPricePort:
         return PrecoObservacao(
             preco=ultimo.last_price.value,
             data_preco=ultimo.date,
+            fonte=FONTE_B3,
+        )
+
+
+class B3MarketPriceFromResult:
+    """Último fechamento por ticker a partir do resultado diário da análise.
+
+    Satisfaz o ``MarketPricePort`` reutilizando o campo ``last_price`` dos dados
+    diários já carregados, sem novo acesso de mercado.
+    """
+
+    def __init__(
+        self: "B3MarketPriceFromResult",
+        daily_data: Mapping[str, list[dict]],
+    ) -> None:
+        """Indexa os dados diários informados por ticker."""
+        self._por_ticker = {
+            ticker.upper(): dias for ticker, dias in daily_data.items()
+        }
+
+    def preco_fechamento(
+        self: "B3MarketPriceFromResult", ticker: str, reference_date: date
+    ) -> PrecoObservacao | None:
+        """Retorna o último fechamento válido até a data de referência."""
+        normalizado = ticker.strip().upper()
+        candidatos = self._por_ticker.get(normalizado, [])
+        ultimo: tuple[date, Decimal] | None = None
+        for dia in candidatos:
+            data = dia.get("date")
+            preco = dia.get("last_price")
+            if data is None or preco is None:
+                continue
+            valor = Decimal(str(preco))
+            if data <= reference_date and valor > 0:
+                ultimo = (data, valor)
+        if ultimo is None:
+            return None
+        return PrecoObservacao(
+            preco=ultimo[1],
+            data_preco=ultimo[0],
             fonte=FONTE_B3,
         )

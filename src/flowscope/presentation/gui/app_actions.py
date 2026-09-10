@@ -4,6 +4,7 @@ import tkinter as tk
 from datetime import datetime, timezone
 
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 
 
@@ -83,10 +84,21 @@ class ActionsMixin:
         filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
         if isinstance(chart, QuadrantChart):
             chart.update(filtered, show_arrows=(len(filtered) == 1))
+        elif isinstance(chart, FundamentalTablePanel):
+            dados = getattr(self, "_fundamental_data", {})
+            chart.update({t: dados[t] for t in tickers if t in dados})
         elif chart in self._ticker_charts:
             chart.update(self._current_data, ticker=self._get_selected_ticker())
         else:
             chart.update(filtered)
+
+    def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
+        """Agenda a execução de ``callback`` na thread do Tk."""
+        return self.after(ms, callback)
+
+    def set_fundamental_data(self: "ActionsMixin", dados: dict) -> None:
+        """Armazena os resultados da análise fundamentalista por ticker."""
+        self._fundamental_data = dados
 
     def _copy_chart(self: "ActionsMixin", figure: object) -> None:
         from flowscope.infrastructure.clipboard_image import (

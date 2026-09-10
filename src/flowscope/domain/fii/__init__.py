@@ -43,6 +43,11 @@ from flowscope.domain.fii.dividends import (
     ultima_data_com,
     ultimo_valor,
 )
+from flowscope.domain.fii.fundamentus import (
+    TIPO_ACAO,
+    TIPO_FII,
+    AtivoFundamental,
+)
 from flowscope.domain.fii.metrics import (
     CALCULATION_VERSION,
     FONTE_DERIVADA,
@@ -71,9 +76,12 @@ __all__ = [
     "TAXONOMIA_ETF_VERSAO",
     "TAXONOMIA_FII_PADRAO",
     "TAXONOMIA_FII_VERSAO",
+    "TIPO_ACAO",
+    "TIPO_FII",
     "TIPO_RENDIMENTO",
     "TOLERANCIA_CONSISTENCIA",
     "AnaliseFundamental",
+    "AtivoFundamental",
     "ClasseCotistas",
     "ClassePatrimonio",
     "ClassificacaoAtivo",

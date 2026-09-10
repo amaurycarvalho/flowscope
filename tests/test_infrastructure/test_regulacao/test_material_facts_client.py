@@ -186,7 +186,9 @@ class TestListarFatosRelevantes:
 
     @responses.activate
     def test_api_indisponivel_retorna_lista_vazia(self, tmp_path):
-        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path), retry_delays=(0,)
+        )
         payload = {
             "linguagem": "pt-br",
             "codeCVM": "9512",

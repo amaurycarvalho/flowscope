@@ -1,9 +1,7 @@
 """Cliente HTTP para a API de fundos listados da B3 (fundsListedProxy)."""
 
-import base64
 import csv
 import io
-import json
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -18,6 +16,9 @@ from flowscope.domain.structured import (
     FatoRelevante,
     NoticiaB3,
 )
+from flowscope.infrastructure.b3.encoder import encode_b3_payload
+from flowscope.infrastructure.b3.rate_limit import SerializadorPorHost
+from flowscope.infrastructure.b3.retry import RETRY_DELAYS, executar_com_retry
 from flowscope.infrastructure.b3.structured_parser import (
     extrair_censuras,
     extrair_condicoes_excepcionais,
@@ -58,23 +59,73 @@ class B3FundosClient:
 
     _BASE_URL = _BASE_URL
 
-    def __init__(self: "B3FundosClient", cache: CacheManager | None = None) -> None:
-        """Inicializa o cliente com o gerenciador de cache informado ou um novo padrão."""
+    def __init__(
+        self: "B3FundosClient",
+        cache: CacheManager | None = None,
+        session: requests.Session | None = None,
+        serializador: SerializadorPorHost | None = None,
+        retry_delays: tuple[float, ...] = RETRY_DELAYS,
+    ) -> None:
+        """Inicializa o cliente com cache, sessão HTTP e serializador por host."""
         self._cache = cache or CacheManager()
+        self._session = session or requests.Session()
+        self._serializador = serializador or SerializadorPorHost()
+        self._retry_delays = tuple(retry_delays)
 
     def _build_token(self: "B3FundosClient", payload: dict[str, object]) -> str:
         """Serializa o payload em JSON compacto e codifica em Base64."""
-        raw = json.dumps(payload, separators=(",", ":"))
-        return base64.b64encode(raw.encode()).decode()
+        return encode_b3_payload(payload)
+
+    def _requisicao_get(
+        self: "B3FundosClient", url: str, timeout: int = 30, **kwargs: object
+    ) -> requests.Response:
+        """Executa um GET serializado por host e com retry de erros transitórios."""
+
+        def _fazer() -> requests.Response:
+            resposta = self._session.get(url, timeout=timeout, **kwargs)
+            resposta.raise_for_status()
+            return resposta
+
+        with self._serializador.serializar(url):
+            return executar_com_retry(_fazer, delays=self._retry_delays)
 
     def _get_json(self: "B3FundosClient", endpoint: str, payload: dict[str, object]) -> object:
         """Executa o GET do endpoint informado com o token construído do payload."""
         token = self._build_token(payload)
         url = f"{_BASE_URL}/{endpoint}/{token}"
         logger.info("Consultando %s", url)
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
+        return self._requisicao_get(url).json()
+
+    def listar_candidatos(
+        self: "B3FundosClient",
+        ticker: str,
+        type_fund: str = "FII",
+    ) -> list[dict]:
+        """Lista os registros de fundo candidatos ao ticker na B3."""
+        id_cem = _fund_root(ticker)
+        try:
+            dados = self._get_json(
+                "GetListClassFund",
+                {
+                    "language": "pt-br",
+                    "idCEM": id_cem,
+                    "typeFund": type_fund,
+                },
+            )
+        except requests.RequestException as e:
+            logger.warning("Falha ao listar candidatos de %s: %s", ticker, e)
+            return []
+        if not isinstance(dados, list):
+            return []
+        return [item for item in dados if isinstance(item, dict)]
+
+    def selecionar_candidato(
+        self: "B3FundosClient",
+        ticker: str,
+        type_fund: str = "FII",
+    ) -> dict | None:
+        """Seleciona o registro de fundo usado nas consultas subsequentes."""
+        return _selecionar_fund(self.listar_candidatos(ticker, type_fund))
 
     def resolver_ticker(
         self: "B3FundosClient",
@@ -86,32 +137,11 @@ class B3FundosClient:
         Retorna ``None`` para tickers sem dados na API de fundos, sem lançar
         exceção. O resultado, inclusive ``None``, é cacheado por 30 dias.
         """
-        id_cem = _fund_root(ticker)
 
         def _fetch() -> dict[str, object]:
-            try:
-                dados = self._get_json(
-                    "GetListClassFund",
-                    {
-                        "language": "pt-br",
-                        "idCEM": id_cem,
-                        "typeFund": type_fund,
-                    },
-                )
-            except requests.RequestException as e:
-                logger.warning("Falha ao resolver ticker %s: %s", ticker, e)
-                return {"idFNET": None}
-            if not isinstance(dados, list):
-                return {"idFNET": None}
-            for item in dados:
-                if not isinstance(item, dict):
-                    continue
-                if "Fundo:" in str(item.get("tradingName", "")):
-                    continue
-                id_fnet = item.get("id")
-                if id_fnet:
-                    return {"idFNET": str(id_fnet)}
-            return {"idFNET": None}
+            candidato = _selecionar_fund(self.listar_candidatos(ticker, type_fund))
+            id_fnet = candidato.get("id") if candidato else None
+            return {"idFNET": str(id_fnet) if id_fnet else None}
 
         key = f"fund_resolution_{ticker.upper()}"
         try:
@@ -128,13 +158,20 @@ class B3FundosClient:
         data_fim: date,
         tipo: int = _TIPO_PROVENTOS,
         type_fund: str = "FII",
+        tolerante: bool = True,
     ) -> list[dict]:
         """Lista os relatórios estruturados do tipo informado, paginando quando necessário."""
         documentos: list[dict] = []
         page_number = 1
         while True:
             pagina = self._listar_pagina(
-                id_fnet, data_inicio, data_fim, tipo, type_fund, page_number
+                id_fnet,
+                data_inicio,
+                data_fim,
+                tipo,
+                type_fund,
+                page_number,
+                tolerante=tolerante,
             )
             resultados = pagina.get("results", [])
             if isinstance(resultados, list):
@@ -153,6 +190,7 @@ class B3FundosClient:
         tipo: int,
         type_fund: str,
         page_number: int,
+        tolerante: bool = True,
     ) -> dict[str, object]:
         """Busca uma página da listagem de relatórios, com cache de 1 dia."""
         key = (
@@ -178,6 +216,8 @@ class B3FundosClient:
         try:
             return self._cache.get_or_fetch(key, ttl_days=1, fetch_fn=_fetch)
         except requests.RequestException:
+            if not tolerante:
+                raise
             logger.warning(
                 "Falha ao listar documentos do idFNET %s (página %d)",
                 id_fnet,
@@ -193,8 +233,7 @@ class B3FundosClient:
             f"?id={id_documento}"
         )
         logger.info("Baixando documento %s via %s", id_documento, url)
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
+        resp = self._requisicao_get(url)
         resp.encoding = resp.apparent_encoding or "utf-8"
         return resp.text
 
@@ -207,9 +246,7 @@ class B3FundosClient:
         token = self._build_token(payload)
         url = f"{_LISTED_BASE_URL}/{endpoint}/{token}"
         logger.info("Consultando %s", url)
-        resp = requests.get(url, timeout=30)
-        resp.raise_for_status()
-        return resp.json()
+        return self._requisicao_get(url).json()
 
     def resolver_code_cvm(self: "B3FundosClient", ticker: str) -> str | None:
         """Resolve o ticker para o ``codeCVM`` na B3.
@@ -285,8 +322,7 @@ class B3FundosClient:
     def _baixar_cadastro_empresas(self: "B3FundosClient") -> str:
         """Baixa o CSV do cadastro de empresas listadas da B3."""
         logger.info("Baixando cadastro de empresas via %s", _CADASTRO_EMPRESAS_URL)
-        resp = requests.get(_CADASTRO_EMPRESAS_URL, timeout=60)
-        resp.raise_for_status()
+        resp = self._requisicao_get(_CADASTRO_EMPRESAS_URL, timeout=60)
         resp.encoding = resp.apparent_encoding or "utf-8"
         return resp.text
 
@@ -470,11 +506,28 @@ class B3FundosClient:
 
 
 def _fund_root(ticker: str) -> str:
-    """Remove o sufixo ``11`` do ticker, devolvendo o código do fundo."""
+    """Remove o sufixo numérico do ticker, devolvendo o código do fundo."""
     ticker = ticker.strip().upper()
-    if ticker.endswith("11"):
-        return ticker[:-2]
-    return ticker
+    raiz = ticker.rstrip("0123456789")
+    return raiz or ticker
+
+
+def _selecionar_fund(candidatos: list[dict]) -> dict | None:
+    """Seleciona o registro cujo ``id`` é usado nas consultas de relatórios.
+
+    Prefere o registro com ``idMain`` não nulo (RFC-008 §3); sem ele, recorre à
+    heurística legada de ignorar o registro cujo ``tradingName`` começa com
+    ``Fundo:``.
+    """
+    derivados = [item for item in candidatos if item.get("idMain") is not None]
+    if derivados:
+        return derivados[0]
+    for item in candidatos:
+        if "Fundo:" in str(item.get("tradingName", "")):
+            continue
+        if item.get("id"):
+            return item
+    return candidatos[0] if candidatos else None
 
 
 def _codigo_categoria(categoria: CategoriaMaterialFact | str) -> str:
