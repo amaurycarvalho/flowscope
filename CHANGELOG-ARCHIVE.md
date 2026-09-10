@@ -224,6 +224,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sub-gráfico "Range % Histórico" — substituído pelo tamanho do marcador de fechamento (●)
 - Sub-gráfico "Eficiência Diária" — substituído por barra horizontal de fundo por row (eficiência visível em todos os dias, não apenas no último)
 
+### [redesign-amplitude-panel](openspec/changes/archive/2026-07-01-redesign-amplitude-panel) Reformula a aba Amplitude de Preço como painel visual com timeline, gauges de eficiência e CLV
+
+#### Added
+
+- Criar o Price Range Timeline Chart: gráfico horizontal que posiciona cada pregão em uma linha do eixo Y, normaliza o range [Min, Max] no eixo X (0-100%), e mostra marcadores de referência (Median, Typical, VWAP, Weighted Close) apenas no dia atual, com a trajetória do fechamento (●) conectada por setas entre dias consecutivos
+- Adicionar gráfico de linha do Range % histórico (30 pregões) para contextualizar a amplitude do dia
+- Adicionar gauge horizontal de Eficiência (0 a 1) indicando quanto do range virou deslocamento
+- Adicionar gauge horizontal de CLV (-1 a +1) indicando onde o preço fechou dentro do range
+- Incluir classificação qualitativa como annotation no gráfico (ex: "Movimento Direcional Forte")
+
+#### Changed
+
+- Substituir o painel textual de "Amplitude de Preço" por um painel visual com quatro componentes gráficos
+- Atualizar o texto de orientação para guiar a interpretação visual
+
 ## [0.3.1] — 2026-06-29
 
 ### [statusbar-progress-indicator](openspec/changes/archive/2026-06-29-statusbar-progress-indicator) Barra de progresso determinate na statusbar com fases ponderadas, cache e falhas; ProgressReporter injetado nas camadas application/infrastructure
@@ -304,6 +319,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **TickerList**: `exportselection=False` evita que seleção externa (X11 PRIMARY) limpe seleção interna
 - **Lazy refresh**: `_on_tab_changed()` sempre atualiza a aba atual ao navegar, não apenas quando `_charts_dirty` está True
 
+### [default-gui-mode](openspec/changes/archive/2026-06-29-default-gui-mode) `flowscope` sem argumentos passa a abrir a GUI por padrão
+
+#### Changed
+
+- `flowscope` (no flags) now opens the GUI instead of running CLI mode
+- `--gui` flag is kept for backward compatibility (used by desktop shortcut)
+- CLI mode (`--tickers`, `--vwap`, etc.) behavior is unchanged
+- `--version` and `--create-shortcut` behavior is unchanged
+
+### [wait-cursor-refactor](openspec/changes/archive/2026-06-29-wait-cursor-refactor) Cursor watch reutilizável nas operações de refresh de painel e cópia de gráfico
+
+#### Added
+
+- Adicionar `_set_wait_cursor()` / `_clear_wait_cursor()` como métodos reutilizáveis de uso geral
+
+#### Changed
+
+- Refatorar `_enter_loading_state` / `_exit_loading_state` em duas camadas: uma camada base de cursor (genérica) e a camada pesada atual (cursor + desabilitar inputs + animação)
+- Envolver com try/finally os seguintes pontos com cursor watch:
+- `_on_tab_changed` — refresh de charts ao trocar de aba
+- `_on_ticker_edit` — refresh ao editar lista de tickers
+- `_on_ticker_combo_selected` — refresh ao selecionar ticker (delega para `_on_tab_changed`)
+- `_copy_chart` — cópia de imagem do gráfico (savefig + xclip)
+- `_enter_loading_state` / `_exit_loading_state` passam a delegar o cursor para os novos métodos
+
 ## [0.2.1] — 2026-06-28
 
 ### [quadrantes-ticker-sync](openspec/changes/archive/2026-06-28-quadrantes-ticker-sync) Sincronização de comboboxes e visibilidade condicional de setas nos quadrantes
@@ -348,6 +388,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Documentação**: `panels.md` e `indicators.md` atualizados (descrição do Quadrantes e VWAP Distance)
 - **Título da janela**: removida alteração ao carregar dados (título fixo "FlowScope v0.2.0")
+
+### [replace-buttons-with-icons](openspec/changes/archive/2026-06-28-replace-buttons-with-icons) Substitui botões textuais por ícones na top bar e sidebar, compactando o layout
+
+#### Changed
+
+- Top bar: botões "Hoje", "Carregar" e "Copiar Dados" passam a exibir apenas ícone (sem texto), com tooltip mantido
+- Sidebar (TickerList): botões "Salvar Tickers", "Carregar Tickers" e "Filtrar" passam a exibir apenas ícone (sem texto)
+- Sidebar (TickerList): botões IBOV, IDIV e IFIX movidos para a mesma linha dos botões de ação (ao lado direito), eliminando a segunda fileira de botões
+- Tooltips: todos os tooltips existentes são preservados; tooltips são adicionados aos botões que atualmente não possuem (Salvar Tickers, Carregar Tickers, Filtrar)
 
 ## [0.1.0] — 2026-06-28
 
@@ -525,6 +574,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `_create_desktop_shortcut()` retorna `bool` em vez de chamar `sys.exit()` (reutilizável pela GUI)
 - CLI `--create-shortcut` passou a verificar plataforma no `main()` e retornar exit code 0 em não-Linux
+
+### [core-implementation](openspec/changes/archive/2026-06-27-core-implementation) Estabelece toda a fundação do projeto: Clean Architecture, indicadores de fluxo, ingestão B3, CLI/GUI e empacotamento
+
+#### Added
+
+- Estrutura de projeto: Criação de diretórios `src/flowscope/` e `tests/` com `pyproject.toml`, seguindo Clean Architecture tradicional (domain, application, infrastructure, presentation)
+- Ingestão de dados: Cliente HTTP para API B3 (two-step: requestname → token → download), parser de CSV consolidado, seleção de datas via janela Fibonacci (d-1, d-2, d-3, d-5, d-8, d-13, d-21) com ajuste para dias úteis
+- Indicadores: Cálculo de Cumulative Volume Delta (CVD), Volume Weighted Average Price (VWAP) e Volume Profile a partir dos dados consolidados
+- CLI: argparse com flags `--gui`, `--tickers`, `--vwap`, `--cvd`, `--help`, `--version`, `--create-shortcut`
+- GUI: Interface Tkinter com tkcalendar (seleção de data), matplotlib (histogramas VWAP/CVD, scatter plot VWAP×CVD com quiver opcional), campo de seleção/edição de tickers com load/save `.txt`, campo readonly para análise automática (placeholder), botões de clipboard
+- Clipboard: Exportação CSV (texto) via pyxclip; exportação de gráfico (imagem) via ctypes + comandos nativos por plataforma
+- Atalho desktop: `--create-shortcut` gera `.desktop` file no Linux
+- Testes: Estrutura de testes em `tests/` com unittest/pytest
+
+#### Changed
+
+- Ícones: Movidos de `icons/` para `src/flowscope/icons/`
+- Empacotamento: Atualização de `flowscope.spec` (PyInstaller) e `Makefile` para refletir a nova estrutura
+
+### [especificacoes-vs-implementacao-diffs](openspec/changes/archive/2026-06-27-especificacoes-vs-implementacao-diffs) Alinha especificações com a implementação real, documentando divergências de API, parsing e testes
+
+#### Fixed
+
+- `data-ingestion`: B3 API descrita como POST mas implementada como GET — spec desatualizada
+- `data-ingestion`: Exemplo de datas Fibonacci no spec diverge do cálculo real implementado
+- `clipboard-export`: Cópia CSV tem fallback Tkinter não descrito no spec; falha de cópia de imagem usa `print(stderr)` em vez de feedback na GUI
+- `project-scaffold`: `requirements.txt` não inclui `requests>=2.28` presente no `pyproject.toml`; README tem seção "Interface desktop" vazia
+- `volume-indicators`: Sem teste para cenário "Menos de 15 tickers disponíveis"
+- `desktop-shortcut`: Sem teste para cenários Windows/macOS
+
+### [fix-verification-issues](openspec/changes/archive/2026-06-27-fix-verification-issues) Corrige os problemas encontrados na auditoria de verificação da `core-implementation`
+
+#### Added
+
+- CSV export columns: Add daily VWAP/CVD columns to CSV export output (one column per window date)
+- Quiver arrows: Implement temporal arrow visualization connecting each ticker's d-1 → d position in the scatter plot
+- Auto-refresh on edit: Trigger chart refresh when user edits the ticker list text field
+- Ticker load refresh: Trigger chart refresh after loading tickers from a `.txt` file
+
+#### Fixed
+
+- CLI export: Wire `--tickers` flag to `--vwap`/`--cvd` export paths so `flowscope --vwap --tickers lista.txt` filters by the provided tickers
+- Non-Linux exit code: Change `--create-shortcut` on non-Linux to exit with code 0 instead of 1
+
+### [idiv-portfolio-default-filter](openspec/changes/archive/2026-06-27-idiv-portfolio-default-filter) Pré-carrega a carteira do IDIV como filtro padrão e filtra apenas o segmento CASH
+
+#### Added
+
+- Novo método `fetch_idiv_portfolio()` no `B3Client` para baixar a carteira do IDIV da B3
+- Cache local do portfólio IDIV com TTL (7 dias) — revalidate apenas se expirado
+- Filtro `SgmtNm == "CASH"` aplicado no parser do CSV, descartando linhas de outros segmentos (BMF, FUTURE, etc.)
+- Quando o campo de filtro de tickers estiver vazio e o usuário pressionar "Carregar" ou "Filtrar", o sistema busca automaticamente a carteira do IDIV e a usa como filtro
+
+#### Changed
+
+- Usuário pode limpar o filtro manualmente para recarregar a carteira IDIV, ou editar a lista para personalizar
+
+### [ui-ajustes-filtro-statusbar](openspec/changes/archive/2026-06-27-ui-ajustes-filtro-statusbar) Reposiciona a barra de status e substitui o filtro automático por botão Filtrar manual
+
+#### Added
+
+- Adicionar botão "Filtrar" ao lado de "Salvar Tickers" e "Carregar Tickers"
+
+#### Changed
+
+- Mover a barra de status para abaixo dos botões "Copiar Dados" e "Copiar Gráfico"
+- O filtro só é aplicado quando o botão "Filtrar" é pressionado manualmente
+
+#### Removed
+
+- Remover o filtro automático ao digitar (evento KeyRelease) e ao carregar arquivo
+
+### [ui-polish-and-usability](openspec/changes/archive/2026-06-27-ui-polish-and-usability) Polish geral da GUI: atalhos, tooltips, feedback visual, layout consistente e preferências persistentes
+
+#### Added
+
+- App icon set on the window for taskbar display (`.ico` on Windows, `.png` on Linux)
+- Statusbar with Unicode state icons (✓ ⏳ ⚠ ℹ) and auto-clearing timed messages
+- Ticker counter label updated live (e.g. "Tickers (37)" / "Exibindo 42 de 300")
+- Show currently loaded reference date on the UI
+- Confirmation flash on copy actions ("✓ Dados copiados") auto-clearing after 2.5s
+- Keyboard shortcuts: Enter→Carregar, Ctrl+C→Copiar Dados, F5→Recarregar (avoids system conflicts)
+- Double-click on ticker list filters/selects that ticker
+- Tooltips on all controls (indicators, buttons, chart selector)
+- Hand cursor (`hand2`) on all interactive controls
+- Initial keyboard focus on DateEntry
+- ttk.Separator between export buttons
+- Dynamic chart title label above the chart area (e.g. "VWAP Histogram")
+- Empty-state message when filter removes all tickers
+- User-friendly error display (short message + expandable details)
+- Filtered/Total count in status (e.g. "Exibindo 42 de 300 ativos")
+- Persist window geometry and PanedWindow sash position to `~/.flowscope/config.json`
+- Dynamic window title: "FlowScope — YYYY-MM-DD — N ativos"
+- Animated processing indicator using `after()` (spinning dots)
+- Context menu (right-click) on ticker list: Copy, Remove, Select All, Clear
+
+#### Changed
+
+- Controls disabled during loading (Carregar button + DateEntry) with wait cursor
+- Chart type selector wrapped in a LabelFrame titled "Visualização"
+- Bottom action buttons wrapped in a LabelFrame titled "Exportação"
+- Consistent padding constants (`PAD_SMALL=4`, `PAD=8`, `PAD_LARGE=12`) replacing ad-hoc values
+- Internal button padding (`ipadx=8`, `ipady=2`)
+- Subtle toolbar border (GROOVE) around action buttons
+- Consistent use of `ttk` themed widgets where possible
 
 [0.7.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.7.0
 

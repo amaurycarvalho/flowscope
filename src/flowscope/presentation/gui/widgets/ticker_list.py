@@ -56,6 +56,7 @@ class TickerList:
 
         self._view_tickers_snapshot: list[str] = []
         self._view_selection_snapshot: set[str] = set()
+        self._suppress_change = False
 
         self._btn_frame = tk.Frame(self.frame)
         self._btn_frame.pack(fill=tk.X, pady=(0, 2))
@@ -311,17 +312,23 @@ class TickerList:
         """Substitui a lista de tickers e atualiza a seleção no modo de visualização.
 
         Preenche a listbox e o campo de texto com os tickers recebidos,
-        seleciona todos e atualiza os retratos de estado interno.
+        seleciona todos e atualiza os retratos de estado interno. A atualização
+        é programática e não deve disparar ``on_change`` (reservado à interação
+        do usuário), evitando reentrância durante uma carga em andamento.
         """
-        self._listbox.delete(0, tk.END)
-        for t in tickers:
-            self._listbox.insert(tk.END, t)
-        self._select_all_listbox()
-        self._text.delete("1.0", tk.END)
-        self._text.insert("1.0", "\n".join(tickers))
-        self._view_tickers_snapshot = list(tickers)
-        self._view_selection_snapshot = set(tickers)
-        self._set_view_mode(True)
+        self._suppress_change = True
+        try:
+            self._listbox.delete(0, tk.END)
+            for t in tickers:
+                self._listbox.insert(tk.END, t)
+            self._select_all_listbox()
+            self._text.delete("1.0", tk.END)
+            self._text.insert("1.0", "\n".join(tickers))
+            self._view_tickers_snapshot = list(tickers)
+            self._view_selection_snapshot = set(tickers)
+            self._set_view_mode(True)
+        finally:
+            self._suppress_change = False
 
     def get_tickers(self: "TickerList") -> list[str]:
         """Retorna os tickers selecionados ou editados conforme o modo atual.
@@ -377,7 +384,7 @@ class TickerList:
     def _on_listbox_select(self: "TickerList", event: tk.Event | None = None) -> None:
         """Notifica a mudança de seleção quando o modo de visualização está ativo."""
         on_change = self._callbacks.get("on_change")
-        if self._view_mode and on_change:
+        if self._view_mode and on_change and not self._suppress_change:
             on_change()
 
     def _on_double_click(self: "TickerList", event: tk.Event) -> None:

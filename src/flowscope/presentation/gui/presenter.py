@@ -95,6 +95,7 @@ class FlowScopePresenter:
         """Inicializa o apresentador com a view de referência."""
         self._view = view
         self._operacoes_ativas = 0
+        self._dados_disponiveis = False
 
     def on_operation_started(self: "FlowScopePresenter") -> None:
         """Notifica a view sobre o início de uma operação."""
@@ -114,6 +115,7 @@ class FlowScopePresenter:
             self._view.restore_all_buttons()
             self._view.clear_wait_cursor()
             self._view.clear_progress()
+            self._sincronizar_copy_button()
 
     def on_portfolio_loaded(self: "FlowScopePresenter", tickers: list[str]) -> None:
         """Exibe a carteira carregada na interface."""
@@ -129,7 +131,8 @@ class FlowScopePresenter:
         """Apresenta o resultado da análise na interface."""
         self._view.set_current_data(result)
         self._view.set_tickers_list(tickers)
-        self._view.config_copy_button_state(tk.NORMAL)
+        self._dados_disponiveis = True
+        self._sincronizar_copy_button()
         self._view.set_counter(f"Tickers ({len(tickers)})")
         self._view.set_date_label(f"Dados: {ref_date}")
         self._view.on_tab_changed()
@@ -144,6 +147,13 @@ class FlowScopePresenter:
         self._view.set_status(
             f"Não foi possível carregar os dados. {error}", "⚠",
         )
+
+    def _sincronizar_copy_button(self: "FlowScopePresenter") -> None:
+        """Habilita a cópia apenas com dados carregados e nenhuma operação ativa."""
+        if self._dados_disponiveis and self._operacoes_ativas == 0:
+            self._view.config_copy_button_state(tk.NORMAL)
+        else:
+            self._view.config_copy_button_state(tk.DISABLED)
 
     def on_technical_error(self: "FlowScopePresenter", error: Exception, ref: LogReference) -> None:
         """Exibe mensagem de erro técnico e orienta o usuário ao arquivo de log."""
@@ -184,6 +194,7 @@ class FlowScopePresenter:
             self._view.restore_all_buttons()
             self._view.clear_wait_cursor()
             self._view.clear_progress()
+            self._sincronizar_copy_button()
 
     def on_fundamental_progress(
         self: "FlowScopePresenter",

@@ -334,7 +334,7 @@ A sub-aba "Fundamentos" da aba "Análise Geral" DEVE ser populada com a análise
 
 ### Requirement: Análise fundamentalista executada em background com progresso
 
-A análise fundamentalista DEVE ser executada fora da thread da interface, de modo que a janela permaneça responsiva durante a aquisição, e DEVE reportar progresso por ticker/etapa na barra de status. A thread de trabalho NÃO DEVE acessar widgets do Tk diretamente; os resultados e o progresso DEVEM ser entregues à thread da interface por meio de uma fila consumida periodicamente.
+A análise fundamentalista DEVE ser executada fora da thread da interface, de modo que a janela permaneça responsiva durante a aquisição, e DEVE reportar progresso por ticker/etapa na barra de status. O progresso DEVE ser exibido na barra de progresso da barra de status, informando o número de tickers processados sobre o total, iniciando em `0/N` e avançando a cada ticker concluído. A thread de trabalho NÃO DEVE acessar widgets do Tk diretamente; os resultados e o progresso DEVEM ser entregues à thread da interface por meio de uma fila consumida periodicamente.
 
 #### Scenario: Interface responsiva durante a aquisição
 - **WHEN** a análise fundamentalista está em andamento
@@ -343,6 +343,26 @@ A análise fundamentalista DEVE ser executada fora da thread da interface, de mo
 #### Scenario: Resultado entregue na thread da interface
 - **WHEN** a thread de trabalho conclui a análise
 - **THEN** os resultados DEVEM ser publicados na thread do Tk antes de atualizar a tabela
+
+#### Scenario: Barra de progresso inicia em zero
+- **WHEN** a análise fundamentalista é iniciada
+- **THEN** a barra de progresso DEVE ser exibida com `0/N` tickers processados
+
+#### Scenario: Barra de progresso avança por ticker
+- **WHEN** um ticker é concluído
+- **THEN** a barra de progresso DEVE avançar para o número de tickers processados sobre o total
+
+### Requirement: Glifos consistentes na barra de status
+
+A barra de status DEVE usar glifos que renderizam de forma consistente nas plataformas suportadas. Mensagens de progresso DEVEM ser prefixadas por um marcador consistente (ex.: `•`) em vez do glifo de informação `ℹ`, mantendo os ícones de desfecho já existentes (ex.: `✓` e `⚠`).
+
+#### Scenario: Progresso usa marcador consistente
+- **WHEN** o progresso da análise fundamentalista é exibido
+- **THEN** a mensagem DEVE usar um marcador que renderiza de forma consistente, e não o glifo `ℹ`
+
+#### Scenario: Desfecho mantém os ícones existentes
+- **WHEN** a carga conclui com sucesso ou com falha
+- **THEN** os ícones de desfecho (`✓` e `⚠`) DEVEM ser mantidos
 
 ### Requirement: Descarte de resultados obsoletos
 
@@ -372,7 +392,7 @@ O sistema DEVE adicionar uma sub-aba "Fundamentos" ao sub-notebook da aba "Anál
 - **THEN** a tabela DEVE exibir os dados fundamentalistas para os 5 tickers selecionados
 
 ### Requirement: Colunas da tabela fundamentalista
-A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), FFO Trend, P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio e Data de referência.
+A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, P (Cotação), VP (VP/Cota), P/VP, P/L, Dividend Yield, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO Yield, Dividend Payout (DY/FFOY), FFO Trend, P/FFO, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio e Data de referência.
 
 #### Scenario: Colunas de identidade preenchidas
 - **WHEN** a tabela é renderizada para um ticker conhecido
@@ -390,6 +410,10 @@ A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tip
 - **WHEN** a fonte fornece a cotação e o VP/Cota do ticker
 - **THEN** as colunas `P (Cotação)` e `VP (VP/Cota)` DEVEM exibir esses valores
 
+#### Scenario: Coluna P/L
+- **WHEN** a tabela é renderizada
+- **THEN** a coluna `P/L` DEVE ser exibida imediatamente após a coluna `P/VP`
+
 #### Scenario: Colunas FFO vazias para não elegível
 - **WHEN** a fonte não fornece as métricas FFO para o ativo
 - **THEN** as colunas FFO Yield, Dividend Yield, P/FFO, P/VP e FFO Trend DEVEM exibir `N/A`
@@ -403,11 +427,11 @@ A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tip
 - **THEN** as colunas de cotistas, classificação de cotistas, tamanho patrimonial, classificação patrimonial e data de referência DEVEM ser exibidas
 
 ### Requirement: Alinhamento das colunas numéricas
-A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
+A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/L, P/FFO, P/VP, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
 
 #### Scenario: Colunas numéricas alinhadas à direita
 - **WHEN** a tabela é renderizada
-- **THEN** as colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
+- **THEN** as colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/L, P/FFO, P/VP, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
 
 #### Scenario: Colunas textuais alinhadas à esquerda
 - **WHEN** a tabela é renderizada
@@ -449,3 +473,38 @@ O sistema DEVE exibir, na barra de status, o sufixo `" - cached"` no progresso d
 #### Scenario: Falha catastrófica
 - **WHEN** a análise fundamentalista não consegue concluir
 - **THEN** a barra de status DEVE exibir `"Falha ao atualizar dados"`
+
+### Requirement: Rótulos descritivos das tendências
+
+A tabela fundamentalista DEVE exibir rótulos descritivos em português para as colunas `FFO Trend` e `Tendência do dividendo`, em vez dos identificadores técnicos: `Forte Alta` para a faixa superior, `Leve Alta` para alta moderada, `Estável` para estabilidade, `Leve Queda` para queda moderada e `Forte Queda` para a faixa inferior, exibindo `N/A` quando a tendência não estiver disponível.
+
+#### Scenario: Rótulos do FFO Trend
+- **WHEN** a classificação do FFO Momentum é `FORTE_ALTA`, `ALTA`, `ESTAVEL`, `QUEDA` ou `FORTE_QUEDA`
+- **THEN** a coluna `FFO Trend` DEVE exibir, respectivamente, `Forte Alta`, `Leve Alta`, `Estável`, `Leve Queda` ou `Forte Queda`
+
+#### Scenario: Rótulos da Tendência do dividendo
+- **WHEN** a classificação da tendência do dividendo é `FORTE_ALTA`, `ALTA`, `ESTAVEL`, `QUEDA` ou `FORTE_QUEDA`
+- **THEN** a coluna `Tendência do dividendo` DEVE exibir, respectivamente, `Forte Alta`, `Leve Alta`, `Estável`, `Leve Queda` ou `Forte Queda`
+
+#### Scenario: Tendência indisponível
+- **WHEN** a tendência não está disponível
+- **THEN** a coluna correspondente DEVE exibir `N/A`
+
+### Requirement: Formatação numérica das colunas da tabela fundamentalista
+A tabela fundamentalista DEVE formatar as colunas "Último dividendo", "Dividendo anterior", "Dividend Payout (DY/FFOY)", "P (Cotação)" e "VP (VP/Cota)" com exatamente duas casas decimais, usando vírgula como separador decimal. A coluna "Dividend Payout (DY/FFOY)" DEVE incluir o sufixo `%`; as demais DEVEM manter seus formatos (valor monetário curto e valor por cota). Quando não houver valor, a coluna DEVE exibir `N/A`.
+
+#### Scenario: Valores com 2 casas decimais
+- **WHEN** um ticker possui último dividendo `0,7`, dividendo anterior `0,5`, cotação `15,5` e VP/Cota `10`
+- **THEN** a tabela DEVE exibir `0,70`, `0,50`, `15,50` e `10,00` nas respectivas colunas
+
+#### Scenario: Dividend Payout com 2 casas decimais
+- **WHEN** Dividend Yield e FFO Yield estão disponíveis e a razão entre eles é `0,894`
+- **THEN** a coluna "Dividend Payout (DY/FFOY)" DEVE exibir `89,40%`
+
+#### Scenario: Sem valor
+- **WHEN** o valor de uma dessas colunas é ausente para o ticker
+- **THEN** a coluna DEVE exibir `N/A`
+
+#### Scenario: Exportação CSV consistente com a tabela
+- **WHEN** o usuário copia a tabela de Fundamentos como CSV
+- **THEN** os valores DEVEM usar a mesma formatação de duas casas decimais exibida na tabela

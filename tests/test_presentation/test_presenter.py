@@ -1,6 +1,8 @@
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
+import tkinter as tk
+
 from flowscope.application.logging_port import LogReference
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
@@ -63,6 +65,36 @@ class TestFlowScopePresenter:
         args = view.set_status.call_args[0]
         assert "carregado" in args[0]
         assert args[1] == "✓"
+
+    def test_copy_button_permanece_desabilitado_durante_operacao(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_result({"vwap": {}}, ["PETR4"], date(2024, 1, 15))
+
+        assert view.config_copy_button_state.call_args[0][0] == tk.DISABLED
+
+    def test_copy_button_habilita_ao_final_da_operacao(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_result({"vwap": {}}, ["PETR4"], date(2024, 1, 15))
+        presenter.on_operation_finished()
+
+        assert view.config_copy_button_state.call_args[0][0] == tk.NORMAL
+
+    def test_copy_button_so_habilita_apos_fundamental(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_result({"vwap": {}}, ["PETR4"], date(2024, 1, 15))
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+
+        assert view.config_copy_button_state.call_args[0][0] == tk.DISABLED
+
+        presenter.on_fundamental_finished()
+        assert view.config_copy_button_state.call_args[0][0] == tk.NORMAL
 
     def test_on_error_chama_set_status_com_mensagem(self):
         view = MagicMock()

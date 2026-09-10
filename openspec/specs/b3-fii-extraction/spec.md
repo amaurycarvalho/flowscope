@@ -35,7 +35,7 @@ O sistema DEVE listar os documentos estruturados de rendimentos e amortizações
 
 ### Requirement: Download e extração de documento FundosNet
 
-O sistema DEVE, para cada documento listado, obter o identificador a partir de `urlViewerFundosNet`, baixar o documento e extrair os campos estruturados do provento (entidade e provento), reutilizando as estratégias de parsing tolerantes a HTML malformado.
+O sistema DEVE, para cada documento listado, obter o identificador a partir de `urlViewerFundosNet`, baixar o documento e extrair os campos estruturados do provento (entidade e provento), reutilizando as estratégias de parsing tolerantes a HTML malformado. No layout real do documento, em que `Rendimento` e `Amortização` são colunas e cada linha de atributo traz o valor na coluna aplicável, o sistema DEVE identificar o tipo do provento pela coluna que contém o valor (não pela presença de um marcador `X`) e DEVE extrair a `Data-base` mesmo quando o rótulo vier acompanhado de texto parentético (ex.: `Data-base (último dia de negociação "com" direito ao provento)`).
 
 #### Scenario: Documento com identificador na URL
 - **WHEN** a URL do documento contém `?id=<N>`
@@ -44,6 +44,30 @@ O sistema DEVE, para cada documento listado, obter o identificador a partir de `
 #### Scenario: Documento sem provento extraível
 - **WHEN** o documento não contém um código ISIN reconhecível
 - **THEN** o sistema DEVE registrar a falha daquele documento sem interromper os demais
+
+#### Scenario: Rendimento no layout de duas colunas
+- **WHEN** o documento traz as colunas `Rendimento` e `Amortização` e a linha `Data-base`/`Valor do provento` tem o valor na coluna `Rendimento`
+- **THEN** o provento extraído DEVE ter tipo `Rendimento`, com `data_base` preenchida pela data da linha `Data-base`
+
+#### Scenario: Amortização no layout de duas colunas
+- **WHEN** o documento traz as colunas `Rendimento` e `Amortização` e o valor está na coluna `Amortização`
+- **THEN** o provento extraído DEVE ter tipo `Amortização`
+
+#### Scenario: Data-base com rótulo parentético
+- **WHEN** o rótulo da data-base contém texto adicional entre parênteses
+- **THEN** a data-base DEVE ser extraída do valor associado ao rótulo
+
+### Requirement: Teste de contrato do documento FundosNet real
+
+O sistema DEVE manter uma fixture estática de um documento FundosNet real de rendimentos e amortizações e um teste de contrato que garanta a extração de `tipo` e `data_base`, de modo que uma mudança de layout da B3 seja detectada explicitamente.
+
+#### Scenario: Fixture real valida a extração
+- **WHEN** o parser é executado sobre a fixture do documento real
+- **THEN** o provento DEVE ser classificado como `Rendimento` e conter `data_base` não nula
+
+#### Scenario: Mudança de layout detectada
+- **WHEN** a fixture perde a coluna de valor ou o rótulo de data-base
+- **THEN** o teste de contrato DEVE falhar explicitamente
 
 ### Requirement: Retry e rate-limit na aquisição
 
@@ -92,3 +116,55 @@ O sistema DEVE listar os documentos do Informe Mensal Estruturado (`GetStructure
 #### Scenario: Falha ao baixar o documento
 - **WHEN** o download do documento do FundosNet falha
 - **THEN** o sistema DEVE registrar a falha como indisponibilidade, não como ausência de dados
+
+### Requirement: Cache do HTML do documento FundosNet
+
+O sistema DEVE persistir o HTML bruto de cada documento do FundosNet obtido por `buscar_html_documento`, indexado pelo identificador do documento, de modo que solicitações subsequentes do mesmo documento sejam servidas do cache sem nova requisição HTTP. O cache DEVE ser compartilhado entre os documentos de proventos (`type=41`) e os do informe mensal (`type=40`), que usam o mesmo endpoint. Quando o download falhar e existir HTML armazenado, o sistema DEVE servir o conteúdo em cache; sem conteúdo armazenado, DEVE sinalizar a indisponibilidade.
+
+#### Scenario: Documento servido do cache
+- **WHEN** o HTML de um documento já foi baixado e é solicitado novamente dentro do período de retenção
+- **THEN** o sistema DEVE devolver o HTML armazenado sem realizar nova requisição HTTP
+
+#### Scenario: Documento novo é armazenado
+- **WHEN** um documento ainda não está em cache
+- **THEN** o sistema DEVE baixar o HTML e armazená-lo indexado pelo identificador do documento
+
+#### Scenario: Proventos e informe mensal compartilham o cache
+- **WHEN** o mesmo identificador de documento é lido pela extração de proventos e pela extração do informe mensal
+- **THEN** o HTML DEVE ser baixado uma única vez e reutilizado pelas duas leituras
+
+#### Scenario: Falha de rede com cache disponível
+- **WHEN** o download do documento falha por indisponibilidade e existe HTML armazenado para o identificador
+- **THEN** o sistema DEVE servir o conteúdo em cache
+
+#### Scenario: Falha de rede sem cache
+- **WHEN** o download do documento falha e não existe HTML armazenado para o identificador
+- **THEN** o sistema DEVE sinalizar a indisponibilidade, sem retornar conteúdo vazio como se fosse válido
+
+### Requirement: Cache da identidade do fundo
+
+O sistema DEVE persistir a resposta de `GetListClassFund` usada na resolução de identidade, indexada pelo `id` primário do fundo, de modo que `find_by_ticker` não consulte a B3 novamente dentro do período de validade. A ausência de correspondência NÃO DEVE ser armazenada, para não congelar falhas transitórias.
+
+#### Scenario: Identidade servida do cache
+- **WHEN** a identidade de um fundo já foi resolvida e é solicitada novamente dentro do período de validade
+- **THEN** o sistema DEVE devolver os registros de classe armazenados sem nova requisição HTTP
+
+#### Scenario: Validade vencida reconsulta a fonte
+- **WHEN** o período de validade da identidade armazenada vence
+- **THEN** o sistema DEVE consultar a B3 novamente e substituir o cache
+
+#### Scenario: Ticker sem correspondência não é cacheado
+- **WHEN** a resolução de um ticker não encontra correspondência na B3
+- **THEN** o resultado vazio NÃO DEVE ser armazenado, permitindo nova tentativa em execução futura
+
+### Requirement: Chaves de cache versionadas e políticas centralizadas
+
+O sistema DEVE versionar as chaves de cache de documentos e de identidade com a versão do parser/aquisição da B3 e DEVE centralizar os prazos de validade e os nomes de chave em constantes do cliente, para que uma mudança de parser invalide os registros anteriores e as políticas de cache evoluam em um único ponto.
+
+#### Scenario: Mudança de versão do parser invalida registros
+- **WHEN** a versão do parser/aquisição difere da versão registrada no cache
+- **THEN** os registros de documento e de identidade anteriores DEVEM ser tratados como ausentes e a fonte DEVE ser consultada novamente
+
+#### Scenario: Política de cache em um único ponto
+- **WHEN** um prazo de validade ou nome de chave da aquisição B3 precisa mudar
+- **THEN** a alteração DEVE ocorrer nas constantes do cliente, sem duplicar valores literais nos métodos de aquisição
