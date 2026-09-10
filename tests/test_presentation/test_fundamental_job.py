@@ -51,6 +51,18 @@ class TestFundamentalJob:
         tipo = job.fila.get_nowait()[0]
         assert tipo == "erro"
 
+    def test_progresso_carrega_current_e_total(self):
+        job = FundamentalJob(_CasoFake(), ["HGBS11", "HGLG11"], REFERENCIA, 1)
+        thread = job.iniciar()
+        thread.join(timeout=2)
+
+        mensagens = []
+        while not job.fila.empty():
+            mensagens.append(job.fila.get_nowait())
+        progressos = [m for m in mensagens if m[0] == MENSAGEM_PROGRESSO]
+        assert [m[3] for m in progressos] == [1, 2]
+        assert [m[4] for m in progressos] == [2, 2]
+
 
 class TestGenerationToken:
     def _controller(self, generation):
@@ -89,6 +101,26 @@ class TestGenerationToken:
         controller._fundamental_job = job
         controller._drenar_fundamental(job)
         assert presenter.on_fundamental_result.call_args[0][1] is True
+
+    def test_progresso_repassa_current_e_total(self):
+        controller, presenter = self._controller(generation=1)
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False, 1, 3))
+        controller._fundamental_job = job
+        controller._drenar_fundamental(job)
+        presenter.on_fundamental_progress.assert_called_once_with(
+            "Analisando HGBS11", 1, 3
+        )
+
+    def test_progresso_formato_antigo_nao_quebra(self):
+        controller, presenter = self._controller(generation=1)
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False))
+        controller._fundamental_job = job
+        controller._drenar_fundamental(job)
+        presenter.on_fundamental_progress.assert_called_once_with(
+            "Analisando HGBS11"
+        )
 
     def test_drenar_encerra_cursor_no_resultado(self):
         controller, presenter = self._controller(generation=1)

@@ -64,6 +64,7 @@ class AnaliseFundamental:
     metricas: MetricasFii | None
     cotacao: Decimal | None = None
     vp_cota: Decimal | None = None
+    p_l: Decimal | None = None
     classificacao_exibicao: ClassificacaoExibicao | None = None
     cotistas: int | None = None
     patrimonio: Decimal | None = None

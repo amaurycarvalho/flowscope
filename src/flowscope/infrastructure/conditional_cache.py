@@ -5,223 +5,46 @@ Separa as políticas de *frescor* (idade máxima para servir sem rede),
 *retenção* (quando evictar do armazenamento). Os validadores decidem se o
 valor remoto permanece igual, mudou ou não pôde ser verificado, e o resultado
 de cada consulta é reportado ao chamador via ``CacheOutcome``.
+
+Os tipos e validadores vivem em módulos próprios e são reexportados aqui para
+preservar o caminho de importação histórico.
 """
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
-from enum import Enum
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Protocol
 
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.conditional_cache_types import (
+    _RETENTION_PADRAO,
+    _ZERO,
+    CONTENT_LENGTH,
+    DATA_ULTIMA_COTACAO,
+    ETAG,
+    LAST_MODIFIED,
+    REVALIDATED_AT,
+    CacheOutcome,
+    CacheRecord,
+    CacheResult,
+    Fetched,
+    FileCacheResult,
+    RemoteResponse,
+    RevalidationResult,
+    RevalidationStatus,
+    Validator,
+    _atomic_write_bytes,
+    _parse_datetime,
+    headers_to_validators,
+)
+from flowscope.infrastructure.conditional_cache_validators import (
+    DateValidator,
+    HttpValidator,
+)
 
 logger = logging.getLogger("flowscope")
-
-#: Chaves de validação HTTP reconhecidas pelos validadores e metadados.
-ETAG = "etag"
-LAST_MODIFIED = "last_modified"
-CONTENT_LENGTH = "content_length"
-DATA_ULTIMA_COTACAO = "data_ultima_cotacao"
-REVALIDATED_AT = "revalidated_at"
-
-#: Políticas padrão do cache condicional.
-_ZERO = timedelta(0)
-_RETENTION_PADRAO = timedelta(days=30)
-
-
-class RevalidationStatus(Enum):
-    """Resultado da checagem de um validador contra a fonte remota."""
-
-    UNCHANGED = "unchanged"
-    CHANGED = "changed"
-    UNKNOWN = "unknown"
-
-
-class CacheOutcome(Enum):
-    """Resultado de uma consulta ao cache condicional."""
-
-    HIT = "hit"
-    REVALIDATED = "revalidated"
-    UPDATED = "updated"
-    MISS = "miss"
-
-
-@dataclass(frozen=True)
-class RevalidationResult:
-    """Decisão de um validador e os validadores atualizados."""
-
-    status: RevalidationStatus
-    payload: object | None = None
-    validators: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class Fetched:
-    """Conteúdo recém-obtido da fonte e os validadores que o acompanham."""
-
-    payload: object
-    validators: Mapping[str, str] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class CacheRecord:
-    """Registro armazenado, com conteúdo, validadores e versão do parser."""
-
-    payload: object
-    validators: Mapping[str, str] = field(default_factory=dict)
-    fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    parser_version: str = ""
-
-
-@dataclass(frozen=True)
-class CacheResult:
-    """Valor devolvido pelo cache e o resultado da consulta."""
-
-    value: object
-    outcome: CacheOutcome
-
-
-@dataclass(frozen=True)
-class FileCacheResult:
-    """Arquivo devolvido pelo cache condicional de arquivos."""
-
-    data: bytes
-    outcome: CacheOutcome
-    validators: Mapping[str, str] = field(default_factory=dict)
-
-
-class RemoteResponse(Protocol):
-    """Resposta mínima de uma requisição HTTP usada pelos validadores."""
-
-    status_code: int
-    text: str
-    headers: Mapping[str, str]
-
-
-class Validator(Protocol):
-    """Contrato de um validador de cache."""
-
-    def revalidate(self: Validator, record: CacheRecord) -> RevalidationResult:
-        """Compara o registro armazenado com a fonte remota."""
-        ...
-
-
-def headers_to_validators(headers: Mapping[str, str]) -> dict[str, str]:
-    """Extrai os validadores HTTP relevantes dos cabeçalhos de resposta."""
-    validators: dict[str, str] = {}
-    if headers.get("ETag"):
-        validators[ETAG] = str(headers["ETag"])
-    if headers.get("Last-Modified"):
-        validators[LAST_MODIFIED] = str(headers["Last-Modified"])
-    if headers.get("Content-Length"):
-        validators[CONTENT_LENGTH] = str(headers["Content-Length"])
-    return validators
-
-
-def _parse_iso_date(valor: object) -> date | None:
-    """Interpreta uma data ISO armazenada em validadores, ou ``None``."""
-    if not valor:
-        return None
-    try:
-        return date.fromisoformat(str(valor)[:10])
-    except ValueError:
-        return None
-
-
-def _parse_datetime(valor: object) -> datetime | None:
-    """Interpreta um instante ISO, normalizando para UTC, ou ``None``."""
-    if not valor:
-        return None
-    try:
-        instante = datetime.fromisoformat(str(valor))
-    except ValueError:
-        return None
-    if instante.tzinfo is None:
-        instante = instante.replace(tzinfo=timezone.utc)
-    return instante.astimezone(timezone.utc)
-
-
-class HttpValidator:
-    """Revalida por ``ETag``/``Last-Modified``, tratando ``304`` como inalterado."""
-
-    def __init__(
-        self: HttpValidator,
-        fetch: Callable[[Mapping[str, str]], RemoteResponse],
-    ) -> None:
-        """Inicializa o validador com a função de requisição condicional."""
-        self._fetch = fetch
-
-    def revalidate(self: HttpValidator, record: CacheRecord) -> RevalidationResult:
-        """Consulta a fonte e decide se o registro permanece válido."""
-        if not record.validators.get(ETAG) and not record.validators.get(LAST_MODIFIED):
-            return RevalidationResult(RevalidationStatus.UNKNOWN)
-        try:
-            response = self._fetch(record.validators)
-        except Exception:  # falha de rede: verificação indisponível
-            logger.warning("Falha ao revalidar cache via HTTP", exc_info=True)
-            return RevalidationResult(RevalidationStatus.UNKNOWN)
-        validators = headers_to_validators(response.headers)
-        if response.status_code == 304:
-            return RevalidationResult(
-                RevalidationStatus.UNCHANGED, validators=validators
-            )
-        if 200 <= response.status_code < 300:
-            return RevalidationResult(
-                RevalidationStatus.CHANGED,
-                payload=response.text,
-                validators=validators,
-            )
-        return RevalidationResult(RevalidationStatus.UNKNOWN)
-
-
-class DateValidator:
-    """Compara a data de cotação remota com a data armazenada no registro."""
-
-    def __init__(
-        self: DateValidator,
-        fetch: Callable[[Mapping[str, str]], RemoteResponse],
-        extract_date: Callable[[str], date | None],
-    ) -> None:
-        """Inicializa o validador com a requisição e o extrator de data."""
-        self._fetch = fetch
-        self._extract_date = extract_date
-
-    def revalidate(self: DateValidator, record: CacheRecord) -> RevalidationResult:
-        """Consulta a fonte e compara a data de cotação com a armazenada."""
-        try:
-            response = self._fetch(record.validators)
-        except Exception:  # falha de rede: verificação indisponível
-            logger.warning("Falha ao revalidar cache pela data", exc_info=True)
-            return RevalidationResult(RevalidationStatus.UNKNOWN)
-        validators = headers_to_validators(response.headers)
-        if response.status_code == 304:
-            return RevalidationResult(
-                RevalidationStatus.UNCHANGED, validators=validators
-            )
-        if not 200 <= response.status_code < 300:
-            return RevalidationResult(RevalidationStatus.UNKNOWN)
-        remota = self._extract_date(response.text)
-        armazenada = _parse_iso_date(record.validators.get(DATA_ULTIMA_COTACAO))
-        if remota is None or armazenada is None:
-            return RevalidationResult(
-                RevalidationStatus.UNKNOWN,
-                payload=response.text,
-                validators=validators,
-            )
-        validators = {**validators, DATA_ULTIMA_COTACAO: remota.isoformat()}
-        if remota <= armazenada:
-            return RevalidationResult(
-                RevalidationStatus.UNCHANGED, validators=validators
-            )
-        return RevalidationResult(
-            RevalidationStatus.CHANGED,
-            payload=response.text,
-            validators=validators,
-        )
 
 
 class ConditionalCache:
@@ -452,9 +275,23 @@ class ConditionalCache:
         return CacheResult(record.payload, CacheOutcome.REVALIDATED)
 
 
-def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    """Grava bytes de forma atômica, com arquivo temporário e rename."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(data)
-    tmp.rename(path)
+__all__ = [
+    "CONTENT_LENGTH",
+    "DATA_ULTIMA_COTACAO",
+    "ETAG",
+    "LAST_MODIFIED",
+    "REVALIDATED_AT",
+    "CacheOutcome",
+    "CacheRecord",
+    "CacheResult",
+    "ConditionalCache",
+    "DateValidator",
+    "Fetched",
+    "FileCacheResult",
+    "HttpValidator",
+    "RemoteResponse",
+    "RevalidationResult",
+    "RevalidationStatus",
+    "Validator",
+    "headers_to_validators",
+]

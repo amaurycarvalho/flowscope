@@ -18,6 +18,7 @@ from flowscope.domain.fii import (
     ffo_yield,
     market_value,
     p_ffo,
+    p_l,
     p_vp,
     verificar_consistencia,
 )
@@ -53,6 +54,19 @@ class TestFuncoesPurras:
     def test_p_vp_exemplo(self):
         valor = p_vp(Decimal("2705226305.24"), Decimal("2942000000"))
         assert valor.quantize(Decimal("0.01")) == Decimal("0.92")
+
+    def test_p_l_exemplo(self):
+        valor = p_l(Decimal("18.74"), Decimal("0.55"))
+        assert valor.quantize(Decimal("0.01")) == Decimal("2.84")
+
+    def test_p_l_dividendo_zero_ou_ausente_retorna_none(self):
+        assert p_l(Decimal("18.74"), Decimal(0)) is None
+        assert p_l(Decimal("18.74"), None) is None
+
+    def test_p_l_disponivel_na_importacao_publica(self):
+        from flowscope.domain.fii import p_l as publico
+
+        assert publico is p_l
 
     def test_dividend_yield(self):
         valor = dividend_yield(Decimal("213080000"), Decimal("2705226305.24"))

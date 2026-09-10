@@ -222,6 +222,40 @@ class TestOnToday:
         view._date_entry.set_date.assert_called_once()
 
 
+class _RepoVazio:
+    def obter_nome(self, ticker):
+        return None
+
+    def obter_proventos(self, ticker, reference_date):
+        return []
+
+    def obter_patrimonio(self, ticker, reference_date):
+        return None
+
+
+class TestFundamentalProgress:
+    def test_inicia_barra_em_zero(self):
+        guard = MagicMock()
+        guard.acquire.return_value = _mock_context(True)
+        load_portfolio = MagicMock()
+        analyze = MagicMock()
+        analyze.execute.return_value = {"vwap": {}}
+        presenter = MagicMock()
+        presenter.get_current_tickers.return_value = ["PETR4", "VALE3"]
+        presenter.get_reference_date.return_value = date(2024, 1, 15)
+
+        controller = _make_controller(
+            guard=guard,
+            load_portfolio=load_portfolio,
+            analyze=analyze,
+            presenter=presenter,
+            fundamental_repo=_RepoVazio(),
+        )
+        controller.on_load_data()
+
+        presenter.on_progress.assert_any_call(0, 2, "• Fundamentos...")
+
+
 class TestOnTickerEdit:
     def test_on_ticker_edit_sem_tickers_carrega_idiv(self):
         view = MagicMock()

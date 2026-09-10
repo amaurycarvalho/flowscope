@@ -1,14 +1,20 @@
 import base64
 import json
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 import responses
 
-from flowscope.infrastructure.b3.funds_client import B3FundosClient
+from flowscope.infrastructure.b3 import funds_client
+from flowscope.infrastructure.b3.funds_client import (
+    PARSER_VERSION,
+    B3FundosClient,
+    _chave_cache,
+)
 from flowscope.infrastructure.b3.structured_extractor import extrair_documento_provento
 from flowscope.infrastructure.b3.structured_parser import (
     converter_data_br_para_iso,
@@ -420,3 +426,138 @@ class TestFundosRepository:
             repo.extrair_detalhes(
                 {"urlViewerFundosNet": "https://fnet?id=9", "ticker": "PETR4"}
             )
+
+
+class TestCacheAquisicaoB3:
+    def test_chave_cache_inclui_versao(self):
+        assert _chave_cache("prefixo", "123") == f"prefixo_{PARSER_VERSION}_123"
+
+    @responses.activate
+    def test_documento_html_servido_do_cache(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        url = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1"
+        responses.get(url, body="<html>doc</html>", status=200)
+        assert "doc" in client.buscar_html_documento("1")
+        assert "doc" in client.buscar_html_documento("1")
+        assert len(responses.calls) == 1
+
+    @responses.activate
+    def test_documento_html_compartilhado_entre_instancias(self, tmp_path):
+        url = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=7"
+        responses.get(url, body="<html>compartilhado</html>", status=200)
+        cache = CacheManager(cache_dir=tmp_path)
+        cliente_proventos = B3FundosClient(cache=cache)
+        cliente_informe = B3FundosClient(cache=cache)
+        assert "compartilhado" in cliente_proventos.buscar_html_documento("7")
+        assert "compartilhado" in cliente_informe.buscar_html_documento("7")
+        assert len(responses.calls) == 1
+
+    @responses.activate
+    def test_documento_html_falha_de_rede_serve_cache(self, tmp_path):
+        cache = CacheManager(cache_dir=tmp_path)
+        client = B3FundosClient(cache=cache, retry_delays=(0,))
+        url = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=2"
+        responses.get(url, body="<html>cacheado</html>", status=200)
+        client.buscar_html_documento("2")
+        chave = _chave_cache("fund_doc_html", "2")
+        meta = cache.read_meta(chave)
+        assert meta is not None
+        meta["cached_at"] = (
+            datetime.now(timezone.utc) - timedelta(days=31)
+        ).isoformat()
+        cache.write_meta(chave, meta)
+        responses.reset()
+        responses.get(url, body=requests.ConnectionError("offline"))
+        assert "cacheado" in client.buscar_html_documento("2")
+
+    @responses.activate
+    def test_documento_html_falha_de_rede_sem_cache_levanta(self, tmp_path):
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path), retry_delays=(0,)
+        )
+        url = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=3"
+        responses.get(url, body=requests.ConnectionError("offline"))
+        with pytest.raises(requests.RequestException):
+            client.buscar_html_documento("3")
+
+    @responses.activate
+    def test_mudanca_de_versao_invalida_documento(self, tmp_path, monkeypatch):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        url = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=4"
+        responses.get(url, body="<html>v1</html>", status=200)
+        assert "v1" in client.buscar_html_documento("4")
+        monkeypatch.setattr(funds_client, "PARSER_VERSION", "b3-fii-2")
+        responses.get(url, body="<html>v2</html>", status=200)
+        assert "v2" in client.buscar_html_documento("4")
+        assert len(responses.calls) == 2
+
+    def _registrar_identidade(self, candidatos):
+        fundos_payload = {
+            "language": "pt-br",
+            "typeFund": "FII",
+            "pageNumber": 1,
+            "pageSize": 20,
+        }
+        responses.get(
+            f"{_BASE}/GetListFunds/{_token(fundos_payload)}",
+            json={
+                "page": {"totalPages": 1},
+                "results": [{"acronym": "ALZR", "id": 870}],
+            },
+            status=200,
+        )
+        classes_payload = {
+            "language": "pt-br",
+            "idFNET": "870",
+            "idCEM": "ALZR",
+            "typeFund": "FII",
+        }
+        responses.get(
+            f"{_BASE}/GetListClassFund/{_token(classes_payload)}",
+            json=candidatos,
+            status=200,
+        )
+
+    @responses.activate
+    def test_identidade_servida_do_cache(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        self._registrar_identidade(
+            [
+                {"id": "870", "idMain": None, "tradingName": "Fundo: x"},
+                {"id": "20294", "idMain": "870", "fundName": "ALZR"},
+            ]
+        )
+        primeira = client.listar_candidatos("ALZR11")
+        segunda = client.listar_candidatos("ALZR11")
+        assert primeira == segunda
+        assert primeira
+        assert len(responses.calls) == 2
+
+    @responses.activate
+    def test_identidade_vazia_nao_cacheada(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        self._registrar_identidade([])
+        assert client.listar_candidatos("ALZR11") == []
+        assert client.listar_candidatos("ALZR11") == []
+        assert len(responses.calls) == 3
+
+    @responses.activate
+    def test_identidade_ttl_expirado_reconsulta(self, tmp_path):
+        cache = CacheManager(cache_dir=tmp_path)
+        client = B3FundosClient(cache=cache)
+        self._registrar_identidade(
+            [
+                {"id": "870", "idMain": None, "tradingName": "Fundo: x"},
+                {"id": "20294", "idMain": "870", "fundName": "ALZR"},
+            ]
+        )
+        client.listar_candidatos("ALZR11")
+        chave = _chave_cache("fund_classes", "870")
+        meta = cache.read_meta(chave)
+        assert meta is not None
+        meta["cached_at"] = (
+            datetime.now(timezone.utc) - timedelta(days=31)
+        ).isoformat()
+        cache.write_meta(chave, meta)
+        client.listar_candidatos("ALZR11")
+        assert len(responses.calls) == 3

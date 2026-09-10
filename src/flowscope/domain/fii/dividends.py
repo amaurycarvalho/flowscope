@@ -1,9 +1,10 @@
 """Métricas de dividendo por ticker, limitadas a proventos de Rendimento.
 
 Os dividendos são consolidados a partir de B3 (primário), CVM (secundário) e
-Fundamentus (fallback), preservando a origem de cada valor. A tendência compara
-o último dividendo com o imediatamente anterior por comparação direta
-(``Crescimento``/``Redução``/``Neutro``), sem banda de tolerância.
+Fundamentus (fallback), preservando a origem de cada valor. A tendência
+classifica a variação percentual entre o último dividendo e o anterior em cinco
+faixas (``FORTE_ALTA``/``ALTA``/``ESTAVEL``/``QUEDA``/``FORTE_QUEDA``) com
+limiares de ±5%, reutilizando os rótulos descritivos da tendência do FFO.
 """
 
 from calendar import monthrange
@@ -20,13 +21,18 @@ TIPO_RENDIMENTO = "Rendimento"
 #: Meses do período de acumulação do Dividend Yield de 12 meses.
 JANELA_MESES_12M = 12
 
+#: Limiar percentual das faixas forte alta / forte queda (±5%).
+LIMIAR_TENDENCIA = Decimal("0.05")
+
 
 class TendenciaDividendo(Enum):
     """Tendência do último dividendo em relação ao anterior."""
 
-    CRESCIMENTO = "Crescimento"
-    REDUCAO = "Redução"
-    NEUTRO = "Neutro"
+    FORTE_ALTA = "FORTE_ALTA"
+    ALTA = "ALTA"
+    ESTAVEL = "ESTAVEL"
+    QUEDA = "QUEDA"
+    FORTE_QUEDA = "FORTE_QUEDA"
     N_A = "N/A"
 
 
@@ -92,23 +98,43 @@ def consolidar_dividendos(
     return resultado
 
 
+def classificar_variacao(
+    ultimo: Decimal, anterior: Decimal
+) -> TendenciaDividendo:
+    """Classifica a variação percentual entre dois dividendos em cinco faixas.
+
+    ``anterior`` igual a zero torna a variação indefinida: o resultado é
+    ``FORTE_ALTA`` quando o último é positivo e ``ESTAVEL`` quando ambos são
+    zero.
+    """
+    if anterior == Decimal(0):
+        return (
+            TendenciaDividendo.FORTE_ALTA
+            if ultimo > Decimal(0)
+            else TendenciaDividendo.ESTAVEL
+        )
+    variacao = (ultimo - anterior) / anterior
+    if variacao >= LIMIAR_TENDENCIA:
+        return TendenciaDividendo.FORTE_ALTA
+    if variacao > Decimal(0):
+        return TendenciaDividendo.ALTA
+    if variacao == Decimal(0):
+        return TendenciaDividendo.ESTAVEL
+    if variacao >= -LIMIAR_TENDENCIA:
+        return TendenciaDividendo.QUEDA
+    return TendenciaDividendo.FORTE_QUEDA
+
+
 def calcular_tendencia(
     dividendos: list[DividendoConsolidado],
 ) -> TendenciaDividendo:
-    """Classifica a tendência comparando o último dividendo com o anterior.
+    """Classifica a tendência pela variação percentual do último dividendo.
 
-    ``CRESCIMENTO`` quando o último é maior, ``REDUCAO`` quando é menor e
-    ``NEUTRO`` quando é igual. Sem dividendo anterior a tendência é ``N/A``.
+    Sem dividendo anterior a tendência é ``N/A``.
     """
     if len(dividendos) < 2:
         return TendenciaDividendo.N_A
-    ultimo = dividendos[-1].valor
-    anterior = dividendos[-2].valor
-    if ultimo > anterior:
-        return TendenciaDividendo.CRESCIMENTO
-    if ultimo < anterior:
-        return TendenciaDividendo.REDUCAO
-    return TendenciaDividendo.NEUTRO
+    return classificar_variacao(dividendos[-1].valor, dividendos[-2].valor)
 
 
 def calcular_ultimo_dividendo_consolidado(

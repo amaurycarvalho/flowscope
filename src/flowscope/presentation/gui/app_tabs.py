@@ -66,19 +66,22 @@ TAB_CONTENT = {
         "Fundamentos — Métricas Fundamentalistas e Dividendos",
         [
             ("Objetivo: ", "bold"),
-            ("Consolidar, por ticker da watchlist, a identidade, a classificação, os dividendos e — para FIIs elegíveis — as métricas fundamentalistas de FFO.\n\n", ""),
+            ("Consolidar, por ticker da watchlist, a identidade, a classificação, os dividendos, o P/L, o número de cotistas/acionistas e — para FIIs elegíveis — as métricas fundamentalistas de FFO.\n\n", ""),
             ("Responde a pergunta: ", "bold"),
-            ("\"Quais ativos estão na carteira, que tipo são e, para FIIs de tijolo/híbrido, quão barato ou caro está o fundo frente ao FFO e ao patrimônio?\"\n\n", "italic"),
+            ("\"Quais ativos estão na carteira, que tipo são e quão barato ou caro está o ativo frente ao lucro (ou último dividendo), ao FFO e ao patrimônio?\"\n\n", "italic"),
             ("Indicadores envolvidos: ", "bold"),
             (("• Identidade: ticker, nome, tipo (ação/FII/ETF/BDR) e sub-tipo (FII: tijolo/papel/híbrido/fiagro/fiinfra; ação: ordinária/preferencial/ETF);\n"
-             "• Dividendos: última data-com, último dividendo (Rendimento) e tendência do dividendo (último vs. anterior: Crescimento/Redução/Neutro);\n"
+             "• Dividendos: última data-com, último dividendo (Rendimento) e tendência do dividendo (último vs. anterior em cinco faixas);\n"
+             "• P/L: para ações, o indicador reportado pela fonte; para FIIs, a cotação dividida pelo último dividendo anualizado (× 12), em anos;\n"
+             "• Cotistas/acionistas: número de cotistas do FII ou quantidade de acionistas da companhia (CVM) e suas classificações;\n"
              "• Métricas FFO (apenas FII elegível): FFO Yield, Dividend Yield 12m, P/FFO, P/VP e FFO Trend.\n\n"), ""),
             ("Como interpretar: ", "bold"),
-            (("Ativos não elegíveis (ações, ETF, papel, fiagro, fiinfra e desconhecidos) exibem N/A nas colunas FFO. "
-             "A tendência do dividendo compara o último rendimento com o anterior (Crescimento se maior, Redução se menor, Neutro se igual). "
-             "O FFO Yield mede o retorno do FFO sobre o valor de mercado e o P/VP compara o valor de mercado com o patrimônio líquido; "
-             "valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. Os valores são calculados com precisão decimal completa "
-             "e arredondados somente na apresentação."), ""),
+            (("O P/L de um FII anualiza o último dividendo mensal (preço ÷ (último dividendo × 12)) para expressar a quantidade de anos, enquanto o P/L de uma ação é o lucro reportado pela fonte; "
+             "N/A indica ausência do dado. O número de cotistas de FIIs vem do informe mensal e o de ações, da quantidade de acionistas publicada pela CVM. "
+             "As tendências de dividendo e de FFO usam os rótulos Forte Alta (≥ +5%), Leve Alta, Estável, Leve Queda e Forte Queda (≤ −5%). "
+             "Ativos não elegíveis exibem N/A nas colunas FFO. O FFO Yield mede o retorno do FFO sobre o valor de mercado e o P/VP compara o valor de mercado "
+             "com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. Os valores são calculados com precisão "
+             "decimal completa e arredondados somente na apresentação."), ""),
         ]
     ),
     ("Análise do Ticker", "Evolução da Dominância"): (

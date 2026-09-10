@@ -1,6 +1,7 @@
+beautifulsoup4>=4.12
 matplotlib>=3.5
 Pillow>=9.0
 pyxclip>=0.2
 requests>=2.28
 tkcalendar>=1.6
-responses>=0.25
+pywin32>=306; sys_platform == 'win32'

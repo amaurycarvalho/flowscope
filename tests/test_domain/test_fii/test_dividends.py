@@ -98,41 +98,60 @@ class TestUltimoDividendo:
 
 
 class TestTendenciaDividendo:
-    def test_crescimento_quando_ultimo_maior(self):
-        proventos = [
-            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
-            _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "1.06"),
+    def test_forte_alta_quando_variacao_maior_ou_igual_5(self):
+        dividendos = [
+            _dividendo("1.00", date(2026, 1, 15)),
+            _dividendo("1.05", date(2026, 7, 10)),
         ]
-        resultado = calcular_ultimo_dividendo(proventos)
-        assert resultado.tendencia is TendenciaDividendo.CRESCIMENTO
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.FORTE_ALTA
 
-    def test_crescimento_para_diferenca_minima(self):
+    def test_leve_alta_quando_variacao_entre_0_e_5(self):
         dividendos = [
             _dividendo("1.00", date(2026, 1, 15)),
             _dividendo("1.01", date(2026, 7, 10)),
         ]
-        assert calcular_tendencia(dividendos) is TendenciaDividendo.CRESCIMENTO
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.ALTA
 
-    def test_reducao_quando_ultimo_menor(self):
-        proventos = [
-            _provento(TIPO_RENDIMENTO, date(2026, 1, 15), "1.00"),
-            _provento(TIPO_RENDIMENTO, date(2026, 7, 10), "0.94"),
-        ]
-        resultado = calcular_ultimo_dividendo(proventos)
-        assert resultado.tendencia is TendenciaDividendo.REDUCAO
-
-    def test_neutro_quando_igual(self):
+    def test_estavel_quando_igual(self):
         dividendos = [
             _dividendo("1.00", date(2026, 1, 15)),
             _dividendo("1.00", date(2026, 7, 10)),
         ]
-        assert calcular_tendencia(dividendos) is TendenciaDividendo.NEUTRO
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.ESTAVEL
+
+    def test_leve_queda_quando_variacao_entre_menos_5_e_0(self):
+        dividendos = [
+            _dividendo("1.00", date(2026, 1, 15)),
+            _dividendo("0.95", date(2026, 7, 10)),
+        ]
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.QUEDA
+
+    def test_forte_queda_quando_variacao_menor_que_menos_5(self):
+        dividendos = [
+            _dividendo("1.00", date(2026, 1, 15)),
+            _dividendo("0.94", date(2026, 7, 10)),
+        ]
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.FORTE_QUEDA
 
     def test_na_sem_dividendo_anterior(self):
         resultado = calcular_ultimo_dividendo(
             [_provento(TIPO_RENDIMENTO, date(2026, 7, 10), "0.55")]
         )
         assert resultado.tendencia is TendenciaDividendo.N_A
+
+    def test_anterior_zero_com_ultimo_positivo_e_forte_alta(self):
+        dividendos = [
+            _dividendo("0", date(2026, 1, 15)),
+            _dividendo("1.00", date(2026, 7, 10)),
+        ]
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.FORTE_ALTA
+
+    def test_ambos_zero_e_estavel(self):
+        dividendos = [
+            _dividendo("0", date(2026, 1, 15)),
+            _dividendo("0", date(2026, 7, 10)),
+        ]
+        assert calcular_tendencia(dividendos) is TendenciaDividendo.ESTAVEL
 
 
 class TestConsolidacao:
@@ -179,7 +198,7 @@ class TestConsolidacao:
         resultado = calcular_ultimo_dividendo_consolidado(consolidados)
         assert resultado.valor == Decimal("0.60")
         assert resultado.valor_anterior == Decimal("0.50")
-        assert resultado.tendencia is TendenciaDividendo.CRESCIMENTO
+        assert resultado.tendencia is TendenciaDividendo.FORTE_ALTA
 
     def test_dividendos_de_proventos_ignora_amortizacao_e_sem_data(self):
         proventos = [

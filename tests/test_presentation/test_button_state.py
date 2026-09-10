@@ -1,7 +1,11 @@
 import os
 import tkinter as tk
+from tkinter import ttk
+from unittest.mock import MagicMock
 
 import pytest
+
+from flowscope.presentation.gui.app_status import StatusMixin
 
 
 @pytest.fixture
@@ -68,3 +72,68 @@ class _FakeGUI:
             except tk.TclError:
                 pass
         self._button_states = {}
+
+
+class _CursorGUI(tk.Tk, StatusMixin):
+    pass
+
+
+class _DisableHost(tk.Tk, StatusMixin):
+    pass
+
+
+class TestDisableIdempotente:
+    @needs_display
+    def test_nao_sobrescreve_snapshot_ativo(self):
+        gui = _DisableHost()
+        try:
+            gui._flash_after_id = None
+            gui._load_button = tk.Button(gui, state=tk.NORMAL)
+            gui._today_button = tk.Button(gui, state=tk.NORMAL)
+            gui._shortcut_btn = None
+            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
+            gui._ticker_list = MagicMock()
+            gui._ticker_list.all_buttons.return_value = []
+            gui._period_combo = ttk.Combobox(gui, state="readonly")
+            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
+            gui._date_entry = ttk.Entry(gui)
+
+            gui.disable_all_buttons()
+            gui.disable_all_buttons()
+            gui.restore_all_buttons()
+
+            assert gui._load_button.cget("state") == tk.NORMAL
+            assert str(gui._period_combo.cget("state")) == "readonly"
+            assert str(gui._date_entry.cget("state")) == "normal"
+        finally:
+            gui.destroy()
+
+
+class TestWaitCursor:
+    @needs_display
+    def test_cursor_watch_sobrepoe_e_restaura(self):
+        gui = _CursorGUI()
+        try:
+            btn = tk.Button(gui, cursor="hand2")
+            btn.pack()
+            gui._set_wait_cursor()
+            assert btn.cget("cursor") == "watch"
+            gui._clear_wait_cursor()
+            assert btn.cget("cursor") == "hand2"
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_cursor_watch_nao_repercorre_enquanto_ativo(self):
+        gui = _CursorGUI()
+        try:
+            btn = tk.Button(gui, cursor="hand2")
+            btn.pack()
+            gui._set_wait_cursor()
+            primeiro = dict(gui._cursor_states)
+            gui._set_wait_cursor()
+            assert gui._cursor_states == primeiro
+            gui._clear_wait_cursor()
+            assert gui._cursor_states == {}
+        finally:
+            gui.destroy()

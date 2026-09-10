@@ -23,6 +23,7 @@ CAMPO_VP_COTA = "vp_cota"
 CAMPO_DIVIDEND_YIELD = "dividend_yield"
 CAMPO_FFO_YIELD = "ffo_yield"
 CAMPO_P_VP = "p_vp"
+CAMPO_P_L = "p_l"
 CAMPO_P_FFO = "p_ffo"
 CAMPO_FFO_TREND = "ffo_trend"
 CAMPO_FFO_12M = "ffo_12m"
@@ -47,6 +48,7 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_DIVIDEND_YIELD,
         CAMPO_FFO_YIELD,
         CAMPO_P_VP,
+        CAMPO_P_L,
         CAMPO_P_FFO,
         CAMPO_FFO_TREND,
         CAMPO_FFO_12M,
@@ -88,6 +90,17 @@ class FundamentalDataProvider(Protocol):
         self: "FundamentalDataProvider", ticker: str, reference_date: date
     ) -> dict[str, CampoFundamental]:
         """Retorna os campos disponíveis na fonte, indexados por chave."""
+        ...
+
+
+@runtime_checkable
+class AcionistasProvider(Protocol):
+    """Contrato de obtenção da quantidade de acionistas de uma companhia aberta."""
+
+    def obter_acionistas(
+        self: "AcionistasProvider", ticker: str, reference_date: date
+    ) -> int | None:
+        """Retorna a quantidade de acionistas, ou ``None`` quando indisponível."""
         ...
 
 

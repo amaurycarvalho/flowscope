@@ -44,16 +44,47 @@ class StatusMixin:
         self._flash_after_id = self.after(clear_ms, lambda: self._set_status("Pronto."))
 
     def _set_wait_cursor(self: "StatusMixin") -> None:
-        self.config(cursor="watch")
+        if not getattr(self, "_cursor_states", None):
+            estados: dict[tk.Widget, str] = {}
+            for widget in self._iter_widgets():
+                try:
+                    estados[widget] = str(widget.cget("cursor"))
+                except tk.TclError:
+                    continue
+                try:
+                    widget.config(cursor="watch")
+                except tk.TclError:
+                    pass
+            self._cursor_states = estados
         self.update_idletasks()
 
     def _clear_wait_cursor(self: "StatusMixin") -> None:
-        self.config(cursor="")
+        for widget, cursor in getattr(self, "_cursor_states", {}).items():
+            try:
+                widget.config(cursor=cursor)
+            except tk.TclError:
+                pass
+        self._cursor_states = {}
+
+    def _iter_widgets(self: "StatusMixin") -> list[tk.Widget]:
+        """Percorre a árvore de widgets a partir da janela, em profundidade."""
+        pilha: list[tk.Widget] = [self]
+        widgets: list[tk.Widget] = []
+        while pilha:
+            widget = pilha.pop()
+            widgets.append(widget)
+            try:
+                pilha.extend(widget.winfo_children())
+            except tk.TclError:
+                continue
+        return widgets
 
     def _disable_all_buttons(self: "StatusMixin") -> None:
         if self._flash_after_id:
             self.after_cancel(self._flash_after_id)
             self._flash_after_id = None
+        if getattr(self, "_button_states", None):
+            return
         self._button_states: dict[tk.Widget, str] = {}
         gui_buttons = [
             self._load_button, self._today_button,

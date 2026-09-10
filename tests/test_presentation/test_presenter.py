@@ -27,6 +27,22 @@ class TestFlowScopePresenter:
         presenter.on_progress(3, 10, "Baixando...")
         view.set_progress.assert_called_once_with(3, 10, "Baixando...")
 
+    def test_on_fundamental_progress_atualiza_barra_com_marcador(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_progress("Fundamentos: HGBS11 (1/5)", 1, 5)
+        view.set_progress.assert_called_once_with(
+            1, 5, "• Fundamentos: HGBS11 (1/5)"
+        )
+        view.set_status.assert_not_called()
+
+    def test_on_fundamental_progress_formato_antigo_usa_status(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_progress("Fundamentos: HGBS11")
+        view.set_status.assert_called_once_with("Fundamentos: HGBS11", "•")
+        view.set_progress.assert_not_called()
+
     def test_on_result_formata_dados_corretamente(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
@@ -94,6 +110,40 @@ class TestFlowScopePresenter:
         view.clear_wait_cursor.assert_not_called()
         presenter.on_fundamental_finished()
         view.clear_wait_cursor.assert_called_once()
+
+    def test_nao_limpa_progresso_com_operacao_fundamental_ativa(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+        view.clear_progress.assert_not_called()
+
+    def test_limpa_progresso_quando_todas_operacoes_terminam(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+        presenter.on_fundamental_finished()
+        view.clear_progress.assert_called_once()
+
+    def test_nao_restaura_controles_com_operacao_fundamental_ativa(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+        view.restore_all_buttons.assert_not_called()
+
+    def test_restaura_controles_ao_final_da_fundamental(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+        presenter.on_fundamental_finished()
+        view.restore_all_buttons.assert_called_once()
 
     def test_on_technical_error_mostra_mensagem_do_log(self):
         view = MagicMock()

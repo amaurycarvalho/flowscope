@@ -1,5 +1,6 @@
 import os
 import tkinter as tk
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from tkinter import ttk
@@ -16,6 +17,7 @@ from flowscope.domain.fii import (
     PatrimonioFii,
     PrecoObservacao,
     TendenciaDividendo,
+    TendenciaFfo,
     UltimoDividendo,
     analisar_snapshot,
     classificar_exibicao,
@@ -36,6 +38,7 @@ from flowscope.presentation.gui.charts.fundamental_table import (
     montar_linhas,
     rotulo_classe_cotistas,
     rotulo_classe_patrimonio,
+    rotulo_tendencia,
 )
 
 NA = "N/A"
@@ -76,7 +79,7 @@ def _analise_hgbs11() -> AnaliseFundamental:
             data_com=date(2026, 7, 10),
             valor=Decimal("0.55"),
             valor_anterior=Decimal("0.50"),
-            tendencia=TendenciaDividendo.CRESCIMENTO,
+            tendencia=TendenciaDividendo.FORTE_ALTA,
         ),
         dividendos_12m_por_cota=Decimal("1.05"),
         metricas=metricas,
@@ -139,6 +142,30 @@ class TestFormatadores:
         assert rotulo_classe_patrimonio(ClassePatrimonio.GIGANTE) == "Gigante"
         assert rotulo_classe_cotistas(None) == NA
         assert rotulo_classe_patrimonio(None) == NA
+
+    def test_coluna_p_l_alinhada_a_direita(self):
+        from flowscope.presentation.gui.charts.fundamental_table import (
+            _COLUNAS_DIREITA,
+        )
+
+        assert "p_l" in _COLUNAS_DIREITA
+
+
+class TestRotuloTendencia:
+    def test_rotulos_descritivos_do_ffo(self):
+        assert rotulo_tendencia(TendenciaFfo.FORTE_ALTA) == "Forte Alta"
+        assert rotulo_tendencia(TendenciaFfo.ALTA) == "Leve Alta"
+        assert rotulo_tendencia(TendenciaFfo.ESTAVEL) == "Estável"
+        assert rotulo_tendencia(TendenciaFfo.QUEDA) == "Leve Queda"
+        assert rotulo_tendencia(TendenciaFfo.FORTE_QUEDA) == "Forte Queda"
+
+    def test_rotulo_dividendo_usa_o_mesmo_mapa(self):
+        assert rotulo_tendencia(TendenciaDividendo.FORTE_ALTA) == "Forte Alta"
+        assert rotulo_tendencia(TendenciaDividendo.FORTE_QUEDA) == "Forte Queda"
+
+    def test_rotulo_na(self):
+        assert rotulo_tendencia(None) == NA
+        assert rotulo_tendencia(TendenciaDividendo.N_A) == NA
 
 
 class TestClassificacaoExibicao:
@@ -211,29 +238,32 @@ class TestMontarLinhas:
         assert colunas[1] == "CSHG Renda Urbana"
         assert colunas[2] == "FII"
         assert colunas[3] == "Tijolo"
-        assert colunas[4] == "10/07/2026"
-        assert colunas[5] == "0,55"
-        assert colunas[6] == "0,50"
-        assert colunas[7] == "Crescimento"
-        assert colunas[8] == "8,16%"
-        assert colunas[9] == "7,9%"
-        assert colunas[10] == "96,51%"
-        assert colunas[11] == "ALTA"
-        assert colunas[12] == NA
-        assert colunas[13] == NA
-        assert colunas[14] == "12,25x"
-        assert colunas[15] == "0,92x"
+        assert colunas[4] == NA
+        assert colunas[5] == NA
+        assert colunas[6] == "0,92x"
+        assert colunas[7] == NA
+        assert colunas[8] == "7,9%"
+        assert colunas[9] == "10/07/2026"
+        assert colunas[10] == "0,55"
+        assert colunas[11] == "0,50"
+        assert colunas[12] == "Forte Alta"
+        assert colunas[13] == "8,16%"
+        assert colunas[14] == "96,51%"
+        assert colunas[15] == "Leve Alta"
+        assert colunas[16] == "12,25x"
+
+    def test_coluna_p_l_renderiza_apos_p_vp(self):
+        analise = replace(_analise_hgbs11(), p_l=Decimal("2.84"))
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert colunas[6] == "0,92x"
+        assert colunas[7] == "2,84x"
 
     def test_linha_de_acao_fica_na_nas_colunas_ffo_e_dividendo(self):
         linhas = montar_linhas({"PETR4": _analise_acao()})
         colunas = linhas[0]
         assert colunas[2] == "Papel"
         assert colunas[3] == "Preferencial"
-        assert colunas[4] == NA
-        assert colunas[5] == NA
-        assert colunas[6] == NA
-        assert colunas[7] == "N/A"
-        assert all(coluna == NA for coluna in colunas[8:])
+        assert all(coluna == NA for coluna in colunas[4:])
 
     def test_ordem_das_linhas_preserva_ordem_da_watchlist(self):
         linhas = montar_linhas(
@@ -254,10 +284,10 @@ class TestMontarCsv:
     def test_cabecalho_corresponde_as_colunas_da_tabela(self):
         csv = montar_csv({"HGBS11": _analise_hgbs11()})
         assert csv.split("\n")[0] == (
-            "Ticker;Nome;Tipo;Sub-tipo;Última data-com;Último dividendo;"
-            "Dividendo anterior;Tendência do dividendo;FFO Yield;Dividend Yield;"
-            "Dividend Payout (DY/FFOY);FFO Trend;P (Cotação);VP (VP/Cota);"
-            "P/FFO;P/VP;Nº de cotistas;Classe de cotistas;Patrimônio;"
+            "Ticker;Nome;Tipo;Sub-tipo;P (Cotação);VP (VP/Cota);P/VP;P/L;"
+            "Dividend Yield;Última data-com;Último dividendo;Dividendo anterior;"
+            "Tendência do dividendo;FFO Yield;Dividend Payout (DY/FFOY);FFO Trend;"
+            "P/FFO;Nº de cotistas;Classe de cotistas;Patrimônio;"
             "Classe de patrimônio;Data de referência"
         )
 
@@ -267,16 +297,17 @@ class TestMontarCsv:
         )
         linhas = csv.split("\n")
         assert linhas[1].startswith(
-            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;0,50;Crescimento;8,16%"
+            "HGBS11;CSHG Renda Urbana;FII;Tijolo;N/A;N/A;0,92x;N/A;7,9%;"
+            "10/07/2026;0,55;0,50;Forte Alta;8,16%"
         )
         assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
 
     def test_csv_usa_duas_casas_decimais(self):
         csv = montar_csv({"HGBS11": _analise_hgbs11()})
         campos = csv.split("\n")[1].split(";")
-        assert campos[5] == "0,55"
-        assert campos[6] == "0,50"
-        assert campos[10] == "96,51%"
+        assert campos[10] == "0,55"
+        assert campos[11] == "0,50"
+        assert campos[14] == "96,51%"
 
     def test_vazio_retorna_apenas_cabecalho(self):
         csv = montar_csv({})
@@ -305,7 +336,7 @@ class TestFundamentalTablePanel:
             assert len(filhos) == 2
             valores = painel._tree.item(filhos[0], "values")
             assert valores[0] == "HGBS11"
-            assert valores[8] == "8,16%"
+            assert valores[13] == "8,16%"
         finally:
             root.destroy()
 
@@ -367,6 +398,7 @@ class TestFundamentalTablePanel:
                 "vp",
                 "p_ffo",
                 "p_vp",
+                "p_l",
                 "cotistas",
                 "patrimonio",
             }
@@ -450,34 +482,31 @@ class TestIntegracaoWatchlist:
 
         petr = por_ticker["PETR4"]
         assert petr[2] == "Papel"
-        assert petr[4] == NA
-        assert petr[5] == NA
-        assert petr[6] == NA
-        assert petr[7] == "N/A"
-        assert all(coluna == NA for coluna in petr[8:])
+        assert all(coluna == NA for coluna in petr[4:])
 
         hcri = por_ticker["HCRI11"]
         assert hcri[2] == "FII"
         assert hcri[3] == "Papel"
-        assert hcri[5] == "1,00"
-        assert all(coluna == NA for coluna in hcri[8:])
+        assert hcri[10] == "1,00"
+        assert all(coluna == NA for coluna in hcri[13:])
 
         hgbs = por_ticker["HGBS11"]
         assert hgbs[2] == "FII"
         assert hgbs[3] == "Tijolo"
-        assert hgbs[5] == "0,55"
-        assert hgbs[6] == "0,50"
-        assert hgbs[7] == "Crescimento"
-        assert hgbs[8] == "8,16%"
-        assert hgbs[9] == "5,6%"
-        assert hgbs[10] == "68,65%"
-        assert hgbs[11] == "ALTA"
-        assert hgbs[14] == "12,25x"
-        assert hgbs[15] == "0,92x"
-        assert hgbs[16] == "100.000"
-        assert hgbs[17] == "Muito grande"
-        assert hgbs[18] == "R$ 2,94 bi"
-        assert hgbs[19] == "Gigante"
+        assert hgbs[6] == "0,92x"
+        assert hgbs[8] == "5,6%"
+        assert hgbs[9] == "10/07/2026"
+        assert hgbs[10] == "0,55"
+        assert hgbs[11] == "0,50"
+        assert hgbs[12] == "Forte Alta"
+        assert hgbs[13] == "8,16%"
+        assert hgbs[14] == "68,65%"
+        assert hgbs[15] == "Leve Alta"
+        assert hgbs[16] == "12,25x"
+        assert hgbs[17] == "100.000"
+        assert hgbs[18] == "Muito grande"
+        assert hgbs[19] == "R$ 2,94 bi"
+        assert hgbs[20] == "Gigante"
 
 
 class TestWiringSubAba:
@@ -486,6 +515,12 @@ class TestWiringSubAba:
         titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
         assert "Fundamentos" in titulo
         assert isinstance(corpo, list) and len(corpo) > 0
+
+    def test_orientation_panel_explica_p_l_e_acionistas(self):
+        _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
+        texto = " ".join(parte for parte, _estilo in corpo)
+        assert "último dividendo" in texto
+        assert "acionistas" in texto
 
     @needs_display
     def test_sub_aba_fundamentos_aparece_na_analise_geral(self):

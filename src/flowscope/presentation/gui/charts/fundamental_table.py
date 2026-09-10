@@ -45,18 +45,19 @@ _COLUNAS = (
     ("nome", "Nome"),
     ("tipo", "Tipo"),
     ("subtipo", "Sub-tipo"),
+    ("p", "P (Cotação)"),
+    ("vp", "VP (VP/Cota)"),
+    ("p_vp", "P/VP"),
+    ("p_l", "P/L"),
+    ("dividend_yield", "Dividend Yield"),
     ("ultima_data_com", "Última data-com"),
     ("ultimo_dividendo", "Último dividendo"),
     ("dividendo_anterior", "Dividendo anterior"),
     ("tendencia_dividendo", "Tendência do dividendo"),
     ("ffo_yield", "FFO Yield"),
-    ("dividend_yield", "Dividend Yield"),
     ("dividend_payout", "Dividend Payout (DY/FFOY)"),
     ("ffo_trend", "FFO Trend"),
-    ("p", "P (Cotação)"),
-    ("vp", "VP (VP/Cota)"),
     ("p_ffo", "P/FFO"),
-    ("p_vp", "P/VP"),
     ("cotistas", "Nº de cotistas"),
     ("classe_cotistas", "Classe de cotistas"),
     ("patrimonio", "Patrimônio"),
@@ -76,10 +77,20 @@ _COLUNAS_DIREITA = frozenset(
         "vp",
         "p_ffo",
         "p_vp",
+        "p_l",
         "cotistas",
         "patrimonio",
     }
 )
+
+#: Rótulos descritivos compartilhados pelas tendências do FFO e do dividendo.
+_ROTULOS_TENDENCIA = {
+    "FORTE_ALTA": "Forte Alta",
+    "ALTA": "Leve Alta",
+    "ESTAVEL": "Estável",
+    "QUEDA": "Leve Queda",
+    "FORTE_QUEDA": "Forte Queda",
+}
 
 _CLASSE_COTISTAS = {
     ClasseCotistas.MICRO: "Micro",
@@ -244,18 +255,19 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         analise.nome or NA,
         tipo,
         sub_tipo or NA,
+        formatar_valor(analise.cotacao),
+        formatar_valor(analise.vp_cota),
+        formatar_ratio(p_vp, 2),
+        formatar_ratio(analise.p_l, 2),
+        formatar_percentual(dy, 1),
         formatar_data(dividendo.data_com),
         formatar_valor(dividendo.valor),
         formatar_valor(dividendo.valor_anterior),
-        _rotulo_dividendo(dividendo.tendencia),
+        rotulo_tendencia(dividendo.tendencia),
         formatar_percentual(ffo_yield, 2),
-        formatar_percentual(dy, 1),
         formatar_percentual(_payout(dy, ffo_yield), 2),
-        _rotulo_ffo_trend(tendencia_ffo),
-        formatar_valor(analise.cotacao),
-        formatar_valor(analise.vp_cota),
+        rotulo_tendencia(tendencia_ffo),
         formatar_ratio(p_ffo, 2),
-        formatar_ratio(p_vp, 2),
         formatar_inteiro(analise.cotistas),
         rotulo_classe_cotistas(analise.classe_cotistas),
         formatar_patrimonio(analise.patrimonio),
@@ -273,23 +285,7 @@ def _linha_sintetica(ticker: str, dados: object) -> tuple[str, ...]:
         NA,
         exibicao.tipo,
         exibicao.sub_tipo or NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
-        NA,
+        *(NA for _ in range(len(_COLUNAS) - 4)),
     )
 
 
@@ -311,18 +307,11 @@ def montar_csv(dados: Mapping[str, object], delimiter: str = ";") -> str:
     return "\n".join(linhas)
 
 
-def _rotulo_dividendo(tendencia: Enum | None) -> str:
-    """Retorna o rótulo da tendência do dividendo."""
+def rotulo_tendencia(tendencia: Enum | None) -> str:
+    """Retorna o rótulo descritivo de uma tendência (FFO ou dividendo)."""
     if tendencia is None:
         return NA
-    return tendencia.value
-
-
-def _rotulo_ffo_trend(tendencia: Enum | None) -> str:
-    """Retorna o rótulo da tendência do FFO."""
-    if tendencia is None:
-        return NA
-    return tendencia.value
+    return _ROTULOS_TENDENCIA.get(tendencia.value, tendencia.value)
 
 
 class FundamentalTablePanel:

@@ -103,12 +103,17 @@ class FlowScopePresenter:
         self._view.set_wait_cursor()
 
     def on_operation_finished(self: "FlowScopePresenter") -> None:
-        """Notifica a view sobre o fim de uma operação."""
+        """Notifica a view sobre o fim de uma operação.
+
+        Restaura os controles apenas quando todas as operações (incluindo a
+        análise fundamentalista) terminam, mantendo-os desabilitados durante a
+        fase fundamental.
+        """
         self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
-        self._view.restore_all_buttons()
         if self._operacoes_ativas == 0:
+            self._view.restore_all_buttons()
             self._view.clear_wait_cursor()
-        self._view.clear_progress()
+            self._view.clear_progress()
 
     def on_portfolio_loaded(self: "FlowScopePresenter", tickers: list[str]) -> None:
         """Exibe a carteira carregada na interface."""
@@ -173,14 +178,28 @@ class FlowScopePresenter:
         self._view.set_wait_cursor()
 
     def on_fundamental_finished(self: "FlowScopePresenter") -> None:
-        """Sinaliza o fim da análise fundamentalista e libera o cursor."""
+        """Sinaliza o fim da análise fundamentalista e libera os controles."""
         self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
         if self._operacoes_ativas == 0:
+            self._view.restore_all_buttons()
             self._view.clear_wait_cursor()
+            self._view.clear_progress()
 
-    def on_fundamental_progress(self: "FlowScopePresenter", detalhe: str) -> None:
-        """Exibe o progresso da análise fundamentalista na barra de status."""
-        self._view.set_status(detalhe, "ℹ")
+    def on_fundamental_progress(
+        self: "FlowScopePresenter",
+        detalhe: str,
+        current: int | None = None,
+        total: int | None = None,
+    ) -> None:
+        """Exibe o progresso da análise fundamentalista na barra de status.
+
+        Com ``current``/``total`` informados, atualiza a barra de progresso;
+        sem eles, exibe apenas o texto na barra de status.
+        """
+        if current is None or total is None:
+            self._view.set_status(detalhe, "•")
+            return
+        self._view.set_progress(current, total, f"• {detalhe}")
 
     def on_fundamental_result(
         self: "FlowScopePresenter", dados: dict, houve_falha: bool = False

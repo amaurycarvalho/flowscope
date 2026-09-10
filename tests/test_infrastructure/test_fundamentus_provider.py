@@ -559,3 +559,26 @@ class TestAdapterVpa:
 
         campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
         assert campos["vp_cota"].valor == Decimal("20.38")
+
+
+class TestAdapterPl:
+    def test_campo_p_l_mapeado_para_acao(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert campos["p_l"].valor == Decimal("5.19")
+
+    def test_campo_p_l_ausente_em_fii(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert "p_l" not in campos
+
+    def test_constante_p_l_registrada(self):
+        from flowscope.application.fundamental_ports import (
+            CAMPO_P_L,
+            CAMPOS_FUNDAMENTAIS,
+        )
+
+        assert CAMPO_P_L == "p_l"
+        assert CAMPO_P_L in CAMPOS_FUNDAMENTAIS

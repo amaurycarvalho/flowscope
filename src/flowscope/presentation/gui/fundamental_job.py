@@ -44,9 +44,15 @@ class FundamentalJob:
     def _executar(self: "FundamentalJob") -> None:
         """Executa a análise e publica progresso, resultado ou erro."""
         try:
+            total = len(self._tickers)
+            atual = 0
 
             def _progresso(detalhe: str, falhou: bool) -> None:
-                self.fila.put((MENSAGEM_PROGRESSO, detalhe, falhou))
+                nonlocal atual
+                atual += 1
+                self.fila.put(
+                    (MENSAGEM_PROGRESSO, detalhe, falhou, atual, total)
+                )
 
             resultados = self._caso.execute(
                 self._tickers,

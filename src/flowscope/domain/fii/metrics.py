@@ -28,6 +28,9 @@ FATOR_ALERTA_DISTRIBUICAO = Decimal("1.25")
 #: Fonte registrada quando o valor é derivado internamente.
 FONTE_DERIVADA = "DERIVADO"
 
+#: Meses considerados para anualizar o último dividendo de um FII.
+MESES_POR_ANO = 12
+
 
 class Quality(Enum):
     """Qualidade dos dados de uma análise fundamentalista."""
@@ -111,6 +114,19 @@ def p_ffo(market_value: Decimal, ffo_12m: Decimal) -> Decimal:
 def p_vp(market_value: Decimal, net_asset_value: Decimal) -> Decimal:
     """Calcula o P/VP como ``market_value / net_asset_value``."""
     return market_value / net_asset_value
+
+
+def p_l(preco: Decimal, ultimo_dividendo: Decimal | None) -> Decimal | None:
+    """Calcula o P/L de um FII em anos como ``preco / (ultimo_dividendo × 12)``.
+
+    O último dividendo de um FII é mensal; multiplicá-lo por 12 o anualiza para
+    que o P/L represente a quantidade de anos para recuperar o investimento,
+    como no P/L de uma ação. Retorna ``None`` quando o último dividendo é
+    ausente ou zero, evitando uma divisão indefinida.
+    """
+    if ultimo_dividendo is None or ultimo_dividendo == Decimal(0):
+        return None
+    return preco / (ultimo_dividendo * Decimal(MESES_POR_ANO))
 
 
 def dividend_yield(dividends_12m: Decimal, market_value: Decimal) -> Decimal:

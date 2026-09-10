@@ -6,12 +6,15 @@ import pytest
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
+    CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDENDO_POR_COTA,
+    CAMPO_P_L,
     CAMPO_VP_COTA,
     CampoFundamental,
     OrigemDados,
 )
 from flowscope.domain.fii import (
+    ClasseCotistas,
     DividendoConsolidado,
     FfoObservacao,
     PatrimonioFii,
@@ -91,6 +94,14 @@ class FakeMarket:
 
     def preco_fechamento(self, ticker: str, reference_date: date):
         return self.preco_por_ticker.get(ticker)
+
+
+class FakeAcionistas:
+    def __init__(self, por_ticker=None):
+        self.por_ticker = por_ticker or {}
+
+    def obter_acionistas(self, ticker: str, reference_date: date):
+        return self.por_ticker.get(ticker)
 
 
 def _repo_hgbs11() -> FakeFundamentalRepository:
@@ -240,6 +251,108 @@ class TestFundamentalAnalysisUseCase:
         assert resultado.ticker == "HGBS11"
 
 
+class TestPl:
+    def test_p_l_de_acao_vem_da_fonte(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_P_L: CampoFundamental(Decimal("5.19"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.p_l == Decimal("5.19")
+
+    def test_p_l_de_fii_derivado_do_ultimo_dividendo(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "HGBS11": [_provento("Rendimento", date(2026, 7, 10), "0.55")]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTACAO: CampoFundamental(Decimal("18.74"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.p_l.quantize(Decimal("0.01")) == Decimal("2.84")
+
+    def test_p_l_de_fii_sem_dividendo_e_none(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTACAO: CampoFundamental(Decimal("18.74"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.p_l is None
+
+    def test_p_l_de_acao_sem_fonte_e_none(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.p_l is None
+
+    def test_p_l_de_fii_fora_da_taxonomia_usa_discriminador(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "ALZR11": [_provento("Rendimento", date(2026, 7, 10), "0.08")]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {
+                CAMPO_COTACAO: CampoFundamental(Decimal("9.99")),
+                CAMPO_DISCRIMINADOR: CampoFundamental("fii"),
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["ALZR11"], REFERENCIA)[0]
+        assert resultado.p_l.quantize(Decimal("0.01")) == Decimal("10.41")
+
+    def test_p_l_de_papel_com_discriminador_nao_deriva(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "PETR4": [_provento("Rendimento", date(2026, 7, 10), "0.50")]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {
+                CAMPO_COTACAO: CampoFundamental(Decimal("53.69")),
+                CAMPO_DISCRIMINADOR: CampoFundamental("papel"),
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.p_l is None
+
+
+class TestAcionistasPapel:
+    def test_acao_preenche_cotistas_da_cvm(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo, acionistas_provider=FakeAcionistas({"PETR4": 1183775})
+        )
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.cotistas == 1183775
+        assert resultado.classe_cotistas is ClasseCotistas.GIGANTE
+
+    def test_fii_mantem_cotistas_do_repositorio(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo, acionistas_provider=FakeAcionistas({"HGBS11": 999})
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.cotistas == 100000
+        assert resultado.classe_cotistas is ClasseCotistas.MUITO_GRANDE
+
+    def test_falha_do_provider_nao_quebra(self):
+        class Explode:
+            def obter_acionistas(self, ticker, reference_date):
+                raise RuntimeError("indisponível")
+
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo, acionistas_provider=Explode())
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.cotistas is None
+        assert resultado.erro is None
+
+
 class _ProviderComResultado:
     def __init__(self, origem: OrigemDados) -> None:
         self._origem = origem
@@ -354,7 +467,7 @@ class TestConsolidacaoDividendos:
         )
         caso = FundamentalAnalysisUseCase(repo)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
-        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.FORTE_ALTA
 
 
 class TestConsolidacaoPapel:
@@ -377,7 +490,7 @@ class TestConsolidacaoPapel:
         assert resultado.ultimo_dividendo.data_com == date(2026, 6, 10)
         assert resultado.ultimo_dividendo.valor == Decimal("0.45")
         assert resultado.ultimo_dividendo.valor_anterior == Decimal("0.30")
-        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.FORTE_ALTA
 
     def test_fii_b3_preenche_data_com_anterior_e_tendencia(self):
         repo = FakeFundamentalRepository(
@@ -396,4 +509,4 @@ class TestConsolidacaoPapel:
         assert resultado.ultimo_dividendo.data_com == date(2026, 7, 10)
         assert resultado.ultimo_dividendo.valor == Decimal("0.55")
         assert resultado.ultimo_dividendo.valor_anterior == Decimal("0.50")
-        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.FORTE_ALTA

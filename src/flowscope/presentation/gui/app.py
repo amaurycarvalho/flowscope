@@ -17,6 +17,7 @@ from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
@@ -173,6 +174,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         fundamental_dividend_provider = FundamentusDividendHistoryProvider(
             cache=cache
         )
+        fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -183,6 +185,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_provider=fundamental_provider,
             fundamental_ffo_provider=fundamental_ffo_provider,
             fundamental_dividend_provider=fundamental_dividend_provider,
+            fundamental_acionistas_provider=fundamental_acionistas_provider,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,
