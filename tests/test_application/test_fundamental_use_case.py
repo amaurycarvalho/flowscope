@@ -194,3 +194,42 @@ class TestFundamentalAnalysisUseCase:
         caso = FundamentalAnalysisUseCase(repo)
         resultado = caso.execute([" hgbs11 "], REFERENCIA)[0]
         assert resultado.ticker == "HGBS11"
+
+
+class _ProviderComResultado:
+    def __init__(self, atualizou: bool) -> None:
+        self._atualizou = atualizou
+
+    def obter(self, ticker, reference_date):
+        return {}
+
+    def obter_com_resultado(self, ticker, reference_date):
+        return {}, self._atualizou
+
+
+class TestAgregacaoAtualizacao:
+    def test_houve_atualizacao_quando_provider_atualiza(self):
+        caso = FundamentalAnalysisUseCase(
+            _repo_hgbs11(),
+            fundamental_provider=_ProviderComResultado(True),
+        )
+        caso.execute(["HGBS11"], REFERENCIA)
+        assert caso.houve_atualizacao is True
+
+    def test_sem_atualizacao_quando_provider_nao_atualiza(self):
+        caso = FundamentalAnalysisUseCase(
+            _repo_hgbs11(),
+            fundamental_provider=_ProviderComResultado(False),
+        )
+        caso.execute(["HGBS11"], REFERENCIA)
+        assert caso.houve_atualizacao is False
+
+    def test_flag_resetada_entre_execucoes(self):
+        caso = FundamentalAnalysisUseCase(
+            _repo_hgbs11(),
+            fundamental_provider=_ProviderComResultado(True),
+        )
+        caso.execute(["HGBS11"], REFERENCIA)
+        caso._fundamental_provider = _ProviderComResultado(False)
+        caso.execute(["HGBS11"], REFERENCIA)
+        assert caso.houve_atualizacao is False

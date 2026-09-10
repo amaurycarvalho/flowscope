@@ -16,6 +16,7 @@ from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
@@ -151,14 +152,17 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         fundamental_repo = B3FundamentalRepository(
             patrimonio_source=CvmMonthlyPatrimonioSource()
         )
+        cache = CacheManager()
         fundamental_provider = CompositeFundamentalProvider(
             [
-                FundamentusFundamentalDataProvider(),
+                FundamentusFundamentalDataProvider(
+                    FundamentusProvider(cache=cache)
+                ),
                 B3FundamentalDataProvider(fundamental_repo),
             ]
         )
         fundamental_ffo_provider = CompositeFfoProvider(
-            [FundamentusProvider(), FFOEngineProvider()]
+            [FundamentusProvider(cache=cache), FFOEngineProvider()]
         )
         self._controller = FlowScopeController(
             guard=guard,

@@ -41,24 +41,44 @@ class FundamentusClient:
 
     def fetch(self: "FundamentusClient", ticker: str) -> str:
         """Baixa a página de detalhes do ticker, sinalizando erros tipados."""
+        return self.fetch_response(ticker).text
+
+    def fetch_response(
+        self: "FundamentusClient",
+        ticker: str,
+        etag: str | None = None,
+        last_modified: str | None = None,
+    ) -> requests.Response:
+        """Baixa a página, opcionalmente condicional, devolvendo a resposta HTTP.
+
+        Quando ``etag``/``last_modified`` são informados, envia os cabeçalhos
+        condicionais e não trata ``304 Not Modified`` como erro.
+        """
         if self._respect_robots and not self._pode_acessar(BASE_URL):
             raise NetworkError("Acesso bloqueado pelo robots.txt do Fundamentus")
         self._respeitar_limite()
+        headers = {"User-Agent": USER_AGENT}
+        if etag:
+            headers["If-None-Match"] = etag
+        if last_modified:
+            headers["If-Modified-Since"] = last_modified
         try:
             resposta = self._session.get(
                 BASE_URL,
                 params={"papel": ticker.strip().upper()},
                 timeout=self._timeout,
-                headers={"User-Agent": USER_AGENT},
+                headers=headers,
             )
-            resposta.raise_for_status()
+            if resposta.status_code != 304:
+                resposta.raise_for_status()
         except requests.RequestException as erro:
             raise NetworkError(str(erro)) from erro
         self._ultima_requisicao = time.monotonic()
-        texto = resposta.text
-        if any(pista in texto.lower() for pista in _PISTAS_NAO_ENCONTRADO):
-            raise TickerNotFound(f"Ticker '{ticker}' não encontrado no Fundamentus")
-        return texto
+        if resposta.status_code != 304:
+            texto = resposta.text
+            if any(pista in texto.lower() for pista in _PISTAS_NAO_ENCONTRADO):
+                raise TickerNotFound(f"Ticker '{ticker}' não encontrado no Fundamentus")
+        return resposta
 
     def _respeitar_limite(self: "FundamentusClient") -> None:
         """Aguarda o intervalo mínimo entre requisições, se necessário."""

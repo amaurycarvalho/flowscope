@@ -73,6 +73,7 @@ class FundamentalAnalysisUseCase:
         self._mercado = mercado
         self._taxonomia = taxonomia_fii
         self._fundamental_provider = fundamental_provider
+        self.houve_atualizacao = False
 
     def execute(
         self: "FundamentalAnalysisUseCase",
@@ -82,6 +83,7 @@ class FundamentalAnalysisUseCase:
     ) -> list[AnaliseFundamental]:
         """Analisa cada ticker de forma isolada e retorna uma linha por ativo."""
         referencia = reference_date or datetime.now(timezone.utc).date()
+        self.houve_atualizacao = False
         resultados: list[AnaliseFundamental] = []
         total = len(tickers)
         for indice, ticker in enumerate(tickers, start=1):
@@ -158,7 +160,15 @@ class FundamentalAnalysisUseCase:
         """Obtém os campos fundamentalistas compostos, tolerando falhas."""
         if self._fundamental_provider is None:
             return {}
+        obter_com_resultado = getattr(
+            self._fundamental_provider, "obter_com_resultado", None
+        )
         try:
+            if callable(obter_com_resultado):
+                campos, atualizou = obter_com_resultado(ticker, reference_date)
+                if atualizou:
+                    self.houve_atualizacao = True
+                return campos
             return self._fundamental_provider.obter(ticker, reference_date)
         except Exception:  # aquisição tolerante por ticker
             logger.warning(

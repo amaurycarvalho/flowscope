@@ -81,3 +81,11 @@ class TestGenerationToken:
         controller._fundamental_job = job
         controller._drenar_fundamental(job)
         presenter.on_fundamental_result.assert_called_once()
+
+    def test_resultado_atualizado_propaga_flag(self):
+        controller, presenter = self._controller(generation=1)
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}, True))
+        controller._fundamental_job = job
+        controller._drenar_fundamental(job)
+        assert presenter.on_fundamental_result.call_args[0][1] is True

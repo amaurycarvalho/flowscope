@@ -1,7 +1,7 @@
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -9,6 +9,10 @@ import pytest
 from flowscope.domain.b3 import B3Fund
 from flowscope.domain.cvm import FundIdentity, normalizar_cnpj
 from flowscope.domain.fii.analysis import PatrimonioFii
+from flowscope.infrastructure.conditional_cache import (
+    RevalidationResult,
+    RevalidationStatus,
+)
 from flowscope.infrastructure.cvm.downloader import (
     CvmMonthlyDownloader,
     hash_sha256,
@@ -147,6 +151,100 @@ class TestDownloader:
         downloader.baixar_ano(2026)
         downloader.baixar_ano(2026)
         assert contador == [2026]
+
+
+class TestRevalidacaoMonthly:
+    def _downloader(self, tmp_path, respostas, probe):
+        estado = {"i": 0, "chamadas": 0}
+
+        def fetch(ano: int):
+            estado["chamadas"] += 1
+            resposta = respostas[min(estado["i"], len(respostas) - 1)]
+            estado["i"] += 1
+            return resposta
+
+        downloader = CvmMonthlyDownloader(
+            cache_dir=tmp_path,
+            fetch=fetch,
+            probe=lambda _ano, validators: probe(validators),
+            revalidate_after=timedelta(0),
+        )
+        return downloader, estado
+
+    def test_fonte_inalterada_nao_rebaixa(self, tmp_path):
+        downloader, estado = self._downloader(
+            tmp_path, [b"v1"], lambda _v: RevalidationResult(RevalidationStatus.UNCHANGED)
+        )
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert estado["chamadas"] == 1
+
+    def test_fonte_alterada_rebaixa(self, tmp_path):
+        downloader, estado = self._downloader(
+            tmp_path, [b"v1", b"v2"], lambda _v: RevalidationResult(RevalidationStatus.CHANGED)
+        )
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert downloader.baixar_ano(2026) == b"v2"
+        assert estado["chamadas"] == 2
+
+    def test_probe_falha_usa_local(self, tmp_path):
+        def probe(_v):
+            raise RuntimeError("rede fora")
+
+        downloader, estado = self._downloader(tmp_path, [b"v1"], probe)
+        downloader.baixar_ano(2026)
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert estado["chamadas"] == 1
+
+    def test_metadados_registram_validadores(self, tmp_path):
+        downloader = CvmMonthlyDownloader(
+            cache_dir=tmp_path,
+            fetch=lambda _ano: (
+                b"v1",
+                {"last_modified": "Wed, 09 Sep 2026 18:00:00 GMT", "etag": '"abc"'},
+            ),
+        )
+        downloader.baixar_ano(2026)
+        metadata = json.loads(
+            (tmp_path / "2026" / "metadata.json").read_text(encoding="utf-8")
+        )
+        assert metadata["last_modified"] == "Wed, 09 Sep 2026 18:00:00 GMT"
+        assert metadata["etag"] == '"abc"'
+        assert "revalidated_at" in metadata
+
+
+class TestNovoMesAnoCorrente:
+    def test_novo_mes_refletido_apos_revalidacao(self, tmp_path):
+        junho = (
+            "CNPJ_Fundo_Classe;Nome_Fundo_Classe;Tipo_Fundo_Classe;Data_Referencia;"
+            "VL_PATRIM_LIQ;QT_COTA;NR_COTST;Versao;Data_Recebimento\n"
+            "28.737.771/0001-85;ALIANZA;FII;2026-06-30;2900000000,00;144000000;90000;1;2026-07-10\n"
+        )
+        julho = (
+            "28.737.771/0001-85;ALIANZA;FII;2026-07-31;2942000000,00;144355726;100000;1;2026-08-10\n"
+        )
+        zip_v1 = _zip({"inf_mensal_fii_2026.csv": junho})
+        zip_v2 = _zip({"inf_mensal_fii_2026.csv": junho + julho})
+        por_ano = {2026: [zip_v1, zip_v2], 2025: [zip_v1, zip_v1]}
+        contadores: dict[int, int] = {}
+
+        def fetch(ano: int) -> bytes:
+            indice = contadores.get(ano, 0)
+            contadores[ano] = indice + 1
+            respostas = por_ano.get(ano, [zip_v1])
+            return respostas[min(indice, len(respostas) - 1)]
+
+        downloader = CvmMonthlyDownloader(
+            cache_dir=tmp_path,
+            fetch=fetch,
+            probe=lambda _ano, _v: RevalidationResult(RevalidationStatus.CHANGED),
+            revalidate_after=timedelta(0),
+        )
+        repo = CvmMonthlyReportRepository(downloader=downloader)
+        primeiro = repo.get(CNPJ, REFERENCIA)
+        assert primeiro.reference_date == date(2026, 6, 30)
+        segundo = repo.get(CNPJ, REFERENCIA)
+        assert segundo.reference_date == date(2026, 7, 31)
 
 
 class TestRepository:

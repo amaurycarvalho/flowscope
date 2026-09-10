@@ -21,6 +21,7 @@ from flowscope.application.fundamental_ports import (
     CampoFundamental,
 )
 from flowscope.domain.fii.fundamentus import AtivoFundamental
+from flowscope.infrastructure.conditional_cache import CacheOutcome
 
 from .provider import FONTE_FUNDAMENTUS, FundamentusProvider
 
@@ -50,8 +51,22 @@ class FundamentusFundamentalDataProvider:
         reference_date: date,
     ) -> dict[str, CampoFundamental]:
         """Obtém os campos normalizados do ticker no Fundamentus."""
+        campos, _ = self.obter_com_resultado(ticker, reference_date)
+        return campos
+
+    def obter_com_resultado(
+        self: "FundamentusFundamentalDataProvider",
+        ticker: str,
+        reference_date: date,
+    ) -> tuple[dict[str, CampoFundamental], bool]:
+        """Obtém os campos e indica se o snapshot foi atualizado na fonte."""
+        get_with_outcome = getattr(self._provider, "get_with_outcome", None)
+        if callable(get_with_outcome):
+            ativo, outcome = get_with_outcome(ticker)
+            atualizou = outcome in (CacheOutcome.UPDATED, CacheOutcome.MISS)
+            return campos_do_ativo(ativo), atualizou
         ativo = self._provider.get(ticker)
-        return campos_do_ativo(ativo)
+        return campos_do_ativo(ativo), False
 
 
 def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:

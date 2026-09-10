@@ -8,8 +8,8 @@ import hashlib
 import io
 import json
 import logging
-from collections.abc import Callable
-from datetime import date, datetime, timezone
+from collections.abc import Callable, Mapping
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from zipfile import ZipFile
@@ -17,8 +17,17 @@ from zipfile import ZipFile
 import requests
 
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.conditional_cache import (
+    ConditionalCache,
+    RevalidationResult,
+    RevalidationStatus,
+    headers_to_validators,
+)
 
 logger = logging.getLogger("flowscope")
+
+#: Intervalo mínimo padrão entre revalidações remotas do arquivo anual.
+_REVALIDATE_AFTER_PADRAO = timedelta(hours=6)
 
 
 def hash_sha256(data: bytes) -> str:
@@ -80,6 +89,8 @@ class CvmDatasetDownloader:
         fetch: Callable[[int], bytes] | None = None,
         parser_version: str = "cvm-v1",
         zipado: bool = True,
+        probe: Callable[[int, Mapping[str, str]], RevalidationResult] | None = None,
+        revalidate_after: timedelta = _REVALIDATE_AFTER_PADRAO,
     ) -> None:
         """Inicializa o downloader com a URL base, o nome e o cache do dataset."""
         self._base_url = base_url
@@ -91,19 +102,36 @@ class CvmDatasetDownloader:
         self._fetch = fetch or self._baixar_http
         self._parser_version = parser_version
         self._zipado = zipado
+        self._probe = probe or (self._probe_http if fetch is None else None)
+        self._revalidate_after = revalidate_after
+        self._conditional = ConditionalCache()
 
     def url_anual(self: "CvmDatasetDownloader", ano: int) -> str:
         """Retorna a URL do arquivo anual."""
         return f"{self._base_url}/{self._arquivo(ano)}"
 
     def baixar_ano(self: "CvmDatasetDownloader", ano: int) -> bytes:
-        """Retorna o arquivo anual, baixando e persistindo quando necessário."""
-        caminho = self._caminho(ano)
-        if caminho.exists():
-            return caminho.read_bytes()
-        data = self._fetch(ano)
-        self._persistir(ano, data)
-        return data
+        """Retorna o arquivo anual, revalidando a fonte antes de reutilizá-lo."""
+        resultado = self._conditional.get_file_or_revalidate(
+            self._caminho(ano),
+            fetch=lambda: self._obter(ano),
+            probe=(lambda validators: self._probe(ano, validators))
+            if self._probe is not None
+            else None,
+            read_validators=lambda: self._ler_validadores(ano),
+            write_metadata=lambda data, validators, agora: self._persistir(
+                ano, data, validators, agora
+            ),
+            revalidate_after=self._revalidate_after,
+        )
+        return resultado.data
+
+    def _obter(self: "CvmDatasetDownloader", ano: int) -> tuple[bytes, Mapping[str, str]]:
+        """Obtém o arquivo e os validadores, tolerando loaders que devolvem bytes."""
+        resultado = self._fetch(ano)
+        if isinstance(resultado, tuple):
+            return resultado
+        return resultado, {}
 
     def extrair_csvs(
         self: "CvmDatasetDownloader", data: bytes, ano: int
@@ -118,33 +146,122 @@ class CvmDatasetDownloader:
                     resultado[nome] = arquivo.read(nome)
         return resultado
 
-    def _persistir(self: "CvmDatasetDownloader", ano: int, data: bytes) -> None:
+    def _persistir(
+        self: "CvmDatasetDownloader",
+        ano: int,
+        data: bytes,
+        validators: Mapping[str, str] | None = None,
+        revalidated_at: datetime | None = None,
+    ) -> None:
         """Grava o arquivo bruto, o hash e os metadados do ano."""
         caminho = self._caminho(ano)
         caminho.parent.mkdir(parents=True, exist_ok=True)
         caminho.write_bytes(data)
         digest = hash_sha256(data)
         (caminho.parent / "SHA256").write_text(digest, encoding="utf-8")
+        anterior = self._ler_metadados(ano)
+        agora = datetime.now(timezone.utc)
+        baixado_em = (
+            anterior.get("downloaded_at")
+            if anterior and anterior.get("sha256") == digest
+            else agora.isoformat()
+        )
         metadata = {
             "dataset": self._dataset,
             "year": ano,
             "url": self.url_anual(ano),
-            "downloaded_at": datetime.now(timezone.utc).isoformat(),
+            "downloaded_at": baixado_em,
             "sha256": digest,
             "parser_version": self._parser_version,
+            **(validators or {}),
+            "revalidated_at": (revalidated_at or agora).isoformat(),
         }
         (caminho.parent / "metadata.json").write_text(
             json.dumps(metadata, indent=2), encoding="utf-8"
         )
 
-    def _baixar_http(self: "CvmDatasetDownloader", ano: int) -> bytes:
-        """Baixa o arquivo anual via HTTP."""
+    def _baixar_http(
+        self: "CvmDatasetDownloader", ano: int
+    ) -> tuple[bytes, Mapping[str, str]]:
+        """Baixa o arquivo anual via HTTP, devolvendo validadores remotos."""
         url = self.url_anual(ano)
         logger.info("Baixando dataset CVM %s via %s", self._dataset, url)
         resposta = self._session.get(url, timeout=60)
         resposta.raise_for_status()
-        return resposta.content
+        return resposta.content, headers_to_validators(resposta.headers)
+
+    def _probe_http(
+        self: "CvmDatasetDownloader", ano: int, validators: Mapping[str, str]
+    ) -> RevalidationResult:
+        """Verifica a fonte remota por HEAD, com fallback para GET condicional."""
+        url = self.url_anual(ano)
+        headers: dict[str, str] = {}
+        if validators.get("last_modified"):
+            headers["If-Modified-Since"] = validators["last_modified"]
+        if validators.get("etag"):
+            headers["If-None-Match"] = validators["etag"]
+        try:
+            resposta = self._session.head(url, headers=headers, timeout=30)
+        except requests.RequestException:
+            resposta = None
+        if resposta is not None and resposta.status_code == 304:
+            return RevalidationResult(
+                RevalidationStatus.UNCHANGED,
+                validators=headers_to_validators(resposta.headers),
+            )
+        if resposta is not None and resposta.status_code < 400:
+            return resultado_por_tamanho(validators, resposta.headers)
+        resposta = self._session.get(url, headers=headers, timeout=60)
+        if resposta.status_code == 304:
+            return RevalidationResult(
+                RevalidationStatus.UNCHANGED,
+                validators=headers_to_validators(resposta.headers),
+            )
+        if resposta.status_code >= 400:
+            return RevalidationResult(RevalidationStatus.UNKNOWN)
+        return RevalidationResult(
+            RevalidationStatus.CHANGED,
+            validators=headers_to_validators(resposta.headers),
+        )
+
+    def _ler_metadados(
+        self: "CvmDatasetDownloader", ano: int
+    ) -> dict[str, object] | None:
+        """Lê os metadados do ano, ou ``None`` quando ausentes/corrompidos."""
+        caminho = self._caminho(ano).parent / "metadata.json"
+        if not caminho.exists():
+            return None
+        try:
+            dados = json.loads(caminho.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        return dados if isinstance(dados, dict) else None
+
+    def _ler_validadores(self: "CvmDatasetDownloader", ano: int) -> dict[str, str]:
+        """Retorna os validadores remotos registrados para o ano."""
+        dados = self._ler_metadados(ano) or {}
+        return {
+            chave: str(dados[chave])
+            for chave in ("etag", "last_modified", "content_length", "revalidated_at")
+            if dados.get(chave)
+        }
 
     def _caminho(self: "CvmDatasetDownloader", ano: int) -> Path:
         """Retorna o caminho local do arquivo anual."""
         return self._base / str(ano) / self._arquivo(ano)
+
+
+def resultado_por_tamanho(
+    validators: Mapping[str, str], headers: Mapping[str, str]
+) -> RevalidationResult:
+    """Decide a revalidação comparando validadores HTTP armazenados e remotos."""
+    novos = headers_to_validators(headers)
+    if validators.get("last_modified") and (
+        novos.get("last_modified") == validators.get("last_modified")
+    ):
+        return RevalidationResult(RevalidationStatus.UNCHANGED, validators=novos)
+    anterior = validators.get("content_length")
+    remoto = novos.get("content_length")
+    if anterior and remoto and anterior == remoto:
+        return RevalidationResult(RevalidationStatus.UNCHANGED, validators=novos)
+    return RevalidationResult(RevalidationStatus.CHANGED, validators=novos)

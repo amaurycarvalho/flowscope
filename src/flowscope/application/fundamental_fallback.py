@@ -41,12 +41,27 @@ class CompositeFundamentalProvider:
         self: "CompositeFundamentalProvider", ticker: str, reference_date: date
     ) -> dict[str, CampoFundamental]:
         """Compõe os campos consultando as fontes por prioridade."""
+        campos, _ = self.obter_com_resultado(ticker, reference_date)
+        return campos
+
+    def obter_com_resultado(
+        self: "CompositeFundamentalProvider", ticker: str, reference_date: date
+    ) -> tuple[dict[str, CampoFundamental], bool]:
+        """Compõe os campos e agrega se alguma fonte atualizou os dados."""
         resultado: dict[str, CampoFundamental] = {}
+        atualizou = False
         for provider in self._providers:
             if CAMPOS_FUNDAMENTAIS.issubset(resultado):
                 break
             try:
-                campos = provider.obter(ticker, reference_date)
+                obter_com_resultado = getattr(provider, "obter_com_resultado", None)
+                if callable(obter_com_resultado):
+                    campos, fonte_atualizou = obter_com_resultado(
+                        ticker, reference_date
+                    )
+                    atualizou = atualizou or fonte_atualizou
+                else:
+                    campos = provider.obter(ticker, reference_date)
             except Exception:  # fonte indisponível: segue para o fallback
                 logger.warning(
                     "Fonte fundamentalista %s indisponível para %s",
@@ -58,7 +73,7 @@ class CompositeFundamentalProvider:
             for chave, campo in campos.items():
                 if chave not in resultado and campo.valor is not None:
                     resultado[chave] = campo
-        return resultado
+        return resultado, atualizou
 
 
 class CompositeFfoProvider:

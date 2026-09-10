@@ -85,3 +85,30 @@ class TestCompositeFundamentalProvider:
             "X", REFERENCIA
         )
         assert campos[CAMPO_P_VP].fonte == "B"
+
+
+class _FonteComResultado(_Fonte):
+    def __init__(self, nome, campos=None, atualizou=False):
+        super().__init__(nome, campos)
+        self._atualizou = atualizou
+
+    def obter_com_resultado(self, ticker, reference_date):
+        self.chamadas += 1
+        return self._campos, self._atualizou
+
+
+class TestAgregacaoResultado:
+    def test_atualizacao_agregada_do_primario(self):
+        primario = _FonteComResultado("FUNDAMENTUS", atualizou=True)
+        fallback = _Fonte("CVM")
+        _, atualizou = CompositeFundamentalProvider([primario, fallback]).obter_com_resultado(
+            "HGBS11", REFERENCIA
+        )
+        assert atualizou is True
+
+    def test_sem_atualizacao(self):
+        primario = _FonteComResultado("FUNDAMENTUS", atualizou=False)
+        _, atualizou = CompositeFundamentalProvider([primario]).obter_com_resultado(
+            "HGBS11", REFERENCIA
+        )
+        assert atualizou is False

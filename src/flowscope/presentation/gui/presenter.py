@@ -167,9 +167,13 @@ class FlowScopePresenter:
         """Exibe o progresso da análise fundamentalista na barra de status."""
         self._view.set_status(detalhe, "ℹ")
 
-    def on_fundamental_result(self: "FlowScopePresenter", dados: dict) -> None:
-        """Armazena e apresenta os resultados da análise fundamentalista."""
+    def on_fundamental_result(
+        self: "FlowScopePresenter", dados: dict, atualizou: bool = False
+    ) -> None:
+        """Armazena os resultados e sinaliza quando os dados foram atualizados."""
         self._view.set_fundamental_data(dados)
+        if atualizou:
+            self._view.set_status("Dados atualizados", "✓")
         self._view.on_tab_changed()
 
     @property

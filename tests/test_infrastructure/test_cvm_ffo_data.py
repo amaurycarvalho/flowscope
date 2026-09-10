@@ -1,12 +1,16 @@
 import io
 import json
 import zipfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
 
 from flowscope.domain.ffo import FFOComponentType
+from flowscope.infrastructure.conditional_cache import (
+    RevalidationResult,
+    RevalidationStatus,
+)
 from flowscope.infrastructure.cvm.datasets import CvmDatasetDownloader
 from flowscope.infrastructure.cvm.dfin import CvmDfinRepository
 from flowscope.infrastructure.cvm.quarterly import CvmQuarterlyRepository
@@ -145,3 +149,69 @@ class TestDatasetDownloader:
         downloader.baixar_ano(2026)
         downloader.baixar_ano(2026)
         assert chamadas == [2026]
+
+
+class TestRevalidacaoDataset:
+    def _downloader(self, tmp_path, respostas, probe):
+        estado = {"i": 0, "chamadas": 0}
+
+        def fetch(ano: int):
+            estado["chamadas"] += 1
+            resposta = respostas[min(estado["i"], len(respostas) - 1)]
+            estado["i"] += 1
+            return resposta
+
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=fetch,
+            probe=lambda _ano, validators: probe(validators),
+            revalidate_after=timedelta(0),
+        )
+        return downloader, estado
+
+    def test_fonte_inalterada_nao_rebaixa(self, tmp_path):
+        downloader, estado = self._downloader(
+            tmp_path, [b"v1"], lambda _v: RevalidationResult(RevalidationStatus.UNCHANGED)
+        )
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert estado["chamadas"] == 1
+
+    def test_fonte_alterada_rebaixa(self, tmp_path):
+        downloader, estado = self._downloader(
+            tmp_path, [b"v1", b"v2"], lambda _v: RevalidationResult(RevalidationStatus.CHANGED)
+        )
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert downloader.baixar_ano(2026) == b"v2"
+        assert estado["chamadas"] == 2
+
+    def test_probe_falha_usa_local(self, tmp_path):
+        def probe(_v):
+            raise RuntimeError("rede fora")
+
+        downloader, estado = self._downloader(tmp_path, [b"v1"], probe)
+        downloader.baixar_ano(2026)
+        assert downloader.baixar_ano(2026) == b"v1"
+        assert estado["chamadas"] == 1
+
+    def test_metadados_registram_validadores(self, tmp_path):
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=lambda _ano: (
+                b"v1",
+                {"last_modified": "Wed, 09 Sep 2026 18:00:00 GMT", "etag": '"abc"'},
+            ),
+        )
+        downloader.baixar_ano(2026)
+        metadata = json.loads(
+            (tmp_path / "2026" / "metadata.json").read_text(encoding="utf-8")
+        )
+        assert metadata["last_modified"] == "Wed, 09 Sep 2026 18:00:00 GMT"
+        assert metadata["etag"] == '"abc"'
+        assert "revalidated_at" in metadata

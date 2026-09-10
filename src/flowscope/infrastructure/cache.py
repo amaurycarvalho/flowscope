@@ -61,6 +61,28 @@ class CacheManager:
     def _meta_path_for(self: "CacheManager", key: str) -> Path:
         return self._cache_dir / f"{key}.json"
 
+    def read_meta(self: "CacheManager", key: str) -> dict[str, object] | None:
+        """Lê o registro de metadados da chave, ou ``None`` quando ausente/corrompido."""
+        meta_path = self._meta_path_for(key)
+        if not meta_path.exists():
+            return None
+        try:
+            data = json.loads(meta_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def write_meta(self: "CacheManager", key: str, payload: dict[str, object]) -> None:
+        """Grava o registro de metadados da chave de forma atômica."""
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+        meta_path = self._meta_path_for(key)
+        tmp = meta_path.with_suffix(".tmp")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False, default=str),
+            encoding="utf-8",
+        )
+        tmp.rename(meta_path)
+
     def invalidate(self: "CacheManager", key: str) -> None:
         """Remove o arquivo de metadados em cache para a chave informada."""
         meta_path = self._meta_path_for(key)

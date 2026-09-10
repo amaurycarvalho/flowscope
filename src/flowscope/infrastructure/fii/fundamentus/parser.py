@@ -7,6 +7,7 @@ quando os campos obrigatórios (nome e cotação) estão ausentes, sinaliza
 
 import re
 from collections.abc import Callable
+from datetime import date
 from decimal import Decimal
 
 from bs4 import BeautifulSoup
@@ -158,6 +159,13 @@ def parse_ativo(ticker: str, html: str) -> AtivoFundamental:
         imoveis=_parse_imoveis(raw),
         raw=raw,
     )
+
+
+def extrair_data_ultima_cotacao(html: str) -> date | None:
+    """Extrai a ``Data últ cot`` do HTML, usada como validador de cache."""
+    soup = BeautifulSoup(html, "html.parser")
+    raw = coletar_raw(soup)
+    return para_data(_primeiro(raw, [_ROTULO_DATA_COTACAO]))
 
 
 def _primeiro(raw: dict[str, str], rotulos: list[str]) -> str | None:

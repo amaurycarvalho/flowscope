@@ -103,7 +103,8 @@ class FlowScopeController:
                     self._presenter.on_fundamental_progress(mensagem[1])
                 elif tipo == MENSAGEM_RESULTADO:
                     if job.generation == self._fundamental_generation:
-                        self._presenter.on_fundamental_result(mensagem[1])
+                        atualizou = mensagem[2] if len(mensagem) > 2 else False
+                        self._presenter.on_fundamental_result(mensagem[1], atualizou)
                     terminou = True
                 elif tipo == MENSAGEM_ERRO:
                     terminou = True

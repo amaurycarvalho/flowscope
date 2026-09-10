@@ -58,6 +58,23 @@ class TestFlowScopePresenter:
         assert "dados inválidos" in args[0]
         assert args[1] == "⚠"
 
+    def test_on_fundamental_result_atualizado_exibe_status(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_result({"X": 1}, atualizou=True)
+        view.set_fundamental_data.assert_called_once_with({"X": 1})
+        view.set_status.assert_called_once()
+        args = view.set_status.call_args[0]
+        assert args[0] == "Dados atualizados"
+        assert args[1] == "✓"
+
+    def test_on_fundamental_result_sem_atualizacao_nao_exibe_status(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_result({"X": 1})
+        view.set_fundamental_data.assert_called_once_with({"X": 1})
+        view.set_status.assert_not_called()
+
     def test_on_technical_error_mostra_mensagem_do_log(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
