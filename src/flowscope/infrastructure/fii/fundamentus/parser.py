@@ -10,7 +10,7 @@ from collections.abc import Callable
 from datetime import date
 from decimal import Decimal
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 
 from flowscope.domain.fii.fundamentus import (
     TIPO_ACAO,
@@ -118,13 +118,25 @@ _ROTULOS_FII = ("FFO Yield", "FFO/Cota", "Dividendo/cota", "VP/Cota")
 _PERCENTUAL_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 
 
+def _rotulo_celula(celula: Tag) -> str:
+    """Extrai o rótulo de uma célula, removendo o marcador de ajuda ``?``.
+
+    O Fundamentus envolve os rótulos em ``<span class="help tips">?</span>``
+    seguido de ``<span class="txt">Rótulo</span>``; ``get_text`` produz
+    ``"? Rótulo"``. Removemos o marcador e os espaços para casar com o rótulo
+    esperado.
+    """
+    texto = celula.get_text(" ", strip=True)
+    return texto.removeprefix("?").strip()
+
+
 def coletar_raw(soup: BeautifulSoup) -> dict[str, str]:
     """Mapeia rótulo→valor para todos os pares de células da página."""
     raw: dict[str, str] = {}
     for linha in soup.find_all("tr"):
         celulas = linha.find_all(["td", "th"])
         for indice in range(0, len(celulas) - 1, 2):
-            rotulo = celulas[indice].get_text(" ", strip=True).lstrip("?")
+            rotulo = _rotulo_celula(celulas[indice])
             valor = celulas[indice + 1].get_text(" ", strip=True)
             if rotulo and rotulo not in raw:
                 raw[rotulo] = valor
@@ -201,16 +213,34 @@ def _detectar_tipo(soup: BeautifulSoup, raw: dict[str, str]) -> str:
 def _parse_demonstrativos(
     soup: BeautifulSoup, coluna: int
 ) -> dict[str, Decimal]:
-    """Extrai os demonstrativos de 12m (coluna 0) ou 3m (coluna 1)."""
+    """Extrai os demonstrativos de 12m (coluna 0) ou 3m (coluna 1).
+
+    Suporta dois layouts: o de fixtures, com o rótulo seguido de dois valores
+    (12m e 3m), e o da página real, em que o rótulo se repete em pares
+    ``rótulo, valor`` para 12m e 3m.
+    """
     resultado: dict[str, Decimal] = {}
     for linha in soup.find_all("tr"):
         celulas = linha.find_all(["td", "th"])
-        if len(celulas) < 2 + coluna:
+        rotulos = [_rotulo_celula(celula) for celula in celulas]
+        indices = [
+            indice
+            for indice, rotulo in enumerate(rotulos)
+            if rotulo in _DEMONSTRATIVOS
+        ]
+        if not indices:
             continue
-        rotulo = celulas[0].get_text(" ", strip=True).lstrip("?")
-        if rotulo not in _DEMONSTRATIVOS:
+        if len(indices) >= 2:
+            indice = indices[min(coluna, len(indices) - 1)]
+            posicao_valor = indice + 1
+            rotulo = rotulos[indice]
+        else:
+            indice = indices[0]
+            posicao_valor = indice + 1 + coluna
+            rotulo = rotulos[indice]
+        if posicao_valor >= len(celulas):
             continue
-        valor = para_decimal(celulas[1 + coluna].get_text(" ", strip=True))
+        valor = para_decimal(celulas[posicao_valor].get_text(" ", strip=True))
         if valor is not None:
             resultado[rotulo] = valor
     return resultado

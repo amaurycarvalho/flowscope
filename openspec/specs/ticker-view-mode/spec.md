@@ -72,6 +72,10 @@ Dois separadores verticais DEVEM ser exibidos na barra superior:
 1. Entre "Salvar" e "Editar"
 2. Entre o grupo de seleção (Editar + Selecionar Todos + Desmarcar Todos) e os botões de índice (IBOV, IDIV, IFIX)
 
+#### Scenario: Separadores visíveis na barra superior
+- **WHEN** o TickerList é exibido
+- **THEN** os dois separadores verticais DEVEM estar visíveis entre "Salvar"/"Editar" e entre o grupo de seleção e os botões de índice
+
 ### Requirement: Lazy refresh híbrido de gráficos
 
 O sistema DEVE atualizar os gráficos de forma híbrida:

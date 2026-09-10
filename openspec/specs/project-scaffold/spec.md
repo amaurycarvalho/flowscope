@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Definir a estrutura inicial do projeto FlowScope seguindo Clean Architecture, com configuração central em `pyproject.toml`, recursos empacotados e automação via `Makefile`.
+
+## Requirements
 
 ### Requirement: Estrutura de diretórios Clean Architecture
 O projeto DEVE seguir a estrutura Clean Architecture com diretórios `src/flowscope/` para código-fonte e `tests/` para testes, configurado via `pyproject.toml`.

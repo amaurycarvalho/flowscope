@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Ingerir dados de negociação da B3: download two-step dos arquivos consolidados, janela temporal amostrada, cache local, parsing do CSV e download das carteiras teóricas de índices.
+
+## Requirements
 
 ### Requirement: Download de arquivos consolidados via API B3 two-step
 O sistema DEVE baixar arquivos TradeInformationConsolidated da B3 usando o fluxo two-step: (1) GET para `api/download/requestname?fileName=...&date=...` obtendo token, (2) GET para `api/download/?token=` para download efetivo do CSV.

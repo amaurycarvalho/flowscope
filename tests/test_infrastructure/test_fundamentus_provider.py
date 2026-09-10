@@ -84,6 +84,23 @@ class TestParser:
         assert ativo.composicao_ativos["Imóveis para Renda"] == Decimal(60)
         assert ativo.composicao_ativos["CRI / CRA"] == Decimal(30)
 
+    def test_parse_layout_real_com_marcador_de_ajuda(self):
+        ativo = parse_ativo("visc11", _fixture("fii_visc11.html"))
+        assert ativo.tipo == TIPO_FII
+        assert ativo.nome == "VINCI SHOPPING CENTERS FUNDO DE INVESTIMENTO IMOBILIÁRIO"
+        assert ativo.cotacao == Decimal("104.13")
+        assert ativo.data_ultima_cotacao == date(2026, 9, 9)
+        assert ativo.indicadores["FFO Yield"] == Decimal("5.83")
+        assert ativo.indicadores["Div. Yield"] == Decimal("7.8")
+        assert ativo.indicadores["P/VP"] == Decimal("0.90")
+
+    def test_parse_layout_real_extrai_demonstrativos_por_coluna(self):
+        ativo = parse_ativo("visc11", _fixture("fii_visc11.html"))
+        assert ativo.demonstrativos_12m["FFO"] == Decimal(174957000)
+        assert ativo.demonstrativos_3m["FFO"] == Decimal(-20134600)
+        assert ativo.demonstrativos_12m["Receita"] == Decimal(270983000)
+        assert ativo.demonstrativos_3m["Receita"] == Decimal(4260200)
+
     def test_campos_ausentes_retornam_none(self):
         ativo = parse_ativo("petr4", _fixture("acao_petr4.html"))
         assert ativo.imoveis["qtd_imoveis"] is None
