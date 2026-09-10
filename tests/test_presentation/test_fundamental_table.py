@@ -27,6 +27,7 @@ from flowscope.presentation.gui.charts.fundamental_table import (
     formatar_percentual,
     formatar_ratio,
     formatar_valor,
+    montar_csv,
     montar_linhas,
 )
 
@@ -155,6 +156,34 @@ class TestMontarLinhas:
         assert colunas[2] == "Ação"
         assert colunas[3] == "Ordinária"
         assert all(coluna == NA for coluna in colunas[4:])
+
+
+class TestMontarCsv:
+    def test_cabecalho_corresponde_as_colunas_da_tabela(self):
+        csv = montar_csv({"HGBS11": _analise_hgbs11()})
+        assert csv.split("\n")[0] == (
+            "Ticker;Nome;Tipo;Sub-tipo;Última data-com;Último dividendo;"
+            "Tendência do dividendo;FFO Yield;Dividend Yield;P/FFO;P/VP;FFO Trend"
+        )
+
+    def test_linhas_preservam_ordem_e_valores_formatados(self):
+        csv = montar_csv(
+            {"HGBS11": _analise_hgbs11(), "PETR4": _analise_acao()}
+        )
+        linhas = csv.split("\n")
+        assert linhas[1].startswith(
+            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;SUBINDO;8,16%"
+        )
+        assert linhas[2].startswith("PETR4;Petrobras PN;Ação;Preferencial;")
+
+    def test_vazio_retorna_apenas_cabecalho(self):
+        csv = montar_csv({})
+        assert "\n" not in csv
+        assert csv.startswith("Ticker;Nome;")
+
+    def test_delimiter_customizado(self):
+        csv = montar_csv({"PETR4": _analise_acao()}, delimiter=",")
+        assert csv.split("\n")[0].startswith("Ticker,Nome,")
 
 
 needs_display = pytest.mark.skipif(

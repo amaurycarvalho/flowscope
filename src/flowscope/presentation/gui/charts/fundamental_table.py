@@ -172,6 +172,13 @@ def montar_linhas(dados: Mapping[str, object]) -> list[tuple[str, ...]]:
     return linhas
 
 
+def montar_csv(dados: Mapping[str, object], delimiter: str = ";") -> str:
+    """Monta o CSV da tabela fundamentalista, com cabeçalho e uma linha por ticker."""
+    linhas = [delimiter.join(cabecalho for _coluna, cabecalho in _COLUNAS)]
+    linhas.extend(delimiter.join(linha) for linha in montar_linhas(dados))
+    return "\n".join(linhas)
+
+
 def _rotulo_dividendo(tendencia: Enum | None) -> str:
     """Retorna o rótulo da tendência do dividendo."""
     if tendencia is None:

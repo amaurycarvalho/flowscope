@@ -1,4 +1,4 @@
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Cópia de dados CSV para clipboard
 O sistema DEVE copiar os dados brutos do CSV original (SgmtNm=CASH) formatados como CSV para o clipboard do sistema operacional. Os campos copiados DEVERÃO ser: `RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol`.
@@ -82,25 +82,3 @@ A lista completa de datas de amostragem DEVE ser propagada do use case até a GU
 - **WHEN** o CSV é gerado
 - **THEN** o CSV DEVE conter exatamente N linhas por ticker, onde N é o número de datas de amostragem (incluindo datas sem trade)
 
-### Requirement: Cópia de gráfico como imagem PNG para clipboard
-O sistema DEVE copiar o gráfico matplotlib atual como imagem PNG para o clipboard. O botão "Copiar Gráfico" está localizado no toolbar nativo do chart (`ToolbarBR`), disponível para qualquer chart que utilize o toolbar.
-
-#### Scenario: Copiar gráfico para clipboard no Linux
-- **WHEN** o usuário solicita cópia do gráfico no Linux
-- **THEN** o sistema DEVE salvar a figura como PNG temporário e usar `xclip -selection clipboard -t image/png -i` para transferir ao clipboard
-
-#### Scenario: Copiar gráfico para clipboard no Windows
-- **WHEN** o usuário solicita cópia do gráfico no Windows
-- **THEN** o sistema DEVE usar ctypes com `win32clipboard` (via `PIL.ImageGrab` ou API direta) para transferir a imagem PNG ao clipboard
-
-#### Scenario: Copiar gráfico para clipboard no macOS
-- **WHEN** o usuário solicita cópia do gráfico no macOS
-- **THEN** o sistema DEVE usar `osascript` ou `pbcopy` com dados PNG codificados para transferir ao clipboard
-
-#### Scenario: Falha na cópia de imagem
-- **WHEN** o comando nativo de clipboard falha (ex: `xclip` não instalado no Linux)
-- **THEN** o sistema DEVE exibir mensagem de erro descritiva na barra de status da GUI informando o comando faltante
-
-#### Scenario: Cópia de gráfico bem-sucedida com feedback na statusbar
-- **WHEN** o gráfico é copiado com sucesso
-- **THEN** a barra de status DEVE exibir "Gráfico copiado para a área de transferência."

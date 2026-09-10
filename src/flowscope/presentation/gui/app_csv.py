@@ -3,6 +3,8 @@
 import tkinter as tk
 from datetime import date
 
+from flowscope.presentation.gui.charts.fundamental_table import montar_csv
+
 CSV_HEADER = "RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol"
 
 
@@ -73,7 +75,7 @@ class CsvMixin:
         return f"{sd.isoformat()};{ticker};;;;;;;"
 
     def _copy_data(self: "CsvMixin") -> None:
-        csv_text = self._build_raw_csv()
+        csv_text = self._build_csv_for_current_tab()
         if not csv_text:
             return
         try:
@@ -82,10 +84,25 @@ class CsvMixin:
             pyxclip.copy(csv_text)
             self._flash_status("Dados copiados!")
         except (OSError, ImportError):
-            self._fallback_clipboard_text()
+            self._fallback_clipboard_text(csv_text)
 
-    def _fallback_clipboard_text(self: "CsvMixin") -> None:
-        csv_text = self._build_raw_csv()
+    def _build_csv_for_current_tab(self: "CsvMixin") -> str:
+        """Monta o CSV do contexto atual: tabela de Fundamentos ou CSV bruto."""
+        if self._current_tabs() == ("Análise Geral", "Fundamentos"):
+            return self._build_fundamental_csv()
+        return self._build_raw_csv()
+
+    def _build_fundamental_csv(self: "CsvMixin") -> str:
+        """Monta o CSV da tabela de Fundamentos com os tickers exibidos."""
+        tickers = self._ticker_list.get_tickers()
+        dados = getattr(self, "_fundamental_data", {})
+        filtrados = {ticker: dados[ticker] for ticker in tickers if ticker in dados}
+        if not filtrados:
+            self._flash_status("Nenhum ticker disponível para cópia.")
+            return ""
+        return montar_csv(filtrados)
+
+    def _fallback_clipboard_text(self: "CsvMixin", csv_text: str) -> None:
         if not csv_text:
             return
         self.clipboard_clear()
