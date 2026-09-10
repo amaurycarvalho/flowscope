@@ -138,7 +138,7 @@ class FundamentalAnalysisUseCase:
                 total_por_cota,
             )
         if metricas is None and elegivel:
-            metricas = self._metricas_dividendo(
+            metricas = self._metricas_parciais(
                 ticker, reference_date, total_por_cota
             )
         avisos = _avisos_ffo_ausente(metricas, elegivel)
@@ -168,24 +168,37 @@ class FundamentalAnalysisUseCase:
             )
             return {}
 
-    def _metricas_dividendo(
+    def _metricas_parciais(
         self: "FundamentalAnalysisUseCase",
         ticker: str,
         reference_date: date,
         dividendos_12m_por_cota: Decimal | None,
     ) -> MetricasFii | None:
-        """Calcula apenas o Dividend Yield a partir do dividendo por cota e preço."""
-        if dividendos_12m_por_cota is None or self._mercado is None:
+        """Calcula Dividend Yield e P/VP sem exigir dados de FFO."""
+        if self._mercado is None:
             return None
         preco = self._mercado.preco_fechamento(ticker, reference_date)
         if preco is None or preco.preco <= 0:
             return None
+        dividend_yield = (
+            dividendos_12m_por_cota / preco.preco
+            if dividendos_12m_por_cota is not None
+            else None
+        )
+        patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
+        market_value: Decimal | None = None
+        p_vp: Decimal | None = None
+        if patrimonio is not None and patrimonio.net_asset_value > 0:
+            market_value = preco.preco * patrimonio.shares_outstanding
+            p_vp = market_value / patrimonio.net_asset_value
+        if dividend_yield is None and p_vp is None:
+            return None
         return MetricasFii(
-            market_value=None,
+            market_value=market_value,
             ffo_yield=None,
-            dividend_yield=dividendos_12m_por_cota / preco.preco,
+            dividend_yield=dividend_yield,
             p_ffo=None,
-            p_vp=None,
+            p_vp=p_vp,
             ffo_momentum=None,
             ffo_trend=None,
             ffo_trend_change=None,

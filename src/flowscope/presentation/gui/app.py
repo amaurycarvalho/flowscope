@@ -7,18 +7,24 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from flowscope.application.fundamental_fallback import CompositeFundamentalProvider
+from flowscope.application.fundamental_fallback import (
+    CompositeFfoProvider,
+    CompositeFundamentalProvider,
+)
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
 )
 from flowscope.infrastructure.fii.b3_fundamental_repository import (
     B3FundamentalRepository,
 )
+from flowscope.infrastructure.fii.ffo_engine_provider import FFOEngineProvider
+from flowscope.infrastructure.fii.ffo_provider import FundamentusProvider
 from flowscope.infrastructure.fii.fundamentus.adapter import (
     FundamentusFundamentalDataProvider,
 )
@@ -142,12 +148,17 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
-        fundamental_repo = B3FundamentalRepository()
+        fundamental_repo = B3FundamentalRepository(
+            patrimonio_source=CvmMonthlyPatrimonioSource()
+        )
         fundamental_provider = CompositeFundamentalProvider(
             [
                 FundamentusFundamentalDataProvider(),
                 B3FundamentalDataProvider(fundamental_repo),
             ]
+        )
+        fundamental_ffo_provider = CompositeFfoProvider(
+            [FundamentusProvider(), FFOEngineProvider()]
         )
         self._controller = FlowScopeController(
             guard=guard,
@@ -157,6 +168,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             logger=logger,
             fundamental_repo=fundamental_repo,
             fundamental_provider=fundamental_provider,
+            fundamental_ffo_provider=fundamental_ffo_provider,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,

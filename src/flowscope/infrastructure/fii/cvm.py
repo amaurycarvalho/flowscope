@@ -17,6 +17,12 @@ from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.fii.analysis import PatrimonioFii
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.cvm.patrimonio import para_patrimonio
+from flowscope.infrastructure.cvm.schema import (
+    CvmSchemaError,
+    mapear_linha,
+    validar_schema,
+)
 from flowscope.infrastructure.fii.parsing import data_brasileira, moeda_para_decimal
 
 logger = logging.getLogger("flowscope")
@@ -27,13 +33,6 @@ SOURCE_SCHEMA_VERSION = "2026-01"
 #: Fonte registrada nos objetos de patrimônio produzidos pelo adapter.
 FONTE_CVM = "CVM"
 
-_COLUNAS_OBRIGATORIAS = {
-    "CNPJ_FUNDO",
-    "DT_COMPTC",
-    "VL_PATRIM_LIQ",
-    "QUANT_COTA",
-    "NR_COTST",
-}
 _CNPJ_RE = re.compile(r"[^\d]")
 _TTL_DIAS = 30
 
@@ -47,10 +46,6 @@ class _Informe:
     patrimonio_liquido: Decimal
     cotas: Decimal
     cotistas: int | None
-
-
-class CvmSchemaError(ValueError):
-    """Erro quando o esquema do dataset da CVM não corresponde ao esperado."""
 
 
 def _cnpj_digitos(cnpj: str) -> str:
@@ -67,31 +62,30 @@ def parse_informe_mensal(conteudo: str) -> list[_Informe]:
     reader = csv.DictReader(io.StringIO(conteudo), delimiter=";")
     if reader.fieldnames is None:
         return []
-    colunas = {coluna.strip().upper() for coluna in reader.fieldnames}
-    if not _COLUNAS_OBRIGATORIAS.issubset(colunas):
-        ausentes = sorted(_COLUNAS_OBRIGATORIAS - colunas)
-        raise CvmSchemaError(f"colunas ausentes no informe mensal: {ausentes}")
+    colunas = {coluna.strip() for coluna in reader.fieldnames}
+    validar_schema(colunas)
 
     informes: list[_Informe] = []
     for linha in reader:
-        if linha.get("CNPJ_FUNDO") is None:
-            continue
-        informes.append(_linha_para_informe(linha))
+        informe = _linha_para_informe(linha, colunas)
+        if informe is not None:
+            informes.append(informe)
     return informes
 
 
-def _linha_para_informe(linha: dict[str, str]) -> _Informe | None:
+def _linha_para_informe(linha: dict[str, str], colunas: object) -> _Informe | None:
     """Monta um informe a partir de uma linha do CSV, ignorando dados inválidos."""
-    cnpj = _cnpj_digitos(linha.get("CNPJ_FUNDO", ""))
+    canonica = mapear_linha(linha, colunas)
+    cnpj = _cnpj_digitos(canonica.get("cnpj") or "")
     if not cnpj:
         return None
     try:
-        data = data_brasileira(linha["DT_COMPTC"])
-        patrimonio = moeda_para_decimal(linha.get("VL_PATRIM_LIQ", "0"))
-        cotas = moeda_para_decimal(linha.get("QUANT_COTA", "0"))
+        data = _parse_competencia(canonica.get("competencia"))
+        patrimonio = moeda_para_decimal(canonica.get("patrimonio") or "0")
+        cotas = moeda_para_decimal(canonica.get("cotas") or "0")
     except (InvalidOperation, ValueError, KeyError):
         return None
-    cotistas = _ler_cotistas(linha.get("NR_COTST", ""))
+    cotistas = _ler_cotistas(canonica.get("cotistas") or "")
     return _Informe(
         cnpj=cnpj,
         data_competencia=data,
@@ -99,6 +93,17 @@ def _linha_para_informe(linha: dict[str, str]) -> _Informe | None:
         cotas=cotas,
         cotistas=cotistas,
     )
+
+
+def _parse_competencia(valor: object) -> date:
+    """Interpreta a competência em formato brasileiro ou ISO."""
+    if not valor:
+        raise ValueError("competência ausente")
+    texto = str(valor).strip()
+    if "/" in texto:
+        return data_brasileira(texto)
+    partes = texto[:10].split("-")
+    return date(int(partes[0]), int(partes[1]), int(partes[2]))
 
 
 def _ler_cotistas(valor: str) -> int | None:
@@ -120,16 +125,20 @@ class CvmFiiAdapter:
         loader: Callable[[int], str] | None = None,
         resolver_cnpj: Callable[[str], str | None] | None = None,
         cache: CacheManager | None = None,
+        repository: object | None = None,
     ) -> None:
-        """Inicializa o adapter com o carregador, o resolvedor e o cache."""
+        """Inicializa o adapter com o carregador, o resolvedor, o cache e o repositório."""
         self._loader = loader
         self._resolver_cnpj = resolver_cnpj or (lambda _ticker: None)
         self._cache = cache
+        self._repository = repository
 
     def patrimonio(
         self: "CvmFiiAdapter", ticker: str, reference_date: date
     ) -> PatrimonioFii | None:
         """Resolve o patrimônio mais recente do ticker até a referência."""
+        if self._repository is not None:
+            return self._patrimonio_do_repositorio(ticker, reference_date)
         cnpj = self._resolver_cnpj(ticker.strip().upper())
         if cnpj is None:
             return None
@@ -161,6 +170,18 @@ class CvmFiiAdapter:
                 fonte=FONTE_CVM,
             )
         return None
+
+    def _patrimonio_do_repositorio(
+        self: "CvmFiiAdapter", ticker: str, reference_date: date
+    ) -> PatrimonioFii | None:
+        """Obtém o patrimônio delegando ao repositório CVM informado."""
+        cnpj = self._resolver_cnpj(ticker.strip().upper())
+        if cnpj is None:
+            return None
+        report = self._repository.get(cnpj, reference_date, ticker=ticker)
+        if report is None:
+            return None
+        return para_patrimonio(report)
 
     def _carregar_ano(self: "CvmFiiAdapter", ano: int) -> str:
         """Carrega o dataset anual, usando o cache quando disponível."""

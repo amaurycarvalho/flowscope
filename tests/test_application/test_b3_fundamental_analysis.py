@@ -2,7 +2,7 @@ from datetime import date
 from decimal import Decimal
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
-from flowscope.domain.fii import PrecoObservacao
+from flowscope.domain.fii import PatrimonioFii, PrecoObservacao
 from flowscope.domain.structured import ISIN, Provento, ValorProvento
 
 REFERENCIA = date(2026, 9, 4)
@@ -99,3 +99,41 @@ class TestIsolamentoB3:
         resultado = caso.execute(["HGBS11", "HGLG11"], REFERENCIA)
         assert resultado[0].erro is not None
         assert resultado[1].erro is None
+
+
+class _RepoComPatrimonio(_Repo):
+    def __init__(self, patrimonio):
+        super().__init__()
+        self._patrimonio = patrimonio
+
+    def obter_patrimonio(self, ticker, reference_date):
+        return self._patrimonio
+
+
+class TestPvpDesacoplado:
+    def _patrimonio(self):
+        return PatrimonioFii(
+            reference_date=REFERENCIA,
+            net_asset_value=Decimal("2942000000"),
+            shares_outstanding=Decimal("144355726"),
+            cotistas=100000,
+            fonte="CVM",
+        )
+
+    def test_pvp_preenchido_sem_ffo(self):
+        caso = FundamentalAnalysisUseCase(
+            _RepoComPatrimonio(self._patrimonio()), mercado=_Mercado()
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.metricas is not None
+        assert resultado.metricas.p_vp is not None
+        assert resultado.metricas.p_vp.quantize(
+            Decimal("0.01")
+        ) == Decimal("0.92")
+        assert resultado.metricas.ffo_yield is None
+        assert resultado.metricas.p_ffo is None
+
+    def test_pvp_indisponivel_sem_patrimonio(self):
+        caso = FundamentalAnalysisUseCase(_Repo(), mercado=_Mercado())
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.metricas is None

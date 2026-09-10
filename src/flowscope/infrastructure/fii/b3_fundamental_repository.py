@@ -26,10 +26,12 @@ class B3FundamentalRepository:
         self: "B3FundamentalRepository",
         fund_repository: B3FundRepository | None = None,
         reports_repository: B3ReportsRepository | None = None,
+        patrimonio_source: object | None = None,
     ) -> None:
-        """Inicializa o repositório com os repositórios B3 de fundo e relatórios."""
+        """Inicializa o repositório com as fontes B3 e a fonte de patrimônio."""
         self._fundos = fund_repository or B3FundRepository()
         self._relatorios = reports_repository or B3ReportsRepository()
+        self._patrimonio_source = patrimonio_source
         self._fundos_cache: dict[str, B3Fund | None] = {}
 
     def obter_nome(self: "B3FundamentalRepository", ticker: str) -> str | None:
@@ -55,8 +57,16 @@ class B3FundamentalRepository:
     def obter_patrimonio(
         self: "B3FundamentalRepository", ticker: str, reference_date: date
     ) -> PatrimonioFii | None:
-        """Retorna ``None``; patrimônio é fornecido pela CVM em fase seguinte."""
-        return None
+        """Retorna o patrimônio da fonte configurada, ou ``None``."""
+        if self._patrimonio_source is None:
+            return None
+        try:
+            return self._patrimonio_source.patrimonio(ticker, reference_date)
+        except Exception:  # aquisição tolerante
+            logger.warning(
+                "Falha ao obter patrimônio de %s", ticker, exc_info=True
+            )
+            return None
 
     def _resolver(
         self: "B3FundamentalRepository", ticker: str

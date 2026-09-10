@@ -12,8 +12,10 @@ from datetime import date
 from flowscope.application.fundamental_ports import (
     CAMPOS_FUNDAMENTAIS,
     CampoFundamental,
+    FfoProvider,
     FundamentalDataProvider,
 )
+from flowscope.domain.fii.analysis import FfoObservacao
 
 logger = logging.getLogger("flowscope")
 
@@ -57,3 +59,42 @@ class CompositeFundamentalProvider:
                 if chave not in resultado and campo.valor is not None:
                     resultado[chave] = campo
         return resultado
+
+
+class CompositeFfoProvider:
+    """Resolve o FFO pela primeira fonte que o fornecer, em ordem.
+
+    O Fundamentus é a fonte primária; o motor determinístico da CVM entra como
+    fallback quando o Fundamentus falha ou não traz o FFO.
+    """
+
+    def __init__(
+        self: "CompositeFfoProvider",
+        providers: Sequence[FfoProvider],
+    ) -> None:
+        """Inicializa o composto com as fontes na ordem de prioridade."""
+        self._providers = tuple(providers)
+
+    @property
+    def providers(self: "CompositeFfoProvider") -> tuple[FfoProvider, ...]:
+        """Retorna as fontes na ordem de prioridade configurada."""
+        return self._providers
+
+    def obter_ffo(
+        self: "CompositeFfoProvider", ticker: str, reference_date: date
+    ) -> FfoObservacao | None:
+        """Retorna o FFO da primeira fonte que o fornecer."""
+        for provider in self._providers:
+            try:
+                ffo = provider.obter_ffo(ticker, reference_date)
+            except Exception:  # fonte indisponível: segue para o fallback
+                logger.warning(
+                    "Fonte de FFO %s indisponível para %s",
+                    type(provider).__name__,
+                    ticker,
+                    exc_info=True,
+                )
+                continue
+            if ffo is not None:
+                return ffo
+        return None

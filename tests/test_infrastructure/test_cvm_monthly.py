@@ -1,0 +1,300 @@
+import io
+import json
+import zipfile
+from datetime import date
+from decimal import Decimal
+
+import pytest
+
+from flowscope.domain.b3 import B3Fund
+from flowscope.domain.cvm import FundIdentity, normalizar_cnpj
+from flowscope.domain.fii.analysis import PatrimonioFii
+from flowscope.infrastructure.cvm.downloader import (
+    CvmMonthlyDownloader,
+    hash_sha256,
+)
+from flowscope.infrastructure.cvm.identity import resolver_identidade
+from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
+from flowscope.infrastructure.cvm.repository import CvmMonthlyReportRepository
+from flowscope.infrastructure.cvm.schema import (
+    CvmSchemaError,
+    mapear_linha,
+    resolver_coluna,
+    tem_coluna_identidade,
+    validar_schema,
+)
+from flowscope.infrastructure.fii.cvm import (
+    FONTE_CVM,
+    CvmFiiAdapter,
+    parse_informe_mensal,
+)
+
+REFERENCIA = date(2026, 9, 4)
+CNPJ = "28737771000185"
+CNPJ_FORMATADO = "28.737.771/0001-85"
+
+CSV_ATUAL = (
+    "CNPJ_Fundo_Classe;Nome_Fundo_Classe;Tipo_Fundo_Classe;Data_Referencia;"
+    "VL_PATRIM_LIQ;QT_COTA;NR_COTST;Versao;Data_Recebimento\n"
+    "28.737.771/0001-85;ALIANZA;FII;2026-06-30;2900000000,00;144000000;90000;1;2026-07-10\n"
+    "28.737.771/0001-85;ALIANZA;FII;2026-07-31;2942000000,00;144355726;100000;1;2026-08-10\n"
+    "28.737.771/0001-85;ALIANZA;FII;2026-07-31;2943000000,00;144355726;100000;2;2026-08-20\n"
+    "99.999.999/0001-91;OUTRO;FII;2026-07-31;1000,00;1000;10;1;2026-08-10\n"
+)
+
+CSV_LEGADO = (
+    "CNPJ_FUNDO;DT_COMPTC;VL_PATRIM_LIQ;QUANT_COTA;NR_COTST\n"
+    "28737771000185;30/06/2026;2900000000,00;144000000;90000\n"
+    "28737771000185;31/07/2026;2942000000,00;144355726;100000\n"
+)
+
+
+def _zip(csvs: dict[str, str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as arquivo:
+        for nome, conteudo in csvs.items():
+            arquivo.writestr(nome, conteudo.encode("latin1"))
+    return buffer.getvalue()
+
+
+def _downloader(tmp_path, csvs=None, contador=None):
+    def fetch(ano: int) -> bytes:
+        if contador is not None:
+            contador.append(ano)
+        return _zip(csvs or {"inf_mensal_fii_2026.csv": CSV_ATUAL})
+
+    return CvmMonthlyDownloader(cache_dir=tmp_path, fetch=fetch)
+
+
+class TestModelos:
+    def test_normalizar_cnpj(self):
+        assert normalizar_cnpj(CNPJ_FORMATADO) == CNPJ
+        assert normalizar_cnpj(None) == ""
+
+    def test_fund_identity_e_monthly_report(self):
+        identidade = FundIdentity(
+            ticker="ALZR11",
+            cnpj_fundo_classe=CNPJ,
+            codigo_cvm="1",
+            id_fnet="20294",
+            name="Alianza",
+        )
+        assert identidade.cnpj_fundo_classe == CNPJ
+        from flowscope.domain.cvm import MonthlyReport
+
+        report = MonthlyReport(
+            ticker="ALZR11",
+            cnpj_fundo_classe=CNPJ,
+            reference_date=REFERENCIA,
+            raw_rows={},
+            source_file="x.csv",
+            source_hash="abc",
+        )
+        assert report.is_latest is True
+
+
+class TestSchema:
+    def test_resolve_colunas_atuais(self):
+        colunas = CSV_ATUAL.splitlines()[0].split(";")
+        assert resolver_coluna(colunas, "cnpj") == "CNPJ_Fundo_Classe"
+        assert resolver_coluna(colunas, "cotas") == "QT_COTA"
+
+    def test_resolve_colunas_legadas(self):
+        colunas = CSV_LEGADO.splitlines()[0].split(";")
+        assert resolver_coluna(colunas, "cnpj") == "CNPJ_FUNDO"
+        assert resolver_coluna(colunas, "cotas") == "QUANT_COTA"
+
+    def test_colunas_obrigatorias_ausentes(self):
+        with pytest.raises(CvmSchemaError):
+            validar_schema({"CNPJ_FUNDO", "VL_PATRIM_LIQ"})
+
+    def test_tem_coluna_identidade(self):
+        assert tem_coluna_identidade({"CNPJ_Fundo_Classe", "X"}) is True
+        assert tem_coluna_identidade({"Outra"}) is False
+
+    def test_mapear_linha(self):
+        colunas = CSV_LEGADO.splitlines()[0].split(";")
+        linha = dict(zip(colunas, ["28737771000185", "31/07/2026", "1,00", "2", "3"]))
+        canonica = mapear_linha(linha, colunas)
+        assert canonica["cnpj"] == "28737771000185"
+        assert canonica["cotas"] == "2"
+        assert canonica["cotistas"] == "3"
+
+
+class TestDownloader:
+    def test_extrai_todos_os_csvs(self, tmp_path):
+        data = _zip(
+            {"a.csv": CSV_ATUAL, "b.csv": CSV_LEGADO, "leia.txt": "x"}
+        )
+        downloader = CvmMonthlyDownloader(cache_dir=tmp_path)
+        csvs = downloader.extrair_csvs(data)
+        assert set(csvs) == {"a.csv", "b.csv"}
+
+    def test_hash_e_metadados_persistidos(self, tmp_path):
+        downloader = _downloader(tmp_path)
+        data = downloader.baixar_ano(2026)
+        diretorio = tmp_path / "2026"
+        assert (diretorio / "inf_mensal_fii_2026.zip").read_bytes() == data
+        digest = (diretorio / "SHA256").read_text(encoding="utf-8")
+        assert digest == hash_sha256(data)
+        metadata = json.loads((diretorio / "metadata.json").read_text(encoding="utf-8"))
+        assert metadata["dataset"] == "FII-INF-MENSAL"
+        assert metadata["sha256"] == digest
+
+    def test_download_nao_repetido_com_cache(self, tmp_path):
+        contador: list[int] = []
+        downloader = _downloader(tmp_path, contador=contador)
+        downloader.baixar_ano(2026)
+        downloader.baixar_ano(2026)
+        assert contador == [2026]
+
+
+class TestRepository:
+    def test_seleciona_competencia_mais_recente(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        report = repo.get(CNPJ, REFERENCIA, ticker="ALZR11")
+        assert report is not None
+        assert report.reference_date == date(2026, 7, 31)
+        assert report.cnpj_fundo_classe == CNPJ
+
+    def test_seleciona_reapresentacao_mais_recente(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        report = repo.get(CNPJ, REFERENCIA, ticker="ALZR11")
+        assert report.source_version == "2"
+        assert report.raw_rows["patrimonio"] == "2943000000,00"
+        assert report.is_latest is True
+
+    def test_fundo_ausente_retorna_none(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        assert repo.get("00000000000000", REFERENCIA) is None
+
+    def test_ignora_competencia_futura(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        report = repo.get(CNPJ, date(2026, 6, 30))
+        assert report.reference_date == date(2026, 6, 30)
+
+    def test_schema_legado_reconhecido(self, tmp_path):
+        downloader = _downloader(tmp_path, csvs={"inf_mensal_fii_2026.csv": CSV_LEGADO})
+        repo = CvmMonthlyReportRepository(downloader=downloader)
+        report = repo.get(CNPJ, REFERENCIA)
+        assert report is not None
+        assert report.raw_rows["cotas"] == "144355726"
+
+
+class _FundoRepo:
+    def __init__(self, fund):
+        self._fund = fund
+
+    def find_by_ticker(self, ticker):
+        return self._fund
+
+
+class TestIdentity:
+    def test_identidade_resolvida(self):
+        fund = B3Fund(
+            ticker="ALZR11",
+            fnet_id="20294",
+            primary_id="870",
+            name="Alianza",
+            trading_name=CNPJ_FORMATADO,
+        )
+        identidade = resolver_identidade(
+            "ALZR11",
+            fund_repository=_FundoRepo(fund),
+            code_cvm_resolver=lambda _t: "1234",
+        )
+        assert identidade is not None
+        assert identidade.cnpj_fundo_classe == CNPJ
+        assert identidade.id_fnet == "20294"
+        assert identidade.codigo_cvm == "1234"
+
+    def test_ticker_sem_cnpj_retorna_none(self):
+        fund = B3Fund(
+            ticker="XPTO11",
+            fnet_id="1",
+            primary_id=None,
+            name="X",
+            trading_name=None,
+        )
+        assert resolver_identidade("XPTO11", fund_repository=_FundoRepo(fund)) is None
+
+    def test_ticker_sem_fundo_retorna_none(self):
+        assert resolver_identidade("XPTO11", fund_repository=_FundoRepo(None)) is None
+
+
+class TestPatrimonio:
+    def test_patrimonio_normalizado(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        source = CvmMonthlyPatrimonioSource(
+            repository=repo,
+            resolver=lambda _t: FundIdentity(
+                ticker="ALZR11", cnpj_fundo_classe=CNPJ
+            ),
+        )
+        patrimonio = source.patrimonio("ALZR11", REFERENCIA)
+        assert isinstance(patrimonio, PatrimonioFii)
+        assert patrimonio.net_asset_value == Decimal("2943000000.00")
+        assert patrimonio.shares_outstanding == Decimal("144355726")
+        assert patrimonio.cotistas == 100000
+        assert patrimonio.reference_date == date(2026, 7, 31)
+        assert patrimonio.fonte == FONTE_CVM
+
+    def test_sem_identidade_retorna_none(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        source = CvmMonthlyPatrimonioSource(repository=repo, resolver=lambda _t: None)
+        assert source.patrimonio("ALZR11", REFERENCIA) is None
+
+
+class TestAdapterDelegacao:
+    def test_cvm_fii_adapter_delega_ao_repositorio(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        adapter = CvmFiiAdapter(repository=repo, resolver_cnpj=lambda _t: CNPJ)
+        patrimonio = adapter.patrimonio("ALZR11", REFERENCIA)
+        assert isinstance(patrimonio, PatrimonioFii)
+        assert patrimonio.net_asset_value == Decimal("2943000000.00")
+
+    def test_parse_informe_legado_continua_funcionando(self):
+        informes = parse_informe_mensal(CSV_LEGADO)
+        assert len(informes) == 2
+        assert informes[0].cnpj == CNPJ
+
+
+class TestIntegracaoRepositorio:
+    def _source(self, tmp_path):
+        repo = CvmMonthlyReportRepository(downloader=_downloader(tmp_path))
+        return CvmMonthlyPatrimonioSource(
+            repository=repo,
+            resolver=lambda _t: FundIdentity(
+                ticker="ALZR11", cnpj_fundo_classe=CNPJ
+            ),
+        )
+
+    def test_fundamental_repository_usa_fonte_cvm(self, tmp_path):
+        from flowscope.infrastructure.fii.fundamental_repository import (
+            FundamentalRepository,
+        )
+
+        class _ProventosVazio:
+            def execute(self, *args, **kwargs):
+                return []
+
+        fundamental = FundamentalRepository(
+            proventos_use_case=_ProventosVazio(),
+            patrimonio_source=self._source(tmp_path),
+        )
+        patrimonio = fundamental.obter_patrimonio("ALZR11", REFERENCIA)
+        assert patrimonio is not None
+        assert patrimonio.fonte == FONTE_CVM
+        assert patrimonio.net_asset_value == Decimal("2943000000.00")
+
+    def test_b3_fundamental_repository_usa_fonte_cvm(self, tmp_path):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        repositorio = B3FundamentalRepository(
+            patrimonio_source=self._source(tmp_path)
+        )
+        patrimonio = repositorio.obter_patrimonio("ALZR11", REFERENCIA)
+        assert patrimonio is not None
+        assert patrimonio.shares_outstanding == Decimal("144355726")

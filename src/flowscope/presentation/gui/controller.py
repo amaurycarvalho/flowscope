@@ -35,6 +35,7 @@ class FlowScopeController:
         logger: LogPort,
         fundamental_repo: object | None = None,
         fundamental_provider: object | None = None,
+        fundamental_ffo_provider: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -44,6 +45,7 @@ class FlowScopeController:
         self._logger = logger
         self._fundamental_repo = fundamental_repo
         self._fundamental_provider = fundamental_provider
+        self._fundamental_ffo_provider = fundamental_ffo_provider
         self._fundamental_generation = 0
         self._fundamental_job: FundamentalJob | None = None
 
@@ -76,6 +78,7 @@ class FlowScopeController:
             repository=self._fundamental_repo,
             mercado=B3MarketPriceFromResult(daily),
             fundamental_provider=self._fundamental_provider,
+            ffo_provider=self._fundamental_ffo_provider,
         )
         job = FundamentalJob(
             caso, tickers, ref_date, self._fundamental_generation
