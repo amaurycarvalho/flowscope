@@ -105,7 +105,10 @@ class TestFormatadores:
 
     def test_formatar_valor_com_virgula(self):
         assert formatar_valor(Decimal("0.55")) == "0,55"
-        assert formatar_valor(Decimal("0.08355")) == "0,08355"
+        assert formatar_valor(Decimal("0.08355")) == "0,08"
+        assert formatar_valor(Decimal("0.7")) == "0,70"
+        assert formatar_valor(Decimal("15.5")) == "15,50"
+        assert formatar_valor(Decimal("9")) == "9,00"
 
     def test_formatar_data_na(self):
         assert formatar_data(None) == NA
@@ -210,11 +213,11 @@ class TestMontarLinhas:
         assert colunas[3] == "Tijolo"
         assert colunas[4] == "10/07/2026"
         assert colunas[5] == "0,55"
-        assert colunas[6] == "0,5"
+        assert colunas[6] == "0,50"
         assert colunas[7] == "Crescimento"
         assert colunas[8] == "8,16%"
         assert colunas[9] == "7,9%"
-        assert colunas[10] == "96,5%"
+        assert colunas[10] == "96,51%"
         assert colunas[11] == "ALTA"
         assert colunas[12] == NA
         assert colunas[13] == NA
@@ -264,9 +267,16 @@ class TestMontarCsv:
         )
         linhas = csv.split("\n")
         assert linhas[1].startswith(
-            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;0,5;Crescimento;8,16%"
+            "HGBS11;CSHG Renda Urbana;FII;Tijolo;10/07/2026;0,55;0,50;Crescimento;8,16%"
         )
         assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
+
+    def test_csv_usa_duas_casas_decimais(self):
+        csv = montar_csv({"HGBS11": _analise_hgbs11()})
+        campos = csv.split("\n")[1].split(";")
+        assert campos[5] == "0,55"
+        assert campos[6] == "0,50"
+        assert campos[10] == "96,51%"
 
     def test_vazio_retorna_apenas_cabecalho(self):
         csv = montar_csv({})
@@ -449,18 +459,18 @@ class TestIntegracaoWatchlist:
         hcri = por_ticker["HCRI11"]
         assert hcri[2] == "FII"
         assert hcri[3] == "Papel"
-        assert hcri[5] == "1"
+        assert hcri[5] == "1,00"
         assert all(coluna == NA for coluna in hcri[8:])
 
         hgbs = por_ticker["HGBS11"]
         assert hgbs[2] == "FII"
         assert hgbs[3] == "Tijolo"
         assert hgbs[5] == "0,55"
-        assert hgbs[6] == "0,5"
+        assert hgbs[6] == "0,50"
         assert hgbs[7] == "Crescimento"
         assert hgbs[8] == "8,16%"
         assert hgbs[9] == "5,6%"
-        assert hgbs[10] == "68,7%"
+        assert hgbs[10] == "68,65%"
         assert hgbs[11] == "ALTA"
         assert hgbs[14] == "12,25x"
         assert hgbs[15] == "0,92x"

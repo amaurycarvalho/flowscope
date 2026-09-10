@@ -2,6 +2,7 @@ import base64
 import json
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +28,11 @@ from tests.fixtures.structured_documents import (
 )
 
 _BASE = B3FundosClient._BASE_URL
+_FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "b3"
+
+
+def _documento_rendimento_html() -> str:
+    return (_FIXTURES / "documento_rendimento_alzr.html").read_text(encoding="utf-8")
 
 
 def _token(payload: dict) -> str:
@@ -185,6 +191,38 @@ class TestExtracaoDocumento:
         assert "ALIANZA" in texto
         assert "Rendimento" in texto
         assert "BRALZRCTF006" in texto
+
+
+class TestDocumentoRealDuasColunas:
+    def test_extrai_rendimento_com_data_base(self):
+        doc = extrair_documento_provento(
+            _documento_rendimento_html(),
+            "1252542",
+            "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento?id=1252542",
+            "t",
+            "ALZR11",
+            "20294",
+        )
+        assert doc is not None
+        assert doc.provento.tipo == "Rendimento"
+        assert doc.provento.data_base == date(2026, 7, 17)
+        assert doc.provento.valor_por_unidade.value == Decimal("0.08355")
+        assert doc.provento.data_pagamento == date(2026, 7, 24)
+        assert doc.provento.codigo_negociacao == "ALZR11"
+        assert doc.provento.codigo_isin.value == "BRALZRCTF006"
+
+    def test_sem_coluna_de_valor_nao_classifica_como_rendimento(self):
+        html = _documento_rendimento_html().replace(
+            "Valor do provento (R$/unidade)", "Campo removido"
+        )
+        doc = extrair_documento_provento(html, "1", "", "t", "ALZR11", "20294")
+        assert doc is None or doc.provento.valor_por_unidade.value == Decimal("0")
+
+    def test_sem_rotulo_data_base_nao_extrai_data(self):
+        html = _documento_rendimento_html().replace("Data-base (", "Removido (")
+        doc = extrair_documento_provento(html, "1", "", "t", "ALZR11", "20294")
+        assert doc is not None
+        assert doc.provento.data_base is None
 
 
 class TestIsentoIR:

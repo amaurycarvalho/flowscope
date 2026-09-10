@@ -156,13 +156,10 @@ def _com_virgula(valor: Decimal, casas: int) -> str:
 
 
 def formatar_valor(valor: Decimal | None) -> str:
-    """Formata um valor monetário curto com vírgula, ou ``N/A``."""
+    """Formata um valor monetário curto com vírgula e 2 casas, ou ``N/A``."""
     if valor is None:
         return NA
-    texto = f"{valor:.6f}".rstrip("0").rstrip(".")
-    if texto.startswith("."):
-        texto = f"0{texto}"
-    return texto.replace(".", ",")
+    return _com_virgula(valor, 2)
 
 
 def formatar_percentual(valor: Decimal | None, casas: int = 2) -> str:
@@ -253,7 +250,7 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         _rotulo_dividendo(dividendo.tendencia),
         formatar_percentual(ffo_yield, 2),
         formatar_percentual(dy, 1),
-        formatar_percentual(_payout(dy, ffo_yield), 1),
+        formatar_percentual(_payout(dy, ffo_yield), 2),
         _rotulo_ffo_trend(tendencia_ffo),
         formatar_valor(analise.cotacao),
         formatar_valor(analise.vp_cota),

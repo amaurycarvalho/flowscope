@@ -10,6 +10,7 @@ import requests
 from .errors import NetworkError, TickerNotFound
 
 BASE_URL = "https://www.fundamentus.com.br/detalhes.php"
+PROVENTOS_URL = "https://www.fundamentus.com.br/proventos.php"
 ROBOTS_URL = "https://www.fundamentus.com.br/robots.txt"
 USER_AGENT = "FlowScope/1.0"
 DEFAULT_TIMEOUT = 15.0
@@ -79,6 +80,28 @@ class FundamentusClient:
             if any(pista in texto.lower() for pista in _PISTAS_NAO_ENCONTRADO):
                 raise TickerNotFound(f"Ticker '{ticker}' não encontrado no Fundamentus")
         return resposta
+
+    def fetch_proventos(self: "FundamentusClient", ticker: str) -> str:
+        """Baixa a página de proventos do ticker, respeitando rate-limit.
+
+        Uma falha de rede é sinalizada como ``NetworkError``; a ausência de
+        proventos não é erro (a página retorna uma lista vazia).
+        """
+        if self._respect_robots and not self._pode_acessar(PROVENTOS_URL):
+            raise NetworkError("Acesso bloqueado pelo robots.txt do Fundamentus")
+        self._respeitar_limite()
+        try:
+            resposta = self._session.get(
+                PROVENTOS_URL,
+                params={"papel": ticker.strip().upper()},
+                timeout=self._timeout,
+                headers={"User-Agent": USER_AGENT},
+            )
+            resposta.raise_for_status()
+        except requests.RequestException as erro:
+            raise NetworkError(str(erro)) from erro
+        self._ultima_requisicao = time.monotonic()
+        return resposta.text
 
     def _respeitar_limite(self: "FundamentusClient") -> None:
         """Aguarda o intervalo mínimo entre requisições, se necessário."""

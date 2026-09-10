@@ -36,6 +36,7 @@ class FlowScopeController:
         fundamental_repo: object | None = None,
         fundamental_provider: object | None = None,
         fundamental_ffo_provider: object | None = None,
+        fundamental_dividend_provider: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -46,6 +47,7 @@ class FlowScopeController:
         self._fundamental_repo = fundamental_repo
         self._fundamental_provider = fundamental_provider
         self._fundamental_ffo_provider = fundamental_ffo_provider
+        self._fundamental_dividend_provider = fundamental_dividend_provider
         self._fundamental_generation = 0
         self._fundamental_job: FundamentalJob | None = None
 
@@ -79,6 +81,7 @@ class FlowScopeController:
             mercado=B3MarketPriceFromResult(daily),
             fundamental_provider=self._fundamental_provider,
             ffo_provider=self._fundamental_ffo_provider,
+            historico_dividendos=self._fundamental_dividend_provider,
         )
         job = FundamentalJob(
             caso, tickers, ref_date, self._fundamental_generation

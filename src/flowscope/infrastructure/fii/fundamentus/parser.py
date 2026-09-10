@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from bs4 import BeautifulSoup, Tag
 
+from flowscope.domain.fii.dividends import DividendoConsolidado
 from flowscope.domain.fii.fundamentus import (
     DISCRIMINADOR_FII,
     DISCRIMINADOR_PAPEL,
@@ -304,3 +305,84 @@ def _parse_composicao(soup: BeautifulSoup) -> dict[str, Decimal]:
             if valor is not None:
                 composicao[alvo] = valor
     return composicao
+
+
+#: Trechos de tipo de provento de ação tratados como dividendo (rendimento).
+_TIPOS_RENDIMENTO = ("dividendo", "juros", "jrs")
+
+
+def parse_proventos(
+    html: str, fonte: str = "FUNDAMENTUS"
+) -> list[DividendoConsolidado]:
+    """Extrai o histórico de proventos de uma ação da página ``proventos.php``.
+
+    Cada linha da tabela de resultados com data-base, valor positivo e tipo de
+    rendimento vira um ``DividendoConsolidado``. Linhas de amortização ou sem
+    data/valor válidos são ignoradas.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    tabela = _tabela_proventos(soup)
+    if tabela is None:
+        return []
+    dividendos: list[DividendoConsolidado] = []
+    for linha in tabela.find_all("tr"):
+        celulas = [
+            celula.get_text(" ", strip=True) for celula in linha.find_all("td")
+        ]
+        if len(celulas) < 3:
+            continue
+        data_base = para_data(celulas[0])
+        valor = para_decimal(celulas[1])
+        if data_base is None or valor is None or valor <= 0:
+            continue
+        if not _eh_rendimento(celulas[2]):
+            continue
+        dividendos.append(
+            DividendoConsolidado(data_base=data_base, valor=valor, fonte=fonte)
+        )
+    return dividendos
+
+
+def _tabela_proventos(soup: BeautifulSoup) -> Tag | None:
+    """Localiza a tabela de resultados da página de proventos."""
+    tabela = soup.find("table", id="resultado")
+    if tabela is not None:
+        return tabela
+    for candidata in soup.find_all("table"):
+        cabecalhos = {
+            th.get_text(" ", strip=True).strip().lower()
+            for th in candidata.find_all("th")
+        }
+        if {"data", "valor", "tipo"} <= cabecalhos:
+            return candidata
+    return None
+
+
+def _eh_rendimento(tipo: str) -> bool:
+    """Indica se o tipo de provento de ação é rendimento (não amortização)."""
+    normalizado = _sem_acentos(tipo)
+    if "amortiza" in normalizado:
+        return False
+    return any(trecho in normalizado for trecho in _TIPOS_RENDIMENTO)
+
+
+def _sem_acentos(texto: str) -> str:
+    """Minimiza o texto (sem acentos e espaços) para comparação de tipo."""
+    trocas = {
+        "ç": "c",
+        "á": "a",
+        "ã": "a",
+        "à": "a",
+        "â": "a",
+        "é": "e",
+        "ê": "e",
+        "í": "i",
+        "ó": "o",
+        "ô": "o",
+        "õ": "o",
+        "ú": "u",
+    }
+    resultado = texto.strip().lower()
+    for origem, destino in trocas.items():
+        resultado = resultado.replace(origem, destino)
+    return "".join(resultado.split())

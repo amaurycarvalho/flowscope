@@ -42,6 +42,7 @@ _INDICADOR_FFO_COTA = "FFO/Cota"
 _INDICADOR_DIVIDENDO_COTA = "Dividendo/cota"
 _INDICADOR_P_VP = "P/VP"
 _INDICADOR_VP_COTA = "VP/Cota"
+_INDICADOR_VPA = "VPA"
 _DEMONSTRATIVO_FFO = "FFO"
 _BALANCO_PATRIMONIO_LIQ = "Patrim. Líq"
 _BALANCO_PATRIMONIO_LIQUIDO = "Patrim Líquido"
@@ -110,7 +111,7 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     p_vp = indicadores.get(_INDICADOR_P_VP)
     if p_vp is not None:
         campos[CAMPO_P_VP] = CampoFundamental(p_vp, FONTE_FUNDAMENTUS)
-    vp_cota = indicadores.get(_INDICADOR_VP_COTA)
+    vp_cota = _valor_indicador(indicadores, _INDICADOR_VP_COTA, _INDICADOR_VPA)
     if vp_cota is not None:
         campos[CAMPO_VP_COTA] = CampoFundamental(vp_cota, FONTE_FUNDAMENTUS)
     dividendo_cota = indicadores.get(_INDICADOR_DIVIDENDO_COTA)
@@ -172,6 +173,16 @@ def _adicionar_patrimonio(
         patrimonio = ativo.balanco.get(_BALANCO_PATRIMONIO_LIQUIDO)
     if patrimonio is not None:
         campos[CAMPO_PATRIMONIO] = CampoFundamental(patrimonio, FONTE_FUNDAMENTUS)
+
+
+def _valor_indicador(
+    indicadores: dict[str, Decimal], principal: str, alternativa: str
+) -> Decimal | None:
+    """Retorna o indicador principal ou, na ausência, o alternativo."""
+    valor = indicadores.get(principal)
+    if valor is not None:
+        return valor
+    return indicadores.get(alternativa)
 
 
 def _percentual(valor: Decimal | None) -> Decimal | None:

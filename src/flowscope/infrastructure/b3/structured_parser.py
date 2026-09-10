@@ -160,6 +160,15 @@ def _extrair_dados_tabela(table: Tag) -> list[dict]:
     if header_row:
         return _linhas_como_dict(linhas, header_row)
 
+    return _extrair_tabela_sem_cabecalho(linhas)
+
+
+def _extrair_tabela_sem_cabecalho(linhas: list[Tag]) -> list[dict]:
+    """Extrai uma tabela sem ``<thead>``, do provento ou de rótulo/valor."""
+    provento_duas_colunas = _extrair_provento_duas_colunas(linhas)
+    if provento_duas_colunas is not None:
+        return [provento_duas_colunas]
+
     if _eh_tabela_rotulo_valor(linhas):
         agrupado: dict[str, str] = {}
         for row in linhas:
@@ -256,6 +265,140 @@ def _pares_rotulo_valor(cells: list[str]) -> dict[str, str]:
     return pares
 
 
+def _grade_da_linha(linha: Tag) -> list[str]:
+    """Retorna as células da linha expandindo ``colspan`` para alinhar colunas."""
+    celulas: list[str] = []
+    for celula in linha.find_all(["td", "th"]):
+        texto = celula.get_text(" ", strip=True)
+        try:
+            colspan = int(celula.get("colspan") or 1)
+        except (TypeError, ValueError):
+            colspan = 1
+        celulas.append(texto)
+        celulas.extend([""] * max(colspan - 1, 0))
+    return celulas
+
+
+def _indices_colunas_provento(
+    celulas: list[str],
+) -> tuple[int | None, int | None]:
+    """Retorna os índices das colunas ``Rendimento`` e ``Amortização``."""
+    rendimento: int | None = None
+    amortizacao: int | None = None
+    for indice, celula in enumerate(celulas):
+        normalizado = _normalizar(celula)
+        if normalizado == "rendimento" and rendimento is None:
+            rendimento = indice
+        elif normalizado == "amortizacao" and amortizacao is None:
+            amortizacao = indice
+    return rendimento, amortizacao
+
+
+def _chave_rotulo_provento(rotulo: str) -> str | None:
+    """Mapeia o rótulo de uma linha do provento para a chave canônica."""
+    normalizado = _normalizar(rotulo).split("(", 1)[0]
+    normalizado = normalizado.replace("-", "").replace("/", "")
+    if normalizado.startswith("database"):
+        return "Data-base"
+    if normalizado.startswith("valordoprovento"):
+        return "Valor do provento (R$/unidade)"
+    if normalizado.startswith("datadopagamento"):
+        return "Data do pagamento"
+    if normalizado.startswith("periododereferencia"):
+        return "Período de referência"
+    return None
+
+
+def _celula_em(celulas: list[str], indice: int | None) -> str:
+    """Retorna o texto da célula no índice, ou vazio quando fora da linha."""
+    if indice is None or indice >= len(celulas):
+        return ""
+    return celulas[indice].strip()
+
+
+def _extrair_provento_duas_colunas(linhas: list[Tag]) -> dict | None:
+    """Extrai o provento do layout de duas colunas (Rendimento | Amortização).
+
+    No documento real, a primeira linha mistura pares rótulo/valor de
+    identificação com os cabeçalhos ``Rendimento`` e ``Amortização``, e as
+    linhas seguintes trazem o rótulo (com ``colspan``) e o valor apenas na
+    coluna aplicável. O tipo é decidido pela coluna que contém o valor.
+    Retorna ``None`` quando o layout não é reconhecido.
+    """
+    cabecalho = _localizar_cabecalho_provento(linhas)
+    if cabecalho is None:
+        return None
+    indice, coluna_rendimento, coluna_amortizacao = cabecalho
+    linhas_dados = _linhas_dados_provento(
+        linhas[indice + 1:], coluna_rendimento, coluna_amortizacao
+    )
+    limite = min(coluna_rendimento, coluna_amortizacao)
+    return _montar_provento_duas_colunas(
+        _grade_da_linha(linhas[indice])[:limite], linhas_dados
+    )
+
+
+def _localizar_cabecalho_provento(
+    linhas: list[Tag],
+) -> tuple[int, int, int] | None:
+    """Localiza a linha e as colunas de cabeçalho ``Rendimento``/``Amortização``."""
+    for indice, linha in enumerate(linhas):
+        rendimento, amortizacao = _indices_colunas_provento(_grade_da_linha(linha))
+        if rendimento is not None and amortizacao is not None:
+            return indice, rendimento, amortizacao
+    return None
+
+
+def _linhas_dados_provento(
+    linhas: list[Tag], coluna_rendimento: int, coluna_amortizacao: int
+) -> list[tuple[str, str, str]]:
+    """Coleta (chave, valor de rendimento, valor de amortização) por linha."""
+    dados: list[tuple[str, str, str]] = []
+    for linha in linhas:
+        celulas = _grade_da_linha(linha)
+        chave = _chave_rotulo_provento(celulas[0]) if celulas else None
+        if chave is None:
+            continue
+        dados.append(
+            (
+                chave,
+                _celula_em(celulas, coluna_rendimento),
+                _celula_em(celulas, coluna_amortizacao),
+            )
+        )
+    return dados
+
+
+def _tipo_rendimento(linhas_dados: list[tuple[str, str, str]]) -> bool | None:
+    """Decide se o provento é rendimento pela coluna que contém valor.
+
+    Retorna ``True`` para rendimento, ``False`` para amortização e ``None``
+    quando nenhuma coluna tem valor.
+    """
+    tem_rendimento = any(valor for _chave, valor, _amort in linhas_dados)
+    tem_amortizacao = any(amort for _chave, _valor, amort in linhas_dados)
+    if not tem_rendimento and not tem_amortizacao:
+        return None
+    return tem_rendimento and not tem_amortizacao
+
+
+def _montar_provento_duas_colunas(
+    cabecalho: list[str], linhas_dados: list[tuple[str, str, str]]
+) -> dict | None:
+    """Monta o dicionário do provento decidindo o tipo pela coluna com valor."""
+    tipo_rendimento = _tipo_rendimento(linhas_dados)
+    if tipo_rendimento is None:
+        return None
+    resultado = dict(_pares_rotulo_valor(cabecalho))
+    for chave, valor_rendimento, valor_amortizacao in linhas_dados:
+        valor = valor_rendimento if tipo_rendimento else valor_amortizacao
+        if valor:
+            resultado[chave] = valor
+    resultado["Rendimento"] = "X" if tipo_rendimento else ""
+    resultado["Amortização"] = "" if tipo_rendimento else "X"
+    return resultado
+
+
 def _celula_numerica(celula: str) -> bool:
     """Indica se o texto da célula é essencialmente numérico ou monetário."""
     limpo = _normalizar(celula)
@@ -293,7 +436,7 @@ def _tipo_marcado(linha: dict | None, chave_normalizada: str, rotulo: str) -> bo
     for chave, valor in linha.items():
         if _normalizar(chave) == chave_normalizada and str(valor).strip() == "X":
             return True
-    return rotulo in linha.values() or str(linha.get(rotulo, "")).strip() == "X"
+    return str(linha.get(rotulo, "")).strip() == "X"
 
 
 def limpar_valor_monetario(valor: str | None) -> Decimal | None:

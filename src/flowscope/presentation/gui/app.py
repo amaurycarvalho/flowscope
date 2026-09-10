@@ -29,6 +29,9 @@ from flowscope.infrastructure.fii.ffo_provider import FundamentusProvider
 from flowscope.infrastructure.fii.fundamentus.adapter import (
     FundamentusFundamentalDataProvider,
 )
+from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
+    FundamentusDividendHistoryProvider,
+)
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_constants import TITLE_PREFIX
@@ -167,6 +170,9 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         fundamental_ffo_provider = CompositeFfoProvider(
             [FundamentusProvider(cache=cache), FFOEngineProvider()]
         )
+        fundamental_dividend_provider = FundamentusDividendHistoryProvider(
+            cache=cache
+        )
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -176,6 +182,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_repo=fundamental_repo,
             fundamental_provider=fundamental_provider,
             fundamental_ffo_provider=fundamental_ffo_provider,
+            fundamental_dividend_provider=fundamental_dividend_provider,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,

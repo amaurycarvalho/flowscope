@@ -9,6 +9,9 @@ from flowscope.domain.fii.fundamentus import TIPO_ACAO, TIPO_FII
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache import CacheOutcome, ConditionalCache
 from flowscope.infrastructure.fii.fundamentus.client import FundamentusClient
+from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
+    FundamentusDividendHistoryProvider,
+)
 from flowscope.infrastructure.fii.fundamentus.errors import (
     LayoutChanged,
     NetworkError,
@@ -19,7 +22,10 @@ from flowscope.infrastructure.fii.fundamentus.normalizers import (
     para_decimal,
     para_int,
 )
-from flowscope.infrastructure.fii.fundamentus.parser import parse_ativo
+from flowscope.infrastructure.fii.fundamentus.parser import (
+    parse_ativo,
+    parse_proventos,
+)
 from flowscope.infrastructure.fii.fundamentus.provider import FundamentusProvider
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "fundamentus"
@@ -494,3 +500,62 @@ class TestAdapterResultado:
         adapter = FundamentusFundamentalDataProvider(provider=provider)
         _, origem = adapter.obter_com_resultado("TESTE", date(2026, 9, 4))
         assert origem is OrigemDados.CACHE
+
+
+class TestParserProventos:
+    def test_extrai_dividendos_e_ignora_amortizacao(self):
+        dividendos = parse_proventos(_fixture("proventos_itub4.html"))
+        assert len(dividendos) == 3
+        assert [d.data_base for d in dividendos] == [
+            date(2026, 8, 31),
+            date(2026, 6, 30),
+            date(2026, 6, 18),
+        ]
+        assert dividendos[0].valor == Decimal("0.0182")
+        assert dividendos[0].fonte == "FUNDAMENTUS"
+
+    def test_sem_tabela_retorna_vazio(self):
+        assert parse_proventos("<html><body>nada</body></html>") == []
+
+
+class TestDividendHistoryProvider:
+    def test_obter_dividendos_filtra_por_data(self):
+        provider = FundamentusDividendHistoryProvider(
+            loader=lambda _t: _fixture("proventos_itub4.html")
+        )
+        dividendos = provider.obter_dividendos("ITUB4", date(2026, 6, 30))
+        assert [d.data_base for d in dividendos] == [
+            date(2026, 6, 30),
+            date(2026, 6, 18),
+        ]
+
+    def test_loader_vazio_retorna_lista_vazia(self):
+        provider = FundamentusDividendHistoryProvider(loader=lambda _t: "")
+        assert provider.obter_dividendos("ITUB4", date(2026, 9, 1)) == []
+
+    def test_usa_cache(self, tmp_path):
+        chamadas = {"n": 0}
+
+        def loader(_ticker: str) -> str:
+            chamadas["n"] += 1
+            return _fixture("proventos_itub4.html")
+
+        cache = CacheManager(cache_dir=tmp_path)
+        provider = FundamentusDividendHistoryProvider(loader=loader, cache=cache)
+        provider.obter_dividendos("ITUB4", date(2026, 9, 1))
+        provider.obter_dividendos("ITUB4", date(2026, 9, 1))
+        assert chamadas["n"] == 1
+
+
+class TestAdapterVpa:
+    def test_acao_com_vpa_preenche_vp_cota(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("itub4", _fixture("acao_com_vpa.html")))
+        assert campos["vp_cota"].valor == Decimal("18.83")
+
+    def test_fii_continua_usando_vp_cota(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert campos["vp_cota"].valor == Decimal("20.38")

@@ -355,3 +355,45 @@ class TestConsolidacaoDividendos:
         caso = FundamentalAnalysisUseCase(repo)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
         assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO
+
+
+class TestConsolidacaoPapel:
+    def test_acao_preenche_dividendos_do_historico_fundamentus(self):
+        repo = FakeFundamentalRepository()
+        historico = FakeDividendHistory(
+            {
+                "PETR4": [
+                    DividendoConsolidado(
+                        date(2026, 3, 10), Decimal("0.30"), "FUNDAMENTUS"
+                    ),
+                    DividendoConsolidado(
+                        date(2026, 6, 10), Decimal("0.45"), "FUNDAMENTUS"
+                    ),
+                ]
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, historico_dividendos=historico)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.data_com == date(2026, 6, 10)
+        assert resultado.ultimo_dividendo.valor == Decimal("0.45")
+        assert resultado.ultimo_dividendo.valor_anterior == Decimal("0.30")
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO
+
+    def test_fii_b3_preenche_data_com_anterior_e_tendencia(self):
+        repo = FakeFundamentalRepository(
+            proventos_por_ticker={
+                "HGBS11": [
+                    _provento("Rendimento", date(2026, 1, 15), "0.50"),
+                    _provento("Rendimento", date(2026, 7, 10), "0.55"),
+                ]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {CAMPO_DIVIDENDO_POR_COTA: CampoFundamental(Decimal("9.99"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.data_com == date(2026, 7, 10)
+        assert resultado.ultimo_dividendo.valor == Decimal("0.55")
+        assert resultado.ultimo_dividendo.valor_anterior == Decimal("0.50")
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.CRESCIMENTO

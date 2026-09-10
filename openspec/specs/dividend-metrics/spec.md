@@ -6,49 +6,57 @@ Calcular, por ticker, as métricas de dividendo exibidas na tabela fundamentalis
 ## Requirements
 
 ### Requirement: Última data-com
-O sistema DEVE determinar, para um ticker, a data-com (`data_base`) do provento de tipo `Rendimento` mais recente disponível até a data de referência.
+O sistema DEVE determinar, para um ticker, a data-com do dividendo mais recente consolidando o histórico de B3 (primário), CVM (secundário) e Fundamentus (fallback), exibindo `N/A` quando não houver dado em nenhuma fonte.
 
 #### Scenario: Data-com do provento mais recente
-- **WHEN** o ticker possui proventos de tipo `Rendimento`
-- **THEN** a última data-com DEVE ser a `data_base` do provento mais recente
+- **WHEN** o ticker possui dividendo com data-base em ao menos uma das fontes consolidadas
+- **THEN** a última data-com DEVE ser a data-base do dividendo mais recente entre as fontes
 
 #### Scenario: Sem proventos
-- **WHEN** o ticker não possui proventos de tipo `Rendimento`
+- **WHEN** nenhuma fonte possui dividendo para o ticker
 - **THEN** a última data-com DEVE ser `N/A`
 
 ### Requirement: Último dividendo
-O sistema DEVE determinar, para um ticker, o valor do último dividendo (provento de tipo `Rendimento`) pago, excluindo proventos de tipo `Amortização`.
+O sistema DEVE determinar, para um ticker, o valor do último dividendo consolidando o histórico de B3 (primário), CVM (secundário) e Fundamentus (fallback), excluindo proventos de tipo `Amortização` e usando o `Dividendo/cota` do Fundamentus apenas quando não houver histórico nas demais fontes.
 
 #### Scenario: Último dividendo de rendimento
-- **WHEN** o ticker possui proventos de tipo `Rendimento` e `Amortização`
-- **THEN** o último dividendo DEVE ser o valor do provento de tipo `Rendimento` mais recente, ignorando `Amortização`
+- **WHEN** o ticker possui rendimentos na B3
+- **THEN** o último dividendo DEVE ser o rendimento mais recente do histórico consolidado
+
+#### Scenario: Fallback no Fundamentus
+- **WHEN** nem B3 nem CVM possuem histórico de rendimentos para o ticker
+- **THEN** o último dividendo DEVE usar o campo `Dividendo/cota` do Fundamentus
 
 #### Scenario: Apenas amortização
-- **WHEN** o ticker possui somente proventos de tipo `Amortização`
+- **WHEN** as fontes possuem somente proventos de tipo `Amortização`
 - **THEN** o último dividendo DEVE ser `N/A`
 
 ### Requirement: Tendência do dividendo
-O sistema DEVE classificar a tendência do dividendo comparando o último dividendo (Rendimento) com o dividendo imediatamente anterior, usando uma banda de tolerância configurável (padrão ±5%). A classificação DEVE ser `SUBINDO` quando `último ≥ anterior × 1,05`, `CAINDO` quando `último ≤ anterior × 0,95`, e `MANTEVE` nos demais casos.
+O sistema DEVE classificar a tendência do dividendo comparando diretamente o último dividendo com o dividendo imediatamente anterior, sem banda de tolerância: `Crescimento` quando o último é maior, `Redução` quando é menor e `Neutro` quando é igual. Sem dividendo anterior a tendência DEVE ser `N/A`.
 
 #### Scenario: Dividendo subiu
-- **WHEN** o último dividendo é maior ou igual a 1,05 vezes o anterior
-- **THEN** a tendência DEVE ser `SUBINDO`
+- **WHEN** o último dividendo é maior que o anterior
+- **THEN** a tendência DEVE ser `Crescimento`
 
 #### Scenario: Dividendo caiu
-- **WHEN** o último dividendo é menor ou igual a 0,95 vezes o anterior
-- **THEN** a tendência DEVE ser `CAINDO`
+- **WHEN** o último dividendo é menor que o anterior
+- **THEN** a tendência DEVE ser `Redução`
 
 #### Scenario: Dividendo manteve
-- **WHEN** o último dividendo está dentro da banda de ±5% em relação ao anterior
-- **THEN** a tendência DEVE ser `MANTEVE`
+- **WHEN** o último dividendo é igual ao anterior
+- **THEN** a tendência DEVE ser `Neutro`
 
 #### Scenario: Sem dividendo anterior
 - **WHEN** o ticker possui apenas um dividendo (ou nenhum)
 - **THEN** a tendência DEVE ser `N/A`
 
-### Requirement: Banda de tendência configurável
-A banda de tolerância da tendência do dividendo DEVE ser configurável e versionada, sem alteração silenciosa do comportamento.
+### Requirement: Consolidação de fontes de dividendos
+O sistema DEVE consolidar os dividendos de um ticker a partir de B3, CVM e Fundamentus, preservando a origem de cada valor e priorizando a fonte que tiver o dado mais recente, de modo que a ausência em uma fonte não deixe a coluna vazia quando outra fonte possuir o dado.
 
-#### Scenario: Banda configurada
-- **WHEN** a configuração define a banda de tendência como 0,05
-- **THEN** a classificação DEVE usar 0,05 como limiar de `SUBINDO`/`CAINDO`
+#### Scenario: Fonte primária sem o dado
+- **WHEN** a B3 não possui um dividendo que existe na CVM
+- **THEN** o dividendo da CVM DEVE ser utilizado
+
+#### Scenario: Origem preservada
+- **WHEN** um dividendo é consolidado
+- **THEN** a fonte que o forneceu DEVE ser registrada

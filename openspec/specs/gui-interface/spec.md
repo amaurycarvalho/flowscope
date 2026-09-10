@@ -372,15 +372,46 @@ O sistema DEVE adicionar uma sub-aba "Fundamentos" ao sub-notebook da aba "Anál
 - **THEN** a tabela DEVE exibir os dados fundamentalistas para os 5 tickers selecionados
 
 ### Requirement: Colunas da tabela fundamentalista
-A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo, Sub-tipo, Última data-com, Último dividendo, Tendência do dividendo, e — para FIIs elegíveis — FFO Yield, Dividend Yield, P/FFO, P/VP e FFO Trend.
+A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), FFO Trend, P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio e Data de referência.
 
 #### Scenario: Colunas de identidade preenchidas
 - **WHEN** a tabela é renderizada para um ticker conhecido
 - **THEN** as colunas Ticker, Nome, Tipo e Sub-tipo DEVEM estar preenchidas
 
+#### Scenario: Coluna de dividendo anterior
+- **WHEN** o ticker possui dividendo anterior consolidado
+- **THEN** a coluna `Dividendo anterior` DEVE exibir o valor do dividendo imediatamente anterior ao último
+
+#### Scenario: Dividend Payout (DY/FFOY)
+- **WHEN** Dividend Yield e FFO Yield estão disponíveis para o ticker
+- **THEN** a coluna `Dividend Payout (DY/FFOY)` DEVE exibir a razão entre Dividend Yield e FFO Yield
+
+#### Scenario: Preço e VP/Cota
+- **WHEN** a fonte fornece a cotação e o VP/Cota do ticker
+- **THEN** as colunas `P (Cotação)` e `VP (VP/Cota)` DEVEM exibir esses valores
+
 #### Scenario: Colunas FFO vazias para não elegível
-- **WHEN** a tabela é renderizada para um ativo que não é FII elegível (ex.: ação)
+- **WHEN** a fonte não fornece as métricas FFO para o ativo
 - **THEN** as colunas FFO Yield, Dividend Yield, P/FFO, P/VP e FFO Trend DEVEM exibir `N/A`
+
+#### Scenario: Métricas preenchidas quando disponíveis
+- **WHEN** a fonte fornece as métricas para o ticker
+- **THEN** FFO Yield, Dividend Yield, P/FFO, P/VP e FFO Trend DEVEM ser exibidos, inclusive para ativos antes considerados não elegíveis
+
+#### Scenario: Novas colunas de cotistas e patrimônio
+- **WHEN** a tabela é renderizada
+- **THEN** as colunas de cotistas, classificação de cotistas, tamanho patrimonial, classificação patrimonial e data de referência DEVEM ser exibidas
+
+### Requirement: Alinhamento das colunas numéricas
+A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
+
+#### Scenario: Colunas numéricas alinhadas à direita
+- **WHEN** a tabela é renderizada
+- **THEN** as colunas Último dividendo, Dividendo anterior, FFO Yield, Dividend Yield, Dividend Payout (DY/FFOY), P (Cotação), VP (VP/Cota), P/FFO, P/VP, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
+
+#### Scenario: Colunas textuais alinhadas à esquerda
+- **WHEN** a tabela é renderizada
+- **THEN** as colunas Ticker, Nome, Tipo, Sub-tipo, Última data-com, Tendência do dividendo, FFO Trend, Classe de cotistas, Classe de patrimônio e Data de referência DEVEM ter o conteúdo alinhado à esquerda
 
 ### Requirement: OrientationPanel para a sub-aba Fundamentos
 O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fundamentos", seguindo o padrão existente (objetivo, pergunta respondida, indicadores envolvidos e como interpretar).
@@ -388,3 +419,33 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 #### Scenario: OrientationPanel da sub-aba Fundamentos
 - **WHEN** o usuário seleciona a sub-aba "Fundamentos"
 - **THEN** o OrientationPanel DEVE exibir texto explicativo sobre as métricas fundamentalistas e de dividendo exibidas na tabela
+
+### Requirement: Persistência da largura das colunas da tabela fundamentalista
+O sistema DEVE armazenar no arquivo de configuração (`config.json`) a largura de cada coluna da tabela fundamentalista quando o usuário a ajusta e DEVE restaurá-las na próxima execução, associando cada largura ao identificador estável da coluna.
+
+#### Scenario: Largura restaurada na próxima execução
+- **WHEN** o usuário redimensiona uma coluna e reabre a aplicação
+- **THEN** a coluna DEVE reaparecer com a largura ajustada
+
+#### Scenario: Sem preferência salva
+- **WHEN** não há larguras salvas para a tabela fundamentalista
+- **THEN** o sistema DEVE usar as larguras padrão
+
+### Requirement: Mensagens de status da análise fundamentalista
+O sistema DEVE exibir, na barra de status, o sufixo `" - cached"` no progresso de um ticker cujo dado veio do cache (`HIT` ou `REVALIDATED`) e, ao final da carga, DEVE exibir uma mensagem de desfecho: `"Dados atualizados com sucesso."` sem falhas, `"Dados atualizados com mitigação de falhas."` quando houver falha recuperável, e `"Falha ao atualizar dados"` em falha catastrófica.
+
+#### Scenario: Dado vindo do cache
+- **WHEN** o dado de um ticker é servido do cache durante a análise
+- **THEN** o progresso do ticker DEVE exibir o sufixo `" - cached"`
+
+#### Scenario: Carga concluída sem falhas
+- **WHEN** a análise fundamentalista termina sem falha na captura
+- **THEN** a barra de status DEVE exibir `"Dados atualizados com sucesso."`
+
+#### Scenario: Carga concluída com falha recuperável
+- **WHEN** a análise fundamentalista termina com ao menos uma falha recuperável
+- **THEN** a barra de status DEVE exibir `"Dados atualizados com mitigação de falhas."`
+
+#### Scenario: Falha catastrófica
+- **WHEN** a análise fundamentalista não consegue concluir
+- **THEN** a barra de status DEVE exibir `"Falha ao atualizar dados"`
