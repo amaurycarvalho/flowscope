@@ -11,6 +11,10 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
 - **THEN** o campo "Indicadores envolvidos" DEVE mencionar Preço Típico, P / PT, Dividend Payout (DY/FFOY), Informações adicionais e Dados fiscais, além de identidade, cotação, VP/Cota, P/VP, P/L, Dividend Yield, dividendos, tendências, métricas FFO, cotistas/acionistas e patrimônio
 
+#### Scenario: Identidade descreve o Tipo e o Sub-tipo implementados
+- **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
+- **THEN** o campo "Indicadores envolvidos" DEVE descrever o Tipo como `Papel` (ações, ETFs e BDRs) ou `FII`, e o Sub-tipo como o prefixo `Tijolo:`/`Papel:` seguido de segmento e gestão para FIIs, ou espécie, setor e subsetor para Papéis, em vez dos rótulos genéricos ação/FII/ETF/BDR e tijolo/papel/híbrido/fiagro/fiinfra
+
 #### Scenario: Como interpretar orienta o Preço Típico e o P / PT
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
 - **THEN** o campo "Como interpretar" DEVE explicar que o Preço Típico é a referência de preço médio de 52 semanas e que o P / PT expressa desconto (negativo) ou prêmio (positivo) da cotação frente a esse preço típico

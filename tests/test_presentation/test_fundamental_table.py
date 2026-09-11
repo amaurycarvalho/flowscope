@@ -698,6 +698,32 @@ class TestWiringSubAba:
         assert "último dividendo" in texto
         assert "acionistas" in texto
 
+    def test_orientation_panel_descreve_colunas_recentes(self):
+        _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
+        texto = " ".join(parte for parte, _estilo in corpo)
+        assert "Preço Típico" in texto
+        assert "P / PT" in texto
+        assert "Dividend Payout" in texto
+        assert "Informações adicionais" in texto
+        assert "Dados fiscais" in texto
+
+    def test_orientation_panel_descreve_tipo_e_subtipo_implementados(self):
+        _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
+        texto = " ".join(parte for parte, _estilo in corpo)
+        assert "tipo (`Papel` para ações, ETFs e BDRs; `FII`)" in texto
+        assert "Tijolo:" in texto
+        assert "Papel:" in texto
+        assert "segmento e gestão" in texto
+
+    def test_orientation_panel_orienta_interpretacao_das_colunas(self):
+        _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
+        texto = " ".join(parte for parte, _estilo in corpo)
+        assert "desconto" in texto
+        assert "prêmio" in texto
+        assert "FFO Yield" in texto
+        assert "administrador" in texto
+        assert "gestor" in texto
+
     @needs_display
     def test_sub_aba_fundamentos_aparece_na_analise_geral(self):
         root = tk.Tk()

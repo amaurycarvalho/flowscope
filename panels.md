@@ -75,6 +75,21 @@ A interface é dividida em três grandes regiões:
 - **Indicadores envolvidos:** CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.
 - **Como interpretar:** Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. Passe o mouse sobre as barras para ver detalhes do ticker.
 
+### Sub-aba: Fundamentos
+
+- **Objetivo:** Consolidar, por ticker da watchlist, a identidade, a classificação, os dividendos, o P/L, o número de cotistas/acionistas e — para FIIs elegíveis — as métricas fundamentalistas de FFO.
+- **Responde a pergunta:** _Quais ativos estão na carteira, que tipo são e quão barato ou caro está o ativo frente ao lucro (ou último dividendo), ao FFO e ao patrimônio?_
+- **Indicadores envolvidos:**
+  - **Identidade:** ticker, nome, tipo (`Papel` para ações, ETFs e BDRs; `FII`) e sub-tipo (FII: prefixo `Tijolo:`/`Papel:` seguido de segmento e gestão; Papel: espécie, setor e subsetor; sem dados do Fundamentus, usa os rótulos determinísticos tijolo/papel/híbrido/fiagro/fiinfra ou ordinária/preferencial/ETF).
+  - **Cotação e valor:** P (Cotação), Preço Típico (média de 52 semanas), P / PT (desconto/prêmio da cotação frente ao preço típico), VP (VP/Cota) e P/VP.
+  - **P/L:** para ações, o indicador reportado pela fonte; para FIIs, a cotação dividida pelo último dividendo anualizado (× 12), em anos.
+  - **Dividendos:** Dividend Yield, última data-com, último dividendo (Rendimento), dividendo anterior e tendência do dividendo (último vs. anterior em cinco faixas).
+  - **Métricas FFO (apenas FII elegível):** FFO Yield, Dividend Payout (DY/FFOY), FFO Trend e P/FFO.
+  - **Cotistas/acionistas:** número de cotistas do FII ou quantidade de acionistas da companhia (CVM), suas classificações, patrimônio e data de referência.
+  - **Informações adicionais:** LPA, ROE e ROIC (ação); Qtd Imóveis, Cap Rate, Vacância Média e percentuais por indexador (FII).
+  - **Dados fiscais:** CNPJ e, para FIIs, administrador e gestor.
+- **Como interpretar:** O P/L de um FII anualiza o último dividendo mensal (preço ÷ (último dividendo × 12)) para expressar a quantidade de anos, enquanto o P/L de uma ação é o lucro reportado pela fonte; N/A indica ausência do dado. O Preço Típico é a referência de preço médio de 52 semanas ((máxima + mínima + cotação) / 3); o P / PT expressa o desconto (negativo) ou prêmio (positivo) da cotação frente a esse preço típico. O Dividend Payout (DY/FFOY) compara o Dividend Yield com o FFO Yield, indicando quanto do retorno do FFO é distribuído como dividendo. O número de cotistas de FIIs vem do informe mensal e o de ações, da quantidade de acionistas publicada pela CVM. As tendências de dividendo e de FFO usam os rótulos Forte Alta (≥ +5%), Leve Alta, Estável, Leve Queda e Forte Queda (≤ −5%). Ativos não elegíveis exibem N/A nas colunas FFO. O FFO Yield mede o retorno do FFO sobre o valor de mercado e o P/VP compara o valor de mercado com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. Informações adicionais reúnem indicadores do ativo (LPA, ROE e ROIC em ações; imóveis, Cap Rate, Vacância Média e percentuais por indexador em FIIs) e Dados fiscais reúnem o CNPJ e, para FIIs, o administrador e o gestor; itens sem dado em nenhuma fonte são omitidos. Os valores são calculados com precisão decimal completa e arredondados somente na apresentação.
+
 ---
 
 ## Aba Principal: "Análise do Ticker"

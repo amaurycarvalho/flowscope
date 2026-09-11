@@ -70,18 +70,25 @@ TAB_CONTENT = {
             ("Responde a pergunta: ", "bold"),
             ("\"Quais ativos estão na carteira, que tipo são e quão barato ou caro está o ativo frente ao lucro (ou último dividendo), ao FFO e ao patrimônio?\"\n\n", "italic"),
             ("Indicadores envolvidos: ", "bold"),
-            (("• Identidade: ticker, nome, tipo (ação/FII/ETF/BDR) e sub-tipo (FII: tijolo/papel/híbrido/fiagro/fiinfra; ação: ordinária/preferencial/ETF);\n"
-             "• Dividendos: última data-com, último dividendo (Rendimento) e tendência do dividendo (último vs. anterior em cinco faixas);\n"
+            (("• Identidade: ticker, nome, tipo (`Papel` para ações, ETFs e BDRs; `FII`) e sub-tipo (FII: prefixo `Tijolo:`/`Papel:` seguido de segmento e gestão; Papel: espécie, setor e subsetor; sem dados do Fundamentus, usa os rótulos determinísticos tijolo/papel/híbrido/fiagro/fiinfra ou ordinária/preferencial/ETF);\n"
+             "• Cotação e valor: P (Cotação), Preço Típico (média de 52 semanas), P / PT (desconto/prêmio da cotação frente ao preço típico), VP (VP/Cota) e P/VP;\n"
              "• P/L: para ações, o indicador reportado pela fonte; para FIIs, a cotação dividida pelo último dividendo anualizado (× 12), em anos;\n"
-             "• Cotistas/acionistas: número de cotistas do FII ou quantidade de acionistas da companhia (CVM) e suas classificações;\n"
-             "• Métricas FFO (apenas FII elegível): FFO Yield, Dividend Yield 12m, P/FFO, P/VP e FFO Trend.\n\n"), ""),
+             "• Dividendos: Dividend Yield, última data-com, último dividendo (Rendimento), dividendo anterior e tendência do dividendo (último vs. anterior em cinco faixas);\n"
+             "• Métricas FFO (apenas FII elegível): FFO Yield, Dividend Payout (DY/FFOY), FFO Trend e P/FFO;\n"
+             "• Cotistas/acionistas: número de cotistas do FII ou quantidade de acionistas da companhia (CVM), suas classificações, patrimônio e data de referência;\n"
+             "• Informações adicionais: LPA, ROE e ROIC (ação); Qtd Imóveis, Cap Rate, Vacância Média e percentuais por indexador (FII);\n"
+             "• Dados fiscais: CNPJ e, para FIIs, administrador e gestor.\n\n"), ""),
             ("Como interpretar: ", "bold"),
             (("O P/L de um FII anualiza o último dividendo mensal (preço ÷ (último dividendo × 12)) para expressar a quantidade de anos, enquanto o P/L de uma ação é o lucro reportado pela fonte; "
-             "N/A indica ausência do dado. O número de cotistas de FIIs vem do informe mensal e o de ações, da quantidade de acionistas publicada pela CVM. "
+             "N/A indica ausência do dado. O Preço Típico é a referência de preço médio de 52 semanas ((máxima + mínima + cotação) / 3); o P / PT expressa o desconto (negativo) ou prêmio (positivo) da cotação frente a esse preço típico. "
+             "O Dividend Payout (DY/FFOY) compara o Dividend Yield com o FFO Yield, indicando quanto do retorno do FFO é distribuído como dividendo. "
+             "O número de cotistas de FIIs vem do informe mensal e o de ações, da quantidade de acionistas publicada pela CVM. "
              "As tendências de dividendo e de FFO usam os rótulos Forte Alta (≥ +5%), Leve Alta, Estável, Leve Queda e Forte Queda (≤ −5%). "
              "Ativos não elegíveis exibem N/A nas colunas FFO. O FFO Yield mede o retorno do FFO sobre o valor de mercado e o P/VP compara o valor de mercado "
-             "com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. Os valores são calculados com precisão "
-             "decimal completa e arredondados somente na apresentação."), ""),
+             "com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. "
+             "Informações adicionais reúnem indicadores do ativo (LPA, ROE e ROIC em ações; imóveis, Cap Rate, Vacância Média e percentuais por indexador em FIIs) e "
+             "Dados fiscais reúnem o CNPJ e, para FIIs, o administrador e o gestor; itens sem dado em nenhuma fonte são omitidos. "
+             "Os valores são calculados com precisão decimal completa e arredondados somente na apresentação."), ""),
         ]
     ),
     ("Análise do Ticker", "Evolução da Dominância"): (
