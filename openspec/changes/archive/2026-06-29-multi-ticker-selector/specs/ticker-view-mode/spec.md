@@ -41,7 +41,7 @@ Neste modo, o método `get_tickers()` DEVE retornar todos os tickers presentes n
 
 ### Requirement: Botão toggle "Editar lista de tickers"
 
-O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`) com o ícone `document-properties.png` entre os botões "Salvar lista de tickers" e "Selecionar Todos" na barra de botões do TickerList.
+O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`) com o ícone `document-edit.png` entre os botões "Salvar lista de tickers" e "Selecionar Todos" na barra de botões do TickerList.
 
 - Botão marcado (pressed) = modo edição
 - Botão desmarcado (released) = modo visualização
@@ -59,6 +59,7 @@ O sistema DEVE exibir um botão do tipo toggle (checkbutton com `indicatoron=0`)
 ### Requirement: Botões "Selecionar Todos" e "Desmarcar Todos" no modo visualização
 
 O sistema DEVE exibir dois botões nativos na barra superior, imediatamente à direita do botão "Editar lista de tickers", visíveis apenas no modo visualização:
+
 - "Selecionar Todos" com ícone `edit-select-all.png`: marca todos os tickers do Listbox
 - "Desmarcar Todos" com ícone `edit-unselect-all.png`: desmarca todos os tickers do Listbox
 
@@ -77,6 +78,7 @@ Em modo edição, estes botões NÃO DEVEM ser exibidos.
 ### Requirement: Transição do modo edição para visualização com preservação de seleção
 
 Ao sair do modo edição (botão toggle desmarcado), o sistema DEVE:
+
 1. Ler os tickers do Text widget
 2. Comparar com a lista anterior (antes de entrar em edição)
 3. Tickers que já existiam na lista anterior: preservar seu estado de marcação (marcado/desmarcado)
@@ -97,6 +99,7 @@ Ao sair do modo edição (botão toggle desmarcado), o sistema DEVE:
 ### Requirement: Lazy refresh híbrido de gráficos
 
 O sistema DEVE atualizar os gráficos (VWAP, Quadrantes, Dominância do Pregão na Análise Geral; indicadores textuais na Análise do Ticker) de forma híbrida:
+
 - **Aba ativa**: renderizada imediatamente após carga de dados ou aplicação de filtro
 - **Demais abas**: renderizadas apenas quando o usuário as seleciona manualmente
 
@@ -129,5 +132,6 @@ O botão "Filtrar" (`edit-find.png`) foi removido. A seleção no Listbox no mod
 ### Requirement: Separadores entre grupos de botões
 
 Dois separadores verticais DEVEM ser exibidos:
+
 1. Entre "Salvar lista de tickers" e "Editar lista de tickers"
 2. Entre o grupo de seleção (Editar + Selecionar Todos + Desmarcar Todos) e os botões de índice (IBOV, IDIV, IFIX)

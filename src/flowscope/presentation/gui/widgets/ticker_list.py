@@ -132,7 +132,7 @@ class TickerList:
         """
         self._edit_toggle_var = tk.IntVar(value=0)
         self._edit_toggle = tk.Checkbutton(
-            btn_frame, image=self._load_icon("document-properties.png"),
+            btn_frame, image=self._load_icon("document-edit.png"),
             variable=self._edit_toggle_var,
             command=self._on_mode_toggle, cursor="hand2", padx=0,
             indicatoron=0,

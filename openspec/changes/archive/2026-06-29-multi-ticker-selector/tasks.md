@@ -1,13 +1,13 @@
 ## 1. Verificar ícones
 
-- [x] 1.1 Verificar se `document-properties.png`, `edit-select-all.png` e `edit-unselect-all.png` existem em `src/flowscope/icons/`
+- [x] 1.1 Verificar se `document-edit.png`, `edit-select-all.png` e `edit-unselect-all.png` existem em `src/flowscope/icons/`
 - [x] 1.2 Se não existirem, criar fallback textual nos botões
 
 ## 2. Adicionar modo dual no TickerList (ticker_list.py)
 
 - [x] 2.1 No `__init__`, criar `tk.Listbox` com `selectmode=EXTENDED` e scrollbar ao lado, empilhado no mesmo `text_frame` que o `tk.Text`, inicialmente escondido (`pack_forget`)
 - [x] 2.2 Adicionar botões "Selecionar Todos" e "Desmarcar Todos" no `btn_frame` (barra superior), imediatamente à direita do toggle de edição, com `pack(before=sep)` para posicionamento correto ao re-exibir. Visíveis apenas no modo visualização via `_set_view_mode()`.
-- [x] 2.3 Adicionar `tk.Checkbutton(indicatoron=0)` com ícone `document-properties.png` na `btn_frame` após separador de "Salvar", com callback `_on_mode_toggle`
+- [x] 2.3 Adicionar `tk.Checkbutton(indicatoron=0)` com ícone `document-edit.png` na `btn_frame` após separador de "Salvar", com callback `_on_mode_toggle`
 - [x] 2.4 Implementar `_set_view_mode(enable: bool)` que alterna visibilidade entre Text e Listbox (+ botões de seleção), e atualiza estado do toggle button
 - [x] 2.5 Implementar `_on_mode_toggle()` que lê estado do Checkbutton, salva snapshot ao entrar em edição (D4), executa transição com preservação de seleção ao sair, e dispara `on_data_needed` se lista mudou
 

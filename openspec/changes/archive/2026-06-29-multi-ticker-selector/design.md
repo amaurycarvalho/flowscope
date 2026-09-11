@@ -1,6 +1,7 @@
 ## Context
 
 Atualmente o TickerList é composto por:
+
 - Label com contador
 - `tk.Text` widget para edição livre de tickers
 - Botões: Carregar, Salvar, Filtrar, índices (IBOV, IDIV, IFIX)
@@ -13,6 +14,7 @@ Não há suporte a seleção visual de múltiplos tickers — para filtrar, o us
 ## Goals / Non-Goals
 
 **Goals:**
+
 - Adicionar modo visualização com Listbox(EXTENDED) no TickerList
 - Botão toggle para alternar entre edição (Text) e visualização (Listbox)
 - Botões Selecionar Todos / Desmarcar Todos na barra superior (visíveis apenas no view mode)
@@ -23,6 +25,7 @@ Não há suporte a seleção visual de múltiplos tickers — para filtrar, o us
 - Carga de dados usa todos os tickers da lista (não apenas os selecionados)
 
 **Non-Goals:**
+
 - Não alterar o pipeline de dados (`_current_data`, use cases, domain)
 - Não remover funcionalidades existentes (carregar/salvar arquivo, índices, menu de contexto)
 - Não adicionar dependências externas
@@ -65,10 +68,12 @@ Um separador vertical (`tk.Frame` com `height=2, relief=RIDGE`) separa Salvar de
 ### D4: Preservação de seleção via snapshot
 
 Ao entrar no modo edição, salvar:
+
 - `_view_tickers_snapshot: list[str]` — todos os tickers do Listbox
 - `_view_selection_snapshot: set[str]` — tickers selecionados no Listbox
 
 Ao sair do modo edição:
+
 - Comparar `set(text_tickers)` com `set(_view_tickers_snapshot)`
 - Nova seleção: `(selection_snapshot ∩ text_tickers) ∪ (text_tickers - snapshot_tickers)`
 - Se `set(text_tickers) != set(snapshot)`: chamar `on_data_needed`
@@ -80,6 +85,7 @@ Adicionar callback `on_data_needed` no TickerList, chamado pelo `FlowScopeGUI` q
 ### D6: Lazy refresh híbrido via bandeira `_charts_dirty` + método `_refresh_current_tab()`
 
 Atributo `_charts_dirty: bool` no `FlowScopeGUI`:
+
 - `True` após: carga de dados, mudança de seleção no Listbox, transição edit→view
 
 Método `_refresh_current_tab()`: verifica `_charts_dirty`, identifica a aba ativa (Análise Geral → `_update_charts()`; Análise do Ticker → `_update_ticker_indicator_tabs()`), renderiza e limpa dirty. Chamado imediatamente após carga de dados e filtro.
@@ -106,6 +112,7 @@ Usado apenas por `_fill_with_index` (botões IBOV/IDIV/IFIX). `_on_load_data()` 
 ### D8: Comboboxes da Análise Geral removidos
 
 Os comboboxes de ticker das abas VWAP, Quadrantes e Dominância (`_vwap_ticker_combo`, `_quadrant_ticker_combo`, `_dominance_combo`) foram removidos junto com:
+
 - `_build_ticker_selector()` — factory dos combos
 - `_update_ticker_selectors()` — atualização dos valores
 - `_sync_ticker_selectors()` — sincronia entre combos
@@ -122,4 +129,4 @@ Os comboboxes de ticker das abas VWAP, Quadrantes e Dominância (`_vwap_ticker_c
 - [**UX**] Dois widgets empilhados ocupam o mesmo espaço. O frame do content area precisa ter `expand=True` para ambos funcionarem corretamente.
 - [**Sincronia**] A transição edit→view pode disparar recarga de dados, que é uma operação cara (requisição B3). O usuário sente um delay ao apertar o toggle. Mitigação: só recarrega se a lista realmente mudou, e o loading state já existe.
 - [**Memória**] Manter Text e Listbox em memória simultaneamente é negligenciável (tickers são strings curtas).
-- [**Ícones**] `document-properties.png`, `edit-select-all.png` e `edit-unselect-all.png` precisam existir em `src/flowscope/icons/`.
+- [**Ícones**] `document-edit.png`, `edit-select-all.png` e `edit-unselect-all.png` precisam existir em `src/flowscope/icons/`.

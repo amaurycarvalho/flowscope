@@ -6,7 +6,7 @@ A seleção via Listbox torna redundantes os comboboxes de ticker da Análise Ge
 
 ## What Changes
 
-- Adicionar botão toggle "Editar lista de tickers" (`document-properties.png`) entre "Salvar lista" e os botões de seleção. Alterna entre **modo edição** (Text widget, comportamento atual) e **modo visualização** (Listbox com `selectmode=EXTENDED`)
+- Adicionar botão toggle "Editar lista de tickers" (`document-edit.png`) entre "Salvar lista" e os botões de seleção. Alterna entre **modo edição** (Text widget, comportamento atual) e **modo visualização** (Listbox com `selectmode=EXTENDED`)
 - **Modo visualização é o padrão** ao abrir o programa e após carga de dados
 - No modo visualização: todos os tickers carregados aparecem no Listbox; exibir botões "Selecionar Todos" (`edit-select-all.png`) e "Desmarcar Todos" (`edit-unselect-all.png`) na barra superior, ao lado direito do toggle de edição, visíveis apenas no modo visualização
 - Separadores verticais entre Salvar/Editar e entre seleção/índices
@@ -22,9 +22,11 @@ A seleção via Listbox torna redundantes os comboboxes de ticker da Análise Ge
 ## Capabilities
 
 ### New Capabilities
+
 - `ticker-view-mode`: Modo visualização do TickerList com Listbox de seleção múltipla, toggle edição/visualização, e botões Selecionar Todos / Desmarcar Todos na barra superior
 
 ### Modified Capabilities
+
 - `gui-interface`: O TickerList passa a ter dois modos (edição/visualização). Comboboxes de ticker da Análise Geral removidos. A atualização dos gráficos passa a ser lazy (híbrida: aba ativa imediata, demais ao selecionar).
 
 ## Impact
