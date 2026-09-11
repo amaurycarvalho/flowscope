@@ -19,3 +19,19 @@ Quando o Fundamentus não fornecer cotação, valor patrimonial por cota ou a da
 #### Scenario: Nenhuma fonte fornece o campo
 - **WHEN** nem o Fundamentus nem a B3/CVM fornecem o campo
 - **THEN** a coluna correspondente DEVE ser exibida como `N/A` sem impedir as demais
+
+### Requirement: Fallback do Preço Típico pela janela de mercado em cache
+
+Quando o Fundamentus não fornecer a máxima e a mínima de 52 semanas, o sistema DEVE preencher os extremos com o menor preço mínimo e o maior preço máximo da janela de mercado da B3 já carregada em cache para a análise, restrita a 52 semanas antes da data de referência, sem realizar novo acesso à B3, e DEVE calcular `Preço Típico` e `P / PT` a partir desses extremos. Quando a janela em cache não tiver nenhum dia válido, `Preço Típico` e `P / PT` DEVEM ser exibidos como `N/A`.
+
+#### Scenario: Fundamentus sem extremos de 52 semanas
+- **WHEN** o Fundamentus não fornece a máxima e a mínima de 52 semanas e a janela da B3 em cache contém dias dentro das últimas 52 semanas
+- **THEN** o sistema DEVE usar o menor mínimo e o maior máximo desses dias como `Min 52 sem` e `Max 52 sem` para calcular `Preço Típico` e `P / PT`
+
+#### Scenario: Janela de cache vazia
+- **WHEN** o Fundamentus não fornece os extremos e a janela da B3 em cache não contém dias válidos
+- **THEN** `Preço Típico` e `P / PT` DEVEM ser `N/A`
+
+#### Scenario: Extremos do Fundamentus presentes
+- **WHEN** o Fundamentus fornece a máxima e a mínima de 52 semanas
+- **THEN** o sistema DEVE usá-las, sem consultar a janela em cache

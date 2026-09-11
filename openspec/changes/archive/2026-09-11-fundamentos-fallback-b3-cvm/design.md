@@ -38,7 +38,9 @@ Esta change é aplicada **depois** de `fundamentos-informacoes-adicionais-fiscai
 
 Estender `B3FundamentalDataProvider` para emitir, além de `CAMPO_NOME`:
 - `CAMPO_VP_COTA` (do `PatrimonioFii.vp_cota`; se ausente, derivar `net_asset_value / shares_outstanding`);
-- `CAMPO_DISCRIMINADOR = fii`, `CAMPO_SEGMENTO`, `CAMPO_GESTAO`, `CAMPO_QTD_IMOVEIS` e um novo `CAMPO_CLASSIFICACAO_FII` (Papel/Tijolo/Híbrido) a partir da classificação autorregulação do informe.
+- `CAMPO_DISCRIMINADOR = fii`, `CAMPO_SEGMENTO`, `CAMPO_GESTAO` e um novo `CAMPO_CLASSIFICACAO_FII` (Papel/Tijolo/Híbrido) a partir da classificação autorregulação do informe.
+
+O prefixo `Tijolo:`/`Papel:` do sub-tipo é derivado de `CAMPO_CLASSIFICACAO_FII`; o `CAMPO_QTD_IMOVEIS` não é emitido pela B3 (o informe não traz quantidade de imóveis) e continua vindo apenas do Fundamentus.
 
 Assim o `CompositeFundamentalProvider` registra `CampoFundamental.fonte` normalmente. Alternativa (preencher tudo no caso de uso) foi descartada por perder a proveniência por campo e duplicar a lógica de composição.
 
@@ -66,6 +68,70 @@ Como `fundamentos-informacoes-adicionais-fiscais` é aplicada antes, esta change
 - reaproveitar a extração por rótulo do `extrair_informe_mensal` (já usada para CNPJ/administrador) para somar a classificação autorregulação, mantendo `_coletar_pares`/`_valor`;
 - adicionar seus campos (`CAMPO_CLASSIFICACAO_FII`, `CAMPO_VP_COTA` no provider, `vp_cota`/`data_referencia` no caso de uso) sem remover nem renomear os campos fiscais e adicionais introduzidos pela change anterior;
 - manter as colunas `Informações adicionais`/`Dados fiscais` e o restante da tabela inalterados.
+
+### D7. Preço Típico a partir da janela B3 já carregada
+
+Quando o Fundamentus não fornecer `Min 52 sem`/`Max 52 sem`, `_analisar_ticker` preenche os extremos com o menor `min_price` e o maior `max_price` da janela diária da B3 já carregada para a análise (`daily_data`), restrita a `reference_date − 52 semanas`. A janela é a mesma do `MarketPricePort` (D1), sem novo acesso. Para expor os extremos, a porta de mercado ganha `extremos_preco(ticker, reference_date, janela)` (implementada por `B3MarketPriceFromResult`/`B3MarketPricePort` sobre os dados em memória); `preco_tipico`/`P / PT` são então calculados como hoje. Sem dias válidos na janela, ambos permanecem `N/A`.
+
+**Por que não no composite**: mesma razão de D1 — a janela depende da carga corrente; o composite é construído uma vez em `app.py`.
+
+**Semântica**: como a janela carregada (30/60/90 dias por configuração, em datas amostradas) costuma ser menor que 52 semanas, o `Preço Típico` de fallback representa os extremos do período disponível, não necessariamente de 52 semanas; o rótulo da coluna não muda.
+
+## Cobertura de fallback e cache
+
+Esta seção registra, para cada coluna da sub-aba "Fundamentos", se existe fallback B3/CVM quando o Fundamentus não fornece o dado, e o estado de cache de cada origem.
+
+### Matriz de cobertura por coluna
+
+| Coluna | Fonte primária | Fallback B3/CVM | Coberto |
+| --- | --- | --- | --- |
+| Ticker | watchlist | — | n/a |
+| Nome | Fundamentus | B3 identidade (`obter_nome`) | sim |
+| Tipo / Sub-tipo | Fundamentus | B3 informe (classificação autorregulação) + taxonomia | sim (D3) |
+| P (Cotação) | Fundamentus | preço B3 (`MarketPricePort`) | sim (D1) |
+| Preço Típico | Fundamentus (`Max 52 sem`/`Min 52 sem`) | extremos da janela B3 em cache (≤ 52 semanas) | sim (D7; janela pode ser < 52 semanas) |
+| P / PT | derivado do Preço Típico | derivado (herda o fallback do PT) | sim (D7) |
+| VP (VP/Cota) | Fundamentus | B3 informe / CVM patrimônio | sim (D2) |
+| P/VP | Fundamentus | derivado (preço B3 × cotas ÷ PL B3/CVM) | sim |
+| P/L | Fundamentus (Papel) | FII: derivado (`cotação ÷ (dividendo × 12)`) | FII sim / Papel não |
+| Dividend Yield | Fundamentus | derivado (dividendos 12m ÷ preço B3) | FII sim / Papel não |
+| Última data-com / Último dividendo / Dividendo anterior | B3 proventos + Fundamentus | — | FII sim / Papel não |
+| Tendência do dividendo | derivado | — | derivado |
+| FFO Yield / P/FFO / FFO Trend | Fundamentus | motor CVM (layout largo) | sim (D5) |
+| Dividend Payout | derivado (DY ÷ FFOY) | — | derivado |
+| Nº de cotistas / Classe de cotistas | B3 informe / CVM mensal | CVM acionistas (Papel) | sim |
+| Patrimônio / Classe de patrimônio | Fundamentus | B3 informe / CVM mensal | sim |
+| Data de referência | Fundamentus | data do fechamento B3 | sim (D1) |
+| Informações adicionais — Papel: `LPA`/`ROE`/`ROIC` | Fundamentus | **nenhum** | **não** |
+| Informações adicionais — FII: `Qtd Imóveis`/`Cap Rate`/`Vacância Média` | Fundamentus | **nenhum** | **não** |
+| Informações adicionais — FII: indexadores | CVM trimestral (`complemento`) | — | sim |
+| Dados fiscais (CNPJ / Administrador / Gestor) | B3 informe + CVM anual/FCA | — | sim |
+
+Campos sem fallback possível, que DEVEM permanecer `N/A` quando o Fundamentus não os fornece:
+
+- `LPA`, `ROE`, `ROIC` (Papel): só o Fundamentus os expõe; não há indicador equivalente nos datasets B3/CVM consumidos.
+- `Qtd Imóveis`, `Cap Rate`, `Vacância Média` (FII): só o Fundamentus os expõe. O Informe Mensal da B3 traz a classificação autorregulação, mas não quantidade de imóveis nem cap rate/vacância (verificado nos fixtures `CYCR11`/`ALZR11`).
+- Papel: `P/L`, `Dividend Yield` e as colunas de dividendo dependem do Fundamentus, pois a série de proventos da B3 (`type=41`) é restrita a FIIs.
+
+**Inconsistência resolvida**: o `CAMPO_QTD_IMOVEIS` **não** é emitido a partir do informe B3, pois nem o delta de `b3-fii-extraction` nem o parser expõem a quantidade de imóveis. O prefixo `Tijolo:`/`Papel:` passou a ser derivado de `CAMPO_CLASSIFICACAO_FII` (`classificar_exibicao`), e `Qtd Imóveis` permanece sem fallback (`N/A`), conforme a matriz acima.
+
+### Cache por origem
+
+| Origem | Mecanismo | Estado |
+| --- | --- | --- |
+| Fundamentus snapshot | cache condicional (`Data últ cot` + HTTP), versionado | ok |
+| Fundamentus proventos | TTL 1 dia | ok |
+| B3 identidade / HTML de documento / lista de documentos | 30 / 30 / 1 dias, versionado | ok |
+| B3 negociações diárias | cache por data (`CacheManager`) | ok |
+| Preço B3 (`MarketPricePort`) | derivado da memória, sem novo acesso | ok |
+| Janela de preços B3 (extremos para o PT) | derivada de `daily_data` em memória, sem novo acesso | ok |
+| CVM INF_MENSAL / INF_ANUAL / INF_TRIMESTRAL / FRE+FCA | cache condicional (arquivo + hash + metadados) | ok |
+| CVM acionistas (normalizado) | cache por hash + `parser_version` | ok |
+| CVM trimestral normalizado (componentes/indexadores) | re-parseia o ZIP a cada chamada | gap |
+| CVM anual normalizado (gestor/administrador) | re-parseia o ZIP a cada chamada | gap |
+| B3 `obter_patrimonio` | não memoizado (só `obter_informe`) | previsto na task 2.2 |
+
+Todas as origens consumidas têm cache de arquivo bruto. Os dois gaps são de memoização do parse normalizado na CVM; o `CvmAcionistasSource` já adota esse cache, servindo de referência. Para esta change, o cache de arquivo bruto é suficiente: o re-parse do ZIP não altera valores nem proveniência e o custo é aceitável para a janela de anos consultada; a memoização do normalizado fica como otimização futura (fora do escopo).
 
 ## Risks / Trade-offs
 

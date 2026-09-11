@@ -4,6 +4,8 @@ from flowscope.domain.fii import (
     TAXONOMIA_FII_PADRAO,
     TaxonomiaFii,
     TipoAtivo,
+    classe_fii_elegivel_ffo,
+    classificar_exibicao,
     classificar_ticker,
     elegivel_ffo,
     normalizar_ticker,
@@ -181,3 +183,60 @@ class TestElegibilidade:
             fonte=FonteClassificacao.TAXONOMIA_FII,
         )
         assert elegivel_ffo(classificacao) is False
+
+
+class TestClassificacaoFiiAutorregulacao:
+    def test_classe_papel_nao_elegivel(self):
+        assert classe_fii_elegivel_ffo("Papel") is False
+
+    def test_classe_tijolo_elegivel(self):
+        assert classe_fii_elegivel_ffo("Tijolo") is True
+
+    def test_classe_hibrido_elegivel(self):
+        assert classe_fii_elegivel_ffo("Híbrido") is True
+
+    def test_classe_desconhecida_indefinida(self):
+        assert classe_fii_elegivel_ffo(None) is None
+        assert classe_fii_elegivel_ffo("Outros") is None
+
+
+class TestClassificacaoExibicaoComB3:
+    def test_papel_prefixa_papel(self):
+        exibicao = classificar_exibicao(
+            discriminador="fii",
+            segmento="Outros",
+            gestao="Ativa",
+            classificacao_fii="Papel",
+        )
+        assert exibicao.tipo == "FII"
+        assert exibicao.sub_tipo == "Papel: Outros, Ativa"
+
+    def test_tijolo_prefixa_tijolo(self):
+        exibicao = classificar_exibicao(
+            discriminador="fii",
+            segmento="Logística",
+            gestao="Ativa",
+            classificacao_fii="Tijolo",
+        )
+        assert exibicao.sub_tipo == "Tijolo: Logística, Ativa"
+
+    def test_hibrido_prefixa_tijolo(self):
+        exibicao = classificar_exibicao(
+            discriminador="fii",
+            classificacao_fii="Híbrido",
+        )
+        assert exibicao.sub_tipo == "Tijolo:"
+
+    def test_sem_classificacao_usa_qtd_imoveis(self):
+        assert (
+            classificar_exibicao(
+                discriminador="fii", segmento="Outros", qtd_imoveis=0
+            ).sub_tipo
+            == "Papel: Outros"
+        )
+        assert (
+            classificar_exibicao(
+                discriminador="fii", segmento="Outros", qtd_imoveis=5
+            ).sub_tipo
+            == "Tijolo: Outros"
+        )

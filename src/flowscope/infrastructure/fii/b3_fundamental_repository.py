@@ -35,6 +35,9 @@ class B3FundamentalRepository:
         self._patrimonio_source = patrimonio_source
         self._fundos_cache: dict[str, B3Fund | None] = {}
         self._informes_cache: dict[tuple[str, date], B3InformeMensal | None] = {}
+        self._patrimonio_cache: dict[
+            tuple[str, date], PatrimonioFii | None
+        ] = {}
 
     def obter_nome(self: "B3FundamentalRepository", ticker: str) -> str | None:
         """Retorna o nome do fundo a partir da identidade B3."""
@@ -59,7 +62,22 @@ class B3FundamentalRepository:
     def obter_patrimonio(
         self: "B3FundamentalRepository", ticker: str, reference_date: date
     ) -> PatrimonioFii | None:
-        """Retorna o patrimônio consolidando B3 (primário) e CVM (fallback)."""
+        """Retorna o patrimônio consolidando B3 (primário) e CVM (fallback).
+
+        O resultado é memorizado por ``(ticker, reference_date)`` para evitar
+        a dupla busca entre o provider B3 e o caso de uso.
+        """
+        chave = (ticker.strip().upper(), reference_date)
+        if chave not in self._patrimonio_cache:
+            self._patrimonio_cache[chave] = self._buscar_patrimonio(
+                ticker, reference_date
+            )
+        return self._patrimonio_cache[chave]
+
+    def _buscar_patrimonio(
+        self: "B3FundamentalRepository", ticker: str, reference_date: date
+    ) -> PatrimonioFii | None:
+        """Busca o patrimônio na B3 (primário) e, na ausência, na CVM."""
         b3 = self._obter_patrimonio_b3(ticker, reference_date)
         if b3 is not None:
             return b3

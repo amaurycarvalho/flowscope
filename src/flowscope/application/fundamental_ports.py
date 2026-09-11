@@ -7,7 +7,7 @@ fechamento de dados de mercado já existentes.
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import Protocol, runtime_checkable
@@ -35,6 +35,7 @@ CAMPO_SETOR = "setor"
 CAMPO_SUBSETOR = "subsetor"
 CAMPO_SEGMENTO = "segmento"
 CAMPO_GESTAO = "gestao"
+CAMPO_CLASSIFICACAO_FII = "classificacao_fii"
 CAMPO_QTD_IMOVEIS = "qtd_imoveis"
 CAMPO_PATRIMONIO = "patrimonio"
 CAMPO_DATA_REFERENCIA = "data_referencia"
@@ -72,6 +73,7 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_SUBSETOR,
         CAMPO_SEGMENTO,
         CAMPO_GESTAO,
+        CAMPO_CLASSIFICACAO_FII,
         CAMPO_QTD_IMOVEIS,
         CAMPO_PATRIMONIO,
         CAMPO_DATA_REFERENCIA,
@@ -191,4 +193,13 @@ class MarketPricePort(Protocol):
         self: "MarketPricePort", ticker: str, reference_date: date
     ) -> PrecoObservacao | None:
         """Retorna o último fechamento até a data de referência."""
+        ...
+
+    def extremos_preco(
+        self: "MarketPricePort",
+        ticker: str,
+        reference_date: date,
+        janela: timedelta,
+    ) -> tuple[Decimal, Decimal] | None:
+        """Retorna ``(mínimo, máximo)`` da janela, ou ``None`` quando vazia."""
         ...

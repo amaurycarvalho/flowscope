@@ -58,6 +58,20 @@ _ANOS_JANELA = 2
 #: Prefixo do CSV de complemento no ZIP do Informe Trimestral.
 _CSV_COMPLEMENTO = "inf_trimestral_fii_complemento"
 
+#: Colunas de identidade/controle que não representam componentes monetários.
+_COLUNAS_NAO_MONETARIAS = frozenset(
+    {
+        "cnpj_fundo_classe",
+        "cnpj_fundo",
+        "data_referencia",
+        "versao",
+        "data_recebimento",
+        "dt_comptc",
+        "dt_receb",
+        "dt_refer",
+    }
+)
+
 #: Rótulo de exibição → coluna de percentual por indexador no complemento.
 _INDEXADORES = {
     "IGP-M": "Percentual_Indexador_Valor_Total_IGPM",
@@ -110,6 +124,8 @@ class CvmQuarterlyRepository:
             if data is None:
                 continue
             for nome, conteudo in self._downloader.extrair_csvs(data, ano).items():
+                if _CSV_COMPLEMENTO in nome:
+                    continue
                 for registro in _ler_registros(
                     conteudo, nome, alvo, reference_date
                 ):
@@ -240,7 +256,11 @@ def _ler_registros(
     alvo: str,
     reference_date: date,
 ) -> list[_Registro]:
-    """Lê os componentes do CNPJ no CSV, preservando o código original."""
+    """Lê os componentes do CNPJ no CSV, preservando o código original.
+
+    Aceita dois layouts: o longo legado (``Descricao``/``Valor``) e o largo de
+    resultado contábil-financeiro (uma coluna monetária por componente).
+    """
     texto = conteudo.decode("latin1")
     leitor = csv.DictReader(io.StringIO(texto), delimiter=";")
     if leitor.fieldnames is None:
@@ -248,7 +268,39 @@ def _ler_registros(
     colunas = {coluna.strip() for coluna in leitor.fieldnames}
     if not tem_alias(colunas, _ALIASES, "cnpj"):
         return []
+    if tem_alias(colunas, _ALIASES, "descricao") and tem_alias(
+        colunas, _ALIASES, "valor"
+    ):
+        validar_aliases(colunas, _ALIASES, _OBRIGATORIAS)
+        return _ler_layout_longo(
+            leitor, colunas, alvo, reference_date, arquivo
+        )
+    if _tem_coluna_monetaria(leitor.fieldnames) and tem_alias(
+        colunas, _ALIASES, "competencia"
+    ):
+        return _ler_layout_largo(
+            leitor, colunas, alvo, reference_date, arquivo
+        )
     validar_aliases(colunas, _ALIASES, _OBRIGATORIAS)
+    return []
+
+
+def _tem_coluna_monetaria(fieldnames: object) -> bool:
+    """Indica se o CSV possui alguma coluna que não seja de identidade."""
+    return any(
+        str(coluna).strip().lower() not in _COLUNAS_NAO_MONETARIAS
+        for coluna in fieldnames
+    )
+
+
+def _ler_layout_longo(
+    leitor: "csv.DictReader",
+    colunas: set[str],
+    alvo: str,
+    reference_date: date,
+    arquivo: str,
+) -> list[_Registro]:
+    """Lê o layout longo legado (``Descricao``/``Valor``)."""
     registros: list[_Registro] = []
     for bruta in leitor:
         registro = _registro_linha(
@@ -256,6 +308,47 @@ def _ler_registros(
         )
         if registro is not None:
             registros.append(registro)
+    return registros
+
+
+def _ler_layout_largo(
+    leitor: "csv.DictReader",
+    colunas: set[str],
+    alvo: str,
+    reference_date: date,
+    arquivo: str,
+) -> list[_Registro]:
+    """Lê o layout largo, convertendo cada coluna monetária em componente."""
+    campos = [str(coluna) for coluna in (leitor.fieldnames or [])]
+    monetarias = [
+        coluna
+        for coluna in campos
+        if coluna.strip().lower() not in _COLUNAS_NAO_MONETARIAS
+    ]
+    registros: list[_Registro] = []
+    for bruta in leitor:
+        canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
+        if normalizar_cnpj(canonica.get("cnpj")) != alvo:
+            continue
+        competencia = parse_data(canonica.get("competencia"))
+        if competencia is None or competencia > reference_date:
+            continue
+        versao = parse_inteiro(canonica.get("versao"))
+        for coluna in monetarias:
+            valor = parse_decimal(bruta.get(coluna))
+            if valor is None or valor == Decimal(0):
+                continue
+            codigo = coluna.strip()
+            registros.append(
+                _Registro(
+                    competencia=competencia,
+                    codigo=codigo,
+                    descricao=codigo.replace("_", " ").strip(),
+                    valor=valor,
+                    versao=versao,
+                    arquivo=arquivo,
+                )
+            )
     return registros
 
 

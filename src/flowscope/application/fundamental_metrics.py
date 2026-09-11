@@ -7,6 +7,7 @@ from flowscope.application.fundamental_fields import _fontes
 from flowscope.domain.fii import (
     MetricasFii,
     PatrimonioFii,
+    PrecoObservacao,
     Quality,
     analisar_snapshot,
 )
@@ -22,11 +23,13 @@ class FundamentalMetricsMixin:
         reference_date: date,
         dividendos_12m_por_cota: Decimal | None,
         patrimonio: PatrimonioFii | None = None,
+        preco: PrecoObservacao | None = None,
     ) -> MetricasFii | None:
         """Calcula Dividend Yield e P/VP sem exigir dados de FFO."""
         if self._mercado is None:
             return None
-        preco = self._mercado.preco_fechamento(ticker, reference_date)
+        if preco is None:
+            preco = self._mercado.preco_fechamento(ticker, reference_date)
         if preco is None or preco.preco <= 0:
             return None
         dividend_yield = (
@@ -64,6 +67,7 @@ class FundamentalMetricsMixin:
         reference_date: date,
         dividendos_12m_por_cota: Decimal | None,
         patrimonio: PatrimonioFii | None = None,
+        preco: PrecoObservacao | None = None,
     ) -> MetricasFii | None:
         """Calcula as métricas FFO quando a fonte fornecer os dados."""
         if self._ffo_provider is None or self._mercado is None:
@@ -71,7 +75,8 @@ class FundamentalMetricsMixin:
         if patrimonio is None:
             patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
         ffo = self._ffo_provider.obter_ffo(ticker, reference_date)
-        preco = self._mercado.preco_fechamento(ticker, reference_date)
+        if preco is None:
+            preco = self._mercado.preco_fechamento(ticker, reference_date)
         if (
             patrimonio is None
             or ffo is None

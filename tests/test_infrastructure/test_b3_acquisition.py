@@ -495,15 +495,36 @@ class TestInformeMensalParser:
         assert informe.nome_administrador == "BANCO GENIAL S.A."
         assert informe.cnpj_administrador == "45.246.410/0001-55"
 
+    def test_extrai_classificacao_autorregulacao(self):
+        html = (_FIXTURES / "informe_cycr.html").read_text(encoding="utf-8")
+        informe = extrair_informe_mensal(html, document_id=1294589)
+        assert informe.classificacao == "Papel"
+        assert informe.subclassificacao == "Híbrido"
+        assert informe.gestao == "Ativa"
+        assert informe.segmento_atuacao == "Outros"
+
+    def test_sem_classificacao_mantem_demais_campos(self):
+        html = (_FIXTURES / "informe_alzr.html").read_text(encoding="utf-8")
+        informe = extrair_informe_mensal(html, document_id=1293566)
+        assert informe.classificacao is None
+        assert informe.subclassificacao is None
+        assert informe.gestao is None
+        assert informe.segmento_atuacao is None
+        assert informe.cotistas == 206111
+        assert informe.patrimonio_liquido == Decimal("1773014664.80")
+
 
 class TestB3FundamentalDataProvider:
-    def _provider(self, informe):
+    def _provider(self, informe, patrimonio=None):
         class _Repo:
             def obter_nome(self, ticker):
                 return "CYRELA CRÉDITO"
 
             def obter_informe(self, ticker, reference_date):
                 return informe
+
+            def obter_patrimonio(self, ticker, reference_date):
+                return patrimonio
 
         from flowscope.infrastructure.fii.b3_fundamental_provider import (
             B3FundamentalDataProvider,
@@ -530,9 +551,106 @@ class TestB3FundamentalDataProvider:
         assert campos["cnpj_administrador"].valor == "45.246.410/0001-55"
         assert campos["cnpj"].fonte == "B3"
 
+    def test_emite_classificacao_autorregulacao(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 7, 1),
+            reference_month="07/2026",
+            cotistas=16778,
+            patrimonio_liquido=Decimal("346086182.72"),
+            cotas_emitidas=Decimal("36549445"),
+            valor_patrimonial_cota=Decimal("9.468986"),
+            classificacao="Papel",
+            subclassificacao="Híbrido",
+            gestao="Ativa",
+            segmento_atuacao="Outros",
+        )
+        campos = self._provider(informe).obter("CYCR11", REFERENCIA)
+        assert campos["classificacao_fii"].valor == "Papel"
+        assert campos["discriminador"].valor == "fii"
+        assert campos["segmento"].valor == "Outros"
+        assert campos["gestao"].valor == "Ativa"
+        assert all(campo.fonte == "B3" for campo in campos.values())
+
+    def test_emite_vp_cota_reportado(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 7, 1),
+            reference_month="07/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+        )
+        patrimonio = PatrimonioFii(
+            reference_date=REFERENCIA,
+            net_asset_value=Decimal("346086182.72"),
+            shares_outstanding=Decimal("36549445"),
+            cotistas=16778,
+            fonte="B3",
+            vp_cota=Decimal("9.468986"),
+        )
+        campos = self._provider(informe, patrimonio).obter("CYCR11", REFERENCIA)
+        assert campos["vp_cota"].valor == Decimal("9.468986")
+
+    def test_deriva_vp_cota_quando_ausente(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 7, 1),
+            reference_month="07/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+        )
+        patrimonio = PatrimonioFii(
+            reference_date=REFERENCIA,
+            net_asset_value=Decimal("100"),
+            shares_outstanding=Decimal("10"),
+            cotistas=None,
+            fonte="B3",
+        )
+        campos = self._provider(informe, patrimonio).obter("CYCR11", REFERENCIA)
+        assert campos["vp_cota"].valor == Decimal("10")
+
     def test_sem_informe_emite_apenas_nome(self):
         campos = self._provider(None).obter("CYCR11", REFERENCIA)
         assert "cnpj" not in campos
+        assert "classificacao_fii" not in campos
+
+
+class TestB3FundamentalRepositoryPatrimonio:
+    def test_patrimonio_memoizado_por_ticker_e_data(self):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        class _Fundos:
+            def find_by_ticker(self, ticker):
+                return None
+
+        class _FonteCvm:
+            def __init__(self):
+                self.chamadas = 0
+
+            def patrimonio(self, ticker, reference_date):
+                self.chamadas += 1
+                return PatrimonioFii(
+                    reference_date=reference_date,
+                    net_asset_value=Decimal("100"),
+                    shares_outstanding=Decimal("10"),
+                    cotistas=None,
+                    fonte="CVM",
+                )
+
+        fonte = _FonteCvm()
+        repo = B3FundamentalRepository(
+            fund_repository=_Fundos(), patrimonio_source=fonte
+        )
+        primeiro = repo.obter_patrimonio("CYCR11", REFERENCIA)
+        segundo = repo.obter_patrimonio("CYCR11", REFERENCIA)
+        assert primeiro is segundo
+        assert fonte.chamadas == 1
 
 
 class TestInformeMensalRepository:

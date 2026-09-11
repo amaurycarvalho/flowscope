@@ -6,13 +6,34 @@ cuja data é menor ou igual à data de referência.
 """
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.fii.analysis import PrecoObservacao
 
 FONTE_B3 = "B3"
+
+
+def _extremos(
+    dias: list[tuple[date, Decimal, Decimal]],
+    reference_date: date,
+    janela: timedelta,
+) -> tuple[Decimal, Decimal] | None:
+    """Calcula ``(mínimo, máximo)`` dos dias válidos dentro da janela."""
+    inicio = reference_date - janela
+    minimos: list[Decimal] = []
+    maximos: list[Decimal] = []
+    for data, minimo, maximo in dias:
+        if data < inicio or data > reference_date:
+            continue
+        if minimo > 0:
+            minimos.append(minimo)
+        if maximo > 0:
+            maximos.append(maximo)
+    if not minimos or not maximos:
+        return None
+    return min(minimos), max(maximos)
 
 
 class B3MarketPricePort:
@@ -44,6 +65,24 @@ class B3MarketPricePort:
             data_preco=ultimo.date,
             fonte=FONTE_B3,
         )
+
+    def extremos_preco(
+        self: "B3MarketPricePort",
+        ticker: str,
+        reference_date: date,
+        janela: timedelta,
+    ) -> tuple[Decimal, Decimal] | None:
+        """Retorna ``(mínimo, máximo)`` da janela de negociações em memória."""
+        normalizado = ticker.strip().upper()
+        dias = [
+            (
+                negociacao.date,
+                negociacao.min_price.value,
+                negociacao.max_price.value,
+            )
+            for negociacao in self._por_ticker.get(normalizado, [])
+        ]
+        return _extremos(dias, reference_date, janela)
 
 
 class B3MarketPriceFromResult:
@@ -84,3 +123,21 @@ class B3MarketPriceFromResult:
             data_preco=ultimo[0],
             fonte=FONTE_B3,
         )
+
+    def extremos_preco(
+        self: "B3MarketPriceFromResult",
+        ticker: str,
+        reference_date: date,
+        janela: timedelta,
+    ) -> tuple[Decimal, Decimal] | None:
+        """Retorna ``(mínimo, máximo)`` da janela de dados diários em memória."""
+        normalizado = ticker.strip().upper()
+        dias: list[tuple[date, Decimal, Decimal]] = []
+        for dia in self._por_ticker.get(normalizado, []):
+            data = dia.get("date")
+            minimo = dia.get("min_price")
+            maximo = dia.get("max_price")
+            if data is None or minimo is None or maximo is None:
+                continue
+            dias.append((data, Decimal(str(minimo)), Decimal(str(maximo))))
+        return _extremos(dias, reference_date, janela)

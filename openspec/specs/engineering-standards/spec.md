@@ -65,3 +65,19 @@ O comando `make quality-gate` DEVE ser usado como quality gate padrão, executan
 - **AND** os testes DEVEM ser executados com pytest e cobertura >= 85%
 - **AND** a mutação DEVE ser verificada com score >= 80%
 - **AND** a segurança DEVE ser verificada com semgrep sem findings ERROR
+
+### Requirement: Validação OpenSpec em português (não-strict)
+
+Por decisão de documentação em língua nativa, as specs do projeto DEVEM ser escritas em português, usando "DEVE" como termo normativo em vez de SHALL/MUST. O warning de RFC 2119 do OpenSpec ("should contain SHALL or MUST") DEVE ser ignorado nesse projeto, e a validação de changes DEVE ser considerada satisfatória quando executada sem `--strict`.
+
+#### Scenario: Specs em português com "DEVE"
+- **GIVEN** uma spec do projeto redigida em português e usando "DEVE" como termo normativo
+- **WHEN** a spec é validada com OpenSpec
+- **THEN** o warning "should contain SHALL or MUST" NÃO DEVE ser tratado como falha
+- **AND** a validação sem `--strict` DEVE ser considerada suficiente
+
+#### Scenario: Validação com --strict reporta apenas o warning RFC 2119
+- **GIVEN** uma change cujo único apontamento é o warning RFC 2119 por usar "DEVE"
+- **WHEN** a change é validada com `openspec validate --strict`
+- **THEN** o resultado DEVE ser aceito como equivalente à validação não-strict
+- **AND** nenhuma reescrita para SHALL/MUST DEVE ser exigida

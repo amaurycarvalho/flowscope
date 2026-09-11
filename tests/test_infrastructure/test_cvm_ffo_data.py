@@ -107,6 +107,124 @@ CSV_COMPLEMENTO = (
 )
 
 
+CSV_RESULTADO_LARGO = (
+    "CNPJ_Fundo_Classe;Data_Referencia;Versao;"
+    "Receita_Aluguel_Investimento_Contabil;"
+    "Despesas_Administrativas_Contabil;"
+    "Ajuste_Valor_Justo_Contabil\n"
+    "28.737.771/0001-85;2026-06-30;1;1000000,00;-200000,00;500000,00\n"
+    "99.999.999/0001-91;2026-06-30;1;1,00;0,00;0,00\n"
+)
+
+
+class TestLayoutLargo:
+    def _repo(self, tmp_path, conteudo=CSV_RESULTADO_LARGO):
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=lambda ano: _zip(conteudo),
+        )
+        return CvmQuarterlyRepository(downloader=downloader)
+
+    def test_layout_largo_reconhecido(self, tmp_path):
+        componentes = self._repo(tmp_path).get_components(CNPJ, REFERENCIA)
+        assert componentes
+        assert all(c.provenance.cnpj == CNPJ for c in componentes)
+
+    def test_colunas_convertidas_em_componentes(self, tmp_path):
+        componentes = self._repo(tmp_path).get_components(CNPJ, REFERENCIA)
+        por_codigo = {c.code: c for c in componentes}
+        aluguel = por_codigo["Receita_Aluguel_Investimento_Contabil"]
+        assert aluguel.classification is FFOComponentType.RECURRING
+        assert aluguel.description == "Receita Aluguel Investimento Contabil"
+        assert aluguel.value == Decimal("1000000.00")
+        assert (
+            por_codigo["Ajuste_Valor_Justo_Contabil"].classification
+            is FFOComponentType.FAIR_VALUE
+        )
+
+    def test_ignora_outro_cnpj_no_layout_largo(self, tmp_path):
+        componentes = self._repo(tmp_path).get_components(CNPJ, REFERENCIA)
+        assert all(c.provenance.cnpj == CNPJ for c in componentes)
+
+    def test_valores_zero_ignorados(self, tmp_path):
+        componentes = self._repo(tmp_path).get_components(CNPJ, REFERENCIA)
+        assert all(c.value != Decimal(0) for c in componentes)
+
+    def test_complemento_nao_vira_componente(self, tmp_path):
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as arquivo:
+            arquivo.writestr(
+                "inf_trimestral_fii_resultado_contabil_financeiro_2026.csv",
+                CSV_RESULTADO_LARGO.encode("latin1"),
+            )
+            arquivo.writestr(
+                "inf_trimestral_fii_complemento_2026.csv",
+                CSV_COMPLEMENTO.encode("latin1"),
+            )
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=lambda ano: buffer.getvalue(),
+        )
+        componentes = CvmQuarterlyRepository(
+            downloader=downloader
+        ).get_components(CNPJ, REFERENCIA)
+        assert all(
+            "Indexador" not in c.code for c in componentes
+        )
+
+
+class TestFfoEngineLayoutLargo:
+    def _repo(self, tmp_path, conteudo):
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=lambda ano: _zip(conteudo),
+        )
+        return CvmQuarterlyRepository(downloader=downloader)
+
+    def _provider(self, repo):
+        from flowscope.domain.cvm import FundIdentity
+        from flowscope.infrastructure.fii.ffo_engine_provider import (
+            FFOEngineProvider,
+        )
+
+        return FFOEngineProvider(
+            quarterly_repository=repo,
+            resolver=lambda ticker: FundIdentity(
+                ticker=ticker, cnpj_fundo_classe=CNPJ, id_fnet="1"
+            ),
+        )
+
+    def test_calcula_ffo_com_layout_real(self, tmp_path):
+        conteudo = (
+            "CNPJ_Fundo_Classe;Data_Referencia;"
+            "Receita_Aluguel_Investimento_Contabil\n"
+        )
+        conteudo += "".join(
+            f"{CNPJ_FORMATADO};2026-{mes:02d}-28;100000,00\n"
+            for mes in range(1, 13)
+        )
+        repo = self._repo(tmp_path, conteudo)
+        ffo = self._provider(repo).obter_ffo("HGBS11", date(2026, 12, 31))
+        assert ffo is not None
+        assert ffo.ffo_12m == Decimal("1200000.00")
+
+    def test_retorna_none_quando_faltam_componentes(self, tmp_path):
+        repo = self._repo(tmp_path, CSV_RESULTADO_LARGO)
+        assert (
+            self._provider(repo).obter_ffo("HGBS11", date(2026, 12, 31)) is None
+        )
+
+
+
 def _zip_complemento(conteudo: str) -> bytes:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as arquivo:

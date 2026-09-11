@@ -7,7 +7,8 @@ os demais (RFC-007 §73).
 
 import logging
 from collections.abc import Callable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from flowscope.application.fundamental_fields import (
     _avisos_ffo_ausente,
@@ -24,6 +25,7 @@ from flowscope.application.fundamental_metrics import FundamentalMetricsMixin
 from flowscope.application.fundamental_ports import (
     CAMPO_ADMINISTRADOR,
     CAMPO_CAP_RATE,
+    CAMPO_CLASSIFICACAO_FII,
     CAMPO_CNPJ,
     CAMPO_CNPJ_ADMINISTRADOR,
     CAMPO_CNPJ_GESTOR,
@@ -40,6 +42,7 @@ from flowscope.application.fundamental_ports import (
     CAMPO_VACANCIA_MEDIA,
     CAMPO_VP_COTA,
     AcionistasProvider,
+    CampoFundamental,
     DividendHistoryProvider,
     FfoProvider,
     FiiFundamentalRepository,
@@ -50,7 +53,10 @@ from flowscope.application.fundamental_ports import (
 from flowscope.application.fundamental_providers import FundamentalDataMixin
 from flowscope.domain.fii import (
     AnaliseFundamental,
+    ClassificacaoAtivo,
+    PrecoObservacao,
     TaxonomiaFii,
+    classe_fii_elegivel_ffo,
     classificar_cotistas,
     classificar_patrimonio,
     classificar_ticker,
@@ -61,6 +67,9 @@ from flowscope.domain.fii import (
 )
 
 logger = logging.getLogger("flowscope")
+
+#: Janela de referência do Preço Típico (52 semanas).
+_JANELA_52_SEMANAS = timedelta(weeks=52)
 
 
 class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
@@ -157,23 +166,28 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         patrimonio, cotistas = self._resolver_cotistas(
             ticker, reference_date, dados, classificacao, patrimonio_repo
         )
+        preco = self._obter_preco(ticker, reference_date)
         metricas = _metricas_dos_dados(dados)
-        if metricas is None:
+        if metricas is None and _elegivel_ffo(dados, classificacao):
             metricas = self._analisar_ffo(
-                ticker, reference_date, total_por_cota, patrimonio_repo
+                ticker, reference_date, total_por_cota, patrimonio_repo, preco
             )
         if metricas is None:
             metricas = self._metricas_parciais(
-                ticker, reference_date, total_por_cota, patrimonio_repo
+                ticker, reference_date, total_por_cota, patrimonio_repo, preco
             )
         avisos = _avisos_ffo_ausente(metricas)
         cotacao = _decimal_campo(dados, CAMPO_COTACAO)
+        if cotacao is None and preco is not None:
+            cotacao = preco.preco
         exibicao = _classificacao_exibicao(dados, classificacao)
-        tipico = preco_tipico(
-            _decimal_campo(dados, CAMPO_MAX_52_SEM),
-            _decimal_campo(dados, CAMPO_MIN_52_SEM),
-            cotacao,
+        maximo, minimo = _extremos_52_sem(
+            self._mercado, dados, ticker, reference_date
         )
+        tipico = preco_tipico(maximo, minimo, cotacao)
+        data_referencia = _data_campo(dados, CAMPO_DATA_REFERENCIA)
+        if data_referencia is None and preco is not None:
+            data_referencia = preco.data_preco
         return AnaliseFundamental(
             ticker=ticker,
             nome=nome,
@@ -195,7 +209,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
                 if patrimonio is not None
                 else None
             ),
-            data_referencia=_data_campo(dados, CAMPO_DATA_REFERENCIA),
+            data_referencia=data_referencia,
             lpa=_decimal_campo(dados, CAMPO_LPA),
             roe=_decimal_campo(dados, CAMPO_ROE),
             roic=_decimal_campo(dados, CAMPO_ROIC),
@@ -212,3 +226,55 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             cnpj_gestor=_texto(dados, CAMPO_CNPJ_GESTOR),
             avisos=avisos,
         ), de_cache
+
+    def _obter_preco(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+    ) -> PrecoObservacao | None:
+        """Obtém o último fechamento B3, ou ``None`` quando indisponível."""
+        if self._mercado is None:
+            return None
+        return self._mercado.preco_fechamento(ticker, reference_date)
+
+
+def _elegivel_ffo(
+    dados: dict[str, CampoFundamental], classificacao: ClassificacaoAtivo
+) -> bool:
+    """Indica se o motor determinístico de FFO pode ser acionado.
+
+    Deriva a classe efetiva da classificação autorregulação da B3 e, na sua
+    ausência, da quantidade de imóveis do Fundamentus. FII de papel não é
+    elegível; tickers sem informação permanecem elegíveis (comportamento
+    anterior).
+    """
+    classe = classe_fii_elegivel_ffo(_texto(dados, CAMPO_CLASSIFICACAO_FII))
+    if classe is not None:
+        return classe
+    qtd_imoveis = _int_campo(dados, CAMPO_QTD_IMOVEIS)
+    if qtd_imoveis is not None:
+        return qtd_imoveis > 0
+    return classificacao.elegivel_ffo() or classificacao.sub_tipo is None
+
+
+def _extremos_52_sem(
+    mercado: MarketPricePort | None,
+    dados: dict[str, CampoFundamental],
+    ticker: str,
+    reference_date: date,
+) -> tuple[Decimal | None, Decimal | None]:
+    """Resolve ``(máxima, mínima)`` de 52 semanas, com fallback da janela B3."""
+    maximo = _decimal_campo(dados, CAMPO_MAX_52_SEM)
+    minimo = _decimal_campo(dados, CAMPO_MIN_52_SEM)
+    if maximo is not None and minimo is not None:
+        return maximo, minimo
+    extremos = getattr(mercado, "extremos_preco", None)
+    if mercado is not None and callable(extremos):
+        resultado = extremos(ticker, reference_date, _JANELA_52_SEMANAS)
+        if resultado is not None:
+            minimo_b3, maximo_b3 = resultado
+            if minimo is None:
+                minimo = minimo_b3
+            if maximo is None:
+                maximo = maximo_b3
+    return maximo, minimo

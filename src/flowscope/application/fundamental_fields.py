@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from flowscope.application.fundamental_ports import (
+    CAMPO_CLASSIFICACAO_FII,
     CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDEND_YIELD,
     CAMPO_ESPECIE,
@@ -152,6 +153,7 @@ def _classificacao_exibicao(
         segmento=_texto(dados, CAMPO_SEGMENTO),
         gestao=_texto(dados, CAMPO_GESTAO),
         qtd_imoveis=_int_campo(dados, CAMPO_QTD_IMOVEIS),
+        classificacao_fii=_texto(dados, CAMPO_CLASSIFICACAO_FII),
         fallback=fallback,
     )
 

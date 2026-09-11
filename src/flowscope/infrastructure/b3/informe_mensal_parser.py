@@ -24,6 +24,13 @@ _ROTULOS_VP_COTA = ("valorpatrimonialdascotas", "valorpatrimonialdascotasr")
 _ROTULOS_CNPJ = ("cnpjdofundoclasse",)
 _ROTULOS_NOME_ADMINISTRADOR = ("nomedoadministrador",)
 _ROTULOS_CNPJ_ADMINISTRADOR = ("cnpjdoadministrador",)
+_ROTULOS_CLASSIFICACAO = ("classificacaoautorregulacao",)
+
+_PADRAO_CAMPOS_CLASSIFICACAO = re.compile(
+    r"\b(subclassifica[çc][ãa]o|classifica[çc][ãa]o|gest[ãa]o"
+    r"|segmento de atua[çc][ãa]o)\s*:",
+    re.IGNORECASE,
+)
 
 _TROCA_ACENTOS = {
     "á": "a",
@@ -51,6 +58,9 @@ def extrair_informe_mensal(
 ) -> B3InformeMensal:
     """Monta o informe mensal a partir do HTML do documento FundosNet."""
     pares = _coletar_pares(html)
+    classificacao = _campos_classificacao(
+        _valor(pares, _ROTULOS_CLASSIFICACAO)
+    )
     return B3InformeMensal(
         document_id=document_id,
         reference_date=reference_date,
@@ -62,8 +72,28 @@ def extrair_informe_mensal(
         cnpj=_texto(_valor(pares, _ROTULOS_CNPJ)),
         nome_administrador=_texto(_valor(pares, _ROTULOS_NOME_ADMINISTRADOR)),
         cnpj_administrador=_texto(_valor(pares, _ROTULOS_CNPJ_ADMINISTRADOR)),
+        classificacao=classificacao.get("classificacao"),
+        subclassificacao=classificacao.get("subclassificacao"),
+        gestao=classificacao.get("gestao"),
+        segmento_atuacao=classificacao.get("segmentodeatuacao"),
         fonte=fonte,
     )
+
+
+def _campos_classificacao(valor: str | None) -> dict[str, str | None]:
+    """Extrai os sub-campos da célula ``Classificação autorregulação``.
+
+    Tolera rótulos ausentes: cada sub-campo ausente resulta em ``None``.
+    """
+    if not valor:
+        return {}
+    marcas = list(_PADRAO_CAMPOS_CLASSIFICACAO.finditer(valor))
+    resultado: dict[str, str | None] = {}
+    for indice, marca in enumerate(marcas):
+        inicio = marca.end()
+        fim = marcas[indice + 1].start() if indice + 1 < len(marcas) else len(valor)
+        resultado[_normalizar(marca.group(1))] = valor[inicio:fim].strip() or None
+    return resultado
 
 
 def _coletar_pares(html: str) -> dict[str, str]:

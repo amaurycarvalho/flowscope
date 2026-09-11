@@ -47,6 +47,10 @@ class B3InformeMensal:
     cnpj: str | None = None
     nome_administrador: str | None = None
     cnpj_administrador: str | None = None
+    classificacao: str | None = None
+    subclassificacao: str | None = None
+    gestao: str | None = None
+    segmento_atuacao: str | None = None
     fonte: str = "B3"
 
 

@@ -146,14 +146,18 @@ O sistema DEVE preencher cada métrica (FFO Yield, Dividend Yield, P/FFO, P/VP, 
 - **THEN** somente aquela métrica DEVE ser `N/A`
 
 ### Requirement: Data de referência dos dados
-O sistema DEVE expor, por ticker, a data de referência dos dados de mercado (`Data últ cot` do Fundamentus), exibindo `N/A` quando indisponível.
+O sistema DEVE expor, por ticker, a data de referência dos dados de mercado, usando `Data últ cot` do Fundamentus quando disponível e, na sua ausência, a data do último fechamento da B3 utilizado no cálculo, exibindo `N/A` quando nenhuma das fontes fornecer uma data.
 
 #### Scenario: Data de referência disponível
 - **WHEN** o Fundamentus informa `Data últ cot`
 - **THEN** a data de referência DEVE ser essa data
 
+#### Scenario: Fundamentus indisponível com preço da B3
+- **WHEN** o Fundamentus não informa `Data últ cot` e a análise usa um fechamento da B3
+- **THEN** a data de referência DEVE ser a data desse fechamento
+
 #### Scenario: Data de referência indisponível
-- **WHEN** a data de última cotação não está disponível
+- **WHEN** não há data de última cotação nem preço de fechamento
 - **THEN** a data de referência DEVE ser `N/A`
 
 ### Requirement: Dividend Payout
@@ -167,3 +171,31 @@ O sistema DEVE calcular o Dividend Payout como a razão `Dividend Yield / FFO Yi
 #### Scenario: Dividend Payout indisponível
 - **WHEN** Dividend Yield ou FFO Yield não estão disponíveis
 - **THEN** o Dividend Payout DEVE ser `N/A`
+
+### Requirement: Preço Típico e P / PT
+
+O sistema DEVE calcular o `Preço Típico` como `(Cotação Max 52 sem + Cotação Min 52 sem + Cotação) / 3` e o `P / PT` como `(Cotação − Preço Típico) / Preço Típico`, por funções puras e determinísticas em `Decimal`, exibindo `N/A` quando qualquer insumo estiver ausente ou o Preço Típico for zero.
+
+#### Scenario: Preço Típico calculado
+- **WHEN** a cotação é `10`, a mínima de 52 semanas é `8` e a máxima é `12`
+- **THEN** o Preço Típico DEVE ser `10`
+
+#### Scenario: P / PT calculado
+- **WHEN** a cotação é `9` e o Preço Típico é `10`
+- **THEN** o P / PT DEVE ser `-0,10` (−10%)
+
+#### Scenario: Insumo ausente
+- **WHEN** a cotação, a mínima ou a máxima de 52 semanas não está disponível
+- **THEN** o Preço Típico e o P / PT DEVEM ser `N/A`
+
+### Requirement: Percentuais por indexador na análise
+
+O sistema DEVE expor, por ticker de FII, os percentuais de patrimônio por indexador fornecidos pela CVM, omitindo os indexadores sem valor.
+
+#### Scenario: Percentuais disponíveis
+- **WHEN** a CVM fornece os percentuais de `IPCA`, `IGP-M`, `INPC` e `INCC` para o FII
+- **THEN** a análise DEVE expor os percentuais por indexador
+
+#### Scenario: Sem percentuais
+- **WHEN** a CVM não fornece percentuais para o ticker
+- **THEN** nenhum percentual DEVE ser exposto, sem impedir as demais métricas

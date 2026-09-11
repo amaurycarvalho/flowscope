@@ -103,11 +103,15 @@ O sistema DEVE validar o ticker (não vazio, sem espaços internos, convertido p
 
 ### Requirement: Listagem e extração do Informe Mensal Estruturado
 
-O sistema DEVE listar os documentos do Informe Mensal Estruturado (`GetStructuredReports`, `type=40`) de um fundo e, para o documento ativo mais recente cuja referência não seja posterior à data de referência, baixar o HTML do FundosNet e extrair, por rótulo, o número de cotistas, o patrimônio líquido, a quantidade de cotas emitidas e o valor patrimonial por cota. A ausência de informes DEVE resultar em ausência de dados, distinta de falha de aquisição.
+O sistema DEVE listar os documentos do Informe Mensal Estruturado (`GetStructuredReports`, `type=40`) de um fundo e, para o documento ativo mais recente cuja referência não seja posterior à data de referência, baixar o HTML do FundosNet e extrair, por rótulo, o número de cotistas, o patrimônio líquido, a quantidade de cotas emitidas, o valor patrimonial por cota e a classificação autorregulação do fundo (Classificação, Subclassificação, Gestão e Segmento de Atuação). A ausência de informes DEVE resultar em ausência de dados, distinta de falha de aquisição.
 
 #### Scenario: Informe mensal extraído
 - **WHEN** o informe ativo mais recente contém os rótulos `Número de cotistas`, `Patrimônio Líquido`, `Número de Cotas Emitidas` e `Valor Patrimonial das Cotas`
 - **THEN** o sistema DEVE expor o número de cotistas, o patrimônio líquido, as cotas emitidas e o VP/Cota, com a data de referência do informe
+
+#### Scenario: Classificação autorregulação extraída
+- **WHEN** o informe ativo contém o rótulo `Classificação autorregulação` com Classificação, Subclassificação, Gestão e Segmento de Atuação
+- **THEN** o sistema DEVE expor esses quatro campos no informe normalizado, tolerando rótulos ausentes
 
 #### Scenario: Sem informes no período
 - **WHEN** a listagem `type=40` retorna lista vazia
@@ -168,3 +172,19 @@ O sistema DEVE versionar as chaves de cache de documentos e de identidade com a 
 #### Scenario: Política de cache em um único ponto
 - **WHEN** um prazo de validade ou nome de chave da aquisição B3 precisa mudar
 - **THEN** a alteração DEVE ocorrer nas constantes do cliente, sem duplicar valores literais nos métodos de aquisição
+
+### Requirement: Extração da identidade fiscal do Informe Mensal Estruturado
+
+O sistema DEVE extrair, por rótulo, o CNPJ do fundo e o administrador (nome e CNPJ) do HTML do Informe Mensal Estruturado do FundosNet, tolerando rótulos ausentes sem invalidar os demais campos do informe.
+
+#### Scenario: CNPJ do fundo extraído
+- **WHEN** o informe ativo contém o rótulo `CNPJ do Fundo/Classe`
+- **THEN** o sistema DEVE expor o CNPJ do fundo normalizado
+
+#### Scenario: Administrador e CNPJ extraídos
+- **WHEN** o informe ativo contém os rótulos `Nome do Administrador` e `CNPJ do Administrador`
+- **THEN** o sistema DEVE expor o nome e o CNPJ do administrador
+
+#### Scenario: Rótulo ausente
+- **WHEN** um dos rótulos de identidade fiscal está ausente
+- **THEN** o campo correspondente DEVE ser ausência de valor, sem impedir a extração dos demais

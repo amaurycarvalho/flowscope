@@ -119,3 +119,54 @@ class TestIntegracaoProviderPrimario:
         assert resultado[0].erro is None
         assert resultado[1].metricas is not None
         assert resultado[1].metricas.p_vp == Decimal("0.92")
+
+
+class TestProvenienciaCamposB3:
+    def test_campos_compostos_b3_preservam_fonte(self):
+        from flowscope.application.fundamental_ports import (
+            CAMPO_CLASSIFICACAO_FII,
+            CAMPO_DISCRIMINADOR,
+            CAMPO_VP_COTA,
+        )
+        from flowscope.domain.b3 import B3InformeMensal
+        from flowscope.domain.fii import PatrimonioFii
+        from flowscope.infrastructure.fii.b3_fundamental_provider import (
+            B3FundamentalDataProvider,
+        )
+
+        class _RepoB3:
+            def obter_nome(self, ticker):
+                return "CYRELA CRÉDITO"
+
+            def obter_informe(self, ticker, reference_date):
+                return B3InformeMensal(
+                    document_id=1,
+                    reference_date=reference_date,
+                    reference_month="07/2026",
+                    cotistas=16778,
+                    patrimonio_liquido=Decimal("346086182.72"),
+                    cotas_emitidas=Decimal("36549445"),
+                    valor_patrimonial_cota=Decimal("9.468986"),
+                    classificacao="Papel",
+                    gestao="Ativa",
+                    segmento_atuacao="Outros",
+                )
+
+            def obter_patrimonio(self, ticker, reference_date):
+                return PatrimonioFii(
+                    reference_date=reference_date,
+                    net_asset_value=Decimal("346086182.72"),
+                    shares_outstanding=Decimal("36549445"),
+                    cotistas=16778,
+                    fonte="B3",
+                    vp_cota=Decimal("9.468986"),
+                )
+
+        composto = CompositeFundamentalProvider(
+            [_Fonte(falhar=True), B3FundamentalDataProvider(_RepoB3())]
+        )
+        campos = composto.obter("CYCR11", REFERENCIA)
+        assert campos[CAMPO_CLASSIFICACAO_FII].fonte == "B3"
+        assert campos[CAMPO_DISCRIMINADOR].fonte == "B3"
+        assert campos[CAMPO_VP_COTA].fonte == "B3"
+        assert campos[CAMPO_VP_COTA].valor == Decimal("9.468986")

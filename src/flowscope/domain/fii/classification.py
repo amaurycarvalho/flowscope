@@ -286,6 +286,28 @@ TIPO_EXIBICAO_PAPEL = "Papel"
 TIPO_EXIBICAO_FII = "FII"
 TIPO_EXIBICAO_DESCONHECIDO = "Desconhecido"
 
+#: Classificação autorregulação da B3 para FII de papel.
+CLASSIFICACAO_FII_PAPEL = "papel"
+
+#: Classificações autorregulação da B3 que correspondem a tijolo/híbrido.
+CLASSIFICACOES_TIJOLO_FII = frozenset({"tijolo", "híbrido", "hibrido"})
+
+
+def classe_fii_elegivel_ffo(classificacao_fii: str | None) -> bool | None:
+    """Indica se a classificação autorregulação torna o FII elegível ao FFO.
+
+    Retorna ``True`` para tijolo/híbrido, ``False`` para papel e ``None``
+    quando a classificação é ausente ou desconhecida.
+    """
+    if not classificacao_fii:
+        return None
+    classe = classificacao_fii.strip().lower()
+    if classe in CLASSIFICACOES_TIJOLO_FII:
+        return True
+    if classe == CLASSIFICACAO_FII_PAPEL:
+        return False
+    return None
+
 _LABEL_SUB_TIPO_FII: Mapping[SubTipoFii, str | None] = {
     SubTipoFii.TIJOLO: "Tijolo",
     SubTipoFii.PAPEL: "Papel",
@@ -324,15 +346,18 @@ def classificar_exibicao(
     segmento: str | None = None,
     gestao: str | None = None,
     qtd_imoveis: int | None = None,
+    classificacao_fii: str | None = None,
     fallback: ClassificacaoAtivo | None = None,
 ) -> ClassificacaoExibicao:
     """Compõe o Tipo e o Sub-tipo a partir dos campos do Fundamentus.
 
     Quando o discriminador está ausente, usa a classificação determinística
-    informada em ``fallback`` (sintaxe/codeCVM/taxonomia).
+    informada em ``fallback`` (sintaxe/codeCVM/taxonomia). Quando os campos do
+    Fundamentus estão ausentes, ``classificacao_fii`` (Classificação
+    autorregulação da B3) define o prefixo ``Tijolo:``/``Papel:``.
     """
     if discriminador == DISCRIMINADOR_FII:
-        prefixo = "Tijolo: " if (qtd_imoveis or 0) > 0 else "Papel: "
+        prefixo = _prefixo_fii(classificacao_fii, qtd_imoveis)
         base = _juntar(segmento, gestao)
         return ClassificacaoExibicao(
             TIPO_EXIBICAO_FII, f"{prefixo}{base}" if base else prefixo.strip()
@@ -341,6 +366,18 @@ def classificar_exibicao(
         base = _juntar(especie, setor, subsetor)
         return ClassificacaoExibicao(TIPO_EXIBICAO_PAPEL, base or None)
     return _exibicao_do_fallback(fallback)
+
+
+def _prefixo_fii(
+    classificacao_fii: str | None, qtd_imoveis: int | None
+) -> str:
+    """Deriva o prefixo do sub-tipo de FII a partir da classificação da B3."""
+    classe = (classificacao_fii or "").strip().lower()
+    if classe in CLASSIFICACOES_TIJOLO_FII:
+        return "Tijolo: "
+    if classe == CLASSIFICACAO_FII_PAPEL:
+        return "Papel: "
+    return "Tijolo: " if (qtd_imoveis or 0) > 0 else "Papel: "
 
 
 def _exibicao_do_fallback(
