@@ -71,6 +71,15 @@ _COLUNAS = (
     ("dados_fiscais", "Dados fiscais"),
 )
 
+#: Colunas congeladas à esquerda da tabela (identidade da linha).
+_COLUNAS_FIXAS = _COLUNAS[:2]
+
+#: Colunas roláveis horizontalmente.
+_COLUNAS_ROLANTES = _COLUNAS[2:]
+
+#: Largura mínima reservada ao painel rolável, limitando o painel congelado.
+_LARGURA_MINIMA_ROLANTE = 200
+
 #: Colunas cujo conteúdo é alinhado à direita.
 _COLUNAS_DIREITA = frozenset(
     {
@@ -433,7 +442,12 @@ def rotulo_tendencia(tendencia: Enum | None) -> str:
 
 
 class FundamentalTablePanel:
-    """Tabela fundamentalista alimentada pela watchlist de tickers."""
+    """Tabela fundamentalista alimentada pela watchlist de tickers.
+
+    A tabela é composta por dois ``ttk.Treeview`` sincronizados: um painel
+    congelado com as colunas ``Ticker`` e ``Nome`` e um painel rolável com as
+    demais colunas. Ambos compartilham a barra de rolagem vertical.
+    """
 
     def __init__(
         self: "FundamentalTablePanel",
@@ -441,62 +455,218 @@ class FundamentalTablePanel:
         widths: Mapping[str, object] | None = None,
         on_widths_changed: object | None = None,
     ) -> None:
-        """Constrói o painel com o ``Treeview`` e as barras de rolagem."""
+        """Constrói o painel com os dois ``Treeview`` e as barras de rolagem."""
         self.frame = ttk.Frame(parent)
-        self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
         self._on_widths_changed = on_widths_changed
-        self._tree = ttk.Treeview(
-            self.frame, columns=self._columns, show="headings"
+        self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
+        self._columns_fixas = [coluna_id for coluna_id, _ in _COLUNAS_FIXAS]
+        self._columns_rolantes = [coluna_id for coluna_id, _ in _COLUNAS_ROLANTES]
+        self._syncing_selection = False
+        self._largura_fixo_atual = -1
+
+        self._frame_fixo = ttk.Frame(self.frame)
+        self._tree_fixo = ttk.Treeview(
+            self._frame_fixo,
+            columns=self._columns_fixas,
+            show="headings",
+            selectmode="browse",
         )
-        for coluna_id, cabecalho in _COLUNAS:
-            self._tree.heading(coluna_id, text=cabecalho)
-            self._tree.column(
-                coluna_id,
-                width=_largura_coluna(widths, coluna_id),
-                minwidth=80,
-                stretch=False,
-                anchor="e" if coluna_id in _COLUNAS_DIREITA else "w",
+        for coluna_id, cabecalho in _COLUNAS_FIXAS:
+            self._configurar_coluna(self._tree_fixo, coluna_id, cabecalho, widths)
+        self._tree_fixo.grid(row=0, column=0, sticky="nsew")
+
+        self._frame_rolavel = ttk.Frame(self.frame)
+        self._tree_rolavel = ttk.Treeview(
+            self._frame_rolavel,
+            columns=self._columns_rolantes,
+            show="headings",
+            selectmode="browse",
+        )
+        for coluna_id, cabecalho in _COLUNAS_ROLANTES:
+            self._configurar_coluna(
+                self._tree_rolavel, coluna_id, cabecalho, widths
             )
-        scrollbar_v = ttk.Scrollbar(
-            self.frame, orient="vertical", command=self._tree.yview
+        self._tree_rolavel.grid(row=0, column=0, sticky="nsew")
+
+        self._scrollbar_v = ttk.Scrollbar(
+            self.frame, orient="vertical", command=self._on_vscroll
         )
-        scrollbar_h = ttk.Scrollbar(
-            self.frame, orient="horizontal", command=self._tree.xview
+        self._scrollbar_h = ttk.Scrollbar(
+            self._frame_rolavel,
+            orient="horizontal",
+            command=self._tree_rolavel.xview,
         )
-        self._tree.configure(
-            yscrollcommand=scrollbar_v.set,
-            xscrollcommand=scrollbar_h.set,
+        self._tree_rolavel.configure(
+            yscrollcommand=self._on_yscroll,
+            xscrollcommand=self._scrollbar_h.set,
         )
-        self._tree.grid(row=0, column=0, sticky="nsew")
-        scrollbar_v.grid(row=0, column=1, sticky="ns")
-        scrollbar_h.grid(row=1, column=0, sticky="ew")
+        self._scrollbar_h.grid(row=1, column=0, sticky="ew")
+
+        self._espacador = ttk.Frame(
+            self._frame_fixo, height=self._scrollbar_h.winfo_reqheight()
+        )
+        self._espacador.grid(row=1, column=0, sticky="ew")
+
+        self._divisor = ttk.Separator(self.frame, orient="vertical")
+        self._frame_fixo.grid(row=0, column=0, sticky="nsew")
+        self._divisor.grid(row=0, column=1, sticky="ns")
+        self._frame_rolavel.grid(row=0, column=2, sticky="nsew")
+        self._scrollbar_v.grid(row=0, column=3, sticky="ns")
+
         self.frame.rowconfigure(0, weight=1)
-        self.frame.columnconfigure(0, weight=1)
-        self._tree.bind("<ButtonRelease-1>", self._on_column_resized, add="+")
+        self.frame.columnconfigure(0, weight=0)
+        self.frame.columnconfigure(1, weight=0)
+        self.frame.columnconfigure(2, weight=1)
+        self._frame_fixo.rowconfigure(0, weight=1)
+        self._frame_fixo.columnconfigure(0, weight=1)
+        self._frame_fixo.grid_propagate(False)
+        self._frame_rolavel.rowconfigure(0, weight=1)
+        self._frame_rolavel.columnconfigure(0, weight=1)
+
+        for tree in (self._tree_fixo, self._tree_rolavel):
+            tree.bind("<ButtonRelease-1>", self._on_column_resized, add="+")
+            self._vincular_roda(tree)
+        self._tree_fixo.bind("<<TreeviewSelect>>", self._on_select_fixo)
+        self._tree_rolavel.bind("<<TreeviewSelect>>", self._on_select_rolavel)
+        self.frame.bind("<Configure>", self._on_frame_configure, add="+")
+
         self._last_widths = self.get_column_widths()
+        self._ajustar_largura_fixo(self._last_widths)
+
+    @staticmethod
+    def _configurar_coluna(
+        tree: ttk.Treeview,
+        coluna_id: str,
+        cabecalho: str,
+        widths: Mapping[str, object] | None,
+    ) -> None:
+        """Configura cabeçalho, largura e alinhamento de uma coluna."""
+        tree.heading(coluna_id, text=cabecalho)
+        tree.column(
+            coluna_id,
+            width=_largura_coluna(widths, coluna_id),
+            minwidth=80,
+            stretch=False,
+            anchor="e" if coluna_id in _COLUNAS_DIREITA else "w",
+        )
+
+    def _on_vscroll(self: "FundamentalTablePanel", *args: object) -> None:
+        """Move os dois ``Treeview`` conforme o comando da barra vertical."""
+        self._tree_rolavel.yview(*args)
+        self._tree_fixo.yview(*args)
+
+    def _on_yscroll(
+        self: "FundamentalTablePanel", first: str, last: str
+    ) -> None:
+        """Atualiza a barra vertical e alinha o painel congelado."""
+        self._scrollbar_v.set(first, last)
+        self._tree_fixo.yview_moveto(float(first))
+
+    def _vincular_roda(self: "FundamentalTablePanel", tree: ttk.Treeview) -> None:
+        """Associa os eventos de roda do mouse do painel ao rolável."""
+        tree.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        tree.bind("<Button-4>", self._on_mousewheel, add="+")
+        tree.bind("<Button-5>", self._on_mousewheel, add="+")
+
+    def _on_mousewheel(self: "FundamentalTablePanel", event: object) -> str:
+        """Encaminha a roda do mouse para o painel rolável."""
+        numero = getattr(event, "num", None)
+        delta = getattr(event, "delta", 0)
+        if numero == 4:
+            passo = -1
+        elif numero == 5:
+            passo = 1
+        else:
+            passo = -1 if delta > 0 else 1
+        self._tree_rolavel.yview_scroll(passo, "units")
+        return "break"
+
+    def _on_select_fixo(self: "FundamentalTablePanel", event: object = None) -> None:
+        """Espelha a seleção do painel congelado no rolável."""
+        self._espelhar_selecao(self._tree_fixo, self._tree_rolavel)
+
+    def _on_select_rolavel(
+        self: "FundamentalTablePanel", event: object = None
+    ) -> None:
+        """Espelha a seleção do painel rolável no congelado."""
+        self._espelhar_selecao(self._tree_rolavel, self._tree_fixo)
+
+    def _espelhar_selecao(
+        self: "FundamentalTablePanel",
+        origem: ttk.Treeview,
+        destino: ttk.Treeview,
+    ) -> None:
+        """Copia a linha selecionada de um painel para o outro."""
+        if self._syncing_selection:
+            return
+        selecionados = origem.selection()
+        if tuple(destino.selection()) == tuple(selecionados):
+            return
+        self._syncing_selection = True
+        try:
+            for item in destino.selection():
+                if item not in selecionados:
+                    destino.selection_remove(item)
+            if selecionados:
+                destino.selection_set(selecionados[0])
+                destino.focus(selecionados[0])
+        finally:
+            self._syncing_selection = False
 
     def get_column_widths(self: "FundamentalTablePanel") -> dict[str, int]:
         """Retorna a largura atual de cada coluna, indexada pelo id."""
-        return {
-            coluna_id: int(self._tree.column(coluna_id, "width"))
-            for coluna_id in self._columns
+        larguras = {
+            coluna_id: int(self._tree_fixo.column(coluna_id, "width"))
+            for coluna_id in self._columns_fixas
         }
+        larguras.update(
+            {
+                coluna_id: int(self._tree_rolavel.column(coluna_id, "width"))
+                for coluna_id in self._columns_rolantes
+            }
+        )
+        return larguras
 
     def _on_column_resized(self: "FundamentalTablePanel", event: object = None) -> None:
         """Notifica o callback quando a largura das colunas muda."""
         atuais = self.get_column_widths()
+        self._ajustar_largura_fixo(atuais)
         if atuais == self._last_widths:
             return
         self._last_widths = atuais
         if callable(self._on_widths_changed):
             self._on_widths_changed(atuais)
 
+    def _on_frame_configure(
+        self: "FundamentalTablePanel", event: object = None
+    ) -> None:
+        """Recalcula a fronteira quando o painel muda de tamanho."""
+        self._ajustar_largura_fixo()
+
+    def _ajustar_largura_fixo(
+        self: "FundamentalTablePanel",
+        widths: Mapping[str, int] | None = None,
+    ) -> None:
+        """Ajusta a largura do painel congelado à soma das colunas fixas."""
+        larguras = widths if widths is not None else self.get_column_widths()
+        soma = sum(larguras[coluna_id] for coluna_id in self._columns_fixas)
+        disponivel = self.frame.winfo_width()
+        if disponivel > 1:
+            limite = max(0, disponivel - _LARGURA_MINIMA_ROLANTE)
+            soma = min(soma, limite)
+        if soma != self._largura_fixo_atual:
+            self._frame_fixo.configure(width=soma)
+            self._largura_fixo_atual = soma
+
     def update(self: "FundamentalTablePanel", data: Mapping[str, object]) -> None:
         """Substitui as linhas exibidas pelos dados informados por ticker."""
-        for item in self._tree.get_children():
-            self._tree.delete(item)
+        for tree in (self._tree_fixo, self._tree_rolavel):
+            for item in tree.get_children():
+                tree.delete(item)
         for linha in montar_linhas(data):
-            self._tree.insert("", "end", values=linha)
+            iid = linha[0]
+            self._tree_fixo.insert("", "end", iid=iid, values=linha[:2])
+            self._tree_rolavel.insert("", "end", iid=iid, values=linha[2:])
 
     def reset(self: "FundamentalTablePanel") -> None:
         """Limpa o painel exibindo nenhuma linha."""

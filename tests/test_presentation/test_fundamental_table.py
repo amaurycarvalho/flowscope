@@ -501,27 +501,98 @@ needs_display = pytest.mark.skipif(
 
 class TestFundamentalTablePanel:
     @needs_display
-    def test_update_popula_treeview(self):
+    def test_painel_expoe_dois_treeviews(self):
         root = tk.Tk()
         try:
             painel = FundamentalTablePanel(root)
-            painel.update({"HGBS11": _analise_hgbs11(), "PETR4": _analise_acao()})
-            filhos = painel._tree.get_children()
-            assert len(filhos) == 2
-            valores = painel._tree.item(filhos[0], "values")
-            assert valores[0] == "HGBS11"
-            assert valores[15] == "8,16%"
+            assert tuple(painel._tree_fixo.cget("columns")) == ("ticker", "nome")
+            assert len(painel._tree_rolavel.cget("columns")) == 24
         finally:
             root.destroy()
 
     @needs_display
-    def test_update_vazio_limpa_treeview(self):
+    def test_update_popula_os_dois_treeviews(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.update({"HGBS11": _analise_hgbs11(), "PETR4": _analise_acao()})
+            fixos = painel._tree_fixo.get_children()
+            rolantes = painel._tree_rolavel.get_children()
+            assert fixos == rolantes == ("HGBS11", "PETR4")
+            valores = painel._tree_fixo.item(fixos[0], "values")
+            assert valores[0] == "HGBS11"
+            assert valores[1] == "CSHG Renda Urbana"
+            rolavel = painel._tree_rolavel.item(fixos[0], "values")
+            assert rolavel[13] == "8,16%"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_linha_dividida_reconstroi_26_campos(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.update({"HGBS11": _analise_hgbs11()})
+            iid = painel._tree_fixo.get_children()[0]
+            congelados = tuple(painel._tree_fixo.item(iid, "values"))
+            rolantes = tuple(painel._tree_rolavel.item(iid, "values"))
+            assert len(congelados) == 2
+            assert len(rolantes) == 24
+            assert len(congelados + rolantes) == 26
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_update_vazio_limpa_os_dois_treeviews(self):
         root = tk.Tk()
         try:
             painel = FundamentalTablePanel(root)
             painel.update({"HGBS11": _analise_hgbs11()})
             painel.reset()
-            assert len(painel._tree.get_children()) == 0
+            assert len(painel._tree_fixo.get_children()) == 0
+            assert len(painel._tree_rolavel.get_children()) == 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_layout_em_grid_com_barra_compartilhada(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            assert painel._frame_fixo.grid_info()["column"] == 0
+            assert painel._divisor.grid_info()["column"] == 1
+            assert painel._frame_rolavel.grid_info()["column"] == 2
+            assert painel._scrollbar_v.grid_info()["column"] == 3
+            assert painel._scrollbar_v.grid_info()["in"] == painel.frame
+            assert painel._scrollbar_h.grid_info()["in"] == painel._frame_rolavel
+            assert painel.frame.grid_columnconfigure(0)["weight"] == 0
+            assert painel.frame.grid_columnconfigure(1)["weight"] == 0
+            assert painel.frame.grid_columnconfigure(2)["weight"] == 1
+            assert painel._espacador.grid_info()["in"] == painel._frame_fixo
+            assert painel._espacador.grid_info()["row"] == 1
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_divisor_fixo_entre_os_paineis(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            assert isinstance(painel._divisor, ttk.Separator)
+            assert str(painel._divisor.cget("orient")) == "vertical"
+            assert painel._divisor.grid_info()["column"] == 1
+            assert painel._divisor.grid_info()["in"] == painel.frame
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_get_column_widths_agrega_os_dois_treeviews(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            larguras = painel.get_column_widths()
+            assert set(larguras) == set(painel._columns)
+            assert len(larguras) == 26
         finally:
             root.destroy()
 
@@ -531,6 +602,19 @@ class TestFundamentalTablePanel:
         try:
             painel = FundamentalTablePanel(root, widths={"ticker": 200})
             assert painel.get_column_widths()["ticker"] == 200
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_larguras_persistidas_vai_para_treeview_correto(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(
+                root, widths={"ticker": 200, "nome": 180, "p": 90}
+            )
+            assert int(painel._tree_fixo.column("ticker", "width")) == 200
+            assert int(painel._tree_fixo.column("nome", "width")) == 180
+            assert int(painel._tree_rolavel.column("p", "width")) == 90
         finally:
             root.destroy()
 
@@ -551,9 +635,138 @@ class TestFundamentalTablePanel:
             painel = FundamentalTablePanel(
                 root, on_widths_changed=registradas.append
             )
-            painel._tree.column("ticker", width=222)
+            painel._tree_fixo.column("ticker", width=222)
             painel._on_column_resized()
             assert registradas and registradas[-1]["ticker"] == 222
+            assert registradas[-1]["p"] == 140
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_fronteira_ajusta_ao_redimensionar_coluna_congelada(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill="both", expand=True)
+            root.geometry("900x300")
+            root.update()
+            painel._tree_fixo.column("ticker", width=200)
+            painel._tree_fixo.column("nome", width=210)
+            painel._on_column_resized()
+            root.update()
+            assert painel._frame_fixo.winfo_width() == 410
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_painel_rolavel_mantem_largura_minima(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill="both", expand=True)
+            root.geometry("400x300")
+            root.update()
+            painel._tree_fixo.column("ticker", width=600)
+            painel._tree_fixo.column("nome", width=600)
+            painel._on_column_resized()
+            root.update()
+            disponivel = painel.frame.winfo_width()
+            assert painel._frame_fixo.winfo_width() <= disponivel - 200
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_rolagem_vertical_sincroniza_os_paineis(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill="both", expand=True)
+            root.geometry("900x200")
+            root.update()
+            painel.update(
+                {f"AAA{i:02d}": {"daily_data": []} for i in range(60)}
+            )
+            root.update()
+            painel._tree_rolavel.yview_moveto(0.5)
+            root.update()
+            assert painel._tree_fixo.yview()[0] == pytest.approx(
+                painel._tree_rolavel.yview()[0]
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_barra_vertical_move_os_dois_paineis(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill="both", expand=True)
+            root.geometry("900x200")
+            root.update()
+            painel.update(
+                {f"AAA{i:02d}": {"daily_data": []} for i in range(60)}
+            )
+            root.update()
+            painel._on_vscroll("moveto", "0.4")
+            root.update()
+            assert painel._tree_fixo.yview()[0] == pytest.approx(0.4, abs=0.01)
+            assert painel._tree_fixo.yview()[0] == pytest.approx(
+                painel._tree_rolavel.yview()[0]
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_roda_do_mouse_encaminha_rolagem(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill="both", expand=True)
+            root.geometry("900x200")
+            root.update()
+            painel.update(
+                {f"AAA{i:02d}": {"daily_data": []} for i in range(60)}
+            )
+            root.update()
+
+            class _Evento:
+                num = 5
+                delta = 0
+
+            inicio = painel._tree_rolavel.yview()[0]
+            assert painel._on_mousewheel(_Evento()) == "break"
+            root.update()
+            assert painel._tree_rolavel.yview()[0] > inicio
+            assert painel._tree_fixo.yview()[0] == pytest.approx(
+                painel._tree_rolavel.yview()[0]
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_selecao_espelhada_entre_os_paineis(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.update(
+                {f"AAA{i:02d}": {"daily_data": []} for i in range(5)}
+            )
+            painel._tree_fixo.selection_set("AAA02")
+            root.update()
+            assert painel._tree_rolavel.selection() == ("AAA02",)
+            painel._tree_rolavel.selection_set("AAA04")
+            root.update()
+            assert painel._tree_fixo.selection() == ("AAA04",)
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_selecao_e_unica(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            assert str(painel._tree_fixo.cget("selectmode")) == "browse"
+            assert str(painel._tree_rolavel.cget("selectmode")) == "browse"
         finally:
             root.destroy()
 
@@ -579,8 +792,13 @@ class TestFundamentalTablePanel:
                 "patrimonio",
             }
             for coluna_id in painel._columns:
+                tree = (
+                    painel._tree_fixo
+                    if coluna_id in painel._columns_fixas
+                    else painel._tree_rolavel
+                )
                 esperado = "e" if coluna_id in direita else "w"
-                assert str(painel._tree.column(coluna_id, "anchor")) == esperado
+                assert str(tree.column(coluna_id, "anchor")) == esperado
         finally:
             root.destroy()
 
