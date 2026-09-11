@@ -95,6 +95,64 @@ class TestQuarterly:
             repo.get_components(CNPJ, REFERENCIA)
 
 
+CSV_COMPLEMENTO = (
+    "CNPJ_Fundo_Classe;Data_Referencia;Versao;"
+    "Percentual_Indexador_Valor_Total_IGPM;"
+    "Percentual_Indexador_Valor_Total_INPC;"
+    "Percentual_Indexador_Valor_Total_IPCA;"
+    "Percentual_Indexador_Valor_Total_INCC\n"
+    "28.737.771/0001-85;2026-03-31;1;0;0.184051;0.134952;0\n"
+    "28.737.771/0001-85;2026-06-30;1;0;0;0.220667;0\n"
+    "99.999.999/0001-91;2026-06-30;1;0;0;0.5;0\n"
+)
+
+
+def _zip_complemento(conteudo: str) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as arquivo:
+        arquivo.writestr(
+            "inf_trimestral_fii_complemento_2026.csv",
+            conteudo.encode("latin1"),
+        )
+    return buffer.getvalue()
+
+
+class TestIndexadores:
+    def _repo(self, tmp_path, conteudo=CSV_COMPLEMENTO):
+        downloader = CvmDatasetDownloader(
+            base_url="https://x",
+            arquivo=lambda ano: f"inf_trimestral_fii_{ano}.zip",
+            dataset="FII-INF-TRIMESTRAL",
+            cache_dir=tmp_path,
+            fetch=lambda ano: _zip_complemento(conteudo),
+        )
+        return CvmQuarterlyRepository(downloader=downloader)
+
+    def test_competencia_mais_recente(self, tmp_path):
+        indexadores = self._repo(tmp_path).get_indexadores(CNPJ, REFERENCIA)
+        assert indexadores == {"IPCA": Decimal("0.220667")}
+
+    def test_percentual_zero_omitido(self, tmp_path):
+        indexadores = self._repo(tmp_path).get_indexadores(CNPJ, REFERENCIA)
+        assert "IGPM" not in indexadores
+        assert "INCC" not in indexadores
+
+    def test_cnpj_ausente(self, tmp_path):
+        assert self._repo(tmp_path).get_indexadores(
+            "00000000000000", REFERENCIA
+        ) == {}
+
+    def test_sem_valores(self, tmp_path):
+        conteudo = (
+            "CNPJ_Fundo_Classe;Data_Referencia;Versao;"
+            "Percentual_Indexador_Valor_Total_IPCA\n"
+            "28.737.771/0001-85;2026-06-30;1;\n"
+        )
+        assert self._repo(tmp_path, conteudo=conteudo).get_indexadores(
+            CNPJ, REFERENCIA
+        ) == {}
+
+
 class TestDfin:
     def _repo(self, tmp_path, conteudo=CSV_DFIN):
         downloader = CvmDatasetDownloader(

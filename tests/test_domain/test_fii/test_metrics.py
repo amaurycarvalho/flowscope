@@ -20,6 +20,8 @@ from flowscope.domain.fii import (
     p_ffo,
     p_l,
     p_vp,
+    percentual_preco_tipico,
+    preco_tipico,
     verificar_consistencia,
 )
 
@@ -80,6 +82,25 @@ class TestFuncoesPurras:
         assert ffo_payout(Decimal("213080000"), Decimal("220777000")) == Decimal(
             "213080000"
         ) / Decimal("220777000")
+
+    def test_preco_tipico(self):
+        assert preco_tipico(
+            Decimal("12"), Decimal("8"), Decimal("10")
+        ) == Decimal("10")
+
+    def test_preco_tipico_insumo_ausente(self):
+        assert preco_tipico(None, Decimal("8"), Decimal("10")) is None
+        assert preco_tipico(Decimal("12"), None, Decimal("10")) is None
+        assert preco_tipico(Decimal("12"), Decimal("8"), None) is None
+
+    def test_percentual_preco_tipico(self):
+        valor = percentual_preco_tipico(Decimal("9"), Decimal("10"))
+        assert valor == Decimal("-0.1")
+
+    def test_percentual_preco_tipico_indisponivel(self):
+        assert percentual_preco_tipico(None, Decimal("10")) is None
+        assert percentual_preco_tipico(Decimal("9"), None) is None
+        assert percentual_preco_tipico(Decimal("9"), Decimal(0)) is None
 
 
 class TestAnaliseSnapshot:

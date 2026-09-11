@@ -5,7 +5,7 @@ preço de mercado) e o resultado agregado por ticker consumido pela camada de
 apresentação.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
@@ -71,5 +71,19 @@ class AnaliseFundamental:
     classe_cotistas: ClasseCotistas | None = None
     classe_patrimonio: ClassePatrimonio | None = None
     data_referencia: date | None = None
+    lpa: Decimal | None = None
+    roe: Decimal | None = None
+    roic: Decimal | None = None
+    cap_rate: Decimal | None = None
+    vacancia_media: Decimal | None = None
+    qtd_imoveis: int | None = None
+    preco_tipico: Decimal | None = None
+    pct_preco_tipico: Decimal | None = None
+    indexadores: dict[str, Decimal] = field(default_factory=dict)
+    cnpj: str | None = None
+    nome_administrador: str | None = None
+    cnpj_administrador: str | None = None
+    nome_gestor: str | None = None
+    cnpj_gestor: str | None = None
     avisos: tuple[str, ...] = ()
     erro: str | None = None

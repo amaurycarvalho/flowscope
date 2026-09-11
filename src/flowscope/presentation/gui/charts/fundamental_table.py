@@ -13,9 +13,11 @@ from enum import Enum
 from tkinter import ttk
 
 from flowscope.domain.fii import (
+    TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClasseCotistas,
     ClassePatrimonio,
+    ClassificacaoExibicao,
     SubTipoAcao,
     SubTipoFii,
     TipoAtivo,
@@ -63,6 +65,8 @@ _COLUNAS = (
     ("patrimonio", "Patrimônio"),
     ("classe_patrimonio", "Classe de patrimônio"),
     ("data_referencia", "Data de referência"),
+    ("informacoes_adicionais", "Informações adicionais"),
+    ("dados_fiscais", "Dados fiscais"),
 )
 
 #: Colunas cujo conteúdo é alinhado à direita.
@@ -194,6 +198,19 @@ def formatar_inteiro(valor: int | None) -> str:
     return f"{valor:,}".replace(",", ".")
 
 
+def formatar_cnpj(valor: str | None) -> str:
+    """Formata um CNPJ como ``99.999.999/9999-99``, ou ``N/A``."""
+    if not valor:
+        return NA
+    digitos = "".join(caractere for caractere in valor if caractere.isdigit())
+    if len(digitos) != 14:
+        return valor.strip()
+    return (
+        f"{digitos[:2]}.{digitos[2:5]}.{digitos[5:8]}/"
+        f"{digitos[8:12]}-{digitos[12:]}"
+    )
+
+
 def formatar_patrimonio(valor: Decimal | None) -> str:
     """Formata o patrimônio líquido de forma legível (mi/bi), ou ``N/A``."""
     if valor is None:
@@ -235,6 +252,105 @@ def _payout(
     return dividend_yield / ffo_yield
 
 
+def _itens_imoveis(analise: AnaliseFundamental) -> list[str]:
+    """Monta os itens de imóveis, omitindo-os quando não há quantidade."""
+    if not analise.qtd_imoveis:
+        return []
+    itens = [f"Qtd Imóveis {formatar_inteiro(analise.qtd_imoveis)}"]
+    if analise.cap_rate is not None:
+        itens.append(f"Cap Rate {formatar_percentual(analise.cap_rate, 2)}")
+    if analise.vacancia_media is not None:
+        itens.append(
+            f"Vacância Média {formatar_percentual(analise.vacancia_media, 2)}"
+        )
+    return itens
+
+
+def _itens_indicadores_acao(analise: AnaliseFundamental) -> list[str]:
+    """Monta os indicadores de ação exibidos em Informações adicionais."""
+    itens: list[str] = []
+    if analise.lpa is not None:
+        itens.append(f"LPA {formatar_valor(analise.lpa)}")
+    if analise.roe is not None:
+        itens.append(f"ROE {formatar_percentual(analise.roe, 2)}")
+    if analise.roic is not None:
+        itens.append(f"ROIC {formatar_percentual(analise.roic, 2)}")
+    return itens
+
+
+def _itens_preco_tipico(analise: AnaliseFundamental) -> list[str]:
+    """Monta o Preço Típico com o desvio percentual entre parênteses."""
+    if analise.preco_tipico is None:
+        return []
+    texto = _agrupar(analise.preco_tipico, 2)
+    if analise.pct_preco_tipico is None:
+        return [f"Preço Típico {texto}"]
+    percentual = _agrupar(analise.pct_preco_tipico * Decimal(100), 2)
+    return [f"Preço Típico {texto} ({percentual}%)"]
+
+
+def _itens_indexadores(analise: AnaliseFundamental) -> list[str]:
+    """Monta os percentuais por indexador disponíveis do FII."""
+    return [
+        f"{rotulo} {formatar_percentual(valor, 2)}"
+        for rotulo, valor in analise.indexadores.items()
+        if valor is not None
+    ]
+
+
+#: Separador dos itens concatenados nas colunas adicionais.
+_SEPARADOR_ITENS = " | "
+
+
+def _informacoes_adicionais(
+    analise: AnaliseFundamental, exibicao: ClassificacaoExibicao
+) -> str:
+    """Concatena os itens de Informações adicionais, ou ``N/A`` quando vazio."""
+    if exibicao.tipo == TIPO_EXIBICAO_FII:
+        itens = _itens_imoveis(analise)
+    else:
+        itens = _itens_indicadores_acao(analise)
+    itens.extend(_itens_preco_tipico(analise))
+    if exibicao.tipo == TIPO_EXIBICAO_FII:
+        itens.extend(_itens_indexadores(analise))
+    return _SEPARADOR_ITENS.join(itens) if itens else NA
+
+
+def _item_identidade(
+    rotulo: str, nome: str | None, cnpj: str | None
+) -> str | None:
+    """Monta ``Rótulo Nome (CNPJ)`` omitindo as partes ausentes."""
+    partes: list[str] = []
+    if nome:
+        partes.append(nome)
+    if cnpj:
+        partes.append(f"({formatar_cnpj(cnpj)})")
+    if not partes:
+        return None
+    return f"{rotulo} {' '.join(partes)}"
+
+
+def _dados_fiscais(
+    analise: AnaliseFundamental, exibicao: ClassificacaoExibicao
+) -> str:
+    """Concatena os itens de Dados fiscais, ou ``N/A`` quando vazio."""
+    itens: list[str] = []
+    if analise.cnpj:
+        itens.append(f"CNPJ {formatar_cnpj(analise.cnpj)}")
+    if exibicao.tipo == TIPO_EXIBICAO_FII:
+        administrador = _item_identidade(
+            "Administrador", analise.nome_administrador, analise.cnpj_administrador
+        )
+        if administrador is not None:
+            itens.append(administrador)
+        gestor = _item_identidade(
+            "Gestor", analise.nome_gestor, analise.cnpj_gestor
+        )
+        if gestor is not None:
+            itens.append(gestor)
+    return _SEPARADOR_ITENS.join(itens) if itens else NA
+
+
 def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     """Monta a linha de uma análise fundamentalista completa."""
     classificacao = analise.classificacao
@@ -273,6 +389,8 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         formatar_patrimonio(analise.patrimonio),
         rotulo_classe_patrimonio(analise.classe_patrimonio),
         formatar_data(analise.data_referencia),
+        _informacoes_adicionais(analise, exibicao),
+        _dados_fiscais(analise, exibicao),
     )
 
 

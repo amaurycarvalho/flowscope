@@ -101,6 +101,11 @@ class TestSource:
         source = _source(tmp_path)
         assert source.obter_acionistas("XPTO3", REFERENCIA) is None
 
+    def test_obter_cnpj_resolve_no_fca(self, tmp_path):
+        source = _source(tmp_path)
+        assert source.obter_cnpj("PETR4", REFERENCIA) == CNPJ_PETR
+        assert source.obter_cnpj("XPTO3", REFERENCIA) is None
+
     def test_falha_de_rede_retorna_none(self, tmp_path):
         def fetch(_ano: int) -> bytes:
             raise RuntimeError("rede fora")

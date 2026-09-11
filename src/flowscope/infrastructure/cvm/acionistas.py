@@ -146,6 +146,16 @@ class CvmAcionistasSource:
             logger.warning("Falha ao obter acionistas de %s", ticker, exc_info=True)
             return None
 
+    def obter_cnpj(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> str | None:
+        """Retorna o CNPJ da companhia resolvido no FCA, ou ``None``."""
+        try:
+            return self._resolver_cnpj(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning("Falha ao resolver CNPJ de %s", ticker, exc_info=True)
+            return None
+
     def _resolver_cnpj(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
     ) -> str | None:

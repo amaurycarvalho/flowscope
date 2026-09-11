@@ -44,6 +44,9 @@ class B3InformeMensal:
     patrimonio_liquido: Decimal | None
     cotas_emitidas: Decimal | None
     valor_patrimonial_cota: Decimal | None
+    cnpj: str | None = None
+    nome_administrador: str | None = None
+    cnpj_administrador: str | None = None
     fonte: str = "B3"
 
 

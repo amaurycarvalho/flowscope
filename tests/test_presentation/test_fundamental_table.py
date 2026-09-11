@@ -280,6 +280,153 @@ class TestMontarLinhas:
         assert all(coluna == NA for coluna in colunas[4:])
 
 
+def _acao_com_indicadores() -> AnaliseFundamental:
+    return replace(
+        _analise_acao(),
+        lpa=Decimal("1.23"),
+        roe=Decimal("0.154"),
+        roic=Decimal("0.12"),
+        preco_tipico=Decimal("10"),
+        pct_preco_tipico=Decimal("-0.10"),
+    )
+
+
+def _fii_de_tijolo() -> AnaliseFundamental:
+    return replace(
+        _analise_hgbs11(),
+        qtd_imoveis=16,
+        cap_rate=Decimal("0.065"),
+        vacancia_media=Decimal("0.032"),
+        preco_tipico=Decimal("10"),
+        pct_preco_tipico=Decimal("-0.10"),
+        indexadores={"IPCA": Decimal("0.22"), "INCC": Decimal("0.05")},
+    )
+
+
+class TestInformacoesAdicionais:
+    def test_papel_com_indicadores_e_preco_tipico(self):
+        colunas = montar_linhas({"PETR4": _acao_com_indicadores()})[0]
+        assert colunas[22] == (
+            "LPA 1,23 | ROE 15,40% | ROIC 12,00% | "
+            "Preço Típico 10,00 (-10,00%)"
+        )
+
+    def test_fii_de_tijolo_com_imoveis_e_indexadores(self):
+        colunas = montar_linhas({"HGBS11": _fii_de_tijolo()})[0]
+        assert colunas[22] == (
+            "Qtd Imóveis 16 | Cap Rate 6,50% | Vacância Média 3,20% | "
+            "Preço Típico 10,00 (-10,00%) | IPCA 22,00% | INCC 5,00%"
+        )
+
+    def test_fii_de_papel_omite_imoveis(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            qtd_imoveis=0,
+            cap_rate=Decimal("0.065"),
+            vacancia_media=Decimal("0.032"),
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert "Qtd Imóveis" not in colunas[22]
+        assert "Cap Rate" not in colunas[22]
+        assert "Vacância Média" not in colunas[22]
+        assert colunas[22] == (
+            "Preço Típico 10,00 (-10,00%) | IPCA 22,00% | INCC 5,00%"
+        )
+
+    def test_fii_sem_fundamentus_omite_imoveis(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            qtd_imoveis=None,
+            cap_rate=None,
+            vacancia_media=None,
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert "Qtd Imóveis" not in colunas[22]
+        assert "Cap Rate" not in colunas[22]
+        assert "Vacância Média" not in colunas[22]
+
+    def test_itens_ausentes_omitidos_sem_impedir_os_demais(self):
+        analise = replace(
+            _acao_com_indicadores(),
+            roe=None,
+            pct_preco_tipico=None,
+        )
+        colunas = montar_linhas({"PETR4": analise})[0]
+        assert colunas[22] == "LPA 1,23 | ROIC 12,00% | Preço Típico 10,00"
+
+    def test_coluna_sem_itens_exibe_na(self):
+        colunas = montar_linhas({"PETR4": _analise_acao()})[0]
+        assert colunas[22] == NA
+
+
+class TestDadosFiscais:
+    def test_fii_exibe_cnpj_administrador_e_gestor_com_nomes(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            cnpj="12.345.678/0001-90",
+            nome_administrador="BANCO GENIAL S.A.",
+            cnpj_administrador="98.765.432/0001-10",
+            nome_gestor="CY.CAPITAL GESTORA",
+            cnpj_gestor="11.222.333/0001-44",
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert colunas[23] == (
+            "CNPJ 12.345.678/0001-90 | "
+            "Administrador BANCO GENIAL S.A. (98.765.432/0001-10) | "
+            "Gestor CY.CAPITAL GESTORA (11.222.333/0001-44)"
+        )
+
+    def test_fii_sem_nomes_exibe_apenas_cnpjs(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            cnpj="12.345.678/0001-90",
+            cnpj_administrador="98.765.432/0001-10",
+            cnpj_gestor="11.222.333/0001-44",
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert colunas[23] == (
+            "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
+            "Gestor (11.222.333/0001-44)"
+        )
+
+    def test_cnpj_sem_pontuacao_e_formatado(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            cnpj="12345678000190",
+            cnpj_gestor="11222333000144",
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert colunas[23] == (
+            "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
+        )
+
+    def test_papel_exibe_apenas_cnpj(self):
+        analise = replace(
+            _analise_acao(),
+            cnpj="33.000.167/0001-01",
+            cnpj_administrador="98.765.432/0001-10",
+            cnpj_gestor="11.222.333/0001-44",
+        )
+        colunas = montar_linhas({"PETR4": analise})[0]
+        assert colunas[23] == "CNPJ 33.000.167/0001-01"
+
+    def test_item_ausente_omitido(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            cnpj="12.345.678/0001-90",
+            cnpj_administrador=None,
+            cnpj_gestor="11.222.333/0001-44",
+        )
+        colunas = montar_linhas({"HGBS11": analise})[0]
+        assert colunas[23] == (
+            "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
+        )
+
+    def test_coluna_sem_itens_exibe_na(self):
+        colunas = montar_linhas({"PETR4": _analise_acao()})[0]
+        assert colunas[23] == NA
+
+
 class TestMontarCsv:
     def test_cabecalho_corresponde_as_colunas_da_tabela(self):
         csv = montar_csv({"HGBS11": _analise_hgbs11()})
@@ -288,7 +435,8 @@ class TestMontarCsv:
             "Dividend Yield;Última data-com;Último dividendo;Dividendo anterior;"
             "Tendência do dividendo;FFO Yield;Dividend Payout (DY/FFOY);FFO Trend;"
             "P/FFO;Nº de cotistas;Classe de cotistas;Patrimônio;"
-            "Classe de patrimônio;Data de referência"
+            "Classe de patrimônio;Data de referência;Informações adicionais;"
+            "Dados fiscais"
         )
 
     def test_linhas_preservam_ordem_e_valores_formatados(self):
@@ -308,6 +456,22 @@ class TestMontarCsv:
         assert campos[10] == "0,55"
         assert campos[11] == "0,50"
         assert campos[14] == "96,51%"
+
+    def test_csv_inclui_colunas_novas_com_os_mesmos_textos(self):
+        analise = replace(
+            _fii_de_tijolo(),
+            cnpj="12.345.678/0001-90",
+            cnpj_administrador="98.765.432/0001-10",
+            cnpj_gestor="11.222.333/0001-44",
+        )
+        linha = montar_linhas({"HGBS11": analise})[0]
+        campos = montar_csv({"HGBS11": analise}).split("\n")[1].split(";")
+        assert campos[22] == linha[22]
+        assert campos[23] == linha[23]
+        assert campos[23] == (
+            "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
+            "Gestor (11.222.333/0001-44)"
+        )
 
     def test_vazio_retorna_apenas_cabecalho(self):
         csv = montar_csv({})

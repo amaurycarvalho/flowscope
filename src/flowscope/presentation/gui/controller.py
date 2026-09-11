@@ -29,6 +29,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         fundamental_ffo_provider: object | None = None,
         fundamental_dividend_provider: object | None = None,
         fundamental_acionistas_provider: object | None = None,
+        fundamental_indexadores_provider: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -41,6 +42,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         self._fundamental_ffo_provider = fundamental_ffo_provider
         self._fundamental_dividend_provider = fundamental_dividend_provider
         self._fundamental_acionistas_provider = fundamental_acionistas_provider
+        self._fundamental_indexadores_provider = fundamental_indexadores_provider
         self._fundamental_generation = 0
         self._fundamental_job = None
 

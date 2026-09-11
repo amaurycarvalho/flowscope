@@ -6,7 +6,13 @@ fornece, reutilizando a identidade resolvida na B3.
 
 from datetime import date
 
-from flowscope.application.fundamental_ports import CAMPO_NOME, CampoFundamental
+from flowscope.application.fundamental_ports import (
+    CAMPO_ADMINISTRADOR,
+    CAMPO_CNPJ,
+    CAMPO_CNPJ_ADMINISTRADOR,
+    CAMPO_NOME,
+    CampoFundamental,
+)
 from flowscope.infrastructure.fii.b3_fundamental_repository import (
     B3FundamentalRepository,
 )
@@ -28,8 +34,24 @@ class B3FundamentalDataProvider:
     def obter(
         self: "B3FundamentalDataProvider", ticker: str, reference_date: date
     ) -> dict[str, CampoFundamental]:
-        """Retorna o nome do fundo quando disponível na B3."""
+        """Retorna nome e identidade fiscal do fundo quando disponíveis na B3."""
+        campos: dict[str, CampoFundamental] = {}
         nome = self._repository.obter_nome(ticker)
         if nome:
-            return {CAMPO_NOME: CampoFundamental(nome, FONTE_B3)}
-        return {}
+            campos[CAMPO_NOME] = CampoFundamental(nome, FONTE_B3)
+        informe = self._repository.obter_informe(ticker, reference_date)
+        if informe is not None:
+            _adicionar(campos, CAMPO_CNPJ, informe.cnpj)
+            _adicionar(campos, CAMPO_ADMINISTRADOR, informe.nome_administrador)
+            _adicionar(
+                campos, CAMPO_CNPJ_ADMINISTRADOR, informe.cnpj_administrador
+            )
+        return campos
+
+
+def _adicionar(
+    campos: dict[str, CampoFundamental], chave: str, valor: object
+) -> None:
+    """Adiciona um campo com a fonte B3 quando o valor existe."""
+    if valor is not None:
+        campos[chave] = CampoFundamental(valor, FONTE_B3)

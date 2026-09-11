@@ -34,6 +34,7 @@ class B3FundamentalRepository:
         self._relatorios = reports_repository or B3ReportsRepository()
         self._patrimonio_source = patrimonio_source
         self._fundos_cache: dict[str, B3Fund | None] = {}
+        self._informes_cache: dict[tuple[str, date], B3InformeMensal | None] = {}
 
     def obter_nome(self: "B3FundamentalRepository", ticker: str) -> str | None:
         """Retorna o nome do fundo a partir da identidade B3."""
@@ -64,10 +65,19 @@ class B3FundamentalRepository:
             return b3
         return self._obter_patrimonio_cvm(ticker, reference_date)
 
-    def _obter_patrimonio_b3(
+    def obter_informe(
         self: "B3FundamentalRepository", ticker: str, reference_date: date
-    ) -> PatrimonioFii | None:
-        """Obtém o patrimônio do Informe Mensal Estruturado da B3."""
+    ) -> B3InformeMensal | None:
+        """Retorna o informe mensal do ticker, memorizado por data de referência."""
+        chave = (ticker.strip().upper(), reference_date)
+        if chave not in self._informes_cache:
+            self._informes_cache[chave] = self._buscar_informe(ticker, reference_date)
+        return self._informes_cache[chave]
+
+    def _buscar_informe(
+        self: "B3FundamentalRepository", ticker: str, reference_date: date
+    ) -> B3InformeMensal | None:
+        """Busca o Informe Mensal Estruturado da B3, tolerando indisponibilidade."""
         extrair = getattr(self._relatorios, "extrair_informe", None)
         if not callable(extrair):
             return None
@@ -76,7 +86,7 @@ class B3FundamentalRepository:
             return None
         inicio = _subtrair_meses(reference_date, _MESES_JANELA)
         try:
-            informe = extrair(
+            return extrair(
                 str(fundo.fnet_id), inicio, reference_date, reference_date
             )
         except Exception:  # indisponibilidade da B3, distinta de ausência
@@ -84,7 +94,12 @@ class B3FundamentalRepository:
                 "Falha ao obter informe mensal B3 de %s", ticker, exc_info=True
             )
             return None
-        return _informe_para_patrimonio(informe)
+
+    def _obter_patrimonio_b3(
+        self: "B3FundamentalRepository", ticker: str, reference_date: date
+    ) -> PatrimonioFii | None:
+        """Obtém o patrimônio do Informe Mensal Estruturado da B3."""
+        return _informe_para_patrimonio(self.obter_informe(ticker, reference_date))
 
     def _obter_patrimonio_cvm(
         self: "B3FundamentalRepository", ticker: str, reference_date: date

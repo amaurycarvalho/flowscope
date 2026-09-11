@@ -113,6 +113,26 @@ class FundamentalDataMixin:
             )
             return None
 
+    def _obter_indexadores(
+        self: "FundamentalDataMixin",
+        ticker: str,
+        reference_date: date,
+    ) -> dict[str, Decimal]:
+        """Obtém os percentuais por indexador, tolerando indisponibilidade."""
+        if self._indexadores_provider is None:
+            return {}
+        try:
+            return dict(
+                self._indexadores_provider.obter_indexadores(
+                    ticker, reference_date
+                )
+            )
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter indexadores de %s", ticker, exc_info=True
+            )
+            return {}
+
     def _resolver_cotistas(
         self: "FundamentalDataMixin",
         ticker: str,

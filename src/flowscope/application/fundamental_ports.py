@@ -38,6 +38,18 @@ CAMPO_GESTAO = "gestao"
 CAMPO_QTD_IMOVEIS = "qtd_imoveis"
 CAMPO_PATRIMONIO = "patrimonio"
 CAMPO_DATA_REFERENCIA = "data_referencia"
+CAMPO_MIN_52_SEM = "min_52_sem"
+CAMPO_MAX_52_SEM = "max_52_sem"
+CAMPO_LPA = "lpa"
+CAMPO_ROE = "roe"
+CAMPO_ROIC = "roic"
+CAMPO_CAP_RATE = "cap_rate"
+CAMPO_VACANCIA_MEDIA = "vacancia_media"
+CAMPO_CNPJ = "cnpj"
+CAMPO_ADMINISTRADOR = "administrador"
+CAMPO_CNPJ_ADMINISTRADOR = "cnpj_administrador"
+CAMPO_GESTOR = "gestor"
+CAMPO_CNPJ_GESTOR = "cnpj_gestor"
 
 #: Conjunto canônico de campos que a composição de fontes tenta resolver.
 CAMPOS_FUNDAMENTAIS = frozenset(
@@ -63,6 +75,18 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_QTD_IMOVEIS,
         CAMPO_PATRIMONIO,
         CAMPO_DATA_REFERENCIA,
+        CAMPO_MIN_52_SEM,
+        CAMPO_MAX_52_SEM,
+        CAMPO_LPA,
+        CAMPO_ROE,
+        CAMPO_ROIC,
+        CAMPO_CAP_RATE,
+        CAMPO_VACANCIA_MEDIA,
+        CAMPO_CNPJ,
+        CAMPO_ADMINISTRADOR,
+        CAMPO_CNPJ_ADMINISTRADOR,
+        CAMPO_GESTOR,
+        CAMPO_CNPJ_GESTOR,
     }
 )
 
@@ -103,6 +127,16 @@ class AcionistasProvider(Protocol):
         """Retorna a quantidade de acionistas, ou ``None`` quando indisponível."""
         ...
 
+
+@runtime_checkable
+class IndexadoresProvider(Protocol):
+    """Contrato de obtenção dos percentuais de patrimônio por indexador."""
+
+    def obter_indexadores(
+        self: "IndexadoresProvider", ticker: str, reference_date: date
+    ) -> dict[str, Decimal]:
+        """Retorna o percentual por indexador, ou vazio quando indisponível."""
+        ...
 
 
 class FiiFundamentalRepository(Protocol):

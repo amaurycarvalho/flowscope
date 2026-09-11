@@ -484,6 +484,55 @@ class TestInformeMensalParser:
         assert informe.patrimonio_liquido is None
         assert informe.cotas_emitidas is None
         assert informe.valor_patrimonial_cota is None
+        assert informe.cnpj is None
+        assert informe.nome_administrador is None
+        assert informe.cnpj_administrador is None
+
+    def test_extrai_identidade_fiscal(self):
+        html = (_FIXTURES / "informe_cycr.html").read_text(encoding="utf-8")
+        informe = extrair_informe_mensal(html, document_id=1294589)
+        assert informe.cnpj == "36.501.233/0001-15"
+        assert informe.nome_administrador == "BANCO GENIAL S.A."
+        assert informe.cnpj_administrador == "45.246.410/0001-55"
+
+
+class TestB3FundamentalDataProvider:
+    def _provider(self, informe):
+        class _Repo:
+            def obter_nome(self, ticker):
+                return "CYRELA CRÉDITO"
+
+            def obter_informe(self, ticker, reference_date):
+                return informe
+
+        from flowscope.infrastructure.fii.b3_fundamental_provider import (
+            B3FundamentalDataProvider,
+        )
+
+        return B3FundamentalDataProvider(_Repo())
+
+    def test_emite_identidade_fiscal(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 7, 1),
+            reference_month="07/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+            cnpj="36.501.233/0001-15",
+            nome_administrador="BANCO GENIAL S.A.",
+            cnpj_administrador="45.246.410/0001-55",
+        )
+        campos = self._provider(informe).obter("CYCR11", REFERENCIA)
+        assert campos["cnpj"].valor == "36.501.233/0001-15"
+        assert campos["administrador"].valor == "BANCO GENIAL S.A."
+        assert campos["cnpj_administrador"].valor == "45.246.410/0001-55"
+        assert campos["cnpj"].fonte == "B3"
+
+    def test_sem_informe_emite_apenas_nome(self):
+        campos = self._provider(None).obter("CYCR11", REFERENCIA)
+        assert "cnpj" not in campos
 
 
 class TestInformeMensalRepository:

@@ -25,6 +25,11 @@ from flowscope.infrastructure.fii.b3_fundamental_provider import (
 from flowscope.infrastructure.fii.b3_fundamental_repository import (
     B3FundamentalRepository,
 )
+from flowscope.infrastructure.fii.cvm_fund_data_provider import (
+    CvmAnnualFundDataProvider,
+    CvmIndexadoresProvider,
+    CvmPapelCnpjProvider,
+)
 from flowscope.infrastructure.fii.ffo_engine_provider import FFOEngineProvider
 from flowscope.infrastructure.fii.ffo_provider import FundamentusProvider
 from flowscope.infrastructure.fii.fundamentus.adapter import (
@@ -160,12 +165,17 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             patrimonio_source=CvmMonthlyPatrimonioSource()
         )
         cache = CacheManager()
+        fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
         fundamental_provider = CompositeFundamentalProvider(
             [
                 FundamentusFundamentalDataProvider(
                     FundamentusProvider(cache=cache)
                 ),
                 B3FundamentalDataProvider(fundamental_repo),
+                CvmAnnualFundDataProvider(),
+                CvmPapelCnpjProvider(
+                    fundamental_acionistas_provider.obter_cnpj
+                ),
             ]
         )
         fundamental_ffo_provider = CompositeFfoProvider(
@@ -174,7 +184,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         fundamental_dividend_provider = FundamentusDividendHistoryProvider(
             cache=cache
         )
-        fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
+        fundamental_indexadores_provider = CvmIndexadoresProvider()
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -186,6 +196,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_ffo_provider=fundamental_ffo_provider,
             fundamental_dividend_provider=fundamental_dividend_provider,
             fundamental_acionistas_provider=fundamental_acionistas_provider,
+            fundamental_indexadores_provider=fundamental_indexadores_provider,
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,

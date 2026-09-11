@@ -14,6 +14,7 @@ from flowscope.application.fundamental_fields import (
     _classificacao_exibicao,
     _data_campo,
     _decimal_campo,
+    _int_campo,
     _metricas_dos_dados,
     _p_l_do_ativo,
     _sem_dividendo,
@@ -21,15 +22,29 @@ from flowscope.application.fundamental_fields import (
 )
 from flowscope.application.fundamental_metrics import FundamentalMetricsMixin
 from flowscope.application.fundamental_ports import (
+    CAMPO_ADMINISTRADOR,
+    CAMPO_CAP_RATE,
+    CAMPO_CNPJ,
+    CAMPO_CNPJ_ADMINISTRADOR,
+    CAMPO_CNPJ_GESTOR,
     CAMPO_COTACAO,
     CAMPO_DATA_REFERENCIA,
+    CAMPO_GESTOR,
+    CAMPO_LPA,
+    CAMPO_MAX_52_SEM,
+    CAMPO_MIN_52_SEM,
     CAMPO_NOME,
+    CAMPO_QTD_IMOVEIS,
+    CAMPO_ROE,
+    CAMPO_ROIC,
+    CAMPO_VACANCIA_MEDIA,
     CAMPO_VP_COTA,
     AcionistasProvider,
     DividendHistoryProvider,
     FfoProvider,
     FiiFundamentalRepository,
     FundamentalDataProvider,
+    IndexadoresProvider,
     MarketPricePort,
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
@@ -41,6 +56,8 @@ from flowscope.domain.fii import (
     classificar_ticker,
     dividendos_12m,
     normalizar_ticker,
+    percentual_preco_tipico,
+    preco_tipico,
 )
 
 logger = logging.getLogger("flowscope")
@@ -58,6 +75,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         fundamental_provider: FundamentalDataProvider | None = None,
         historico_dividendos: DividendHistoryProvider | None = None,
         acionistas_provider: AcionistasProvider | None = None,
+        indexadores_provider: IndexadoresProvider | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -67,6 +85,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         self._fundamental_provider = fundamental_provider
         self._historico_dividendos = historico_dividendos
         self._acionistas_provider = acionistas_provider
+        self._indexadores_provider = indexadores_provider
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
 
@@ -150,6 +169,11 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         avisos = _avisos_ffo_ausente(metricas)
         cotacao = _decimal_campo(dados, CAMPO_COTACAO)
         exibicao = _classificacao_exibicao(dados, classificacao)
+        tipico = preco_tipico(
+            _decimal_campo(dados, CAMPO_MAX_52_SEM),
+            _decimal_campo(dados, CAMPO_MIN_52_SEM),
+            cotacao,
+        )
         return AnaliseFundamental(
             ticker=ticker,
             nome=nome,
@@ -172,5 +196,19 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
                 else None
             ),
             data_referencia=_data_campo(dados, CAMPO_DATA_REFERENCIA),
+            lpa=_decimal_campo(dados, CAMPO_LPA),
+            roe=_decimal_campo(dados, CAMPO_ROE),
+            roic=_decimal_campo(dados, CAMPO_ROIC),
+            cap_rate=_decimal_campo(dados, CAMPO_CAP_RATE),
+            vacancia_media=_decimal_campo(dados, CAMPO_VACANCIA_MEDIA),
+            qtd_imoveis=_int_campo(dados, CAMPO_QTD_IMOVEIS),
+            preco_tipico=tipico,
+            pct_preco_tipico=percentual_preco_tipico(cotacao, tipico),
+            indexadores=self._obter_indexadores(ticker, reference_date),
+            cnpj=_texto(dados, CAMPO_CNPJ),
+            nome_administrador=_texto(dados, CAMPO_ADMINISTRADOR),
+            cnpj_administrador=_texto(dados, CAMPO_CNPJ_ADMINISTRADOR),
+            nome_gestor=_texto(dados, CAMPO_GESTOR),
+            cnpj_gestor=_texto(dados, CAMPO_CNPJ_GESTOR),
             avisos=avisos,
         ), de_cache

@@ -21,6 +21,9 @@ _ROTULOS_COTISTAS = ("numerodecotistas",)
 _ROTULOS_PATRIMONIO = ("patrimonioliquido", "patrimonioliquidor")
 _ROTULOS_COTAS = ("numerodecotasemitidas",)
 _ROTULOS_VP_COTA = ("valorpatrimonialdascotas", "valorpatrimonialdascotasr")
+_ROTULOS_CNPJ = ("cnpjdofundoclasse",)
+_ROTULOS_NOME_ADMINISTRADOR = ("nomedoadministrador",)
+_ROTULOS_CNPJ_ADMINISTRADOR = ("cnpjdoadministrador",)
 
 _TROCA_ACENTOS = {
     "á": "a",
@@ -56,6 +59,9 @@ def extrair_informe_mensal(
         patrimonio_liquido=_decimal(_valor(pares, _ROTULOS_PATRIMONIO)),
         cotas_emitidas=_decimal(_valor(pares, _ROTULOS_COTAS)),
         valor_patrimonial_cota=_decimal(_valor(pares, _ROTULOS_VP_COTA)),
+        cnpj=_texto(_valor(pares, _ROTULOS_CNPJ)),
+        nome_administrador=_texto(_valor(pares, _ROTULOS_NOME_ADMINISTRADOR)),
+        cnpj_administrador=_texto(_valor(pares, _ROTULOS_CNPJ_ADMINISTRADOR)),
         fonte=fonte,
     )
 
@@ -116,3 +122,11 @@ def _decimal(valor: str | None) -> Decimal | None:
         return moeda_para_decimal(valor)
     except (InvalidOperation, ValueError):
         return None
+
+
+def _texto(valor: str | None) -> str | None:
+    """Retorna o texto limpo de um valor, ou ``None`` quando vazio."""
+    if valor is None:
+        return None
+    texto = valor.strip()
+    return texto or None

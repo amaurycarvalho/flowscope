@@ -144,6 +144,34 @@ def ffo_payout(dividends_12m: Decimal, ffo_12m: Decimal) -> Decimal:
     return dividends_12m / ffo_12m
 
 
+def preco_tipico(
+    maxima_52: Decimal | None,
+    minima_52: Decimal | None,
+    cotacao: Decimal | None,
+) -> Decimal | None:
+    """Calcula o Preço Típico como a média das cotações de 52 semanas.
+
+    Retorna ``None`` quando qualquer insumo estiver ausente, evitando uma média
+    parcial que não represente o preço típico.
+    """
+    if maxima_52 is None or minima_52 is None or cotacao is None:
+        return None
+    return (maxima_52 + minima_52 + cotacao) / Decimal(3)
+
+
+def percentual_preco_tipico(
+    cotacao: Decimal | None, preco_tipico: Decimal | None
+) -> Decimal | None:
+    """Calcula o desvio percentual da cotação em relação ao Preço Típico.
+
+    Retorna ``None`` quando a cotação ou o preço típico estão ausentes ou o
+    preço típico é zero, evitando uma divisão indefinida.
+    """
+    if cotacao is None or preco_tipico is None or preco_tipico == Decimal(0):
+        return None
+    return (cotacao - preco_tipico) / preco_tipico
+
+
 def verificar_consistencia(
     p_ffo: Decimal | None,
     ffo_yield: Decimal | None,

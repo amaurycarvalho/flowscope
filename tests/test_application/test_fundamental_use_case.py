@@ -8,6 +8,8 @@ from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
     CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDENDO_POR_COTA,
+    CAMPO_MAX_52_SEM,
+    CAMPO_MIN_52_SEM,
     CAMPO_P_L,
     CAMPO_VP_COTA,
     CampoFundamental,
@@ -102,6 +104,14 @@ class FakeAcionistas:
 
     def obter_acionistas(self, ticker: str, reference_date: date):
         return self.por_ticker.get(ticker)
+
+
+class FakeIndexadores:
+    def __init__(self, por_ticker=None):
+        self.por_ticker = por_ticker or {}
+
+    def obter_indexadores(self, ticker: str, reference_date: date):
+        return self.por_ticker.get(ticker, {})
 
 
 def _repo_hgbs11() -> FakeFundamentalRepository:
@@ -350,6 +360,63 @@ class TestAcionistasPapel:
         caso = FundamentalAnalysisUseCase(repo, acionistas_provider=Explode())
         resultado = caso.execute(["PETR4"], REFERENCIA)[0]
         assert resultado.cotistas is None
+        assert resultado.erro is None
+
+
+class TestPrecoTipicoEIndexadores:
+    def test_preco_tipico_e_percentual_calculados(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {
+                CAMPO_COTACAO: CampoFundamental(Decimal("10")),
+                CAMPO_MIN_52_SEM: CampoFundamental(Decimal("8")),
+                CAMPO_MAX_52_SEM: CampoFundamental(Decimal("12")),
+            }
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.preco_tipico == Decimal("10")
+        assert resultado.pct_preco_tipico == Decimal("0")
+
+    def test_preco_tipico_ausente_quando_falta_insumo(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTACAO: CampoFundamental(Decimal("10"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.preco_tipico is None
+        assert resultado.pct_preco_tipico is None
+
+    def test_indexadores_propagados_do_provider(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            indexadores_provider=FakeIndexadores(
+                {"HGBS11": {"IPCA": Decimal("0.22"), "INCC": Decimal("0.05")}}
+            ),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.indexadores == {
+            "IPCA": Decimal("0.22"),
+            "INCC": Decimal("0.05"),
+        }
+
+    def test_sem_indexadores_retorna_vazio(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.indexadores == {}
+
+    def test_falha_do_provider_de_indexadores_nao_quebra(self):
+        class Explode:
+            def obter_indexadores(self, ticker, reference_date):
+                raise RuntimeError("indisponível")
+
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo, indexadores_provider=Explode())
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.indexadores == {}
         assert resultado.erro is None
 
 

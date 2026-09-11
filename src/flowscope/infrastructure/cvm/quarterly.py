@@ -10,7 +10,7 @@ import io
 import logging
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.cvm import normalizar_cnpj
 from flowscope.domain.ffo import (
@@ -29,6 +29,7 @@ from flowscope.infrastructure.cvm.schema import (
     tem_alias,
     validar_aliases,
 )
+from flowscope.infrastructure.fii.parsing import moeda_para_decimal
 
 logger = logging.getLogger("flowscope")
 
@@ -53,6 +54,17 @@ _ALIASES: dict[str, tuple[str, ...]] = {
 _OBRIGATORIAS = ("cnpj", "competencia", "descricao", "valor")
 
 _ANOS_JANELA = 2
+
+#: Prefixo do CSV de complemento no ZIP do Informe Trimestral.
+_CSV_COMPLEMENTO = "inf_trimestral_fii_complemento"
+
+#: Rótulo de exibição → coluna de percentual por indexador no complemento.
+_INDEXADORES = {
+    "IGP-M": "Percentual_Indexador_Valor_Total_IGPM",
+    "INPC": "Percentual_Indexador_Valor_Total_INPC",
+    "IPCA": "Percentual_Indexador_Valor_Total_IPCA",
+    "INCC": "Percentual_Indexador_Valor_Total_INCC",
+}
 
 
 @dataclass(frozen=True)
@@ -107,6 +119,34 @@ class CvmQuarterlyRepository:
                         selecionados[chave] = registro
         return [_para_componente(registro, alvo) for registro in selecionados.values()]
 
+    def get_indexadores(
+        self: "CvmQuarterlyRepository",
+        cnpj: str,
+        reference_date: date,
+    ) -> dict[str, Decimal]:
+        """Retorna o percentual por indexador do complemento mais recente.
+
+        Considera apenas os indexadores com percentual positivo; ausência de
+        registro ou de valores resulta em dicionário vazio.
+        """
+        alvo = normalizar_cnpj(cnpj)
+        if not alvo:
+            return {}
+        melhor: tuple[date, dict[str, Decimal]] | None = None
+        for ano in _anos(reference_date):
+            data = self._carregar(ano)
+            if data is None:
+                continue
+            for nome, conteudo in self._downloader.extrair_csvs(data, ano).items():
+                if _CSV_COMPLEMENTO not in nome:
+                    continue
+                for competencia, valores in _ler_indexadores(
+                    conteudo, alvo, reference_date
+                ):
+                    if melhor is None or competencia > melhor[0]:
+                        melhor = (competencia, valores)
+        return melhor[1] if melhor is not None else {}
+
     def _carregar(self: "CvmQuarterlyRepository", ano: int) -> bytes | None:
         """Carrega o arquivo anual, tolerando falhas de aquisição."""
         try:
@@ -124,6 +164,47 @@ def _anos(reference_date: date) -> list[int]:
         {reference_date.year, reference_date.year - (_ANOS_JANELA - 1)},
         reverse=True,
     )
+
+
+def _ler_indexadores(
+    conteudo: bytes, alvo: str, reference_date: date
+) -> list[tuple[date, dict[str, Decimal]]]:
+    """Lê os percentuais por indexador do CSV de complemento."""
+    texto = conteudo.decode("latin1")
+    leitor = csv.DictReader(io.StringIO(texto), delimiter=";")
+    if leitor.fieldnames is None:
+        return []
+    resultado: list[tuple[date, dict[str, Decimal]]] = []
+    for linha in leitor:
+        if normalizar_cnpj(linha.get("CNPJ_Fundo_Classe")) != alvo:
+            continue
+        competencia = parse_data(linha.get("Data_Referencia"))
+        if competencia is None or competencia > reference_date:
+            continue
+        valores = {
+            rotulo: valor
+            for rotulo, coluna in _INDEXADORES.items()
+            if (valor := _decimal_cvm(linha.get(coluna))) is not None
+            and valor > Decimal(0)
+        }
+        if valores:
+            resultado.append((competencia, valores))
+    return resultado
+
+
+def _decimal_cvm(valor: object) -> Decimal | None:
+    """Interpreta um percentual da CVM com ponto ou vírgula decimal."""
+    if valor is None:
+        return None
+    texto = str(valor).strip().replace(" ", "")
+    if not texto:
+        return None
+    try:
+        if "," in texto:
+            return moeda_para_decimal(texto)
+        return Decimal(texto)
+    except (InvalidOperation, TypeError, ValueError):
+        return None
 
 
 def _registro_linha(

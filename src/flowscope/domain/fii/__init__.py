@@ -71,6 +71,8 @@ from flowscope.domain.fii.metrics import (
     p_ffo,
     p_l,
     p_vp,
+    percentual_preco_tipico,
+    preco_tipico,
     verificar_consistencia,
 )
 
@@ -135,5 +137,7 @@ __all__ = [
     "p_ffo",
     "p_l",
     "p_vp",
+    "percentual_preco_tipico",
+    "preco_tipico",
     "verificar_consistencia",
 ]

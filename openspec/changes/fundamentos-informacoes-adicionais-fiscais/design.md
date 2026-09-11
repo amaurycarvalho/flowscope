@@ -46,7 +46,7 @@ Implementar `preco_tipico(maxima, minima, cotacao)` e `percentual_preco_tipico(c
 
 ### D6. Montagem das colunas na apresentação
 
-Adicionar os dois ids ao final de `_COLUNAS` e montar os textos em helpers de `fundamental_table.py` a partir dos campos estruturados de `AnaliseFundamental`. A lógica de omissão (tipo do ativo, `qtd_imoveis` zero/desconhecido, itens ausentes) fica nesses helpers, e o CSV reutiliza as mesmas linhas. Colunas alinhadas à esquerda.
+Adicionar os dois ids ao final de `_COLUNAS` e montar os textos em helpers de `fundamental_table.py` a partir dos campos estruturados de `AnaliseFundamental`. Os itens são concatenados com ` | ` e cada um é precedido de um label curto. O `Preço Típico` reúne o valor e o `%Preço Típico` no formato `Preço Típico <valor> (<pct>%)`, com separador de milhar; os CNPJs são formatados como `99.999.999/9999-99`; administrador e gestor são exibidos como `<label> <nome> (<CNPJ>)`, omitindo as partes ausentes. A lógica de omissão (tipo do ativo, `qtd_imoveis` zero/desconhecido, itens ausentes) fica nesses helpers, e o CSV reutiliza as mesmas linhas. Colunas alinhadas à esquerda.
 
 ### D7. Regras de omissão
 

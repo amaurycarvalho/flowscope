@@ -172,6 +172,28 @@ class TestAdapterClassificacao:
         campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
         assert "vp_cota" not in campos
 
+    def test_campos_de_acao_incluem_roe_e_preco_52_semanas(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert campos["roe"].valor == Decimal("0.277")
+        assert campos["min_52_sem"].valor == Decimal("30.00")
+        assert campos["max_52_sem"].valor == Decimal("60.00")
+
+    def test_indicador_ausente_nao_e_exposto(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert "lpa" not in campos
+        assert "roic" not in campos
+
+    def test_campos_de_fii_incluem_cap_rate_e_vacancia(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert campos["cap_rate"].valor == Decimal("0.085")
+        assert campos["vacancia_media"].valor == Decimal("0.032")
+
 
 class _FakeResponse:
     def __init__(self, text: str, status: int = 200, headers: dict | None = None) -> None:

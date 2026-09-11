@@ -8,6 +8,7 @@ from datetime import date
 from decimal import Decimal
 
 from flowscope.application.fundamental_ports import (
+    CAMPO_CAP_RATE,
     CAMPO_COTACAO,
     CAMPO_DATA_REFERENCIA,
     CAMPO_DISCRIMINADOR,
@@ -19,15 +20,21 @@ from flowscope.application.fundamental_ports import (
     CAMPO_FFO_TREND,
     CAMPO_FFO_YIELD,
     CAMPO_GESTAO,
+    CAMPO_LPA,
+    CAMPO_MAX_52_SEM,
+    CAMPO_MIN_52_SEM,
     CAMPO_NOME,
     CAMPO_P_FFO,
     CAMPO_P_L,
     CAMPO_P_VP,
     CAMPO_PATRIMONIO,
     CAMPO_QTD_IMOVEIS,
+    CAMPO_ROE,
+    CAMPO_ROIC,
     CAMPO_SEGMENTO,
     CAMPO_SETOR,
     CAMPO_SUBSETOR,
+    CAMPO_VACANCIA_MEDIA,
     CAMPO_VP_COTA,
     CampoFundamental,
     OrigemDados,
@@ -45,6 +52,11 @@ _INDICADOR_P_VP = "P/VP"
 _INDICADOR_P_L = "P/L"
 _INDICADOR_VP_COTA = "VP/Cota"
 _INDICADOR_VPA = "VPA"
+_INDICADOR_LPA = "LPA"
+_INDICADOR_ROE = "ROE"
+_INDICADOR_ROIC = "ROIC"
+_IMOVEL_CAP_RATE = "cap_rate"
+_IMOVEL_VACANCIA = "vacancia_media"
 _DEMONSTRATIVO_FFO = "FFO"
 _BALANCO_PATRIMONIO_LIQ = "Patrim. Líq"
 _BALANCO_PATRIMONIO_LIQUIDO = "Patrim Líquido"
@@ -105,6 +117,8 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     if ativo.nome:
         campos[CAMPO_NOME] = CampoFundamental(ativo.nome, FONTE_FUNDAMENTUS)
     _adicionar(campos, CAMPO_COTACAO, ativo.cotacao)
+    _adicionar(campos, CAMPO_MIN_52_SEM, ativo.min_52_sem)
+    _adicionar(campos, CAMPO_MAX_52_SEM, ativo.max_52_sem)
 
     campos.update(_campos_classificacao(ativo))
 
@@ -115,6 +129,17 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     _adicionar(campos, CAMPO_FFO_YIELD, ffo_yield)
     _adicionar(campos, CAMPO_P_VP, indicadores.get(_INDICADOR_P_VP))
     _adicionar(campos, CAMPO_P_L, indicadores.get(_INDICADOR_P_L))
+    _adicionar(campos, CAMPO_LPA, indicadores.get(_INDICADOR_LPA))
+    _adicionar(campos, CAMPO_ROE, _percentual(indicadores.get(_INDICADOR_ROE)))
+    _adicionar(campos, CAMPO_ROIC, _percentual(indicadores.get(_INDICADOR_ROIC)))
+    _adicionar(
+        campos, CAMPO_CAP_RATE, _percentual(_decimal_imovel(ativo, _IMOVEL_CAP_RATE))
+    )
+    _adicionar(
+        campos,
+        CAMPO_VACANCIA_MEDIA,
+        _percentual(_decimal_imovel(ativo, _IMOVEL_VACANCIA)),
+    )
     vp_cota = _valor_indicador(indicadores, _INDICADOR_VP_COTA, _INDICADOR_VPA)
     _adicionar(campos, CAMPO_VP_COTA, vp_cota)
     _adicionar(
@@ -182,6 +207,14 @@ def _percentual(valor: Decimal | None) -> Decimal | None:
     if valor is None:
         return None
     return valor / _CEM
+
+
+def _decimal_imovel(ativo: AtivoFundamental, chave: str) -> Decimal | None:
+    """Retorna um valor do bloco de imóveis como ``Decimal``, ou ``None``."""
+    valor = ativo.imoveis.get(chave)
+    if valor is None or isinstance(valor, Decimal):
+        return valor
+    return Decimal(valor)
 
 
 def _p_ffo(

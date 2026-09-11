@@ -36,3 +36,22 @@ class MonthlyReport:
     is_latest: bool = True
     source_version: str | None = None
     received_at: str | None = None
+
+
+@dataclass(frozen=True)
+class AnnualReport:
+    """Registro selecionado do Informe Anual Estruturado da CVM."""
+
+    ticker: str
+    cnpj_fundo_classe: str
+    reference_date: date
+    nome_gestor: str | None = None
+    cnpj_gestor: str | None = None
+    nome_administrador: str | None = None
+    cnpj_administrador: str | None = None
+    nome_custodiante: str | None = None
+    cnpj_custodiante: str | None = None
+    nome_auditor: str | None = None
+    cnpj_auditor: str | None = None
+    source_file: str = ""
+    source_hash: str = ""

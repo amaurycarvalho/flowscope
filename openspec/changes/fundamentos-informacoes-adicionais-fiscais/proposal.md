@@ -4,11 +4,11 @@ A sub-aba "Fundamentos" concentra apenas métricas de valuation/dividendos e nã
 
 ## What Changes
 
-- Adicionar duas colunas ao final da tabela de Fundamentos: **Informações adicionais** e **Dados fiscais**, com concatenação de itens separados por vírgula e precedidos de labels curtos.
-- **Informações adicionais — Papel**: `LPA`, `ROE`, `ROIC`, `Preço Típico` e `%Preço Típico`.
-- **Informações adicionais — FII**: `Qtd Imóveis`, `Cap Rate`, `Vacância Média`, `Preço Típico`, `%Preço Típico` e o percentual por indexador (`IPCA`, `IGP-M`, `INPC`, `INCC`). Quando `Qtd imóveis` for zero ou desconhecido, omitir `Qtd Imóveis`, `Cap Rate` e `Vacância Média`.
-- `Preço Típico = (Max 52 sem + Min 52 sem + Cotação) / 3` e `%Preço Típico = (Cotação − Preço Típico) / Preço Típico`, por funções puras de domínio; omitir quando faltar qualquer insumo.
-- **Dados fiscais — FII**: `CNPJ`, `Administrador (CNPJ)` e `Gestor (CNPJ)`. **Dados fiscais — Papel**: apenas `CNPJ`.
+- Adicionar duas colunas ao final da tabela de Fundamentos: **Informações adicionais** e **Dados fiscais**, com concatenação de itens separados por ` | ` e precedidos de labels curtos.
+- **Informações adicionais — Papel**: `LPA`, `ROE`, `ROIC` e `Preço Típico` com o `%Preço Típico` entre parênteses.
+- **Informações adicionais — FII**: `Qtd Imóveis`, `Cap Rate`, `Vacância Média`, `Preço Típico` (com `%Preço Típico` entre parênteses) e o percentual por indexador (`IPCA`, `IGP-M`, `INPC`, `INCC`). Quando `Qtd imóveis` for zero ou desconhecido, omitir `Qtd Imóveis`, `Cap Rate` e `Vacância Média`.
+- `Preço Típico = (Max 52 sem + Min 52 sem + Cotação) / 3` e `%Preço Típico = (Cotação − Preço Típico) / Preço Típico`, por funções puras de domínio; exibido como `Preço Típico <valor> (<pct>%)` e omitido quando faltar qualquer insumo.
+- **Dados fiscais — FII**: `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`. **Dados fiscais — Papel**: apenas `CNPJ`.
 - Ingerir o Informe Anual da CVM (`INF_ANUAL`) como fonte do gestor (nome e CNPJ) e complementar administrador/custodiante/auditor, por CNPJ, com cache e hash.
 - Extrair do Informe Mensal Estruturado da B3 o CNPJ do fundo e o administrador (nome e CNPJ), reutilizando o HTML já baixado para patrimônio.
 - Ler os percentuais por indexador do `complemento` do Informe Trimestral da CVM (já baixado para o motor de FFO).
