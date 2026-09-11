@@ -1,20 +1,30 @@
 ## ADDED Requirements
 
-### Requirement: Colunas Informações adicionais e Dados fiscais
+### Requirement: Colunas Preço Típico, P / PT, Informações adicionais e Dados fiscais
 
-A tabela fundamentalista DEVE exibir, ao final, as colunas `Informações adicionais` e `Dados fiscais`, cujos itens são concatenados separados por ` | ` e precedidos de labels curtos. Itens sem valor em nenhuma fonte DEVEM ser omitidos; quando a coluna não tiver nenhum item, DEVE exibir `N/A`.
+A tabela fundamentalista DEVE exibir as colunas `Preço Típico` e `P / PT` logo após `P (Cotação)`, alinhadas à direita. `Preço Típico` DEVE exibir `(Max 52 sem + Min 52 sem + Cotação) / 3` e `P / PT` DEVE exibir `(Cotação − Preço Típico) / Preço Típico` como percentual; ambos DEVEM exibir `N/A` quando faltar qualquer insumo.
 
-Para ativos do tipo Papel, `Informações adicionais` DEVE conter `LPA`, `ROE`, `ROIC` e `Preço Típico` no formato `Preço Típico <valor> (<pct>%)`. Para FIIs, DEVE conter `Qtd Imóveis`, `Cap Rate`, `Vacância Média`, `Preço Típico` no mesmo formato e os percentuais por indexador; quando `Qtd imóveis` for zero ou desconhecido, `Qtd Imóveis`, `Cap Rate` e `Vacância Média` DEVEM ser omitidos.
+A tabela DEVE exibir, ao final, as colunas `Informações adicionais` e `Dados fiscais`, cujos itens são concatenados separados por ` | ` e precedidos de labels curtos. Itens sem valor em nenhuma fonte DEVEM ser omitidos; quando a coluna não tiver nenhum item, DEVE exibir `N/A`.
+
+Para ativos do tipo Papel, `Informações adicionais` DEVE conter `LPA`, `ROE` e `ROIC`. Para FIIs, DEVE conter `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e os percentuais por indexador; quando `Qtd imóveis` for zero ou desconhecido, `Qtd Imóveis`, `Cap Rate` e `Vacância Média` DEVEM ser omitidos.
 
 Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`; Papel DEVE exibir apenas `CNPJ`. CNPJs DEVEM ser exibidos no formato `99.999.999/9999-99`.
 
+#### Scenario: Preço Típico e P / PT calculados
+- **WHEN** o ativo possui cotação, mínima e máxima de 52 semanas
+- **THEN** as colunas `Preço Típico` e `P / PT` DEVEM exibir o preço típico e o desvio percentual da cotação, alinhados à direita
+
+#### Scenario: Insumo ausente para o Preço Típico
+- **WHEN** falta a cotação, a mínima ou a máxima de 52 semanas
+- **THEN** as colunas `Preço Típico` e `P / PT` DEVEM exibir `N/A`
+
 #### Scenario: Informações adicionais de Papel
-- **WHEN** um ativo do tipo Papel possui LPA, ROE, ROIC, mínima/máxima de 52 semanas e cotação
-- **THEN** a coluna DEVE exibir `LPA`, `ROE`, `ROIC` e `Preço Típico <valor> (<pct>%)`, separados por ` | `
+- **WHEN** um ativo do tipo Papel possui LPA, ROE e ROIC
+- **THEN** a coluna DEVE exibir `LPA`, `ROE` e `ROIC`, separados por ` | `
 
 #### Scenario: Informações adicionais de FII de tijolo
 - **WHEN** um FII possui `Qtd imóveis` maior que zero e demais dados disponíveis
-- **THEN** a coluna DEVE exibir `Qtd Imóveis`, `Cap Rate`, `Vacância Média`, `Preço Típico <valor> (<pct>%)` e os percentuais por indexador
+- **THEN** a coluna DEVE exibir `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e os percentuais por indexador
 
 #### Scenario: FII sem imóveis
 - **WHEN** um FII possui `Qtd imóveis` igual a zero ou desconhecido
@@ -38,4 +48,4 @@ Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e 
 
 #### Scenario: Exportação CSV consistente
 - **WHEN** o usuário copia a tabela de Fundamentos como CSV
-- **THEN** as duas novas colunas DEVEM conter os mesmos textos exibidos na tabela
+- **THEN** as colunas novas DEVEM conter os mesmos textos exibidos na tabela

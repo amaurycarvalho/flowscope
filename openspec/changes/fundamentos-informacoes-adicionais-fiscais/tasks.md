@@ -40,3 +40,9 @@
 - [x] 7.2 Criar `CvmPapelCnpjProvider` (CNPJ de Papel via FCA) e `CvmIndexadoresProvider`, integrando-os ao caso de uso; verificar com testes
 - [x] 7.3 Exibir nome do administrador e do gestor em `Dados fiscais` no formato `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`, com CNPJ formatado como `99.999.999/9999-99`; verificar com testes de linha
 - [x] 7.4 Exibir `Preço Típico <valor> (<pct>%)` com separador de milhar e unir os itens das colunas com ` | `; verificar com testes de linha e CSV
+
+## 8. Colunas Preço Típico e P / PT
+
+- [x] 8.1 Adicionar as colunas `Preço Típico` e `P / PT` logo após `P (Cotação)` em `_COLUNAS`, alinhadas à direita, e preenchê-las em `_linha_analise`; verificar com testes de linha
+- [x] 8.2 Retirar o Preço Típico e o seu percentual da coluna `Informações adicionais`; verificar com testes de linha
+- [x] 8.3 Verificar a exportação CSV com as novas colunas na posição correta; verificar com teste de exportação

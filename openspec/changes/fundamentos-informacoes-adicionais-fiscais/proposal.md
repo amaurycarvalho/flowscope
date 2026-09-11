@@ -4,10 +4,11 @@ A sub-aba "Fundamentos" concentra apenas métricas de valuation/dividendos e nã
 
 ## What Changes
 
+- Adicionar as colunas **Preço Típico** e **P / PT** logo após **P (Cotação)**, alinhadas à direita.
 - Adicionar duas colunas ao final da tabela de Fundamentos: **Informações adicionais** e **Dados fiscais**, com concatenação de itens separados por ` | ` e precedidos de labels curtos.
-- **Informações adicionais — Papel**: `LPA`, `ROE`, `ROIC` e `Preço Típico` com o `%Preço Típico` entre parênteses.
-- **Informações adicionais — FII**: `Qtd Imóveis`, `Cap Rate`, `Vacância Média`, `Preço Típico` (com `%Preço Típico` entre parênteses) e o percentual por indexador (`IPCA`, `IGP-M`, `INPC`, `INCC`). Quando `Qtd imóveis` for zero ou desconhecido, omitir `Qtd Imóveis`, `Cap Rate` e `Vacância Média`.
-- `Preço Típico = (Max 52 sem + Min 52 sem + Cotação) / 3` e `%Preço Típico = (Cotação − Preço Típico) / Preço Típico`, por funções puras de domínio; exibido como `Preço Típico <valor> (<pct>%)` e omitido quando faltar qualquer insumo.
+- **Informações adicionais — Papel**: `LPA`, `ROE` e `ROIC`.
+- **Informações adicionais — FII**: `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e o percentual por indexador (`IPCA`, `IGP-M`, `INPC`, `INCC`). Quando `Qtd imóveis` for zero ou desconhecido, omitir `Qtd Imóveis`, `Cap Rate` e `Vacância Média`.
+- `Preço Típico = (Max 52 sem + Min 52 sem + Cotação) / 3` e `P / PT = (Cotação − Preço Típico) / Preço Típico`, por funções puras de domínio; exibidos em colunas próprias e `N/A` quando faltar qualquer insumo.
 - **Dados fiscais — FII**: `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`. **Dados fiscais — Papel**: apenas `CNPJ`.
 - Ingerir o Informe Anual da CVM (`INF_ANUAL`) como fonte do gestor (nome e CNPJ) e complementar administrador/custodiante/auditor, por CNPJ, com cache e hash.
 - Extrair do Informe Mensal Estruturado da B3 o CNPJ do fundo e o administrador (nome e CNPJ), reutilizando o HTML já baixado para patrimônio.
@@ -25,8 +26,8 @@ A sub-aba "Fundamentos" concentra apenas métricas de valuation/dividendos e nã
 - `b3-fii-extraction`: o Informe Mensal Estruturado passa a expor o CNPJ do fundo e o administrador (nome e CNPJ).
 - `fundamental-source-fallback`: resolver a identidade fiscal (`cnpj`, `administrador`, `gestor`) por prioridade de fontes com proveniência, omitindo itens ausentes; Papel resolve apenas o CNPJ.
 - `cvm-quarterly-fund-data`: expor os percentuais por indexador (`IGPM`, `INPC`, `IPCA`, `INCC`) do arquivo `complemento`.
-- `fii-fundamental-metrics`: adicionar `Preço Típico` e `%Preço Típico` como funções puras e expor os percentuais por indexador na análise.
-- `gui-interface`: novas colunas `Informações adicionais` e `Dados fiscais` no fim da tabela, com regras de conteúdo, labels e exportação CSV consistentes.
+- `fii-fundamental-metrics`: adicionar `Preço Típico` e `P / PT` como funções puras e expor os percentuais por indexador na análise.
+- `gui-interface`: novas colunas `Preço Típico` e `P / PT` após `P (Cotação)`, além de `Informações adicionais` e `Dados fiscais` no fim da tabela, com regras de conteúdo, labels e exportação CSV consistentes.
 
 ## Impact
 
@@ -35,4 +36,4 @@ A sub-aba "Fundamentos" concentra apenas métricas de valuation/dividendos e nã
 - **Cache**: nova chave anual para o `INF_ANUAL` (ZIP bruto + hash + metadados) pelo downloader genérico da CVM.
 - **Dados/fixtures**: fixture do informe anual (gestor/administrador) e amostra do `complemento` trimestral com os percentuais por indexador.
 - **Coordenacao**: esta change deve ser aplicada **antes** de `fundamentos-fallback-b3-cvm`, que toca os mesmos módulos (`cvm/quarterly.py`, `b3/informe_mensal_parser.py`, `application/fundamental_ports.py`, `domain/fii/analysis.py`, provider B3). Aquela change será ajustada para construir sobre estes acréscimos.
-- **Compatibilidade**: colunas novas no fim da tabela; CSV ganha duas colunas; nenhum contrato de porta é removido.
+- **Compatibilidade**: quatro colunas novas (duas após `P (Cotação)` e duas no fim da tabela); CSV ganha as mesmas quatro colunas; nenhum contrato de porta é removido.

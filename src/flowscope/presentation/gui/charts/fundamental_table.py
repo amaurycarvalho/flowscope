@@ -48,6 +48,8 @@ _COLUNAS = (
     ("tipo", "Tipo"),
     ("subtipo", "Sub-tipo"),
     ("p", "P (Cotação)"),
+    ("preco_tipico", "Preço Típico"),
+    ("p_pt", "P / PT"),
     ("vp", "VP (VP/Cota)"),
     ("p_vp", "P/VP"),
     ("p_l", "P/L"),
@@ -78,6 +80,8 @@ _COLUNAS_DIREITA = frozenset(
         "dividend_yield",
         "dividend_payout",
         "p",
+        "preco_tipico",
+        "p_pt",
         "vp",
         "p_ffo",
         "p_vp",
@@ -184,6 +188,13 @@ def formatar_percentual(valor: Decimal | None, casas: int = 2) -> str:
     return f"{_com_virgula(valor * Decimal(100), casas)}%"
 
 
+def formatar_preco_tipico(valor: Decimal | None) -> str:
+    """Formata o Preço Típico com separador de milhar e 2 casas, ou ``N/A``."""
+    if valor is None:
+        return NA
+    return _agrupar(valor, 2)
+
+
 def formatar_ratio(valor: Decimal | None, casas: int = 2) -> str:
     """Formata uma razão como ``12,25x``, ou ``N/A``."""
     if valor is None:
@@ -278,17 +289,6 @@ def _itens_indicadores_acao(analise: AnaliseFundamental) -> list[str]:
     return itens
 
 
-def _itens_preco_tipico(analise: AnaliseFundamental) -> list[str]:
-    """Monta o Preço Típico com o desvio percentual entre parênteses."""
-    if analise.preco_tipico is None:
-        return []
-    texto = _agrupar(analise.preco_tipico, 2)
-    if analise.pct_preco_tipico is None:
-        return [f"Preço Típico {texto}"]
-    percentual = _agrupar(analise.pct_preco_tipico * Decimal(100), 2)
-    return [f"Preço Típico {texto} ({percentual}%)"]
-
-
 def _itens_indexadores(analise: AnaliseFundamental) -> list[str]:
     """Monta os percentuais por indexador disponíveis do FII."""
     return [
@@ -308,11 +308,9 @@ def _informacoes_adicionais(
     """Concatena os itens de Informações adicionais, ou ``N/A`` quando vazio."""
     if exibicao.tipo == TIPO_EXIBICAO_FII:
         itens = _itens_imoveis(analise)
+        itens.extend(_itens_indexadores(analise))
     else:
         itens = _itens_indicadores_acao(analise)
-    itens.extend(_itens_preco_tipico(analise))
-    if exibicao.tipo == TIPO_EXIBICAO_FII:
-        itens.extend(_itens_indexadores(analise))
     return _SEPARADOR_ITENS.join(itens) if itens else NA
 
 
@@ -372,6 +370,8 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         tipo,
         sub_tipo or NA,
         formatar_valor(analise.cotacao),
+        formatar_preco_tipico(analise.preco_tipico),
+        formatar_percentual(analise.pct_preco_tipico, 2),
         formatar_valor(analise.vp_cota),
         formatar_ratio(p_vp, 2),
         formatar_ratio(analise.p_l, 2),
