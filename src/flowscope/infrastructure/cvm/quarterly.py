@@ -287,10 +287,16 @@ def _ler_registros(
 
 def _tem_coluna_monetaria(fieldnames: object) -> bool:
     """Indica se o CSV possui alguma coluna que não seja de identidade."""
-    return any(
-        str(coluna).strip().lower() not in _COLUNAS_NAO_MONETARIAS
+    return bool(_colunas_monetarias(fieldnames))
+
+
+def _colunas_monetarias(fieldnames: object) -> list[str]:
+    """Retorna os nomes das colunas que representam valores monetários."""
+    return [
+        str(coluna)
         for coluna in fieldnames
-    )
+        if str(coluna).strip().lower() not in _COLUNAS_NAO_MONETARIAS
+    ]
 
 
 def _ler_layout_longo(
@@ -311,6 +317,25 @@ def _ler_layout_longo(
     return registros
 
 
+def _registro_do_valor(
+    coluna: str,
+    valor: Decimal,
+    competencia: date,
+    versao: int | None,
+    arquivo: str,
+) -> _Registro:
+    """Monta um registro de componente a partir de uma coluna monetária."""
+    codigo = coluna.strip()
+    return _Registro(
+        competencia=competencia,
+        codigo=codigo,
+        descricao=codigo.replace("_", " ").strip(),
+        valor=valor,
+        versao=versao,
+        arquivo=arquivo,
+    )
+
+
 def _ler_layout_largo(
     leitor: "csv.DictReader",
     colunas: set[str],
@@ -319,12 +344,7 @@ def _ler_layout_largo(
     arquivo: str,
 ) -> list[_Registro]:
     """Lê o layout largo, convertendo cada coluna monetária em componente."""
-    campos = [str(coluna) for coluna in (leitor.fieldnames or [])]
-    monetarias = [
-        coluna
-        for coluna in campos
-        if coluna.strip().lower() not in _COLUNAS_NAO_MONETARIAS
-    ]
+    monetarias = _colunas_monetarias(leitor.fieldnames or [])
     registros: list[_Registro] = []
     for bruta in leitor:
         canonica = mapear_com_aliases(bruta, colunas, _ALIASES)
@@ -338,15 +358,9 @@ def _ler_layout_largo(
             valor = parse_decimal(bruta.get(coluna))
             if valor is None or valor == Decimal(0):
                 continue
-            codigo = coluna.strip()
             registros.append(
-                _Registro(
-                    competencia=competencia,
-                    codigo=codigo,
-                    descricao=codigo.replace("_", " ").strip(),
-                    valor=valor,
-                    versao=versao,
-                    arquivo=arquivo,
+                _registro_do_valor(
+                    coluna, valor, competencia, versao, arquivo
                 )
             )
     return registros

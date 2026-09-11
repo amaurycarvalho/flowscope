@@ -14,6 +14,16 @@ from flowscope.domain.fii import (
 from flowscope.domain.fii.metrics import FiiSnapshot
 
 
+def _p_vp_de(
+    preco: PrecoObservacao, patrimonio: PatrimonioFii | None
+) -> tuple[Decimal | None, Decimal | None]:
+    """Deriva o valor de mercado e o P/VP a partir do preço e do patrimônio."""
+    if patrimonio is None or patrimonio.net_asset_value <= 0:
+        return None, None
+    market_value = preco.preco * patrimonio.shares_outstanding
+    return market_value, market_value / patrimonio.net_asset_value
+
+
 class FundamentalMetricsMixin:
     """Mixin com o cálculo das métricas FFO e parciais por ticker."""
 
@@ -32,18 +42,14 @@ class FundamentalMetricsMixin:
             preco = self._mercado.preco_fechamento(ticker, reference_date)
         if preco is None or preco.preco <= 0:
             return None
+        if patrimonio is None:
+            patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
         dividend_yield = (
             dividendos_12m_por_cota / preco.preco
             if dividendos_12m_por_cota is not None
             else None
         )
-        if patrimonio is None:
-            patrimonio = self._repository.obter_patrimonio(ticker, reference_date)
-        market_value: Decimal | None = None
-        p_vp: Decimal | None = None
-        if patrimonio is not None and patrimonio.net_asset_value > 0:
-            market_value = preco.preco * patrimonio.shares_outstanding
-            p_vp = market_value / patrimonio.net_asset_value
+        market_value, p_vp = _p_vp_de(preco, patrimonio)
         if dividend_yield is None and p_vp is None:
             return None
         return MetricasFii(

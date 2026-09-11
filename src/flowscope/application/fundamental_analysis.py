@@ -54,6 +54,8 @@ from flowscope.application.fundamental_providers import FundamentalDataMixin
 from flowscope.domain.fii import (
     AnaliseFundamental,
     ClassificacaoAtivo,
+    MetricasFii,
+    PatrimonioFii,
     PrecoObservacao,
     TaxonomiaFii,
     classe_fii_elegivel_ffo,
@@ -167,15 +169,15 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             ticker, reference_date, dados, classificacao, patrimonio_repo
         )
         preco = self._obter_preco(ticker, reference_date)
-        metricas = _metricas_dos_dados(dados)
-        if metricas is None and _elegivel_ffo(dados, classificacao):
-            metricas = self._analisar_ffo(
-                ticker, reference_date, total_por_cota, patrimonio_repo, preco
-            )
-        if metricas is None:
-            metricas = self._metricas_parciais(
-                ticker, reference_date, total_por_cota, patrimonio_repo, preco
-            )
+        metricas = self._resolver_metricas(
+            ticker,
+            reference_date,
+            total_por_cota,
+            dados,
+            classificacao,
+            patrimonio_repo,
+            preco,
+        )
         avisos = _avisos_ffo_ausente(metricas)
         cotacao = _decimal_campo(dados, CAMPO_COTACAO)
         if cotacao is None and preco is not None:
@@ -226,6 +228,28 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             cnpj_gestor=_texto(dados, CAMPO_CNPJ_GESTOR),
             avisos=avisos,
         ), de_cache
+
+    def _resolver_metricas(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+        total_por_cota: Decimal | None,
+        dados: dict[str, CampoFundamental],
+        classificacao: ClassificacaoAtivo,
+        patrimonio_repo: PatrimonioFii | None,
+        preco: PrecoObservacao | None,
+    ) -> MetricasFii | None:
+        """Resolve as métricas, tentando FFO antes das parciais."""
+        metricas = _metricas_dos_dados(dados)
+        if metricas is None and _elegivel_ffo(dados, classificacao):
+            metricas = self._analisar_ffo(
+                ticker, reference_date, total_por_cota, patrimonio_repo, preco
+            )
+        if metricas is None:
+            metricas = self._metricas_parciais(
+                ticker, reference_date, total_por_cota, patrimonio_repo, preco
+            )
+        return metricas
 
     def _obter_preco(
         self: "FundamentalAnalysisUseCase",

@@ -116,17 +116,37 @@ def _anos(reference_date: date) -> list[int]:
     return [reference_date.year - i for i in range(_ANOS_JANELA)]
 
 
+def _campos_do_csv(nome: str) -> dict[str, str] | None:
+    """Seleciona o mapa de campos conforme o tipo de CSV anual."""
+    if _CSV_GERAL in nome:
+        return _CAMPOS_ADMINISTRADOR
+    if _CSV_COMPLEMENTO in nome:
+        return _CAMPOS_GESTOR
+    return None
+
+
+def _acumular_campos(
+    registros: dict[date, dict[str, str]],
+    competencia: date,
+    linha: dict[str, str],
+    campos: dict[str, str],
+) -> None:
+    """Acumula os campos não vazios de uma linha para a competência."""
+    atual = registros.setdefault(competencia, {})
+    for chave, coluna in campos.items():
+        valor = _texto(linha.get(coluna))
+        if valor and not atual.get(chave):
+            atual[chave] = valor
+
+
 def _registro_do_ano(
     csvs: dict[str, bytes], alvo: str, reference_date: date
 ) -> AnnualReport | None:
     """Seleciona o registro mais recente do CNPJ nos CSVs anuais informados."""
     registros: dict[date, dict[str, str]] = {}
     for nome, conteudo in csvs.items():
-        if _CSV_GERAL in nome:
-            campos = _CAMPOS_ADMINISTRADOR
-        elif _CSV_COMPLEMENTO in nome:
-            campos = _CAMPOS_GESTOR
-        else:
+        campos = _campos_do_csv(nome)
+        if campos is None:
             continue
         for linha in _linhas(conteudo):
             if normalizar_cnpj(linha.get("CNPJ_Fundo_Classe")) != alvo:
@@ -134,11 +154,7 @@ def _registro_do_ano(
             competencia = parse_data(linha.get("Data_Referencia"))
             if competencia is None or competencia > reference_date:
                 continue
-            atual = registros.setdefault(competencia, {})
-            for chave, coluna in campos.items():
-                valor = _texto(linha.get(coluna))
-                if valor and not atual.get(chave):
-                    atual[chave] = valor
+            _acumular_campos(registros, competencia, linha, campos)
     if not registros:
         return None
     competencia = max(registros)
