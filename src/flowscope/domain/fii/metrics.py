@@ -144,6 +144,75 @@ def ffo_payout(dividends_12m: Decimal, ffo_12m: Decimal) -> Decimal:
     return dividends_12m / ffo_12m
 
 
+class MotivoMargem(Enum):
+    """Motivo de indisponibilidade de uma razão sobre a receita."""
+
+    RECEITA_NEGATIVA = "RECEITA_NEGATIVA"
+    FFO_NEGATIVO = "FFO_NEGATIVO"
+    RECEITA_E_FFO_NEGATIVOS = "RECEITA_E_FFO_NEGATIVOS"
+
+
+@dataclass(frozen=True)
+class ResultadoMargem:
+    """Resultado de uma razão: valor numérico ou motivo de indisponibilidade."""
+
+    valor: Decimal | None
+    motivo: MotivoMargem | None = None
+
+
+def ffo_receita(ffo: Decimal | None, receita: Decimal | None) -> ResultadoMargem:
+    """Calcula ``FFO / Receita`` tratando sinais negativos e divisão por zero.
+
+    Receita e FFO negativos exibem texto em vez de número; divisão por zero ou
+    insumo ausente resultam em ``N/A`` (``valor`` e ``motivo`` nulos).
+    """
+    if ffo is None or receita is None or receita == Decimal(0):
+        return ResultadoMargem(None)
+    if receita < Decimal(0) and ffo < Decimal(0):
+        return ResultadoMargem(None, MotivoMargem.RECEITA_E_FFO_NEGATIVOS)
+    if receita < Decimal(0):
+        return ResultadoMargem(None, MotivoMargem.RECEITA_NEGATIVA)
+    if ffo < Decimal(0):
+        return ResultadoMargem(None, MotivoMargem.FFO_NEGATIVO)
+    return ResultadoMargem(ffo / receita)
+
+
+def dividendos_receita(
+    dividendos: Decimal | None, receita: Decimal | None
+) -> ResultadoMargem:
+    """Calcula ``Dividendos / Receita`` com as regras de sinal e divisão por zero."""
+    if dividendos is None or receita is None or receita == Decimal(0):
+        return ResultadoMargem(None)
+    if receita < Decimal(0):
+        return ResultadoMargem(None, MotivoMargem.RECEITA_NEGATIVA)
+    return ResultadoMargem(dividendos / receita)
+
+
+def dividendos_ffo(
+    dividendos: Decimal | None, ffo: Decimal | None
+) -> ResultadoMargem:
+    """Calcula ``Dividendos / FFO`` com as regras de sinal e divisão por zero."""
+    if dividendos is None or ffo is None or ffo == Decimal(0):
+        return ResultadoMargem(None)
+    if ffo < Decimal(0):
+        return ResultadoMargem(None, MotivoMargem.FFO_NEGATIVO)
+    return ResultadoMargem(dividendos / ffo)
+
+
+def tendencia_margem_ffo(
+    margem_12m: Decimal | None, margem_3m: Decimal | None
+) -> TendenciaFfo | None:
+    """Classifica a tendência pela diferença, em pontos percentuais, das margens.
+
+    As margens são frações; a diferença ``margem_3m - margem_12m`` equivale à
+    diferença em pontos percentuais e reutiliza as faixas determinísticas de
+    ``classificar_tendencia_ffo``. Retorna ``None`` quando faltar uma margem.
+    """
+    if margem_12m is None or margem_3m is None:
+        return None
+    return classificar_tendencia_ffo(margem_3m - margem_12m)
+
+
 def preco_tipico(
     maxima_52: Decimal | None,
     minima_52: Decimal | None,

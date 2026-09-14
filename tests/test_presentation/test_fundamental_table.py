@@ -14,8 +14,11 @@ from flowscope.domain.fii import (
     ClassePatrimonio,
     FiiSnapshot,
     FfoObservacao,
+    MargensFii,
+    MotivoMargem,
     PatrimonioFii,
     PrecoObservacao,
+    ResultadoMargem,
     TendenciaDividendo,
     TendenciaFfo,
     UltimoDividendo,
@@ -30,6 +33,7 @@ from flowscope.presentation.gui.charts.fundamental_table import (
     FundamentalTablePanel,
     formatar_data,
     formatar_inteiro,
+    formatar_margem,
     formatar_patrimonio,
     formatar_percentual,
     formatar_ratio,
@@ -58,6 +62,18 @@ def _provento(tipo: str, data_base: date, valor: str) -> Provento:
     )
 
 
+def _margens_hgbs11() -> MargensFii:
+    return MargensFii(
+        ffo_receita_12m=ResultadoMargem(Decimal("0.873")),
+        ffo_receita_3m=ResultadoMargem(Decimal("0.855")),
+        dividendos_receita_12m=ResultadoMargem(Decimal("1.157")),
+        dividendos_receita_3m=ResultadoMargem(Decimal("0.768")),
+        dividendos_ffo_12m=ResultadoMargem(Decimal("1.326")),
+        dividendos_ffo_3m=ResultadoMargem(Decimal("0.899")),
+        ffo_trend=TendenciaFfo.ESTAVEL,
+    )
+
+
 def _analise_hgbs11() -> AnaliseFundamental:
     metricas = analisar_snapshot(
         FiiSnapshot(
@@ -83,6 +99,7 @@ def _analise_hgbs11() -> AnaliseFundamental:
         ),
         dividendos_12m_por_cota=Decimal("1.05"),
         metricas=metricas,
+        margens=_margens_hgbs11(),
     )
 
 
@@ -122,6 +139,25 @@ class TestFormatadores:
     def test_formatar_percentual(self):
         assert formatar_percentual(Decimal("0.0816")) == "8,16%"
         assert formatar_percentual(None) == NA
+
+    def test_formatar_margem(self):
+        assert formatar_margem(None) == NA
+        assert formatar_margem(ResultadoMargem(None)) == NA
+        assert formatar_margem(ResultadoMargem(Decimal("0.873"))) == "87,3%"
+        assert (
+            formatar_margem(ResultadoMargem(None, MotivoMargem.RECEITA_NEGATIVA))
+            == "Receita negativa"
+        )
+        assert (
+            formatar_margem(ResultadoMargem(None, MotivoMargem.FFO_NEGATIVO))
+            == "FFO negativo"
+        )
+        assert (
+            formatar_margem(
+                ResultadoMargem(None, MotivoMargem.RECEITA_E_FFO_NEGATIVOS)
+            )
+            == "Receita e FFO negativos"
+        )
 
     def test_formatar_ratio(self):
         assert formatar_ratio(Decimal("12.25")) == "12,25x"
@@ -249,10 +285,13 @@ class TestMontarLinhas:
         assert colunas[12] == "0,55"
         assert colunas[13] == "0,50"
         assert colunas[14] == "Forte Alta"
-        assert colunas[15] == "8,16%"
-        assert colunas[16] == "96,51%"
-        assert colunas[17] == "Leve Alta"
-        assert colunas[18] == "12,25x"
+        assert colunas[15] == "87,3%"
+        assert colunas[16] == "85,5%"
+        assert colunas[17] == "Estável"
+        assert colunas[18] == "115,7%"
+        assert colunas[19] == "76,8%"
+        assert colunas[20] == "132,6%"
+        assert colunas[21] == "89,9%"
 
     def test_coluna_p_l_renderiza_apos_p_vp(self):
         analise = replace(_analise_hgbs11(), p_l=Decimal("2.84"))
@@ -320,11 +359,11 @@ def _fii_de_tijolo() -> AnaliseFundamental:
 class TestInformacoesAdicionais:
     def test_papel_com_indicadores(self):
         colunas = montar_linhas({"PETR4": _acao_com_indicadores()})[0]
-        assert colunas[24] == "LPA 1,23 | ROE 15,40% | ROIC 12,00%"
+        assert colunas[27] == "LPA 1,23 | ROE 15,40% | ROIC 12,00%"
 
     def test_fii_de_tijolo_com_imoveis_e_indexadores(self):
         colunas = montar_linhas({"HGBS11": _fii_de_tijolo()})[0]
-        assert colunas[24] == (
+        assert colunas[27] == (
             "Qtd Imóveis 16 | Cap Rate 6,50% | Vacância Média 3,20% | "
             "IPCA 22,00% | INCC 5,00%"
         )
@@ -337,10 +376,10 @@ class TestInformacoesAdicionais:
             vacancia_media=Decimal("0.032"),
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert "Qtd Imóveis" not in colunas[24]
-        assert "Cap Rate" not in colunas[24]
-        assert "Vacância Média" not in colunas[24]
-        assert colunas[24] == "IPCA 22,00% | INCC 5,00%"
+        assert "Qtd Imóveis" not in colunas[27]
+        assert "Cap Rate" not in colunas[27]
+        assert "Vacância Média" not in colunas[27]
+        assert colunas[27] == "IPCA 22,00% | INCC 5,00%"
 
     def test_fii_sem_fundamentus_omite_imoveis(self):
         analise = replace(
@@ -350,9 +389,9 @@ class TestInformacoesAdicionais:
             vacancia_media=None,
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert "Qtd Imóveis" not in colunas[24]
-        assert "Cap Rate" not in colunas[24]
-        assert "Vacância Média" not in colunas[24]
+        assert "Qtd Imóveis" not in colunas[27]
+        assert "Cap Rate" not in colunas[27]
+        assert "Vacância Média" not in colunas[27]
 
     def test_itens_ausentes_omitidos_sem_impedir_os_demais(self):
         analise = replace(
@@ -361,11 +400,11 @@ class TestInformacoesAdicionais:
             pct_preco_tipico=None,
         )
         colunas = montar_linhas({"PETR4": analise})[0]
-        assert colunas[24] == "LPA 1,23 | ROIC 12,00%"
+        assert colunas[27] == "LPA 1,23 | ROIC 12,00%"
 
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
-        assert colunas[24] == NA
+        assert colunas[27] == NA
 
 
 class TestDadosFiscais:
@@ -379,7 +418,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[25] == (
+        assert colunas[28] == (
             "CNPJ 12.345.678/0001-90 | "
             "Administrador BANCO GENIAL S.A. (98.765.432/0001-10) | "
             "Gestor CY.CAPITAL GESTORA (11.222.333/0001-44)"
@@ -393,7 +432,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[25] == (
+        assert colunas[28] == (
             "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
             "Gestor (11.222.333/0001-44)"
         )
@@ -405,7 +444,7 @@ class TestDadosFiscais:
             cnpj_gestor="11222333000144",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[25] == (
+        assert colunas[28] == (
             "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
         )
 
@@ -417,7 +456,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"PETR4": analise})[0]
-        assert colunas[25] == "CNPJ 33.000.167/0001-01"
+        assert colunas[28] == "CNPJ 33.000.167/0001-01"
 
     def test_item_ausente_omitido(self):
         analise = replace(
@@ -427,13 +466,13 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[25] == (
+        assert colunas[28] == (
             "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
         )
 
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
-        assert colunas[25] == NA
+        assert colunas[28] == NA
 
 
 class TestMontarCsv:
@@ -443,10 +482,11 @@ class TestMontarCsv:
             "Ticker;Nome;Tipo;Sub-tipo;P (Cotação);Preço Típico;P / PT;"
             "VP (VP/Cota);P/VP;P/L;"
             "Dividend Yield;Última data-com;Último dividendo;Dividendo anterior;"
-            "Tendência do dividendo;FFO Yield;Dividend Payout (DY/FFOY);FFO Trend;"
-            "P/FFO;Nº de cotistas;Classe de cotistas;Patrimônio;"
-            "Classe de patrimônio;Data de referência;Informações adicionais;"
-            "Dados fiscais"
+            "Tendência do dividendo;FFO/Receita (12m);FFO/Receita (3m);FFO Trend;"
+            "Dividendos/Receita (12m);Dividendos/Receita (3m);"
+            "Dividendos/FFO (12m);Dividendos/FFO (3m);Nº de cotistas;"
+            "Classe de cotistas;Patrimônio;Classe de patrimônio;Data de referência;"
+            "Informações adicionais;Dados fiscais"
         )
 
     def test_linhas_preservam_ordem_e_valores_formatados(self):
@@ -456,7 +496,7 @@ class TestMontarCsv:
         linhas = csv.split("\n")
         assert linhas[1].startswith(
             "HGBS11;CSHG Renda Urbana;FII;Tijolo;N/A;N/A;N/A;N/A;0,92x;N/A;"
-            "7,9%;10/07/2026;0,55;0,50;Forte Alta;8,16%"
+            "7,9%;10/07/2026;0,55;0,50;Forte Alta;87,3%"
         )
         assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
 
@@ -465,7 +505,7 @@ class TestMontarCsv:
         campos = csv.split("\n")[1].split(";")
         assert campos[12] == "0,55"
         assert campos[13] == "0,50"
-        assert campos[16] == "96,51%"
+        assert campos[16] == "85,5%"
 
     def test_csv_inclui_colunas_novas_com_os_mesmos_textos(self):
         analise = replace(
@@ -476,9 +516,9 @@ class TestMontarCsv:
         )
         linha = montar_linhas({"HGBS11": analise})[0]
         campos = montar_csv({"HGBS11": analise}).split("\n")[1].split(";")
-        assert campos[24] == linha[24]
-        assert campos[25] == linha[25]
-        assert campos[25] == (
+        assert campos[27] == linha[27]
+        assert campos[28] == linha[28]
+        assert campos[28] == (
             "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
             "Gestor (11.222.333/0001-44)"
         )
@@ -506,7 +546,7 @@ class TestFundamentalTablePanel:
         try:
             painel = FundamentalTablePanel(root)
             assert tuple(painel._tree_fixo.cget("columns")) == ("ticker", "nome")
-            assert len(painel._tree_rolavel.cget("columns")) == 24
+            assert len(painel._tree_rolavel.cget("columns")) == 27
         finally:
             root.destroy()
 
@@ -523,12 +563,12 @@ class TestFundamentalTablePanel:
             assert valores[0] == "HGBS11"
             assert valores[1] == "CSHG Renda Urbana"
             rolavel = painel._tree_rolavel.item(fixos[0], "values")
-            assert rolavel[13] == "8,16%"
+            assert rolavel[13] == "87,3%"
         finally:
             root.destroy()
 
     @needs_display
-    def test_linha_dividida_reconstroi_26_campos(self):
+    def test_linha_dividida_reconstroi_29_campos(self):
         root = tk.Tk()
         try:
             painel = FundamentalTablePanel(root)
@@ -537,8 +577,8 @@ class TestFundamentalTablePanel:
             congelados = tuple(painel._tree_fixo.item(iid, "values"))
             rolantes = tuple(painel._tree_rolavel.item(iid, "values"))
             assert len(congelados) == 2
-            assert len(rolantes) == 24
-            assert len(congelados + rolantes) == 26
+            assert len(rolantes) == 27
+            assert len(congelados + rolantes) == 29
         finally:
             root.destroy()
 
@@ -592,7 +632,7 @@ class TestFundamentalTablePanel:
             painel = FundamentalTablePanel(root)
             larguras = painel.get_column_widths()
             assert set(larguras) == set(painel._columns)
-            assert len(larguras) == 26
+            assert len(larguras) == 29
         finally:
             root.destroy()
 
@@ -778,14 +818,17 @@ class TestFundamentalTablePanel:
             direita = {
                 "ultimo_dividendo",
                 "dividendo_anterior",
-                "ffo_yield",
                 "dividend_yield",
-                "dividend_payout",
+                "ffo_receita_12m",
+                "ffo_receita_3m",
+                "dividendos_receita_12m",
+                "dividendos_receita_3m",
+                "dividendos_ffo_12m",
+                "dividendos_ffo_3m",
                 "p",
                 "preco_tipico",
                 "p_pt",
                 "vp",
-                "p_ffo",
                 "p_vp",
                 "p_l",
                 "cotistas",
@@ -888,19 +931,16 @@ class TestIntegracaoWatchlist:
         assert hgbs[2] == "FII"
         assert hgbs[3] == "Tijolo"
         assert hgbs[8] == "0,92x"
-        assert hgbs[10] == "5,6%"
+        assert hgbs[10] == "35,2%"
         assert hgbs[11] == "10/07/2026"
         assert hgbs[12] == "0,55"
         assert hgbs[13] == "0,50"
         assert hgbs[14] == "Forte Alta"
-        assert hgbs[15] == "8,16%"
-        assert hgbs[16] == "68,65%"
-        assert hgbs[17] == "Leve Alta"
-        assert hgbs[18] == "12,25x"
-        assert hgbs[19] == "100.000"
-        assert hgbs[20] == "Muito grande"
-        assert hgbs[21] == "R$ 2,94 bi"
-        assert hgbs[22] == "Gigante"
+        assert all(coluna == NA for coluna in hgbs[15:22])
+        assert hgbs[22] == "100.000"
+        assert hgbs[23] == "Muito grande"
+        assert hgbs[24] == "R$ 2,94 bi"
+        assert hgbs[25] == "Gigante"
 
 
 class TestWiringSubAba:
@@ -921,7 +961,7 @@ class TestWiringSubAba:
         texto = " ".join(parte for parte, _estilo in corpo)
         assert "Preço Típico" in texto
         assert "P / PT" in texto
-        assert "Dividend Payout" in texto
+        assert "Dividendos/FFO" in texto
         assert "Informações adicionais" in texto
         assert "Dados fiscais" in texto
 
@@ -938,7 +978,7 @@ class TestWiringSubAba:
         texto = " ".join(parte for parte, _estilo in corpo)
         assert "desconto" in texto
         assert "prêmio" in texto
-        assert "FFO Yield" in texto
+        assert "FFO/Receita" in texto
         assert "administrador" in texto
         assert "gestor" in texto
 

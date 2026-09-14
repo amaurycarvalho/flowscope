@@ -1,3 +1,3 @@
 """Pacote principal do FlowScope, plataforma de análise quantitativa de fluxo de ordens."""
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"

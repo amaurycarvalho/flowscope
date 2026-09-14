@@ -7,6 +7,7 @@ os demais (RFC-007 §73).
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -31,12 +32,18 @@ from flowscope.application.fundamental_ports import (
     CAMPO_CNPJ_GESTOR,
     CAMPO_COTACAO,
     CAMPO_DATA_REFERENCIA,
+    CAMPO_FFO_3M,
+    CAMPO_FFO_12M,
     CAMPO_GESTOR,
     CAMPO_LPA,
     CAMPO_MAX_52_SEM,
     CAMPO_MIN_52_SEM,
     CAMPO_NOME,
     CAMPO_QTD_IMOVEIS,
+    CAMPO_RECEITA_3M,
+    CAMPO_RECEITA_12M,
+    CAMPO_RENDIMENTOS_3M,
+    CAMPO_RENDIMENTOS_12M,
     CAMPO_ROE,
     CAMPO_ROIC,
     CAMPO_VACANCIA_MEDIA,
@@ -52,20 +59,28 @@ from flowscope.application.fundamental_ports import (
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
 from flowscope.domain.fii import (
+    TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClassificacaoAtivo,
+    ClassificacaoExibicao,
+    MargensFii,
     MetricasFii,
     PatrimonioFii,
     PrecoObservacao,
     TaxonomiaFii,
+    UltimoDividendo,
     classe_fii_elegivel_ffo,
     classificar_cotistas,
     classificar_patrimonio,
     classificar_ticker,
     dividendos_12m,
+    dividendos_ffo,
+    dividendos_receita,
+    ffo_receita,
     normalizar_ticker,
     percentual_preco_tipico,
     preco_tipico,
+    tendencia_margem_ffo,
 )
 
 logger = logging.getLogger("flowscope")
@@ -157,6 +172,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         )
         dados, de_cache = self._obter_dados(ticker, reference_date)
         nome = _texto(dados, CAMPO_NOME) or self._repository.obter_nome(ticker)
+        exibicao = _classificacao_exibicao(dados, classificacao)
         proventos = self._repository.obter_proventos(ticker, reference_date)
         ultimo_dividendo = self._ultimo_dividendo(
             dados, ticker, reference_date, proventos
@@ -182,7 +198,10 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         cotacao = _decimal_campo(dados, CAMPO_COTACAO)
         if cotacao is None and preco is not None:
             cotacao = preco.preco
-        exibicao = _classificacao_exibicao(dados, classificacao)
+        metricas = _recalcular_dividend_yield(
+            metricas, exibicao, cotacao, ultimo_dividendo
+        )
+        margens = _montar_margens(dados, exibicao)
         maximo, minimo = _extremos_52_sem(
             self._mercado, dados, ticker, reference_date
         )
@@ -197,6 +216,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             ultimo_dividendo=ultimo_dividendo,
             dividendos_12m_por_cota=total_por_cota,
             metricas=metricas,
+            margens=margens,
             cotacao=cotacao,
             vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
             p_l=_p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo),
@@ -302,3 +322,47 @@ def _extremos_52_sem(
             if maximo is None:
                 maximo = maximo_b3
     return maximo, minimo
+
+
+def _recalcular_dividend_yield(
+    metricas: MetricasFii | None,
+    exibicao: ClassificacaoExibicao,
+    cotacao: Decimal | None,
+    ultimo_dividendo: UltimoDividendo,
+) -> MetricasFii | None:
+    """Recalcula o Dividend Yield de FII como ``(último dividendo × 12) / cotação``.
+
+    Mantém as métricas originais (Fundamentus e fallbacks) quando o ativo é
+    ``Papel`` ou quando o último dividendo/cotação não está disponível.
+    """
+    if metricas is None or exibicao.tipo != TIPO_EXIBICAO_FII:
+        return metricas
+    valor = ultimo_dividendo.valor
+    if valor is None or cotacao is None or cotacao == Decimal(0):
+        return metricas
+    return replace(metricas, dividend_yield=(valor * Decimal(12)) / cotacao)
+
+
+def _montar_margens(
+    dados: dict[str, CampoFundamental], exibicao: ClassificacaoExibicao
+) -> MargensFii | None:
+    """Monta as razões sobre a receita, apenas para tickers do tipo FII."""
+    if exibicao.tipo != TIPO_EXIBICAO_FII:
+        return None
+    ffo_12m = _decimal_campo(dados, CAMPO_FFO_12M)
+    ffo_3m = _decimal_campo(dados, CAMPO_FFO_3M)
+    receita_12m = _decimal_campo(dados, CAMPO_RECEITA_12M)
+    receita_3m = _decimal_campo(dados, CAMPO_RECEITA_3M)
+    rendimentos_12m = _decimal_campo(dados, CAMPO_RENDIMENTOS_12M)
+    rendimentos_3m = _decimal_campo(dados, CAMPO_RENDIMENTOS_3M)
+    margem_12m = ffo_receita(ffo_12m, receita_12m)
+    margem_3m = ffo_receita(ffo_3m, receita_3m)
+    return MargensFii(
+        ffo_receita_12m=margem_12m,
+        ffo_receita_3m=margem_3m,
+        dividendos_receita_12m=dividendos_receita(rendimentos_12m, receita_12m),
+        dividendos_receita_3m=dividendos_receita(rendimentos_3m, receita_3m),
+        dividendos_ffo_12m=dividendos_ffo(rendimentos_12m, ffo_12m),
+        dividendos_ffo_3m=dividendos_ffo(rendimentos_3m, ffo_3m),
+        ffo_trend=tendencia_margem_ffo(margem_12m.valor, margem_3m.valor),
+    )

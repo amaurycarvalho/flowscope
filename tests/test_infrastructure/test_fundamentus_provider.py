@@ -604,3 +604,67 @@ class TestAdapterPl:
 
         assert CAMPO_P_L == "p_l"
         assert CAMPO_P_L in CAMPOS_FUNDAMENTAIS
+
+
+class TestAdapterReceitaRendimentos:
+    def test_fii_expoe_receita_e_rendimentos(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert campos["receita_12m"].valor == Decimal(100000000)
+        assert campos["receita_3m"].valor == Decimal(25000000)
+        assert campos["rendimentos_12m"].valor == Decimal(213080000)
+        assert campos["rendimentos_3m"].valor == Decimal(53000000)
+
+    def test_receita_liquida_como_alternativa(self):
+        from flowscope.domain.fii.fundamentus import AtivoFundamental
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        ativo = AtivoFundamental(
+            ticker="TESTE",
+            tipo=TIPO_FII,
+            demonstrativos_12m={"Receita Líquida": Decimal(1234)},
+            demonstrativos_3m={"Receita Líquida": Decimal(567)},
+        )
+        campos = campos_do_ativo(ativo)
+        assert campos["receita_12m"].valor == Decimal(1234)
+        assert campos["receita_3m"].valor == Decimal(567)
+
+    def test_receita_preferida_sobre_receita_liquida(self):
+        from flowscope.domain.fii.fundamentus import AtivoFundamental
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        ativo = AtivoFundamental(
+            ticker="TESTE",
+            tipo=TIPO_FII,
+            demonstrativos_12m={"Receita": Decimal(10), "Receita Líquida": Decimal(20)},
+        )
+        campos = campos_do_ativo(ativo)
+        assert campos["receita_12m"].valor == Decimal(10)
+
+    def test_campos_ausentes_nao_sao_expostos(self):
+        from flowscope.domain.fii.fundamentus import AtivoFundamental
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        campos = campos_do_ativo(AtivoFundamental(ticker="TESTE", tipo=TIPO_ACAO))
+        assert "receita_12m" not in campos
+        assert "receita_3m" not in campos
+        assert "rendimentos_12m" not in campos
+        assert "rendimentos_3m" not in campos
+
+    def test_constantes_registradas(self):
+        from flowscope.application.fundamental_ports import (
+            CAMPO_RECEITA_12M,
+            CAMPO_RECEITA_3M,
+            CAMPO_RENDIMENTOS_12M,
+            CAMPO_RENDIMENTOS_3M,
+            CAMPOS_FUNDAMENTAIS,
+        )
+
+        for constante in (
+            CAMPO_RECEITA_12M,
+            CAMPO_RECEITA_3M,
+            CAMPO_RENDIMENTOS_12M,
+            CAMPO_RENDIMENTOS_3M,
+        ):
+            assert constante in CAMPOS_FUNDAMENTAIS

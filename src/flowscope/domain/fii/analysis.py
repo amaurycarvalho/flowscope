@@ -16,9 +16,10 @@ from flowscope.domain.fii.classification import (
 from flowscope.domain.fii.classification_faixas import (
     ClasseCotistas,
     ClassePatrimonio,
+    TendenciaFfo,
 )
 from flowscope.domain.fii.dividends import UltimoDividendo
-from flowscope.domain.fii.metrics import MetricasFii
+from flowscope.domain.fii.metrics import MetricasFii, ResultadoMargem
 
 
 @dataclass(frozen=True)
@@ -53,6 +54,19 @@ class PrecoObservacao:
 
 
 @dataclass(frozen=True)
+class MargensFii:
+    """Razões de FFO, dividendos e receita exibidas na tabela de Fundamentos."""
+
+    ffo_receita_12m: ResultadoMargem
+    ffo_receita_3m: ResultadoMargem
+    dividendos_receita_12m: ResultadoMargem
+    dividendos_receita_3m: ResultadoMargem
+    dividendos_ffo_12m: ResultadoMargem
+    dividendos_ffo_3m: ResultadoMargem
+    ffo_trend: TendenciaFfo | None = None
+
+
+@dataclass(frozen=True)
 class AnaliseFundamental:
     """Resultado da análise fundamentalista de um ticker da watchlist."""
 
@@ -62,6 +76,7 @@ class AnaliseFundamental:
     ultimo_dividendo: UltimoDividendo
     dividendos_12m_por_cota: Decimal | None
     metricas: MetricasFii | None
+    margens: MargensFii | None = None
     cotacao: Decimal | None = None
     vp_cota: Decimal | None = None
     p_l: Decimal | None = None

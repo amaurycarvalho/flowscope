@@ -9,12 +9,17 @@ from flowscope.domain.fii import (
     FiiSnapshot,
     Inconsistencia,
     MetricEvidence,
+    MotivoMargem,
     Quality,
+    ResultadoMargem,
     TendenciaFfo,
     analisar_snapshot,
     dividend_yield,
+    dividendos_ffo,
+    dividendos_receita,
     ffo_momentum,
     ffo_payout,
+    ffo_receita,
     ffo_yield,
     market_value,
     p_ffo,
@@ -22,6 +27,7 @@ from flowscope.domain.fii import (
     p_vp,
     percentual_preco_tipico,
     preco_tipico,
+    tendencia_margem_ffo,
     verificar_consistencia,
 )
 
@@ -230,3 +236,80 @@ class TestConsistencia:
 
     def test_sem_dados_nao_gera_inconsistencia(self):
         assert verificar_consistencia(None, None) is True
+
+
+class TestRazoesSobreReceita:
+    def test_ffo_receita_btlg11(self):
+        resultado = ffo_receita(Decimal(417655000), Decimal(478420000))
+        assert resultado.valor.quantize(Decimal("0.001")) == Decimal("0.873")
+        assert resultado.motivo is None
+
+        resultado_3m = ffo_receita(Decimal(125081000), Decimal(146358000))
+        assert resultado_3m.valor.quantize(Decimal("0.001")) == Decimal("0.855")
+
+    def test_dividendos_receita_btlg11(self):
+        resultado = dividendos_receita(Decimal(553687000), Decimal(478420000))
+        assert resultado.valor.quantize(Decimal("0.001")) == Decimal("1.157")
+
+    def test_dividendos_ffo_btlg11(self):
+        resultado = dividendos_ffo(Decimal(553687000), Decimal(417655000))
+        assert resultado.valor.quantize(Decimal("0.001")) == Decimal("1.326")
+
+    def test_ffo_receita_cacr11_ambos_negativos(self):
+        resultado = ffo_receita(Decimal(-21498500), Decimal(-20667500))
+        assert resultado == ResultadoMargem(
+            None, MotivoMargem.RECEITA_E_FFO_NEGATIVOS
+        )
+
+    def test_ffo_receita_receita_negativa(self):
+        resultado = ffo_receita(Decimal(100), Decimal(-100))
+        assert resultado == ResultadoMargem(None, MotivoMargem.RECEITA_NEGATIVA)
+
+    def test_ffo_receita_ffo_negativo(self):
+        resultado = ffo_receita(Decimal(-100), Decimal(100))
+        assert resultado == ResultadoMargem(None, MotivoMargem.FFO_NEGATIVO)
+
+    def test_dividendos_receita_receita_negativa(self):
+        resultado = dividendos_receita(Decimal(50056000), Decimal(-20667500))
+        assert resultado == ResultadoMargem(None, MotivoMargem.RECEITA_NEGATIVA)
+
+    def test_dividendos_ffo_ffo_negativo(self):
+        resultado = dividendos_ffo(Decimal(50056000), Decimal(-21498500))
+        assert resultado == ResultadoMargem(None, MotivoMargem.FFO_NEGATIVO)
+
+    @pytest.mark.parametrize(
+        "calculo",
+        [ffo_receita, dividendos_receita, dividendos_ffo],
+    )
+    def test_insumo_ausente_retorna_na(self, calculo):
+        assert calculo(None, Decimal(100)) == ResultadoMargem(None)
+        assert calculo(Decimal(100), None) == ResultadoMargem(None)
+
+    def test_divisao_por_zero_retorna_na(self):
+        assert ffo_receita(Decimal(100), Decimal(0)) == ResultadoMargem(None)
+        assert dividendos_receita(Decimal(100), Decimal(0)) == ResultadoMargem(None)
+        assert dividendos_ffo(Decimal(100), Decimal(0)) == ResultadoMargem(None)
+
+
+class TestTendenciaMargemFfo:
+    def test_estavel_para_variacao_pequena(self):
+        assert (
+            tendencia_margem_ffo(Decimal("0.873"), Decimal("0.855"))
+            is TendenciaFfo.ESTAVEL
+        )
+
+    def test_forte_alta(self):
+        assert (
+            tendencia_margem_ffo(Decimal("0.50"), Decimal("0.90"))
+            is TendenciaFfo.FORTE_ALTA
+        )
+
+    def test_forte_queda(self):
+        assert (
+            tendencia_margem_ffo(Decimal("0.90"), Decimal("0.50"))
+            is TendenciaFfo.FORTE_QUEDA
+        )
+
+    def test_margem_ausente_retorna_none(self):
+        assert tendencia_margem_ffo(None, Decimal("0.85")) is None
+        assert tendencia_margem_ffo(Decimal("0.85"), None) is None

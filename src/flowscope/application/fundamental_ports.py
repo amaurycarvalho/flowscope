@@ -28,6 +28,10 @@ CAMPO_P_FFO = "p_ffo"
 CAMPO_FFO_TREND = "ffo_trend"
 CAMPO_FFO_12M = "ffo_12m"
 CAMPO_FFO_3M = "ffo_3m"
+CAMPO_RECEITA_12M = "receita_12m"
+CAMPO_RECEITA_3M = "receita_3m"
+CAMPO_RENDIMENTOS_12M = "rendimentos_12m"
+CAMPO_RENDIMENTOS_3M = "rendimentos_3m"
 CAMPO_DIVIDENDO_POR_COTA = "dividendo_por_cota"
 CAMPO_DISCRIMINADOR = "discriminador"
 CAMPO_ESPECIE = "especie"
@@ -66,6 +70,10 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_FFO_TREND,
         CAMPO_FFO_12M,
         CAMPO_FFO_3M,
+        CAMPO_RECEITA_12M,
+        CAMPO_RECEITA_3M,
+        CAMPO_RENDIMENTOS_12M,
+        CAMPO_RENDIMENTOS_3M,
         CAMPO_DIVIDENDO_POR_COTA,
         CAMPO_DISCRIMINADOR,
         CAMPO_ESPECIE,

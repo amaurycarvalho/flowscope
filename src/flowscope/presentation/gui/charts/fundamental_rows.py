@@ -6,7 +6,6 @@ em linhas prontas para o ``ttk.Treeview`` e para exportação CSV.
 """
 
 from collections.abc import Mapping
-from decimal import Decimal
 
 from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
@@ -20,6 +19,7 @@ from flowscope.presentation.gui.charts.fundamental_formatters import (
     formatar_cnpj,
     formatar_data,
     formatar_inteiro,
+    formatar_margem,
     formatar_patrimonio,
     formatar_percentual,
     formatar_preco_tipico,
@@ -62,10 +62,13 @@ _COLUNAS = (
     ("ultimo_dividendo", "Último dividendo"),
     ("dividendo_anterior", "Dividendo anterior"),
     ("tendencia_dividendo", "Tendência do dividendo"),
-    ("ffo_yield", "FFO Yield"),
-    ("dividend_payout", "Dividend Payout (DY/FFOY)"),
+    ("ffo_receita_12m", "FFO/Receita (12m)"),
+    ("ffo_receita_3m", "FFO/Receita (3m)"),
     ("ffo_trend", "FFO Trend"),
-    ("p_ffo", "P/FFO"),
+    ("dividendos_receita_12m", "Dividendos/Receita (12m)"),
+    ("dividendos_receita_3m", "Dividendos/Receita (3m)"),
+    ("dividendos_ffo_12m", "Dividendos/FFO (12m)"),
+    ("dividendos_ffo_3m", "Dividendos/FFO (3m)"),
     ("cotistas", "Nº de cotistas"),
     ("classe_cotistas", "Classe de cotistas"),
     ("patrimonio", "Patrimônio"),
@@ -86,14 +89,17 @@ _COLUNAS_DIREITA = frozenset(
     {
         "ultimo_dividendo",
         "dividendo_anterior",
-        "ffo_yield",
         "dividend_yield",
-        "dividend_payout",
+        "ffo_receita_12m",
+        "ffo_receita_3m",
+        "dividendos_receita_12m",
+        "dividendos_receita_3m",
+        "dividendos_ffo_12m",
+        "dividendos_ffo_3m",
         "p",
         "preco_tipico",
         "p_pt",
         "vp",
-        "p_ffo",
         "p_vp",
         "p_l",
         "cotistas",
@@ -103,15 +109,6 @@ _COLUNAS_DIREITA = frozenset(
 
 #: Separador dos itens concatenados nas colunas adicionais.
 _SEPARADOR_ITENS = " | "
-
-
-def _payout(
-    dividend_yield: Decimal | None, ffo_yield: Decimal | None
-) -> Decimal | None:
-    """Calcula o Dividend Payout como ``DY / FFOY``, ou ``None``."""
-    if dividend_yield is None or ffo_yield is None or ffo_yield == 0:
-        return None
-    return dividend_yield / ffo_yield
 
 
 def _itens_imoveis(analise: AnaliseFundamental) -> list[str]:
@@ -206,11 +203,10 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     sub_tipo = exibicao.sub_tipo
     dividendo = analise.ultimo_dividendo
     metricas = analise.metricas
-    ffo_yield = metricas.ffo_yield if metricas else None
+    margens = analise.margens
     dy = metricas.dividend_yield if metricas else None
-    p_ffo = metricas.p_ffo if metricas else None
     p_vp = metricas.p_vp if metricas else None
-    tendencia_ffo = metricas.ffo_trend if metricas else None
+    tendencia_ffo = margens.ffo_trend if margens else None
     return (
         ticker,
         analise.nome or NA,
@@ -227,10 +223,13 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         formatar_valor(dividendo.valor),
         formatar_valor(dividendo.valor_anterior),
         rotulo_tendencia(dividendo.tendencia),
-        formatar_percentual(ffo_yield, 2),
-        formatar_percentual(_payout(dy, ffo_yield), 2),
+        formatar_margem(margens.ffo_receita_12m if margens else None),
+        formatar_margem(margens.ffo_receita_3m if margens else None),
         rotulo_tendencia(tendencia_ffo),
-        formatar_ratio(p_ffo, 2),
+        formatar_margem(margens.dividendos_receita_12m if margens else None),
+        formatar_margem(margens.dividendos_receita_3m if margens else None),
+        formatar_margem(margens.dividendos_ffo_12m if margens else None),
+        formatar_margem(margens.dividendos_ffo_3m if margens else None),
         formatar_inteiro(analise.cotistas),
         rotulo_classe_cotistas(analise.classe_cotistas),
         formatar_patrimonio(analise.patrimonio),

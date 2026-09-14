@@ -12,6 +12,8 @@ from enum import Enum
 from flowscope.domain.fii import (
     ClasseCotistas,
     ClassePatrimonio,
+    MotivoMargem,
+    ResultadoMargem,
     SubTipoAcao,
     SubTipoFii,
     TipoAtivo,
@@ -26,6 +28,13 @@ _ROTULOS_TENDENCIA = {
     "ESTAVEL": "Estável",
     "QUEDA": "Leve Queda",
     "FORTE_QUEDA": "Forte Queda",
+}
+
+#: Textos exibidos quando um insumo da razão é negativo.
+_MOTIVOS_MARGEM = {
+    MotivoMargem.RECEITA_NEGATIVA: "Receita negativa",
+    MotivoMargem.FFO_NEGATIVO: "FFO negativo",
+    MotivoMargem.RECEITA_E_FFO_NEGATIVOS: "Receita e FFO negativos",
 }
 
 _CLASSE_COTISTAS = {
@@ -114,6 +123,19 @@ def formatar_percentual(valor: Decimal | None, casas: int = 2) -> str:
     if valor is None:
         return NA
     return f"{_com_virgula(valor * Decimal(100), casas)}%"
+
+
+def formatar_margem(resultado: ResultadoMargem | None) -> str:
+    """Formata uma razão sobre a receita como texto, percentual ou ``N/A``.
+
+    Um motivo de indisponibilidade (insumo negativo) prevalece sobre o número;
+    valor ausente resulta em ``N/A``.
+    """
+    if resultado is None:
+        return NA
+    if resultado.motivo is not None:
+        return _MOTIVOS_MARGEM[resultado.motivo]
+    return formatar_percentual(resultado.valor, 1)
 
 
 def formatar_preco_tipico(valor: Decimal | None) -> str:

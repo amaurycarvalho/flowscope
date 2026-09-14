@@ -2,7 +2,21 @@ from datetime import date
 from decimal import Decimal
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
-from flowscope.domain.fii import PatrimonioFii, PrecoObservacao
+from flowscope.application.fundamental_ports import (
+    CAMPO_DIVIDEND_YIELD,
+    CAMPO_FFO_12M,
+    CAMPO_FFO_3M,
+    CAMPO_RECEITA_12M,
+    CAMPO_RECEITA_3M,
+    CAMPO_RENDIMENTOS_12M,
+    CAMPO_RENDIMENTOS_3M,
+    CampoFundamental,
+)
+from flowscope.domain.fii import (
+    PatrimonioFii,
+    PrecoObservacao,
+    TendenciaFfo,
+)
 from flowscope.domain.structured import ISIN, Provento, ValorProvento
 
 REFERENCIA = date(2026, 9, 4)
@@ -62,7 +76,7 @@ class TestDividendYieldDesacoplado:
         assert resultado.metricas.dividend_yield is not None
         assert resultado.metricas.dividend_yield.quantize(
             Decimal("0.0001")
-        ) == Decimal("0.0560")
+        ) == Decimal("0.3522")
         assert resultado.metricas.ffo_yield is None
         assert resultado.metricas.p_vp is None
         assert resultado.metricas.p_ffo is None
@@ -137,3 +151,76 @@ class TestPvpDesacoplado:
         caso = FundamentalAnalysisUseCase(_Repo(), mercado=_Mercado())
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
         assert resultado.metricas is None
+
+
+class _FonteFundamental:
+    def __init__(self, campos):
+        self._campos = campos
+
+    def obter(self, ticker, reference_date):
+        return self._campos
+
+
+class TestDividendYieldRecalculado:
+    def test_fallback_fundamentus_sem_ultimo_dividendo(self):
+        campos = {CAMPO_DIVIDEND_YIELD: CampoFundamental(Decimal("0.079"))}
+        caso = FundamentalAnalysisUseCase(
+            _Repo(),
+            mercado=_Mercado(),
+            fundamental_provider=_FonteFundamental(campos),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.metricas.dividend_yield == Decimal("0.079")
+
+    def test_papel_nao_recalcula(self):
+        repo = _Repo(
+            proventos=[
+                _rendimento(date(2026, 1, 15), "0.50"),
+                _rendimento(date(2026, 7, 10), "0.55"),
+            ]
+        )
+        caso = FundamentalAnalysisUseCase(repo, mercado=_Mercado())
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.metricas.dividend_yield.quantize(
+            Decimal("0.0001")
+        ) == Decimal("0.0560")
+
+
+class TestMargensFii:
+    def _campos(self):
+        return {
+            CAMPO_FFO_12M: CampoFundamental(Decimal(417655000)),
+            CAMPO_FFO_3M: CampoFundamental(Decimal(125081000)),
+            CAMPO_RECEITA_12M: CampoFundamental(Decimal(478420000)),
+            CAMPO_RECEITA_3M: CampoFundamental(Decimal(146358000)),
+            CAMPO_RENDIMENTOS_12M: CampoFundamental(Decimal(553687000)),
+            CAMPO_RENDIMENTOS_3M: CampoFundamental(Decimal(112411000)),
+        }
+
+    def test_fii_monta_margens(self):
+        caso = FundamentalAnalysisUseCase(
+            _Repo(), fundamental_provider=_FonteFundamental(self._campos())
+        )
+        resultado = caso.execute(["BTLG11"], REFERENCIA)[0]
+        assert resultado.margens is not None
+        margens = resultado.margens
+        assert margens.ffo_receita_12m.valor.quantize(
+            Decimal("0.001")
+        ) == Decimal("0.873")
+        assert margens.ffo_receita_3m.valor.quantize(
+            Decimal("0.001")
+        ) == Decimal("0.855")
+        assert margens.ffo_trend is TendenciaFfo.ESTAVEL
+        assert margens.dividendos_receita_12m.valor.quantize(
+            Decimal("0.001")
+        ) == Decimal("1.157")
+        assert margens.dividendos_ffo_3m.valor.quantize(
+            Decimal("0.001")
+        ) == Decimal("0.899")
+
+    def test_papel_nao_monta_margens(self):
+        caso = FundamentalAnalysisUseCase(
+            _Repo(), fundamental_provider=_FonteFundamental(self._campos())
+        )
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.margens is None

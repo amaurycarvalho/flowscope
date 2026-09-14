@@ -29,6 +29,10 @@ from flowscope.application.fundamental_ports import (
     CAMPO_P_VP,
     CAMPO_PATRIMONIO,
     CAMPO_QTD_IMOVEIS,
+    CAMPO_RECEITA_3M,
+    CAMPO_RECEITA_12M,
+    CAMPO_RENDIMENTOS_3M,
+    CAMPO_RENDIMENTOS_12M,
     CAMPO_ROE,
     CAMPO_ROIC,
     CAMPO_SEGMENTO,
@@ -58,6 +62,9 @@ _INDICADOR_ROIC = "ROIC"
 _IMOVEL_CAP_RATE = "cap_rate"
 _IMOVEL_VACANCIA = "vacancia_media"
 _DEMONSTRATIVO_FFO = "FFO"
+_DEMONSTRATIVO_RECEITA = "Receita"
+_DEMONSTRATIVO_RECEITA_LIQUIDA = "Receita Líquida"
+_DEMONSTRATIVO_REND_DISTRIBUIDO = "Rend. Distribuído"
 _BALANCO_PATRIMONIO_LIQ = "Patrim. Líq"
 _BALANCO_PATRIMONIO_LIQUIDO = "Patrim Líquido"
 _IMOVEL_QTD = "qtd_imoveis"
@@ -154,6 +161,34 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     _adicionar(campos, CAMPO_FFO_12M, ffo_12m)
     _adicionar(campos, CAMPO_FFO_3M, ffo_3m)
     _adicionar(campos, CAMPO_FFO_TREND, _ffo_trend(ffo_12m, ffo_3m))
+    _adicionar(
+        campos,
+        CAMPO_RECEITA_12M,
+        _demonstrativo(
+            ativo.demonstrativos_12m,
+            _DEMONSTRATIVO_RECEITA,
+            _DEMONSTRATIVO_RECEITA_LIQUIDA,
+        ),
+    )
+    _adicionar(
+        campos,
+        CAMPO_RECEITA_3M,
+        _demonstrativo(
+            ativo.demonstrativos_3m,
+            _DEMONSTRATIVO_RECEITA,
+            _DEMONSTRATIVO_RECEITA_LIQUIDA,
+        ),
+    )
+    _adicionar(
+        campos,
+        CAMPO_RENDIMENTOS_12M,
+        ativo.demonstrativos_12m.get(_DEMONSTRATIVO_REND_DISTRIBUIDO),
+    )
+    _adicionar(
+        campos,
+        CAMPO_RENDIMENTOS_3M,
+        ativo.demonstrativos_3m.get(_DEMONSTRATIVO_REND_DISTRIBUIDO),
+    )
     _adicionar_patrimonio(ativo, campos)
     _adicionar(campos, CAMPO_QTD_IMOVEIS, ativo.imoveis.get(_IMOVEL_QTD))
     _adicionar(campos, CAMPO_DATA_REFERENCIA, ativo.data_ultima_cotacao)
@@ -200,6 +235,16 @@ def _valor_indicador(
     if valor is not None:
         return valor
     return indicadores.get(alternativa)
+
+
+def _demonstrativo(
+    demonstrativos: dict[str, Decimal], principal: str, alternativa: str
+) -> Decimal | None:
+    """Retorna o demonstrativo principal ou, na ausência, o alternativo."""
+    valor = demonstrativos.get(principal)
+    if valor is not None:
+        return valor
+    return demonstrativos.get(alternativa)
 
 
 def _percentual(valor: Decimal | None) -> Decimal | None:
