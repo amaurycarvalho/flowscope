@@ -81,6 +81,7 @@ class AnaliseFundamental:
     vp_cota: Decimal | None = None
     p_l: Decimal | None = None
     classificacao_exibicao: ClassificacaoExibicao | None = None
+    cotas: Decimal | None = None
     cotistas: int | None = None
     patrimonio: Decimal | None = None
     classe_cotistas: ClasseCotistas | None = None

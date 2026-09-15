@@ -75,7 +75,7 @@ TAB_CONTENT = {
              "• P/L: para ações, o indicador reportado pela fonte; para FIIs, a cotação dividida pelo último dividendo anualizado (× 12), em anos;\n"
              "• Dividendos: Dividend Yield, última data-com, último dividendo (Rendimento), dividendo anterior e tendência do dividendo (último vs. anterior em cinco faixas);\n"
              "• Métricas FFO (apenas FII): FFO/Receita (12m e 3m), FFO Trend, Dividendos/Receita (12m e 3m) e Dividendos/FFO (12m e 3m), em percentual com uma casa decimal;\n"
-             "• Cotistas/acionistas: número de cotistas do FII ou quantidade de acionistas da companhia (CVM), suas classificações, patrimônio e data de referência;\n"
+             "• Cotas e cotistas: quantidade de cotas/ações emitidas, número de cotistas do FII ou quantidade de acionistas da companhia (CVM), suas classificações, patrimônio e data de referência;\n"
              "• Informações adicionais: LPA, ROE e ROIC (ação); Qtd Imóveis, Cap Rate, Vacância Média e percentuais por indexador (FII);\n"
              "• Dados fiscais: CNPJ e, para FIIs, administrador e gestor.\n\n"), ""),
             ("Como interpretar: ", "bold"),
@@ -83,6 +83,7 @@ TAB_CONTENT = {
              "N/A indica ausência do dado. O Preço Típico é a referência de preço médio de 52 semanas ((máxima + mínima + cotação) / 3); o P / PT expressa o desconto (negativo) ou prêmio (positivo) da cotação frente a esse preço típico. "
              "O FFO/Receita indica quanto da receita vira caixa operacional; o Dividendos/Receita, quanto da receita é destinado a dividendos; e o Dividendos/FFO, quanto do caixa operacional é consumido pelos dividendos (abaixo de 100% o FFO cobre os dividendos, acima de 100% os dividendos superam o FFO e negativo o FFO foi negativo no período). "
              "O número de cotistas de FIIs vem do informe mensal e o de ações, da quantidade de acionistas publicada pela CVM. "
+             "A quantidade de cotas emitidas de um FII vem da B3/CVM (fonte mais precisa), com o Fundamentus como fallback; a de ações vem do Fundamentus (`Nro. Ações`) e dimensiona o tamanho da companhia. "
              "O FFO Trend compara FFO/Receita (3m) com FFO/Receita (12m) em pontos percentuais, com os rótulos Forte Alta (≥ +20 p.p.), Leve Alta (≥ +5 p.p.), Estável, Leve Queda (≥ −20 p.p.) e Forte Queda (< −20 p.p.); a tendência do dividendo usa os rótulos Forte Alta (≥ +5%), Leve Alta, Estável, Leve Queda e Forte Queda (≤ −5%). "
              "Ativos do tipo Papel exibem N/A nas colunas de razões sobre a receita. O P/VP compara o valor de mercado "
              "com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. "

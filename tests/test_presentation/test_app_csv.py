@@ -48,15 +48,15 @@ class TestBuildFundamentalCsv:
         assert linhas[0].startswith("Ticker;Nome;")
         assert [linha.split(";")[0] for linha in linhas[1:]] == ["HGBS11", "PETR4"]
 
-    def test_csv_inclui_cabecalho_e_29_colunas(self):
+    def test_csv_inclui_cabecalho_e_30_colunas(self):
         host = _host()
         linhas = host._build_fundamental_csv().split("\n")
         cabecalho = linhas[0].split(";")
         assert cabecalho[0] == "Ticker"
         assert cabecalho[1] == "Nome"
-        assert len(cabecalho) == 29
+        assert len(cabecalho) == 30
         for linha in linhas[1:]:
-            assert len(linha.split(";")) == 29
+            assert len(linha.split(";")) == 30
 
     def test_filtra_pelos_tickers_exibidos(self):
         host = _host(tickers=("PETR4",))

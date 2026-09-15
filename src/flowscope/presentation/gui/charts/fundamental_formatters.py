@@ -159,6 +159,13 @@ def formatar_inteiro(valor: int | None) -> str:
     return f"{valor:,}".replace(",", ".")
 
 
+def formatar_quantidade(valor: Decimal | None) -> str:
+    """Formata uma quantidade inteira (cotas/ações) com milhar, ou ``N/A``."""
+    if valor is None:
+        return NA
+    return formatar_inteiro(int(valor))
+
+
 def formatar_cnpj(valor: str | None) -> str:
     """Formata um CNPJ como ``99.999.999/9999-99``, ou ``N/A``."""
     if not valor:

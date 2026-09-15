@@ -33,7 +33,7 @@ logger = logging.getLogger("flowscope")
 FONTE_FUNDAMENTUS = "FUNDAMENTUS"
 
 #: Versão do parser do Fundamentus, usada para invalidar caches antigos.
-PARSER_VERSION = "fundamentus-v1"
+PARSER_VERSION = "fundamentus-v2"
 
 #: Políticas de cache condicional do Fundamentus.
 _FRESHNESS = timedelta(hours=1)

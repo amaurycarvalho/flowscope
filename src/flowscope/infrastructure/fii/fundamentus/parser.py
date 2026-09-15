@@ -30,6 +30,7 @@ _ROTULO_DATA_COTACAO = "Data últ cot"
 _ROTULO_MIN_52 = "Min 52 sem"
 _ROTULO_MAX_52 = "Max 52 sem"
 _ROTULO_VOLUME_2M = "Vol $ méd (2m)"
+_ROTULOS_COTAS = ["Nro. Cotas", "Nro. Ações"]
 _ROTULO_ESPECIE = "Tipo"
 _ROTULO_SETOR = "Setor"
 _ROTULO_SUBSETOR = "Subsetor"
@@ -176,6 +177,7 @@ def parse_ativo(ticker: str, html: str) -> AtivoFundamental:
         min_52_sem=para_decimal(_primeiro(raw, [_ROTULO_MIN_52])),
         max_52_sem=para_decimal(_primeiro(raw, [_ROTULO_MAX_52])),
         volume_medio_2m=para_decimal(_primeiro(raw, [_ROTULO_VOLUME_2M])),
+        cotas_emitidas=para_decimal(_primeiro(raw, _ROTULOS_COTAS)),
         oscilacoes=_extrair_mapa(raw, _OSCILACOES),
         indicadores=_extrair_mapa(raw, _INDICADORES),
         balanco=_extrair_mapa(raw, _BALANCO),

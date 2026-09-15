@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from flowscope.application.fundamental_fields import _decimal_campo
 from flowscope.application.fundamental_ports import (
+    CAMPO_COTAS_EMITIDAS,
     CAMPO_DIVIDENDO_POR_COTA,
     CAMPO_PATRIMONIO,
     CampoFundamental,
@@ -149,3 +150,24 @@ class FundamentalDataMixin:
         if cotistas is None and classificacao.tipo is TipoAtivo.ACAO:
             cotistas = self._obter_acionistas(ticker, reference_date)
         return patrimonio, cotistas
+
+    def _resolver_cotas(
+        self: "FundamentalDataMixin",
+        dados: dict[str, CampoFundamental],
+        classificacao: ClassificacaoAtivo,
+        patrimonio_repo: PatrimonioFii | None,
+    ) -> Decimal | None:
+        """Resolve a quantidade de cotas/ações emitidas por tipo de ativo.
+
+        Para FII, prioriza a B3/CVM (via ``PatrimonioFii``) e usa o Fundamentus
+        como fallback; para Papel, usa apenas o Fundamentus.
+        """
+        fundamentus = _decimal_campo(dados, CAMPO_COTAS_EMITIDAS)
+        if classificacao.tipo is TipoAtivo.ACAO:
+            return fundamentus
+        repo = (
+            patrimonio_repo.shares_outstanding
+            if patrimonio_repo is not None
+            else None
+        )
+        return repo if repo is not None else fundamentus

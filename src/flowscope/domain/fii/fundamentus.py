@@ -36,6 +36,7 @@ class AtivoFundamental:
     min_52_sem: Decimal | None = None
     max_52_sem: Decimal | None = None
     volume_medio_2m: Decimal | None = None
+    cotas_emitidas: Decimal | None = None
     oscilacoes: dict[str, Decimal] = field(default_factory=dict)
     indicadores: dict[str, Decimal] = field(default_factory=dict)
     balanco: dict[str, Decimal] = field(default_factory=dict)

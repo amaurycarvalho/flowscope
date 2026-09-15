@@ -70,6 +70,7 @@ class TestParser:
         assert ativo.min_52_sem == Decimal("30.00")
         assert ativo.max_52_sem == Decimal("60.00")
         assert ativo.volume_medio_2m == Decimal(1234567)
+        assert ativo.cotas_emitidas == Decimal(12888700000)
         assert ativo.oscilacoes["Dia"] == Decimal("-0.08")
         assert ativo.indicadores["P/VP"] == Decimal("1.20")
         assert ativo.indicadores["Div. Yield"] == Decimal("7.30")
@@ -83,6 +84,7 @@ class TestParser:
         assert ativo.eh_fii() is True
         assert ativo.indicadores["FFO Yield"] == Decimal("8.16")
         assert ativo.indicadores["P/VP"] == Decimal("0.92")
+        assert ativo.cotas_emitidas == Decimal(144355726)
         assert ativo.demonstrativos_12m["FFO"] == Decimal(220777000)
         assert ativo.demonstrativos_3m["FFO"] == Decimal(63802000)
         assert ativo.imoveis["qtd_imoveis"] == 11
@@ -99,6 +101,7 @@ class TestParser:
         assert ativo.indicadores["FFO Yield"] == Decimal("5.83")
         assert ativo.indicadores["Div. Yield"] == Decimal("7.8")
         assert ativo.indicadores["P/VP"] == Decimal("0.90")
+        assert ativo.cotas_emitidas == Decimal(10000000)
 
     def test_parse_layout_real_extrai_demonstrativos_por_coluna(self):
         ativo = parse_ativo("visc11", _fixture("fii_visc11.html"))
@@ -165,6 +168,14 @@ class TestAdapterClassificacao:
 
         campos = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
         assert campos["vp_cota"].valor == Decimal("20.38")
+
+    def test_campos_incluem_cotas_emitidas(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo
+
+        fii = campos_do_ativo(parse_ativo("hgbs11", _fixture("fii_hgbs11.html")))
+        assert fii["cotas_emitidas"].valor == Decimal(144355726)
+        acao = campos_do_ativo(parse_ativo("petr4", _fixture("acao_petr4.html")))
+        assert acao["cotas_emitidas"].valor == Decimal(12888700000)
 
     def test_campos_de_acao_sem_vp_cota(self):
         from flowscope.infrastructure.fii.fundamentus.adapter import campos_do_ativo

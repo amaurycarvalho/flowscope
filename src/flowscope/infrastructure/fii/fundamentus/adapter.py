@@ -10,6 +10,7 @@ from decimal import Decimal
 from flowscope.application.fundamental_ports import (
     CAMPO_CAP_RATE,
     CAMPO_COTACAO,
+    CAMPO_COTAS_EMITIDAS,
     CAMPO_DATA_REFERENCIA,
     CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDEND_YIELD,
@@ -126,6 +127,7 @@ def campos_do_ativo(ativo: AtivoFundamental) -> dict[str, CampoFundamental]:
     _adicionar(campos, CAMPO_COTACAO, ativo.cotacao)
     _adicionar(campos, CAMPO_MIN_52_SEM, ativo.min_52_sem)
     _adicionar(campos, CAMPO_MAX_52_SEM, ativo.max_52_sem)
+    _adicionar(campos, CAMPO_COTAS_EMITIDAS, ativo.cotas_emitidas)
 
     campos.update(_campos_classificacao(ativo))
 

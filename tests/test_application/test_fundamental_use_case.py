@@ -6,6 +6,7 @@ import pytest
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
+    CAMPO_COTAS_EMITIDAS,
     CAMPO_DISCRIMINADOR,
     CAMPO_DIVIDENDO_POR_COTA,
     CAMPO_MAX_52_SEM,
@@ -361,6 +362,51 @@ class TestAcionistasPapel:
         resultado = caso.execute(["PETR4"], REFERENCIA)[0]
         assert resultado.cotistas is None
         assert resultado.erro is None
+
+
+class TestResolucaoCotas:
+    def test_fii_prioriza_repositorio_sobre_fundamentus(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("999"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.cotas == Decimal("144355726")
+
+    def test_fii_usa_fundamentus_quando_repositorio_ausente(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("144355726"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.cotas == Decimal("144355726")
+
+    def test_papel_usa_fundamentus_e_ignora_repositorio(self):
+        repo = FakeFundamentalRepository(
+            patrimonio_por_ticker={
+                "PETR4": PatrimonioFii(
+                    reference_date=REFERENCIA,
+                    net_asset_value=Decimal("1"),
+                    shares_outstanding=Decimal("111"),
+                    cotistas=1,
+                    fonte="CVM",
+                )
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("12888700000"))}
+        )
+        caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.cotas == Decimal("12888700000")
+
+    def test_ausente_retorna_none(self):
+        repo = FakeFundamentalRepository()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.cotas is None
 
 
 class TestPrecoTipicoEIndexadores:

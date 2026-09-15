@@ -184,6 +184,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         patrimonio, cotistas = self._resolver_cotistas(
             ticker, reference_date, dados, classificacao, patrimonio_repo
         )
+        cotas = self._resolver_cotas(dados, classificacao, patrimonio_repo)
         preco = self._obter_preco(ticker, reference_date)
         metricas = self._resolver_metricas(
             ticker,
@@ -221,6 +222,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
             p_l=_p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo),
             classificacao_exibicao=exibicao,
+            cotas=cotas,
             cotistas=cotistas,
             patrimonio=patrimonio,
             classe_cotistas=(
