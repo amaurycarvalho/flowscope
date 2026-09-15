@@ -11,6 +11,7 @@ from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClassificacaoExibicao,
+    MargensFii,
     classificar_exibicao,
     classificar_ticker,
 )
@@ -196,6 +197,16 @@ def _dados_fiscais(
     return _SEPARADOR_ITENS.join(itens) if itens else NA
 
 
+def _margem_ou_na(margens: MargensFii | None, atributo: str) -> str:
+    """Formata uma razão sobre a receita, ou ``N/A`` quando ausente."""
+    return formatar_margem(getattr(margens, atributo) if margens else None)
+
+
+def _tendencia_ffo_ou_na(margens: MargensFii | None) -> str:
+    """Retorna o rótulo da tendência do FFO, ou ``N/A`` quando ausente."""
+    return rotulo_tendencia(margens.ffo_trend if margens else None)
+
+
 def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     """Monta a linha de uma análise fundamentalista completa."""
     classificacao = analise.classificacao
@@ -209,7 +220,6 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     margens = analise.margens
     dy = metricas.dividend_yield if metricas else None
     p_vp = metricas.p_vp if metricas else None
-    tendencia_ffo = margens.ffo_trend if margens else None
     return (
         ticker,
         analise.nome or NA,
@@ -226,13 +236,13 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         formatar_valor(dividendo.valor),
         formatar_valor(dividendo.valor_anterior),
         rotulo_tendencia(dividendo.tendencia),
-        formatar_margem(margens.ffo_receita_12m if margens else None),
-        formatar_margem(margens.ffo_receita_3m if margens else None),
-        rotulo_tendencia(tendencia_ffo),
-        formatar_margem(margens.dividendos_receita_12m if margens else None),
-        formatar_margem(margens.dividendos_receita_3m if margens else None),
-        formatar_margem(margens.dividendos_ffo_12m if margens else None),
-        formatar_margem(margens.dividendos_ffo_3m if margens else None),
+        _margem_ou_na(margens, "ffo_receita_12m"),
+        _margem_ou_na(margens, "ffo_receita_3m"),
+        _tendencia_ffo_ou_na(margens),
+        _margem_ou_na(margens, "dividendos_receita_12m"),
+        _margem_ou_na(margens, "dividendos_receita_3m"),
+        _margem_ou_na(margens, "dividendos_ffo_12m"),
+        _margem_ou_na(margens, "dividendos_ffo_3m"),
         formatar_quantidade(analise.cotas),
         formatar_inteiro(analise.cotistas),
         rotulo_classe_cotistas(analise.classe_cotistas),

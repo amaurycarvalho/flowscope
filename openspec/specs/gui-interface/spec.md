@@ -393,11 +393,19 @@ O sistema DEVE adicionar uma sub-aba "Fundamentos" ao sub-notebook da aba "Anál
 
 ### Requirement: Colunas da tabela fundamentalista
 
-A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/VP, P/L, Dividend Yield, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO/Receita (12m), FFO/Receita (3m), FFO Trend, Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais. As colunas `FFO Yield`, `P/FFO` e `Dividend Payout (DY/FFOY)` NÃO DEVEM mais ser exibidas.
+A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/VP, P/L, Dividend Yield, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO/Receita (12m), FFO/Receita (3m), FFO Trend, Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), Nº de cotas, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais. A coluna `Nº de cotas` DEVE ser exibida imediatamente antes de `Nº de cotistas`, com a quantidade de cotas/ações emitidas formatada como inteiro com separador de milhar. As colunas `FFO Yield`, `P/FFO` e `Dividend Payout (DY/FFOY)` NÃO DEVEM mais ser exibidas.
 
 #### Scenario: Colunas de identidade preenchidas
 - **WHEN** a tabela é renderizada para um ticker conhecido
 - **THEN** as colunas Ticker, Nome, Tipo e Sub-tipo DEVEM estar preenchidas
+
+#### Scenario: Coluna Nº de cotas posicionada antes de Nº de cotistas
+- **WHEN** a tabela é renderizada
+- **THEN** a coluna `Nº de cotas` DEVE ser exibida imediatamente antes da coluna `Nº de cotistas`
+
+#### Scenario: Nº de cotas formatado como inteiro com milhar
+- **WHEN** a quantidade de cotas/ações emitidas do ticker está disponível
+- **THEN** a coluna `Nº de cotas` DEVE exibir o valor como inteiro com separador de milhar, ou `N/A` quando ausente
 
 #### Scenario: Coluna de dividendo anterior
 - **WHEN** o ticker possui dividendo anterior consolidado
@@ -441,11 +449,11 @@ A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tip
 
 ### Requirement: Alinhamento das colunas numéricas
 
-A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
+A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
 
 #### Scenario: Colunas numéricas alinhadas à direita
 - **WHEN** a tabela é renderizada
-- **THEN** as colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
+- **THEN** as colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
 
 #### Scenario: Colunas textuais alinhadas à esquerda
 - **WHEN** a tabela é renderizada
@@ -453,7 +461,7 @@ A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último
 
 ### Requirement: OrientationPanel para a sub-aba Fundamentos
 
-O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fundamentos", seguindo o padrão existente (objetivo, pergunta respondida, indicadores envolvidos e como interpretar). O campo **Indicadores envolvidos** DEVE descrever todas as colunas exibidas na tabela, incluindo Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO` (12m e 3m), Informações adicionais e Dados fiscais. O campo **Como interpretar** DEVE conter orientações sucintas de leitura para essas colunas: `FFO/Receita` como quanto da receita vira caixa operacional; `Dividendos/Receita` como quanto da receita é destinado a dividendos; e `Dividendos/FFO` como quanto do caixa operacional é consumido pelos dividendos, abaixo de 100% o FFO cobre os dividendos, acima de 100% os dividendos superam o FFO e negativo o FFO foi negativo no período.
+O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fundamentos", seguindo o padrão existente (objetivo, pergunta respondida, indicadores envolvidos e como interpretar). O campo **Indicadores envolvidos** DEVE descrever todas as colunas exibidas na tabela, incluindo Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO` (12m e 3m), a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais. O campo **Como interpretar** DEVE conter orientações sucintas de leitura para essas colunas: `FFO/Receita` como quanto da receita vira caixa operacional; `Dividendos/Receita` como quanto da receita é destinado a dividendos; e `Dividendos/FFO` como quanto do caixa operacional é consumido pelos dividendos, abaixo de 100% o FFO cobre os dividendos, acima de 100% os dividendos superam o FFO e negativo o FFO foi negativo no período.
 
 #### Scenario: OrientationPanel da sub-aba Fundamentos
 - **WHEN** o usuário seleciona a sub-aba "Fundamentos"
@@ -461,7 +469,7 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 
 #### Scenario: Indicadores envolvidos descrevem as colunas exibidas
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
-- **THEN** o campo "Indicadores envolvidos" DEVE mencionar Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO`, Informações adicionais e Dados fiscais, além de identidade, cotação, VP/Cota, P/VP, P/L, Dividend Yield, dividendos, tendências, cotistas/acionistas e patrimônio
+- **THEN** o campo "Indicadores envolvidos" DEVE mencionar Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO`, a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais, além de identidade, cotação, VP/Cota, P/VP, P/L, Dividend Yield, dividendos, tendências, cotistas/acionistas e patrimônio
 
 #### Scenario: Identidade descreve o Tipo e o Sub-tipo implementados
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
@@ -470,6 +478,10 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 #### Scenario: Como interpretar orienta o Preço Típico e o P / PT
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
 - **THEN** o campo "Como interpretar" DEVE explicar que o Preço Típico é a referência de preço médio de 52 semanas e que o P / PT expressa desconto (negativo) ou prêmio (positivo) da cotação frente a esse preço típico
+
+#### Scenario: Como interpretar orienta a quantidade de cotas emitidas
+- **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
+- **THEN** o campo "Como interpretar" DEVE explicar que a quantidade de cotas/ações emitidas dimensiona o fundo/companhia e que, para FIIs, vem da B3/CVM com fallback do Fundamentus, enquanto para Papéis vem do Fundamentus
 
 #### Scenario: Como interpretar orienta o Dividend Payout
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
@@ -653,3 +665,111 @@ Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e 
 #### Scenario: Exportação CSV consistente
 - **WHEN** o usuário copia a tabela de Fundamentos como CSV
 - **THEN** as colunas novas DEVEM conter os mesmos textos exibidos na tabela
+
+### Requirement: Recarga da mesma data reutiliza o cache histórico
+
+Ao carregar dados para uma watchlist, o sistema DEVE reutilizar o cache histórico de resultados fundamentalistas por `(ticker, data)`, de modo que tickers já analisados para a data solicitada sejam exibidos na sub-aba "Fundamentos" sem refazer a aquisição, e os resultados exibidos correspondam sempre à data da carga corrente.
+
+#### Scenario: Recarga da mesma data é instantânea
+
+- **WHEN** o usuário recarrega dados para uma data já analisada anteriormente
+- **THEN** a sub-aba "Fundamentos" DEVE ser populada a partir do cache histórico, sem nova aquisição para os tickers já observados naquela data
+
+#### Scenario: Resultados não vazam entre datas
+
+- **WHEN** o usuário carrega dados para uma data diferente da carga anterior
+- **THEN** a tabela DEVE exibir apenas observações da data corrente, não reaproveitando linhas de outra data
+
+#### Scenario: Ticker novo na data completa o restante
+
+- **WHEN** a watchlist inclui um ticker ainda não observado para a data solicitada
+- **THEN** o sistema DEVE analisar apenas esse ticker e combinar o resultado com os demais servidos pelo cache
+
+### Requirement: Bypass explícito do cache histórico na interface
+
+A sub-aba "Fundamentos" DEVE oferecer uma ação explícita para ignorar o cache histórico e forçar a recomputação da data corrente, sobrescrevendo as observações do dia. A ação DEVE ser apresentada como um botão da barra da lista de tickers, DEVE ser exibida apenas enquanto a sub-aba "Fundamentos" estiver ativa e DEVE permanecer desabilitada enquanto houver uma carga de dados em andamento.
+
+#### Scenario: Atualização forçada no mesmo dia
+
+- **WHEN** o usuário aciona a ação de atualização forçada com uma data carregada
+- **THEN** o sistema DEVE recomputar a análise dos tickers exibidos, substituindo as observações do dia, independentemente de já existirem
+
+#### Scenario: Ação visível apenas na sub-aba Fundamentos
+
+- **WHEN** a sub-aba ativa não é "Fundamentos"
+- **THEN** a ação de atualização forçada NÃO DEVE ser exibida
+
+#### Scenario: Ação desabilitada durante a carga
+
+- **WHEN** uma carga de dados está em andamento
+- **THEN** a ação de atualização forçada DEVE permanecer desabilitada
+
+### Requirement: Tooltips descritivos dos botões de índice
+
+Os botões de índice IBOV, IDIV e IFIX DEVEM exibir, ao passar o mouse, um tooltip curto com apenas a descrição do índice correspondente.
+
+#### Scenario: Tooltip de cada índice
+
+- **WHEN** o usuário posiciona o mouse sobre o botão de um índice
+- **THEN** o sistema DEVE exibir a descrição correspondente — `IBOV`: "principais ações negociadas na B3"; `IDIV`: "ações com os maiores dividendos da B3"; `IFIX`: "principais fundos imobiliários (FIIs)"
+
+### Requirement: Sub-aba Evolução dos Fundamentos
+
+A aba "Análise do Ticker" DEVE conter a sub-aba "Evolução dos Fundamentos", ativa e selecionável, exibindo o painel de evolução dos fundamentos do ticker selecionado no lugar de um placeholder de texto.
+
+#### Scenario: Sub-aba disponível na Análise do Ticker
+
+- **WHEN** o usuário navega para a aba "Análise do Ticker"
+- **THEN** a sub-aba "Evolução dos Fundamentos" DEVE estar ativa e selecionável
+
+#### Scenario: Painel exibido na sub-aba
+
+- **WHEN** o usuário seleciona a sub-aba "Evolução dos Fundamentos"
+- **THEN** o sistema DEVE exibir o painel de evolução dos fundamentos, e não um placeholder de texto
+
+### Requirement: Duplo clique na tabela de Fundamentos ativa a evolução
+
+O sistema DEVE reagir ao duplo clique em uma linha da tabela da sub-aba "Fundamentos" (aba "Análise Geral"), usando o ticker da linha como o ticker da sub-aba "Evolução dos Fundamentos" e tornando essa sub-aba ativa.
+
+#### Scenario: Duplo clique seleciona ticker e troca de sub-aba
+
+- **WHEN** o usuário dá duplo clique em uma linha da tabela de "Fundamentos"
+- **THEN** o sistema DEVE usar o ticker daquela linha na sub-aba "Evolução dos Fundamentos" e selecioná-la na aba "Análise do Ticker"
+
+#### Scenario: Ticker do duplo clique prevalece
+
+- **WHEN** o duplo clique é feito em uma linha cujo ticker difere do ticker selecionado na lista de tickers
+- **THEN** o painel de evolução DEVE ser preenchido com o ticker da linha clicada
+
+#### Scenario: Duplo clique sem histórico
+
+- **WHEN** o ticker da linha clicada não possui observações no cache histórico
+- **THEN** a sub-aba DEVE se tornar ativa exibindo o estado vazio, sem erro
+
+### Requirement: Preenchimento preguiçoso e independente da carga B3
+
+A sub-aba "Evolução dos Fundamentos" DEVE ser preenchida somente quando selecionada e DEVE funcionar apenas com o cache histórico, mesmo quando não houver dados da B3 carregados na sessão corrente.
+
+#### Scenario: Preenchimento ao selecionar a sub-aba
+
+- **WHEN** o usuário seleciona a sub-aba "Evolução dos Fundamentos"
+- **THEN** o sistema DEVE montar e exibir a evolução naquele momento
+
+#### Scenario: Sem dados B3 carregados
+
+- **WHEN** não há dados da B3 carregados e o ticker possui observações no cache histórico
+- **THEN** o sistema DEVE exibir a evolução normalmente, sem depender de dados da B3
+
+#### Scenario: Sem preenchimento fora da sub-aba
+
+- **WHEN** a sub-aba ativa não é "Evolução dos Fundamentos"
+- **THEN** o sistema NÃO DEVE montar o painel de evolução
+
+### Requirement: OrientationPanel da sub-aba Evolução dos Fundamentos
+
+O OrientationPanel DEVE exibir conteúdo explicativo da sub-aba "Evolução dos Fundamentos", composto por objetivo, pergunta respondida, indicadores envolvidos e como interpretar, no mesmo padrão das demais sub-abas.
+
+#### Scenario: Conteúdo explicativo ao selecionar a sub-aba
+
+- **WHEN** o usuário seleciona a sub-aba "Evolução dos Fundamentos"
+- **THEN** o OrientationPanel DEVE exibir o título e o texto explicativo da sub-aba, com as seções no padrão existente

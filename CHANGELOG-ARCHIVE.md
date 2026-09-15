@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## [0.8.2] — 2026-09-14
+
+### [fundamentos-ffo-receita](openspec/changes/archive/2026-09-14-fundamentos-ffo-receita) Recalcula o Dividend Yield de FII pelo último dividendo e substitui FFO Yield, P/FFO e Dividend Payout pelas razões FFO/Receita, Dividendos/Receita e Dividendos/FFO
+
+#### Added
+
+- Adicionar as colunas `FFO/Receita (12m)`, `FFO/Receita (3m)`, `Dividendos/Receita (12m)`, `Dividendos/Receita (3m)`, `Dividendos/FFO (12m)` e `Dividendos/FFO (3m)`, em notação percentual com uma casa decimal, calculadas apenas para Tipo `FII` (Tipo `Papel` exibe `N/A`).
+
+#### Changed
+
+- Recalcular o Dividend Yield de FIIs como `(último dividendo × 12) / P (Cotação)` quando o último dividendo e a cotação existirem; caso contrário manter o Dividend Yield do Fundamentus, preservando os fallbacks existentes para Tipo `Papel`.
+- Tratar insumos negativos com texto na célula (`Receita negativa`, `FFO negativo` ou `Receita e FFO negativos`), exibindo `N/A` para divisão por zero e para dado ausente.
+- Redefinir o `FFO Trend` como a diferença em pontos percentuais entre `FFO/Receita (3m)` e `FFO/Receita (12m)`, classificada nas cinco faixas existentes, posicionada após `FFO/Receita (3m)`.
+- Expor `Receita` e `Rend. Distribuído` (12m e 3m) do Fundamentus na composição de campos fundamentalistas, tratando `Rend. Distribuído` como Dividendos.
+- Atualizar o quadro de orientações da sub-aba "Fundamentos" para as novas colunas e sua leitura.
+
+#### Removed
+
+- Remover as colunas `FFO Yield`, `P/FFO` e `Dividend Payout (DY/FFOY)`.
+
 ## [0.8.1] — 2026-09-11
 
 ### [fundamentos-informacoes-adicionais-fiscais](openspec/changes/archive/2026-09-11-fundamentos-informacoes-adicionais-fiscais) Novas colunas Preço Típico, P / PT, Informações adicionais e Dados fiscais com ingestão do Informe Anual da CVM
@@ -962,6 +982,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal button padding (`ipadx=8`, `ipady=2`)
 - Subtle toolbar border (GROOVE) around action buttons
 - Consistent use of `ttk` themed widgets where possible
+
+[0.8.2]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.8.2
 
 [0.8.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v0.8.1
 

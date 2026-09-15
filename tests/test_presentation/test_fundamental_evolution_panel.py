@@ -2,6 +2,7 @@
 
 import os
 import tkinter as tk
+import warnings
 from datetime import date, timedelta
 from decimal import Decimal
 
@@ -32,6 +33,7 @@ from flowscope.presentation.gui.charts.fundamental_evolution_data import (
 from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
     FundamentalEvolutionPanel,
     formatar_ponto,
+    selecionar_ticks,
 )
 
 BASE = date(2025, 1, 1)
@@ -125,6 +127,23 @@ class TestFormatarPonto:
         assert formatar_ponto("outro", 42) == "42"
 
 
+class TestSelecionarTicks:
+    def test_uma_data(self):
+        assert selecionar_ticks([BASE]) == [BASE]
+
+    def test_poucas_datas_retorna_todas(self):
+        datas = [date(2025, 1, 1), date(2025, 1, 2)]
+        assert selecionar_ticks(datas) == datas
+
+    def test_limita_quantidade_e_inclui_extremos(self):
+        datas = [date(2025, 1, 1) + timedelta(days=i) for i in range(10)]
+        ticks = selecionar_ticks(datas, maximo=4)
+        assert len(ticks) == 4
+        assert ticks[0] == datas[0]
+        assert ticks[-1] == datas[-1]
+        assert ticks == sorted(set(ticks))
+
+
 class TestFundamentalEvolutionPanel:
     @needs_display
     def test_update_monta_small_multiples_sem_erro(self):
@@ -185,6 +204,27 @@ class TestFundamentalEvolutionPanel:
             painel.update(_series(), ticker="HGBS11")
             painel.reset()
             assert painel._empty_label.get_visible() is True
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_aviso_do_autodatelocator_com_uma_data(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalEvolutionPanel(root)
+            series = montar_series(
+                [
+                    ObservacaoFundamental(
+                        ticker="HGBS11",
+                        data=BASE,
+                        analise=_analise("10", "0.55"),
+                        schema_version=SCHEMA_VERSION_FUNDAMENTOS,
+                    )
+                ]
+            )
+            with warnings.catch_warnings():
+                warnings.filterwarnings("error", message=".*AutoDateLocator.*")
+                painel.update(series, ticker="HGBS11")
         finally:
             root.destroy()
 

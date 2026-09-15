@@ -8,10 +8,10 @@ pelo módulo :mod:`fundamental_evolution_data`.
 
 import tkinter as tk
 from collections.abc import Callable, Sequence
+from datetime import date
 
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from matplotlib.dates import AutoDateLocator, DateFormatter
 from matplotlib.figure import Figure
 
 from flowscope.presentation.gui.charts.empty_state import (
@@ -44,6 +44,16 @@ _FORMATADORES: dict[str, Callable[[object], str]] = {
     TIPO_QUANTIDADE: formatar_quantidade,
     TIPO_INTEIRO: formatar_inteiro,
 }
+
+
+def selecionar_ticks(datas: Sequence[date], maximo: int = 4) -> list[date]:
+    """Seleciona até ``maximo`` datas para rotular o eixo, sem repetir."""
+    datas = list(datas)
+    if len(datas) <= maximo:
+        return datas
+    passo = (len(datas) - 1) / (maximo - 1)
+    indices = sorted({round(i * passo) for i in range(maximo)})
+    return [datas[indice] for indice in indices]
 
 
 def formatar_ponto(tipo: str, valor: object) -> str:
@@ -171,8 +181,12 @@ class FundamentalEvolutionPanel:
     ) -> None:
         """Exibe os rótulos de data apenas no painel inferior de cada coluna."""
         if serie is None or serie.vazia:
+            ax.set_xticks([])
             ax.tick_params(axis="x", labelbottom=False)
             return
+        ticks = selecionar_ticks(serie.datas)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([data.strftime("%m/%y") for data in ticks])
         coluna = indice % self._COLUNAS
         ultimo = max(
             i for i in range(len(self._axes)) if i % self._COLUNAS == coluna
@@ -180,8 +194,6 @@ class FundamentalEvolutionPanel:
         if indice != ultimo:
             ax.tick_params(axis="x", labelbottom=False)
             return
-        ax.xaxis.set_major_locator(AutoDateLocator(maxticks=4))
-        ax.xaxis.set_major_formatter(DateFormatter("%m/%y"))
         ax.tick_params(axis="x", labelsize=7, labelrotation=30)
 
     def _show_empty(
