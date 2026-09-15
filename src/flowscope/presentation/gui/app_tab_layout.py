@@ -7,6 +7,9 @@ from flowscope.presentation.gui.app_tabs import ENABLED_TABS, TAB_CONFIGS
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
 from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
+from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
+    FundamentalEvolutionPanel,
+)
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
@@ -44,6 +47,9 @@ class TabsLayoutMixin:
             general_fundamental_frame,
             widths=getattr(self, "_prefs", {}).get("fundamental_column_widths"),
             on_widths_changed=self._on_fundamental_widths_changed,
+            on_row_activated=getattr(
+                self, "_on_fundamental_row_activated", None
+            ),
         )
         self._fundamental_table.frame.pack(fill=tk.BOTH, expand=True)
 
@@ -84,6 +90,12 @@ class TabsLayoutMixin:
                     summary_callback=self._on_flow_summary,
                 )
                 self._financial_flow_panel.frame.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
+            elif name == "Evolução dos Fundamentos":
+                self._fundamental_evolution_panel = FundamentalEvolutionPanel(
+                    frame, copy_chart_callback=self._copy_chart,
+                )
+                self._fundamental_evolution_panel.frame.pack(fill=tk.BOTH, expand=True)
                 self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             else:
                 text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),

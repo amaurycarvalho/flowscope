@@ -5,12 +5,19 @@ TAB_CONFIGS = [
     ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
     ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume",
      "buying_pressure", "selling_pressure", "vwap_distance"),
+    ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
+     "ultimo_dividendo", "cotistas", "cotas"),
     ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
     ("Eficiência do Movimento", "daily_efficiency"),
     ("Resumo Geral", None),
 ]
 
-ENABLED_TABS = {"Evolução da Dominância", "Amplitude de Preço", "Fluxo Financeiro"}
+ENABLED_TABS = {
+    "Evolução da Dominância",
+    "Amplitude de Preço",
+    "Fluxo Financeiro",
+    "Evolução dos Fundamentos",
+}
 
 TAB_CONTENT = {
     ("Análise Geral", "VWAP"): (
@@ -164,6 +171,32 @@ TAB_CONTENT = {
              "O CLV (subplot central) indica onde o preço fechou no range. "
              "Buying + Selling Pressure mostram quem dominou o range. "
              "DMF e MFV acumulado são exibidos em milhões de reais."), ""),
+        ]
+    ),
+    ("Análise do Ticker", "Evolução dos Fundamentos"): (
+        "Evolução dos Fundamentos — Série Histórica do Cache",
+        [
+            ("Objetivo: ", "bold"),
+            ("Acompanhar como os fundamentos do ticker selecionado evoluíram ao longo das datas já observadas e retidas no cache histórico.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Os fundamentos do ativo melhoraram ou pioraram desde a observação mais antiga do cache?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Cotação (R$);\n"
+             "• VP — Valor Patrimonial por cota (R$);\n"
+             "• P/VP — relação entre preço e valor patrimonial;\n"
+             "• Dividend Yield (%);\n"
+             "• Último dividendo (R$);\n"
+             "• Nº de cotistas (FII) ou acionistas (ação);\n"
+             "• Nº de cotas ou ações emitidas.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("O painel mostra sete mini-gráficos (small multiples), um por indicador, cada um com a sua própria escala para que os valores "
+             "não sejam misturados. Em cada gráfico, a linha vai da observação mais antiga (esquerda) para a mais recente (direita), e o ponto "
+             "vermelho destaca o valor mais recente do cache. Uma linha subindo indica que o indicador cresceu no período; descendo, que recuou.\n\n"
+             "As datas exibidas são amostradas a partir da observação mais recente com intervalos que crescem na sequência de Fibonacci "
+             "(1, 2, 3, 5, 8, 13, ... dias), ficando mais próximas no presente e mais espaçadas no passado. A data mais antiga e a mais recente "
+             "do cache aparecem sempre. A origem dos dados é exclusivamente o cache histórico de fundamentos: só existem pontos para os dias em "
+             "que os dados do ticker já foram carregados, portanto alguns indicadores podem ficar constantes ou ter poucos pontos. Quando o ticker "
+             "não tem nenhuma observação retida, o painel exibe um aviso de ausência de histórico."), ""),
         ]
     ),
     ("Análise do Ticker", "Participação Institucional"): (

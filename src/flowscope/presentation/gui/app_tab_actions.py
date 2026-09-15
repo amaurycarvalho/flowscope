@@ -30,10 +30,10 @@ class TabActionsMixin:
             return
         main_tab, sub_tab = tabs
 
+        chart = self._resolve_chart(main_tab, sub_tab)
+        if chart is not None and self._deve_atualizar(chart):
+            self._do_update(chart)
         if self._current_data:
-            chart = self._resolve_chart(main_tab, sub_tab)
-            if chart:
-                self._do_update(chart)
             self._update_ticker_counter()
 
         content = self._tab_content.get((main_tab, sub_tab))
@@ -55,7 +55,38 @@ class TabActionsMixin:
             button, (main_tab, sub_tab) == ("Análise Geral", "Fundamentos")
         )
 
+    def _deve_atualizar(self: "TabActionsMixin", chart: object) -> bool:
+        """Indica se o painel deve ser atualizado mesmo sem dados da B3.
+
+        A sub-aba de evolução dos fundamentos lê apenas o cache histórico e
+        por isso é atualizada independentemente de haver carga B3 corrente.
+        """
+        if self._current_data:
+            return True
+        return chart is getattr(self, "_fundamental_evolution_panel", None)
+
+    @staticmethod
+    def _select_tab(notebook: object, texto: str) -> bool:
+        """Seleciona a sub-aba com o texto informado, se existir."""
+        try:
+            for indice in range(notebook.index("end")):
+                if notebook.tab(indice, "text") == texto:
+                    notebook.select(indice)
+                    return True
+        except tk.TclError:
+            return False
+        return False
+
+    def _on_fundamental_row_activated(self: "TabActionsMixin", ticker: str) -> None:
+        """Fixa o ticker e ativa a sub-aba de evolução dos fundamentos."""
+        if not ticker:
+            return
+        self._evolution_ticker = ticker
+        if self._select_tab(self._main_notebook, "Análise do Ticker"):
+            self._select_tab(self._ticker_notebook, "Evolução dos Fundamentos")
+
     def _on_ticker_edit(self: "TabActionsMixin") -> None:
+        self._evolution_ticker = None
         self._controller.on_ticker_edit()
 
     def _show_summary(self: "TabActionsMixin", main_tab: str, sub_tab: str,

@@ -129,6 +129,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
         self._fundamental_data: dict = {}
+        self._evolution_ticker: str | None = None
         self._loading_after_id = None
         self._flash_after_id = None
 
@@ -188,6 +189,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             cache=cache
         )
         fundamental_indexadores_provider = CvmIndexadoresProvider()
+        self._fundamental_history_store = JsonFundamentalHistoryStore()
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -200,10 +202,10 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_dividend_provider=fundamental_dividend_provider,
             fundamental_acionistas_provider=fundamental_acionistas_provider,
             fundamental_indexadores_provider=fundamental_indexadores_provider,
-            fundamental_history_store=JsonFundamentalHistoryStore(),
+            fundamental_history_store=self._fundamental_history_store,
         )
         self._ticker_list.rebind(
-            on_change=self._controller.on_ticker_edit,
+            on_change=self._on_ticker_edit,
             on_load=self._controller.on_load_data,
             on_data_needed=self._controller.on_load_data,
             on_index_click={

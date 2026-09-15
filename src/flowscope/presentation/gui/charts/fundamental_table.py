@@ -80,10 +80,12 @@ class FundamentalTablePanel:
         parent: tk.Widget,
         widths: Mapping[str, object] | None = None,
         on_widths_changed: object | None = None,
+        on_row_activated: object | None = None,
     ) -> None:
         """Constrói o painel com os dois ``Treeview`` e as barras de rolagem."""
         self.frame = ttk.Frame(parent)
         self._on_widths_changed = on_widths_changed
+        self._on_row_activated = on_row_activated
         self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
         self._columns_fixas = [coluna_id for coluna_id, _ in _COLUNAS_FIXAS]
         self._columns_rolantes = [coluna_id for coluna_id, _ in _COLUNAS_ROLANTES]
@@ -154,6 +156,8 @@ class FundamentalTablePanel:
             self._vincular_roda(tree)
         self._tree_fixo.bind("<<TreeviewSelect>>", self._on_select_fixo)
         self._tree_rolavel.bind("<<TreeviewSelect>>", self._on_select_rolavel)
+        self._tree_fixo.bind("<Double-1>", self._on_row_double_click)
+        self._tree_rolavel.bind("<Double-1>", self._on_row_double_click)
         self.frame.bind("<Configure>", self._on_frame_configure, add="+")
 
         self._last_widths = self.get_column_widths()
@@ -238,6 +242,18 @@ class FundamentalTablePanel:
                 destino.focus(selecionados[0])
         finally:
             self._syncing_selection = False
+
+    def _on_row_double_click(
+        self: "FundamentalTablePanel", event: object = None
+    ) -> str:
+        """Aciona o callback com o ticker da linha clicada."""
+        tree = getattr(event, "widget", None)
+        if tree is None:
+            return "break"
+        selecionados = tree.selection()
+        if selecionados and callable(self._on_row_activated):
+            self._on_row_activated(selecionados[0])
+        return "break"
 
     def get_column_widths(self: "FundamentalTablePanel") -> dict[str, int]:
         """Retorna a largura atual de cada coluna, indexada pelo id."""

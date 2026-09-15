@@ -4,6 +4,9 @@ import tkinter as tk
 from datetime import datetime, timezone
 
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.presentation.gui.charts.fundamental_evolution_data import (
+    montar_series,
+)
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 
@@ -91,10 +94,27 @@ class ActionsMixin:
         elif isinstance(chart, FundamentalTablePanel):
             dados = getattr(self, "_fundamental_data", {})
             chart.update({t: dados[t] for t in tickers if t in dados})
+        elif chart is getattr(self, "_fundamental_evolution_panel", None):
+            self._update_fundamental_evolution()
         elif chart in self._ticker_charts:
             chart.update(self._current_data, ticker=self._get_selected_ticker())
         else:
             chart.update(filtered)
+
+    def _update_fundamental_evolution(self: "ActionsMixin") -> None:
+        """Preenche o painel de evolução a partir do cache histórico."""
+        painel = self._fundamental_evolution_panel
+        ticker = self._evolution_ticker or self._get_selected_ticker()
+        store = getattr(self, "_fundamental_history_store", None)
+        if not ticker or store is None:
+            painel.update((), ticker=ticker)
+            return
+        datas = store.datas(ticker)
+        if not datas:
+            painel.update((), ticker=ticker)
+            return
+        observacoes = store.historico(ticker, datas[0], datas[-1])
+        painel.update(montar_series(observacoes), ticker=ticker)
 
     def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
         """Agenda a execução de ``callback`` na thread do Tk."""
