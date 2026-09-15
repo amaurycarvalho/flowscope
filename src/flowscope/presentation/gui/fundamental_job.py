@@ -25,12 +25,14 @@ class FundamentalJob:
         tickers: list[str],
         reference_date: date,
         generation: int,
+        force_refresh: bool = False,
     ) -> None:
         """Inicializa o job com o caso de uso, os tickers e a geração."""
         self._caso = caso
         self._tickers = list(tickers)
         self._reference_date = reference_date
         self.generation = generation
+        self._force_refresh = force_refresh
         self.fila: queue.Queue = queue.Queue()
 
     def iniciar(self: "FundamentalJob") -> threading.Thread:
@@ -58,6 +60,7 @@ class FundamentalJob:
                 self._tickers,
                 self._reference_date,
                 progress_callback=_progresso,
+                force_refresh=self._force_refresh,
             )
             dados = {resultado.ticker: resultado for resultado in resultados}
             houve_falha = bool(

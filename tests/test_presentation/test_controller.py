@@ -1,5 +1,5 @@
 from datetime import date
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock, call, patch
 
 from flowscope.application.load_portfolio_use_case import (
     PortfolioNotFoundError,
@@ -300,3 +300,65 @@ class TestOnTickerEdit:
         view._set_wait_cursor.assert_called_once()
         view._clear_wait_cursor.assert_called_once()
         view._flash_status.assert_called_once()
+
+
+class TestAtualizarFundamentos:
+    def test_forca_recomputacao(self):
+        presenter = MagicMock()
+        presenter.get_current_tickers.return_value = ["HGBS11"]
+        presenter.get_reference_date.return_value = date(2026, 9, 4)
+        presenter._gui._current_data = {"HGBS11": {"daily_data": []}}
+        controller = _make_controller(
+            presenter=presenter, fundamental_repo=object()
+        )
+
+        with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
+            controller.on_atualizar_fundamentos()
+
+        iniciar.assert_called_once()
+        assert iniciar.call_args.kwargs["force"] is True
+
+    def test_sem_tickers_nao_dispara(self):
+        presenter = MagicMock()
+        presenter.get_current_tickers.return_value = []
+        controller = _make_controller(
+            presenter=presenter, fundamental_repo=object()
+        )
+
+        with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
+            controller.on_atualizar_fundamentos()
+
+        iniciar.assert_not_called()
+
+    def test_sem_repo_nao_dispara(self):
+        presenter = MagicMock()
+        controller = _make_controller(presenter=presenter, fundamental_repo=None)
+
+        with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
+            controller.on_atualizar_fundamentos()
+
+        iniciar.assert_not_called()
+
+
+class TestWiringHistorico:
+    def test_store_injetado_no_caso_de_uso(self):
+        presenter = MagicMock()
+        controller = _make_controller(
+            presenter=presenter,
+            fundamental_repo=object(),
+            fundamental_history_store="STORE",
+        )
+
+        with patch.object(controller, "_drenar_fundamental"), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental"
+                    ".FundamentalAnalysisUseCase"
+                ) as caso, \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
+                ):
+            controller._iniciar_analise_fundamental(
+                ["HGBS11"], date(2026, 9, 4), {}
+            )
+
+        assert caso.call_args.kwargs["historico_store"] == "STORE"

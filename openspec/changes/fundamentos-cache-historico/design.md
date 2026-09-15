@@ -52,7 +52,9 @@ Nova porta `FundamentalHistoryStore` (`obter`, `historico`, `datas`, `registrar`
 
 ### 7. Bypass explícito
 
-`execute(..., force_refresh: bool = False)` propaga ao read-through: ignora o HIT e sobrescreve a observação do dia, inclusive completa. A GUI expõe uma ação de atualização forçada. Alternativa: sem bypass (usuário preso ao snapshot do dia).
+`execute(..., force_refresh: bool = False)` propaga ao read-through: ignora o HIT e sobrescreve a observação do dia, inclusive completa. Alternativa: sem bypass (usuário preso ao snapshot do dia).
+
+A ação na GUI é um botão da barra da lista de tickers, com ícone `edit-redo.png` e tooltip "Atualizar fundamentos", posicionado no grupo de seleção logo após "Desmarcar Todos". O botão fica visível apenas quando a sub-aba "Fundamentos" está ativa e é desabilitado durante qualquer carga de dados (integra o conjunto de controles desabilitados pela apresentação). Ao ser acionado, recomputa os tickers exibidos com `force_refresh` e repopula a tabela. Alternativa descartada: botão dedicado dentro da sub-aba, que exigiria uma segunda barra e poluiria a área da tabela.
 
 ### 8. Retenção e prune
 
@@ -61,6 +63,10 @@ Janela deslizante de 365 dias a partir da data corrente: na escrita, descarta ob
 ### 9. Escopo
 
 Todos os tickers (FII e Papel), pois a porta é genérica sobre `AnaliseFundamental`.
+
+### 10. Tooltips descritivos dos índices
+
+Os botões de índice IBOV, IDIV e IFIX recebem tooltips curtos com apenas a descrição do índice (sem sigla nem travessão): "principais ações negociadas na B3", "ações com os maiores dividendos da B3" e "principais fundos imobiliários (FIIs)".
 
 ## Risks / Trade-offs
 
@@ -74,7 +80,3 @@ Todos os tickers (FII e Papel), pois a porta é genérica sobre `AnaliseFundamen
 ## Migration Plan
 
 Nenhuma migração: é um store novo, populado a partir da primeira carga após a mudança. Rollback = não configurar o store (o read-through fica inerte) ou remover o diretório `~/.cache/flowscope/fundamentos`.
-
-## Open Questions
-
-- Qual o gatilho exato da ação de atualização forçada na GUI (botão dedicado vs. atalho) — decisão de UX que não altera specs, abordagem ou tarefas.

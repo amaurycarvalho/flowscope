@@ -54,6 +54,10 @@ class ActionsMixin:
     def _on_load_data(self: "ActionsMixin") -> None:
         self._controller.on_load_data()
 
+    def _on_atualizar_fundamentos(self: "ActionsMixin") -> None:
+        """Força a recomputação dos fundamentos da data, ignorando o cache."""
+        self._controller.on_atualizar_fundamentos()
+
     def _get_selected_ticker(self: "ActionsMixin") -> str | None:
         selected = self._ticker_list.get_tickers()
         if selected:

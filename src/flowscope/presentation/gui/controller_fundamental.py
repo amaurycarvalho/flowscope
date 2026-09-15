@@ -21,6 +21,7 @@ class FundamentalMixin:
         tickers: list[str],
         ref_date: date,
         result: dict,
+        force: bool = False,
     ) -> None:
         """Dispara a análise fundamentalista em background, se configurada."""
         if self._fundamental_repo is None:
@@ -39,15 +40,28 @@ class FundamentalMixin:
             historico_dividendos=self._fundamental_dividend_provider,
             acionistas_provider=self._fundamental_acionistas_provider,
             indexadores_provider=self._fundamental_indexadores_provider,
+            historico_store=self._fundamental_history_store,
         )
         job = FundamentalJob(
-            caso, tickers, ref_date, self._fundamental_generation
+            caso, tickers, ref_date, self._fundamental_generation,
+            force_refresh=force,
         )
         self._fundamental_job = job
         self._presenter.on_fundamental_started()
         self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
         job.iniciar()
         self._drenar_fundamental(job)
+
+    def on_atualizar_fundamentos(self: "FundamentalMixin") -> None:
+        """Força a recomputação dos fundamentos da data, ignorando o cache."""
+        if self._fundamental_repo is None:
+            return
+        tickers = self._presenter.get_current_tickers()
+        if not tickers:
+            return
+        ref_date = self._presenter.get_reference_date()
+        current = getattr(self._presenter._gui, "_current_data", {}) or {}
+        self._iniciar_analise_fundamental(tickers, ref_date, current, force=True)
 
     def _drenar_fundamental(
         self: "FundamentalMixin", job: FundamentalJob | None = None

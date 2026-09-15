@@ -12,7 +12,12 @@ from decimal import Decimal
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
-from flowscope.domain.fii.analysis import FfoObservacao, PatrimonioFii, PrecoObservacao
+from flowscope.domain.fii.analysis import (
+    AnaliseFundamental,
+    FfoObservacao,
+    PatrimonioFii,
+    PrecoObservacao,
+)
 from flowscope.domain.fii.dividends import DividendoConsolidado
 from flowscope.domain.structured import Provento
 
@@ -212,4 +217,59 @@ class MarketPricePort(Protocol):
         janela: timedelta,
     ) -> tuple[Decimal, Decimal] | None:
         """Retorna ``(mínimo, máximo)`` da janela, ou ``None`` quando vazia."""
+        ...
+
+
+#: Versão do schema do resultado da análise persistido no histórico.
+SCHEMA_VERSION_FUNDAMENTOS = 1
+
+
+@dataclass(frozen=True)
+class ObservacaoFundamental:
+    """Observação datada do resultado da análise, com a versão do schema."""
+
+    ticker: str
+    data: date
+    analise: AnaliseFundamental
+    schema_version: int
+
+
+def observacao_completa(analise: AnaliseFundamental) -> bool:
+    """Indica se a análise possui a identidade do Fundamentus (nome ou cotação).
+
+    Observações incompletas são parciais: não são servidas como acerto do dia e
+    podem ser substituídas por uma computação melhor no mesmo dia.
+    """
+    return bool(analise.nome or analise.cotacao)
+
+
+@runtime_checkable
+class FundamentalHistoryStore(Protocol):
+    """Contrato do cache histórico de resultados por ``(ticker, data)``."""
+
+    def obter(
+        self: "FundamentalHistoryStore", ticker: str, data: date
+    ) -> AnaliseFundamental | None:
+        """Retorna a observação da data, apenas na versão de schema atual."""
+        ...
+
+    def historico(
+        self: "FundamentalHistoryStore", ticker: str, inicio: date, fim: date
+    ) -> list[ObservacaoFundamental]:
+        """Retorna as observações do intervalo, tolerando versões antigas."""
+        ...
+
+    def datas(self: "FundamentalHistoryStore", ticker: str) -> list[date]:
+        """Retorna as datas com observação retida, em ordem crescente."""
+        ...
+
+    def registrar(
+        self: "FundamentalHistoryStore",
+        ticker: str,
+        data: date,
+        analise: AnaliseFundamental,
+        *,
+        force: bool = False,
+    ) -> None:
+        """Registra a observação, respeitando falhas e parcialidade."""
         ...

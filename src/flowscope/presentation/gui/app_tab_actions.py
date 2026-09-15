@@ -42,6 +42,18 @@ class TabActionsMixin:
 
         self._prefs["last_tab"] = main_tab
         self._prefs["last_subtab"] = sub_tab
+        self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
+
+    def _sync_fundamental_refresh_visibility(
+        self: "TabActionsMixin", main_tab: str, sub_tab: str
+    ) -> None:
+        """Exibe o botão de atualização de fundamentos só na sub-aba Fundamentos."""
+        button = getattr(self, "_fundamental_refresh_btn", None)
+        if button is None:
+            return
+        self._ticker_list.set_action_button_visible(
+            button, (main_tab, sub_tab) == ("Análise Geral", "Fundamentos")
+        )
 
     def _on_ticker_edit(self: "TabActionsMixin") -> None:
         self._controller.on_ticker_edit()

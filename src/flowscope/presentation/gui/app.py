@@ -32,6 +32,9 @@ from flowscope.infrastructure.fii.cvm_fund_data_provider import (
 )
 from flowscope.infrastructure.fii.ffo_engine_provider import FFOEngineProvider
 from flowscope.infrastructure.fii.ffo_provider import FundamentusProvider
+from flowscope.infrastructure.fii.fundamental_history_store import (
+    JsonFundamentalHistoryStore,
+)
 from flowscope.infrastructure.fii.fundamentus.adapter import (
     FundamentusFundamentalDataProvider,
 )
@@ -197,6 +200,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_dividend_provider=fundamental_dividend_provider,
             fundamental_acionistas_provider=fundamental_acionistas_provider,
             fundamental_indexadores_provider=fundamental_indexadores_provider,
+            fundamental_history_store=JsonFundamentalHistoryStore(),
         )
         self._ticker_list.rebind(
             on_change=self._controller.on_ticker_edit,
@@ -207,6 +211,14 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
                 "IDIV": lambda: self._controller.on_index_clicked("IDIV"),
                 "IFIX": lambda: self._controller.on_index_clicked("IFIX"),
             },
+        )
+        self._fundamental_refresh_btn = self._ticker_list.add_action_button(
+            self._on_atualizar_fundamentos,
+            icon="edit-redo.png",
+            tooltip="Atualizar fundamentos",
+        )
+        self._ticker_list.set_action_button_visible(
+            self._fundamental_refresh_btn, False
         )
 
     def _build_action_buttons(self: "FlowScopeGUI") -> None:

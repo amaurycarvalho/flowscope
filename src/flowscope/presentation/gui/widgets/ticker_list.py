@@ -20,6 +20,13 @@ from flowscope.presentation.gui.widgets.ticker_list_utils import (
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
 from flowscope.presentation.main import _resolve_icon_path
 
+#: Descrições curtas dos índices da B3 exibidas como tooltip dos botões.
+_TOOLTIPS_INDICE = {
+    "IBOV": "principais ações negociadas na B3",
+    "IDIV": "ações com os maiores dividendos da B3",
+    "IFIX": "principais fundos imobiliários (FIIs)",
+}
+
 
 class TickerList:
     """Lista de tickers com alternância entre modo de visualização e edição.
@@ -53,6 +60,7 @@ class TickerList:
         self._initialdir = initialdir
         self._view_mode = True
         self._icon_refs: list[ImageTk.PhotoImage] = []
+        self._action_buttons: list[tk.Button] = []
 
         self._view_tickers_snapshot: list[str] = []
         self._view_selection_snapshot: set[str] = set()
@@ -152,7 +160,48 @@ class TickerList:
             cursor="hand2",
         )
         btn.pack(side=tk.LEFT, padx=2)
+        tooltip = _TOOLTIPS_INDICE.get(label)
+        if tooltip:
+            ToolTip(btn, tooltip)
         self._index_buttons.append(btn)
+
+    def add_action_button(
+        self: "TickerList",
+        command: Callable,
+        *,
+        text: str | None = None,
+        icon: str | None = None,
+        tooltip: str | None = None,
+    ) -> tk.Button:
+        """Adiciona um botão de ação ao grupo de seleção, após "Desmarcar Todos"."""
+        opcoes: dict = {"command": command, "cursor": "hand2"}
+        if icon:
+            opcoes["image"] = self._load_icon(icon)
+            opcoes["padx"] = 0
+        else:
+            opcoes["text"] = text or ""
+        btn = tk.Button(self._btn_frame, **opcoes)
+        btn.pack(side=tk.LEFT, padx=2, before=self._sep)
+        if tooltip:
+            ToolTip(btn, tooltip)
+        self._action_buttons.append(btn)
+        return btn
+
+    def set_action_button_visible(
+        self: "TickerList", button: tk.Button, visible: bool
+    ) -> None:
+        """Exibe ou oculta um botão de ação da barra de ferramentas."""
+        if visible:
+            button.pack(side=tk.LEFT, padx=2, before=self._sep)
+        else:
+            button.pack_forget()
+
+    def _repack_action_buttons(self: "TickerList") -> None:
+        """Reposiciona os botões de ação visíveis após o grupo de seleção."""
+        for btn in self._action_buttons:
+            if btn.winfo_manager() == "pack":
+                btn.pack_forget()
+                btn.pack(side=tk.LEFT, padx=2, before=self._sep)
 
     def _build_editor_area(self: "TickerList") -> None:
         """Constrói o cabeçalho, o campo de texto e a listbox da lista.
@@ -230,6 +279,7 @@ class TickerList:
             self._listbox_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
             self._btn_all.pack(side=tk.LEFT, padx=2, before=self._sep)
             self._btn_none.pack(side=tk.LEFT, padx=2, before=self._sep)
+            self._repack_action_buttons()
             self._edit_toggle_var.set(0)
         else:
             self._listbox.pack_forget()
@@ -354,12 +404,13 @@ class TickerList:
         self._listbox.selection_clear(0, tk.END)
 
     def all_buttons(self: "TickerList") -> list[tk.Widget]:
-        """Retorna todos os botões do widget, incluindo os de índice."""
+        """Retorna todos os botões do widget, incluindo os de índice e de ação."""
         buttons = [
             self._btn_load, self._btn_save,
             self._edit_toggle, self._btn_all, self._btn_none,
         ]
         buttons.extend(self._index_buttons)
+        buttons.extend(self._action_buttons)
         return buttons
 
     def rebind(self: "TickerList", **callbacks: object) -> None:
@@ -380,6 +431,7 @@ class TickerList:
         self._index_buttons.clear()
         for label in on_index_click:
             self._append_index_button(label)
+        self._repack_action_buttons()
 
     def _on_listbox_select(self: "TickerList", event: tk.Event | None = None) -> None:
         """Notifica a mudança de seleção quando o modo de visualização está ativo."""

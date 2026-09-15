@@ -17,7 +17,12 @@ class _Analise:
 
 
 class _CasoFake:
-    def execute(self, tickers, reference_date, progress_callback=None):
+    def __init__(self):
+        self.force_refresh = None
+
+    def execute(self, tickers, reference_date, progress_callback=None,
+                force_refresh=False):
+        self.force_refresh = force_refresh
         for ticker in tickers:
             if progress_callback is not None:
                 progress_callback(f"Analisando {ticker}", False)
@@ -153,3 +158,19 @@ class TestJobFalhaRecuperavel:
             mensagens.append(job.fila.get_nowait())
         resultado = [m for m in mensagens if m[0] == MENSAGEM_RESULTADO][0]
         assert resultado[2] is True
+
+
+class TestForceRefreshJob:
+    def test_job_encaminha_force_refresh(self):
+        caso = _CasoFake()
+        job = FundamentalJob(caso, ["HGBS11"], REFERENCIA, 1, force_refresh=True)
+        thread = job.iniciar()
+        thread.join(timeout=2)
+        assert caso.force_refresh is True
+
+    def test_job_default_sem_force(self):
+        caso = _CasoFake()
+        job = FundamentalJob(caso, ["HGBS11"], REFERENCIA, 1)
+        thread = job.iniciar()
+        thread.join(timeout=2)
+        assert caso.force_refresh is False

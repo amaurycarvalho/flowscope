@@ -54,8 +54,10 @@ from flowscope.application.fundamental_ports import (
     FfoProvider,
     FiiFundamentalRepository,
     FundamentalDataProvider,
+    FundamentalHistoryStore,
     IndexadoresProvider,
     MarketPricePort,
+    observacao_completa,
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
 from flowscope.domain.fii import (
@@ -102,6 +104,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         historico_dividendos: DividendHistoryProvider | None = None,
         acionistas_provider: AcionistasProvider | None = None,
         indexadores_provider: IndexadoresProvider | None = None,
+        historico_store: FundamentalHistoryStore | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -112,6 +115,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         self._historico_dividendos = historico_dividendos
         self._acionistas_provider = acionistas_provider
         self._indexadores_provider = indexadores_provider
+        self._historico_store = historico_store
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
 
@@ -120,6 +124,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         tickers: list[str],
         reference_date: date | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
+        force_refresh: bool = False,
     ) -> list[AnaliseFundamental]:
         """Analisa cada ticker de forma isolada e retorna uma linha por ativo."""
         referencia = reference_date or datetime.now(timezone.utc).date()
@@ -130,7 +135,9 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         for indice, ticker in enumerate(tickers, start=1):
             normalizado = normalizar_ticker(ticker)
             try:
-                resultado, de_cache = self._analisar_ticker(normalizado, referencia)
+                resultado, de_cache = self._analisar_ou_cache(
+                    normalizado, referencia, force_refresh
+                )
                 if progress_callback is not None:
                     detalhe = f"Fundamentos: {normalizado} ({indice}/{total})"
                     if de_cache:
@@ -157,6 +164,40 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
                     )
                 )
         return resultados
+
+    def _analisar_ou_cache(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+        force_refresh: bool,
+    ) -> tuple[AnaliseFundamental, bool]:
+        """Serve a observação completa do dia ou analisa e registra no histórico.
+
+        O acerto do dia exige uma observação completa e na versão de schema
+        atual; observações parciais são recomputadas para poderem ser
+        substituídas por uma melhor no mesmo dia.
+        """
+        if self._historico_store is not None and not force_refresh:
+            observacao = self._historico_store.obter(ticker, reference_date)
+            if observacao is not None and observacao_completa(observacao):
+                return observacao, True
+        resultado, de_cache = self._analisar_ticker(ticker, reference_date)
+        self._registrar_observacao(ticker, reference_date, resultado, force_refresh)
+        return resultado, de_cache
+
+    def _registrar_observacao(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+        resultado: AnaliseFundamental,
+        force_refresh: bool,
+    ) -> None:
+        """Registra a observação no histórico quando a análise não falhou."""
+        if self._historico_store is None or resultado.erro is not None:
+            return
+        self._historico_store.registrar(
+            ticker, reference_date, resultado, force=force_refresh
+        )
 
     def _analisar_ticker(
         self: "FundamentalAnalysisUseCase",

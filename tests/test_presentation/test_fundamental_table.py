@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from tkinter import ttk
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -998,6 +999,24 @@ class TestWiringSubAba:
         assert "FFO/Receita" in texto
         assert "administrador" in texto
         assert "gestor" in texto
+
+    def test_visibilidade_do_botao_por_sub_aba(self):
+        from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
+
+        host = TabActionsMixin()
+        host._ticker_list = MagicMock()
+        host._fundamental_refresh_btn = MagicMock()
+
+        host._sync_fundamental_refresh_visibility("Análise Geral", "Fundamentos")
+        host._ticker_list.set_action_button_visible.assert_called_once_with(
+            host._fundamental_refresh_btn, True
+        )
+
+        host._ticker_list.set_action_button_visible.reset_mock()
+        host._sync_fundamental_refresh_visibility("Análise Geral", "VWAP")
+        host._ticker_list.set_action_button_visible.assert_called_once_with(
+            host._fundamental_refresh_btn, False
+        )
 
     @needs_display
     def test_sub_aba_fundamentos_aparece_na_analise_geral(self):
