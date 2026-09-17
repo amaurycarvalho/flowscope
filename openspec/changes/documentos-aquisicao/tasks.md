@@ -53,3 +53,10 @@
 
 - [x] 10.1 Expor `all_buttons()` no `DocumentTreePanel` (incluindo "Abrir documento") e integrá-lo ao bloqueio global; reavaliar o estado pela seleção ao restaurar (`refresh_open_button`); verificar com testes
 - [x] 10.2 Atualizar os testes de estado do painel e de bloqueio global; verificar com `make test` e `make lint`
+
+## 11. Correção da resolução codeCVM e do material facts (ações)
+
+- [x] 11.1 Corrigir `resolver_code_cvm` para consultar `GetInitialCompanies` filtrando por `company=<raiz>` e casar `issuingCompany`, com paginação e chave de cache versionada; verificar com testes de PETR4, homônimos, paginação e `None`
+- [x] 11.2 Corrigir o payload do `GetMaterialFacts` para `language`/`dateInitial`/`dateFinal`/`category`; verificar com os testes do cliente de material facts
+- [x] 11.3 Validar a aquisição ponta a ponta na API real para AGRO3, BBAS3, BRAP3, PETR3 e VALE3, confirmando os PDFs em `documentos-relevantes/`
+- [x] 11.4 Registrar as correções nas specs `code-cvm-resolution` e `material-facts-extraction` e nos artefatos desta change; verificar com `openspec validate documentos-aquisicao`

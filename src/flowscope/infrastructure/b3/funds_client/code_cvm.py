@@ -16,6 +16,35 @@ from flowscope.infrastructure.b3.funds_client.cvm import (
 
 logger = logging.getLogger(__name__)
 
+#: Tamanho de página usado na consulta de empresas listadas (máximo aceito).
+_PAGE_SIZE_EMPRESAS = 120
+
+
+def _raiz_ticker(ticker: str) -> str:
+    """Remove o sufixo numérico do ticker, devolvendo a raiz de negociação."""
+    raiz = ticker.strip().upper().rstrip("0123456789")
+    return raiz or ticker.strip().upper()
+
+
+def _code_cvm_da_raiz(dados: object, raiz: str) -> str | None:
+    """Retorna o codeCVM do registro cujo ``issuingCompany`` é a raiz do ticker."""
+    if not isinstance(dados, dict):
+        return None
+    for item in dados.get("results", []):
+        if not isinstance(item, dict):
+            continue
+        emissor = str(item.get("issuingCompany") or "").strip().upper()
+        codigo = item.get("codeCVM")
+        if emissor == raiz and codigo:
+            return _normalizar_code_cvm(str(codigo))
+    return None
+
+
+def _total_paginas(dados: object) -> int:
+    """Retorna o número de páginas da resposta, com no mínimo 1."""
+    pagina = dados.get("page", {}) if isinstance(dados, dict) else {}
+    return int(pagina.get("totalPages", 1) or 1) if pagina else 1
+
 
 class FundosCodeCvmMixin:
     """Mixin com resolução de ticker→codeCVM, com fallback no cadastro."""
@@ -28,7 +57,7 @@ class FundosCodeCvmMixin:
         tickers sem código CVM, sem lançar exceção. O resultado, inclusive
         ``None``, é cacheado por 30 dias.
         """
-        key = f"codecvm_{ticker.strip().upper()}"
+        key = self._chave_cache("codecvm", ticker.strip().upper())
 
         def _fetch() -> dict[str, object]:
             try:
@@ -51,24 +80,37 @@ class FundosCodeCvmMixin:
         return payload.get("codeCVM")
 
     def _consultar_code_cvm_por_api(self: "FundosCodeCvmMixin", ticker: str) -> str | None:
-        """Consulta a API de empresas listadas por ticker."""
-        dados = self._get_listed_json(
-            "GetListedCompany",
+        """Consulta a API de empresas listadas pela raiz de negociação do ticker.
+
+        Usa ``GetInitialCompanies`` (o endpoint exposto pela B3 para o cadastro
+        de empresas) filtrando por ``company`` e casa o registro cujo
+        ``issuingCompany`` é a raiz do ticker, já que o filtro textual pode
+        trazer outras empresas cujo nome contém a raiz.
+        """
+        raiz = _raiz_ticker(ticker)
+        page_number = 1
+        while True:
+            dados = self._consultar_empresas(raiz, page_number)
+            codigo = _code_cvm_da_raiz(dados, raiz)
+            if codigo is not None:
+                return codigo
+            if page_number >= _total_paginas(dados):
+                return None
+            page_number += 1
+
+    def _consultar_empresas(
+        self: "FundosCodeCvmMixin", raiz: str, page_number: int
+    ) -> object:
+        """Consulta uma página de empresas listadas filtradas pela raiz."""
+        return self._get_listed_json(
+            "GetInitialCompanies",
             {
                 "language": "pt-br",
-                "pageNumber": 1,
-                "pageSize": 20,
-                "tradingName": ticker.strip().upper(),
+                "pageNumber": page_number,
+                "pageSize": _PAGE_SIZE_EMPRESAS,
+                "company": raiz,
             },
         )
-        resultados = dados.get("results", []) if isinstance(dados, dict) else []
-        for item in resultados:
-            if not isinstance(item, dict):
-                continue
-            codigo = item.get("codeCVM")
-            if codigo:
-                return _normalizar_code_cvm(str(codigo))
-        return None
 
     def _consultar_code_cvm_no_cadastro(self: "FundosCodeCvmMixin", ticker: str) -> str | None:
         """Busca o codeCVM no cadastro de empresas listadas da B3."""

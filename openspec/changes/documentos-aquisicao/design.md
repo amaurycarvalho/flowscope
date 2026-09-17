@@ -55,6 +55,19 @@ Durante a execução, a GUI usa o presenter (`on_operation_started`/`on_operatio
 
 **Decisão**: o botão de abertura é rotulado "Abrir documento" e começa desabilitado; habilita quando um nó de arquivo está selecionado e volta a desabilitar quando a seleção é de pasta ou inexistente. A abertura por duplo-clique e Enter permanece.
 
+### 7. Contratos reais da B3 na resolução e no material facts
+
+**Decisão**: corrigir os contratos usados pela aquisição de ações para os efetivamente expostos pela B3:
+
+- `resolver_code_cvm` consulta `GetInitialCompanies` (e não `GetListedCompany`, que responde 404) filtrando por `company=<raiz do ticker>` e casa o registro cujo `issuingCompany` é a raiz do ticker (ex.: PETR3 → PETR → codeCVM 9512). O filtro textual pode trazer homônimos, então a correspondência exata de `issuingCompany` é obrigatória; a resposta é paginada com `pageSize=120`.
+- O token Base64 do `GetMaterialFacts` usa `language`, `codeCVM`, `year`, `dateInitial`, `dateFinal`, `category`, `pageNumber` e `pageSize`; os nomes `linguagem`/`dataInicial`/`dataFinal`/`categoria` são ignorados pela API, que devolve listagem vazia.
+
+A chave de cache da resolução passa a ser versionada (`_chave_cache`), pois execuções anteriores gravaram `None` para 30 dias e o valor envenenado impediria a correção de surtir efeito.
+
+**Racional**: validado contra a API real — AGRO3, BBAS3, BRAP3, PETR3 e VALE3 passaram a retornar `codeCVM` e a popular `documentos-relevantes/` com PDFs.
+
+**Alternativas**: manter `GetListedCompany` (não existe); buscar todos os emissores e indexar localmente (30 requisições e cache maior, sem ganho); usar o CSV de empresas listadas como caminho primário (a URL atual devolve HTML, não CSV).
+
 ## Risks / Trade-offs
 
 - **[Risco] Latência ao acionar "Atualizar"** → Aquisição em worker com estado de carregamento; a árvore só é remontada ao final. Abrir a sub-aba não baixa (somente cache).

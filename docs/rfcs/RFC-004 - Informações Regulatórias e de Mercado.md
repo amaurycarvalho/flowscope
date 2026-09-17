@@ -209,16 +209,18 @@ O token é uma string Base64 codificada a partir de um objeto JSON:
 
 ```json
 {
-  "linguagem": "pt-br",
+  "language": "pt-br",
   "codeCVM": "9512",
   "year": 2026,
-  "dataInicial": "2026-01-01",
-  "dataFinal": "2026-12-31",
-  "categoria": "1",
+  "dateInitial": "2026-01-01",
+  "dateFinal": "2026-12-31",
+  "category": "1",
   "pageNumber": 1,
   "pageSize": 5
 }
 ```
+
+> **Atenção:** os nomes de campo são os aceitos pela API (`language`, `dateInitial`, `dateFinal`, `category`). Grafias alternativas (`linguagem`, `dataInicial`, `dataFinal`, `categoria`) são ignoradas e retornam listagem vazia.
 
 **Mapeamento de Categorias:**
 | Categoria | Valor `categoria` | Descrição |
@@ -308,12 +310,12 @@ def extrair_material_facts(code_cvm, categoria, data_inicio, data_fim):
         data_fim: Data de fim (AAAA-MM-DD)
     """
     payload = {
-        "linguagem": "pt-br",
+        "language": "pt-br",
         "codeCVM": code_cvm,
         "year": 2026,
-        "dataInicial": data_inicio,
-        "dataFinal": data_fim,
-        "categoria": str(categoria),
+        "dateInitial": data_inicio,
+        "dateFinal": data_fim,
+        "category": str(categoria),
         "pageNumber": 1,
         "pageSize": 20
     }

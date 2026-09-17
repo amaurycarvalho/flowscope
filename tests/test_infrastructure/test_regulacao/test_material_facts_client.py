@@ -58,12 +58,12 @@ def _item_fato_relevante() -> dict:
 
 def _registrar_pagina(itens: list[dict], pagina: int = 1, total_paginas: int = 1):
     payload = {
-        "linguagem": "pt-br",
+        "language": "pt-br",
         "codeCVM": "9512",
         "year": 2026,
-        "dataInicial": "2026-01-01",
-        "dataFinal": "2026-12-31",
-        "categoria": "4",
+        "dateInitial": "2026-01-01",
+        "dateFinal": "2026-12-31",
+        "category": "4",
         "pageNumber": pagina,
         "pageSize": 20,
     }
@@ -105,12 +105,12 @@ class TestListarFatosRelevantes:
         item["type"] = "AGO"
         item["kind"] = "Ata"
         payload = {
-            "linguagem": "pt-br",
+            "language": "pt-br",
             "codeCVM": "9512",
             "year": 2026,
-            "dataInicial": "2026-01-01",
-            "dataFinal": "2026-12-31",
-            "categoria": "1",
+            "dateInitial": "2026-01-01",
+            "dateFinal": "2026-12-31",
+            "category": "1",
             "pageNumber": 1,
             "pageSize": 20,
         }
@@ -190,12 +190,12 @@ class TestListarFatosRelevantes:
             cache=CacheManager(cache_dir=tmp_path), retry_delays=(0,)
         )
         payload = {
-            "linguagem": "pt-br",
+            "language": "pt-br",
             "codeCVM": "9512",
             "year": 2026,
-            "dataInicial": "2026-01-01",
-            "dataFinal": "2026-12-31",
-            "categoria": "4",
+            "dateInitial": "2026-01-01",
+            "dateFinal": "2026-12-31",
+            "category": "4",
             "pageNumber": 1,
             "pageSize": 20,
         }

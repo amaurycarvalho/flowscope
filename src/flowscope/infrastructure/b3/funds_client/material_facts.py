@@ -76,12 +76,12 @@ class FundosMaterialFactsMixin:
             dados = self._get_listed_json(
                 "GetMaterialFacts",
                 {
-                    "linguagem": "pt-br",
+                    "language": "pt-br",
                     "codeCVM": code_cvm,
                     "year": data_inicio.year,
-                    "dataInicial": data_inicio.isoformat(),
-                    "dataFinal": data_fim.isoformat(),
-                    "categoria": codigo_categoria,
+                    "dateInitial": data_inicio.isoformat(),
+                    "dateFinal": data_fim.isoformat(),
+                    "category": codigo_categoria,
                     "pageNumber": page_number,
                     "pageSize": _PAGE_SIZE,
                 },
