@@ -1,5 +1,12 @@
 """Domínio de dados estruturados da B3 com entidades e objetos de valor."""
 
+from flowscope.domain.structured.documentos_relevantes import (
+    CATEGORIAS_RELEVANTES,
+    DocumentoRelevante,
+    nome_categoria,
+    nome_por_slug,
+    slug_categoria,
+)
 from flowscope.domain.structured.entities import (
     Assembleia,
     AvisoAcionista,
@@ -23,6 +30,7 @@ from flowscope.domain.structured.value_objects import (
 )
 
 __all__ = [
+    "CATEGORIAS_RELEVANTES",
     "CNPJ",
     "ISIN",
     "Assembleia",
@@ -35,9 +43,13 @@ __all__ = [
     "CondicaoExcepcional",
     "DocumentoMaterialFact",
     "DocumentoProvento",
+    "DocumentoRelevante",
     "Entidade",
     "FatoRelevante",
     "NoticiaB3",
     "Provento",
     "ValorProvento",
+    "nome_categoria",
+    "nome_por_slug",
+    "slug_categoria",
 ]

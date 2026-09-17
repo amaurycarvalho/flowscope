@@ -1,53 +1,29 @@
 ## 1. Pré-requisito
 
-- [ ] 1.1 `structured-earnings` implementada (B3FundosClient, CacheManager, ticker-resolution, HTML parsing base, value objects, Entidade)
+- [x] 1.1 Confirmar que a listagem type=40 (`listar_documentos(..., 40)`) e o download HTML (`buscar_html_documento`) já existem e são reutilizáveis
+- [x] 1.2 Confirmar que `B3InformeMensal`, `informe_mensal_parser` e `B3ReportsRepository` permanecem inalterados
 
-## 2. Domínio — Value Objects e Entidades
+## 2. Cache de arquivo do informe mensal
 
-- [ ] 2.1 Implementar `Percentual` em `domain/structured/value_objects.py`
-- [ ] 2.2 Implementar `CarteiraAtivo`, `Carteira` em `domain/structured/entities.py`
-- [ ] 2.3 Implementar `Resultados`, `Indicadores`, `OutrasInformacoes` em `domain/structured/entities.py`
-- [ ] 2.4 Implementar `InformeMensal` com `to_dict()` e `to_text()`
-- [ ] 2.5 Atualizar `domain/structured/__init__.py`
+- [x] 2.1 Implementar a gravação do HTML em `<cache>/informe-mensal/<TICKER>/<AAAA>/<MM>/<id>.html`, de forma atômica e sem TTL
+- [x] 2.2 Derivar ano/mês da data de referência, com fallback para a data de entrega e, por fim, a data corrente
+- [x] 2.3 Reutilizar o arquivo existente sem novo download (cache hit)
+- [x] 2.4 Tratar falha de download sinalizando o documento, sem criar arquivo e sem interromper outros tickers
 
-## 3. Testes do Domínio
+## 3. Leitura da árvore
 
-- [ ] 3.1 Testar `Percentual`, `CarteiraAtivo`, `Carteira`
-- [ ] 3.2 Testar `Resultados`, `Indicadores`, `InformeMensal.to_text()`
+- [x] 3.1 Expor listagem dos documentos em cache de um ticker, ordenados do mais recente ao mais antigo
+- [x] 3.2 Retornar lista vazia para ticker sem cache, sem erro
 
-## 4. Aplicação
+## 4. Testes
 
-- [ ] 4.1 Definir `InformeMensalRepository` protocol em `application/structured_ports.py`
-- [ ] 4.2 Implementar `ExtrairInformeMensalUseCase` em `application/structured_use_cases.py`
+- [x] 4.1 Testar gravação, cache hit e caminho por ticker/ano/mês com diretório temporário
+- [x] 4.2 Testar derivação de ano/mês (referência, entrega e fallback corrente)
+- [x] 4.3 Testar falha de download sem arquivo criado
+- [x] 4.4 Testar leitura ordenada e ticker sem documentos
 
-## 5. Testes da Aplicação
+## 5. Quality Gate
 
-- [ ] 5.1 Mock `InformeMensalRepository`, testar use case — sucesso, vazio, erro
-
-## 6. Infraestrutura — Parsing Multi-Tabela
-
-- [ ] 6.1 `classificar_contexto_tabela()` em `infrastructure/b3/structured_parser.py`
-- [ ] 6.2 `extrair_carteira()`, `extrair_resultados()`, `extrair_indicadores()`, `extrair_outras_informacoes()`
-- [ ] 6.3 `validar_totais_carteira()`, `validar_resultado_liquido()`
-- [ ] 6.4 `extrair_informe_mensal()` — função principal
-
-## 7. Infraestrutura — Repository
-
-- [ ] 7.1 `FundosInformeMensalRepository` implementando `InformeMensalRepository`
-
-## 8. Testes Infraestrutura
-
-- [ ] 8.1 Fixture HTML multi-tabela, testar classificação e extração
-- [ ] 8.2 Testar validação cruzada, repository com mock
-
-## 9. CLI
-
-- [ ] 9.1 `--informe-mensal` no parser, `run_informe_mensal()`, dispatch
-
-## 10. Testes CLI
-
-- [ ] 10.1 Testar argumentos e saída
-
-## 11. Quality Gate
-
-- [ ] 11.1 `make lint` + `make test` passam
+- [x] 5.1 Executar `make lint` e corrigir avisos/erros introduzidos
+- [x] 5.2 Executar `make test` e garantir que todos os testes passam
+- [x] 5.3 Executar `openspec validate informe-mensal` e garantir que a change permanece válida

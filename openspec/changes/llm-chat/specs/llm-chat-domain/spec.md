@@ -1,15 +1,15 @@
 ## ADDED Requirements
 
 ### Requirement: Protocolo DocumentoIndexavel
-O sistema DEVE definir um protocolo `DocumentoIndexavel` com método `to_text() -> str` que produz uma representação textual densa do documento, adequada para chunking e embedding. As entidades `DocumentoProvento` e `InformeMensal` das changes `fii-structured-earnings` e `fii-informe-mensal` DEVEM implementar este protocolo.
+O sistema DEVE definir um protocolo `DocumentoIndexavel` com método `to_text() -> str`, que produz uma representação textual densa do documento, adequada para chunking e embedding. As entidades de documento já implementadas que possuem `to_text()` (por exemplo, `DocumentoProvento`, `DocumentoMaterialFact`, `Assembleia` e `NoticiaB3`) satisfazem este protocolo.
 
-#### Scenario: DocumentoProvento implementa DocumentoIndexavel
+#### Scenario: Documento com to_text
 - **WHEN** `DocumentoProvento.to_text()` é chamado
-- **THEN** o texto DEVE conter nome do fundo, CNPJ, ticker, tipo de provento, valor, data, isento IR e nota de isenção em formato legível
+- **THEN** o texto DEVE conter os metadados e valores do documento em formato legível
 
-#### Scenario: InformeMensal implementa DocumentoIndexavel
-- **WHEN** `InformeMensal.to_text()` é chamado
-- **THEN** o texto DEVE conter nome do fundo, CNPJ, composição da carteira com totais, resultados (receitas/despesas), indicadores, e outras informações
+#### Scenario: Documento sem to_text não é indexável
+- **WHEN** uma entidade não implementa `to_text()`
+- **THEN** ela NÃO DEVE ser aceita como `DocumentoIndexavel` pelo pipeline
 
 ### Requirement: Entidade ChatMessage
 O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" ou "assistant"), `content` (str), `sources` (list[dict] opcional com metadados dos chunks-fonte) e `timestamp` (datetime).
@@ -34,8 +34,12 @@ O sistema DEVE possuir uma entidade `ChatSession` (in-memory, sem persistência)
 - **THEN** `messages` deve voltar a ser lista vazia
 
 ### Requirement: ABC DocumentSource
-O sistema DEVE definir uma classe abstrata `DocumentSource` com métodos `listar(ticker, data_inicio, data_fim) -> list[dict]`, `obter_texto(doc_meta) -> str` e `categoria -> str`. Cada fonte concreta (Proventos, InformeMensal, Relevantes) implementa a ABC.
+O sistema DEVE definir uma classe abstrata `DocumentSource` com a propriedade `categoria -> str` e o método `obter_documentos(ticker: str | None = None) -> list[DocumentoIndexavel]`. Cada fonte concreta implementa a ABC e isola o pipeline de indexação.
 
 #### Scenario: DocumentSource define interface comum
-- **WHEN** uma classe herda de `DocumentSource` e implementa todos os métodos abstratos
+- **WHEN** uma classe herda de `DocumentSource` e implementa `categoria` e `obter_documentos`
 - **THEN** a classe deve ser aceita por `IndexarDocumentosUseCase` como fonte de documentos
+
+#### Scenario: Ticker opcional
+- **WHEN** `obter_documentos()` é chamado sem ticker
+- **THEN** a fonte DEVE retornar os documentos globais que não dependem de ticker (ou lista vazia)

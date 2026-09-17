@@ -1,27 +1,30 @@
 ## 1. Pré-requisitos e Setup
 
 - [ ] 1.1 Verificar que `structured-earnings` está implementada (B3FundosClient, ticker-resolution, value objects, DocumentoProvento, ProventosRepository)
-- [ ] 1.2 Verificar que `informe-mensal` está implementada (InformeMensal, InformeMensalRepository, multi-table parser)
-- [ ] 1.3 Adicionar grupo `[llm]` ao `pyproject.toml` com `litellm>=1.50`, `fastembed>=0.4`, `PyPDF2>=3.0`
-- [ ] 1.4 Marcador pytest `llm` em `pyproject.toml`
-- [ ] 1.5 Criar estrutura de diretórios completa
-- [ ] 1.6 Atualizar README.md com seção "Chat com IA" e `pip install flowscope[llm]`
+- [ ] 1.2 Verificar que as portas `DocumentoIndexavel` e `DocumentSource` já existem em `domain/chat/ports.py`
+- [ ] 1.3 Verificar que as fontes `MaterialFactsSource` e `NoticiasSource` já existem em `infrastructure/document_sources/`
+- [ ] 1.4 Verificar que os caches de `informe-mensal` e `documentos-relevantes` existem e são legíveis
+- [ ] 1.5 Adicionar grupo `[llm]` ao `pyproject.toml` com `litellm>=1.50`, `fastembed>=0.4`, `pypdf>=4`
+- [ ] 1.6 Marcador pytest `llm` em `pyproject.toml`
+- [ ] 1.7 Criar a estrutura de diretórios restante
+- [ ] 1.8 Atualizar README.md com seção "Chat com IA" e `pip install flowscope[llm]`
 
-## 2. Domínio — Chat Models e Ports
+## 2. Domínio — Chat Models e Ports (reconciliação)
 
 - [ ] 2.1 `ChatMessage`, `ChatSession` em `domain/chat/models.py`
-- [ ] 2.2 `DocumentoIndexavel` protocol, `DocumentSource` ABC, `DocumentoMeta` em `domain/chat/ports.py`
-- [ ] 2.3 Criar `domain/chat/__init__.py`
+- [ ] 2.2 Confirmar `DocumentoIndexavel` e `DocumentSource` em `domain/chat/ports.py` (já implementados)
+- [ ] 2.3 Atualizar `domain/chat/__init__.py` com os novos modelos
 
-## 3. Domínio — to_text() nas Entidades (deltas)
+## 3. Extração de texto para indexação (transferido)
 
-- [ ] 3.1 `DocumentoProvento.to_text()` — texto denso para embedding
-- [ ] 3.2 `InformeMensal.to_text()` — texto denso para embedding
+- [ ] 3.1 Extração de texto de HTML (informe mensal) para a `InformeMensalSource`
+- [ ] 3.2 Extração de texto de PDF via `pypdf` para a `RelevantesSource`, reutilizando/generalizando o extrator existente de BDR
+- [ ] 3.3 `to_text()`/representação textual densa das entidades usadas pelas fontes
 
 ## 4. Testes do Domínio
 
 - [ ] 4.1 Testar `ChatMessage`, `ChatSession`
-- [ ] 4.2 Testar `to_text()` em ambas as entidades
+- [ ] 4.2 Testar a extração de texto (HTML e PDF) com fixtures
 
 ## 5. Infraestrutura — VectorStore
 
@@ -44,16 +47,17 @@
 - [ ] 7.3 `build_rag_prompt()`
 - [ ] 7.4 `create_chat_provider(config)` factory
 
-## 8. Infraestrutura — Document Sources
+## 8. Infraestrutura — Document Sources (reconciliadas + transferidas)
 
-- [ ] 8.1 `listar_documentos_relevantes()` no `B3FundosClient`
-- [ ] 8.2 `ProventosSource` — usa `ProventosRepository`, retorna vazio se ticker sem resolução
-- [ ] 8.3 `InformeMensalSource` — usa `InformeMensalRepository`, retorna vazio se ticker sem resolução
-- [ ] 8.4 `RelevantesSource` — PDF download, PyPDF2, cache
+- [ ] 8.1 Confirmar `MaterialFactsSource` (fatos relevantes via `RegulacaoRepository`)
+- [ ] 8.2 Confirmar `NoticiasSource` (Plantão B3)
+- [ ] 8.3 `InformeMensalSource` — lê o cache `informe-mensal/`, converte HTML em texto, retorna vazio se ticker sem dados
+- [ ] 8.4 `RelevantesSource` — lê o cache `documentos-relevantes/`, extrai texto do PDF, retorna vazio se ticker sem dados
+- [ ] 8.5 Registrar as fontes disponíveis na factory/composição de indexação
 
 ## 9. Aplicação — Use Cases
 
-- [ ] 9.1 `IndexarDocumentosUseCase` — 3 sources, VectorStore, EmbeddingPort, progress
+- [ ] 9.1 `IndexarDocumentosUseCase` — sources disponíveis, VectorStore, EmbeddingPort, progress
 - [ ] 9.2 `ConsultarDocumentosUseCase` — embed → search → prompt → chat → resposta + fontes
 - [ ] 9.3 Erro em uma fonte não interrompe as outras
 
@@ -62,7 +66,7 @@
 - [ ] 10.1 VectorStore: criar, inserir, buscar, deduplicar
 - [ ] 10.2 Embedding adapters com mocks
 - [ ] 10.3 Chat adapter com mock
-- [ ] 10.4 Document sources com mocks
+- [ ] 10.4 Document sources com mocks (incluindo `InformeMensalSource` e `RelevantesSource` sobre caches temporários)
 - [ ] 10.5 Use cases com mocks — fluxo completo, fonte falhando, VectorStore vazio
 
 ## 11. Config — LLM Config
@@ -100,3 +104,4 @@
 - [ ] 17.1 `make lint` limpo
 - [ ] 17.2 `pytest -m "not llm"` + `pytest -m "llm"` passam
 - [ ] 17.3 Testes existentes sem regressão
+- [ ] 17.4 Executar `openspec validate llm-chat` e garantir que a change permanece válida

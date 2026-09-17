@@ -22,6 +22,9 @@ _TIPO_PROVENTOS = 41
 _PAGE_SIZE = 20
 _AGENCIA_PADRAO = "18"
 
+#: URL do documento binário (PDF) no visualizador do FundosNet.
+_URL_DOCUMENTO_PDF = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento"
+
 #: Tipos de fundo consultados na resolução de identidade, em ordem de tentativa.
 TIPOS_FUNDO = ("FII", "FIAGRO", "FIP", "FIDC")
 
@@ -34,6 +37,7 @@ TTL_RESOLUCAO_TICKER_DIAS = 30
 TTL_CODIGO_CVM_DIAS = 30
 TTL_CADASTRO_EMPRESAS_DIAS = 30
 TTL_DOCUMENTOS_LISTA_DIAS = 1
+TTL_DOCUMENTOS_RELEVANTES_DIAS = 1
 TTL_DOCUMENTO_HTML_DIAS = 30
 TTL_IDENTIDADE_DIAS = 30
 TTL_MATERIAL_FACTS_DIAS = 1

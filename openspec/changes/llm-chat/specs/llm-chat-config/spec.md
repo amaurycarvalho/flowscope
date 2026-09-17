@@ -12,7 +12,7 @@ O sistema DEVE estender `~/.flowscope/config.json` com bloco `llm` contendo sub-
 - **THEN** `load_llm_config()` DEVE retornar `None` para `chat.provider`, indicando que o chat não está configurado
 
 ### Requirement: Detecção de dependências [llm]
-O sistema DEVE detectar se as dependências opcionais `[llm]` estão instaladas (`litellm`, `fastembed`, `PyPDF2`) e exibir mensagem amigável na GUI se ausentes: "Instale flowscope[llm] para habilitar o chat: pip install flowscope[llm]". No CLI, DEVE exibir a mesma mensagem e encerrar com código 1.
+O sistema DEVE detectar se as dependências opcionais `[llm]` estão instaladas (`litellm`, `fastembed`, `pypdf`) e exibir mensagem amigável na GUI se ausentes: "Instale flowscope[llm] para habilitar o chat: pip install flowscope[llm]". No CLI, DEVE exibir a mesma mensagem e encerrar com código 1.
 
 #### Scenario: Dependências ausentes na GUI
 - **WHEN** a GUI inicia e `litellm` não pode ser importado

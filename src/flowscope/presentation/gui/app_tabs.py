@@ -7,6 +7,7 @@ TAB_CONFIGS = [
      "buying_pressure", "selling_pressure", "vwap_distance"),
     ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
      "ultimo_dividendo", "cotistas", "cotas"),
+    ("Documentos", None),
     ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
     ("Eficiência do Movimento", "daily_efficiency"),
     ("Resumo Geral", None),
@@ -17,6 +18,7 @@ ENABLED_TABS = {
     "Amplitude de Preço",
     "Fluxo Financeiro",
     "Evolução dos Fundamentos",
+    "Documentos",
 }
 
 TAB_CONTENT = {
@@ -197,6 +199,25 @@ TAB_CONTENT = {
              "do cache aparecem sempre. A origem dos dados é exclusivamente o cache histórico de fundamentos: só existem pontos para os dias em "
              "que os dados do ticker já foram carregados, portanto alguns indicadores podem ficar constantes ou ter poucos pontos. Quando o ticker "
              "não tem nenhuma observação retida, o painel exibe um aviso de ausência de histórico."), ""),
+        ]
+    ),
+    ("Análise do Ticker", "Documentos"): (
+        "Documentos — Arquivos em Cache por Ticker",
+        [
+            ("Objetivo: ", "bold"),
+            ("Navegar e inspecionar os documentos já baixados e mantidos no cache local para o ticker selecionado.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Quais documentos deste ativo eu já tenho em cache e o que há dentro deles?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Árvore hierárquica por ticker → ano → mês → categoria → arquivos;\n"
+             "• Categorias: Aviso aos Acionistas (PDFs de BDR), Informe Mensal (HTML) e, para documentos relevantes, a subpasta de categoria (Assembleia, Comunicado ao Mercado, Fato Relevante, Relatorio);\n"
+             "• Pré-visualização textual do arquivo selecionado, extraída de HTML ou PDF.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Expanda ano, mês e categoria para localizar os arquivos. O nome exibido é o identificador do documento no cache; "
+             "a posição na árvore informa a data de referência. Ao selecionar um arquivo, o texto é extraído sob demanda e exibido à direita "
+             "(PDFs escaneados podem não ter texto extraível). Dê duplo-clique em um arquivo, pressione Enter ou use o botão \"Abrir\" para "
+             "abri-lo no aplicativo padrão — PDF no leitor de PDFs e HTML no navegador. Use \"Atualizar\" para re-varrer o cache do ticker. "
+             "Somente a data de referência (caminho) e o id do arquivo identificam o documento; pastas expandem e recolhem, e apenas arquivos abrem."), ""),
         ]
     ),
     ("Análise do Ticker", "Participação Institucional"): (

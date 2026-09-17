@@ -198,6 +198,7 @@ class LayoutMixin:
             "Amplitude de Preço": self._price_range_panel,
             "Fluxo Financeiro": self._financial_flow_panel,
             "Evolução dos Fundamentos": self._fundamental_evolution_panel,
+            "Documentos": self._documents_panel,
         }
         self._ticker_charts = set(self._TICKER.values())
         self._all_charts = [*self._GENERAL.values(), *self._TICKER.values()]

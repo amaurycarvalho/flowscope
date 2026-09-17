@@ -6,8 +6,10 @@ Facade que reexporta as entidades agora organizadas por contexto:
 - ``regulatorio``: censuras públicas e condições excepcionais.
 - ``noticias``: notícias do Plantão B3.
 - ``material_facts``: fatos relevantes, assembleias e avisos.
+- ``documentos_relevantes``: PDFs não estruturados e suas categorias.
 """
 
+from flowscope.domain.structured.documentos_relevantes import DocumentoRelevante
 from flowscope.domain.structured.material_facts import (
     Assembleia,
     AvisoAcionista,
@@ -35,6 +37,7 @@ __all__ = [
     "CondicaoExcepcional",
     "DocumentoMaterialFact",
     "DocumentoProvento",
+    "DocumentoRelevante",
     "Entidade",
     "FatoRelevante",
     "NoticiaB3",

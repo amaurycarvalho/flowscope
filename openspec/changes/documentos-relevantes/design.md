@@ -1,62 +1,51 @@
 ## Context
 
-O RFC-003 descreve a extração de documentos não estruturados (PDFs) de tickers listados na B3: Assembleias, Comunicados, Fatos Relevantes e Relatórios. A change `structured-earnings` estabelece a infraestrutura base (`B3FundosClient`, `CacheManager`, `ticker-resolution`). Esta change estende essa infraestrutura com um novo endpoint (`GetReportsRelevants`) e pipeline de PDFs (download → validação → extração de texto → cache).
+Ver `proposal.md - Why`. O RFC-003 descreve a aquisição de documentos não estruturados (PDFs) de tickers da B3. A infraestrutura base (`B3FundosClient`, `CacheManager`, resolução de ticker) já existe. Esta change adiciona o endpoint `GetReportsRelevants` e o pipeline de PDFs (listar → baixar → validar → cachear em árvore). O texto extraído e a indexação não fazem parte desta change.
 
-A change é ticker-agnóstica: qualquer ticker pode ser consultado. Para tickers que não são fundos, a resolução retorna `None` e o pipeline retorna lista vazia.
-
-Esta change fornece a terceira e última `DocumentSource` para o `llm-chat`, complementando `ProventosSource` e `InformeMensalSource`.
+A change é ticker-agnóstica: qualquer ticker pode ser consultado; para tickers que não são fundos, a resolução retorna `None` e o pipeline retorna lista vazia.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Novo método `listar_documentos_relevantes(category)` no `B3FundosClient`
-- Download de PDFs com validação (`%PDF`) e cache binário
-- Extração de texto via PyPDF2 com fallback para PDFs sem texto
-- Entidade `DocumentoRelevante` com `to_text()`
-- `RelevantesSource` implementando `DocumentSource` (ABC do `llm-chat`)
-- Iteração por 4 categorias com tolerância a falhas
+- Método `listar_documentos_relevantes(category)` no `B3FundosClient`.
+- Download de PDFs com validação (`%PDF`) e cache em `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`.
+- Entidade `DocumentoRelevante` com metadados e mapeamento de categorias (nome + slug).
+- Iteração pelas 4 categorias com tolerância a falhas.
 
 **Non-Goals:**
-- OCR em PDFs (apenas texto extraível)
-- Parsing estruturado do conteúdo dos PDFs (texto bruto, sem semântica)
-- Interface CLI própria (o `--index` do `llm-chat` já cobre)
+- Extração de texto do PDF (preview e indexação) — pertence a `visualizacao-documentos` e `llm-chat`.
+- `to_text()`/`DocumentSource`/`RelevantesSource` — transferidos para `llm-chat`.
+- OCR em PDFs (apenas PDFs válidos são cacheados).
+- CLI própria (o catálogo/sub-aba de documentos cobre).
 
 ## Decisions
 
-### 1. PyPDF2 para extração de texto
+### 1. Raiz de cache própria e árvore com categoria
 
-**Alternativa**: pdfplumber (mais robusto, tabelas).
-**Decisão**: PyPDF2.
+**Decisão**: `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`, sem TTL. Reutiliza `CacheManager.get_cache_dir()` como raiz.
 
-**Racional**: pdfplumber adiciona ~10MB em deps (pdfminer.six). Para o caso de uso (chunk de texto para embedding), a qualidade de extração do PyPDF2 é suficiente. O texto não precisa de formatação preservada — o embedding captura semântica, não layout.
+**Alternativas**: (a) cache plano `pdfs/pdf_{id}.pdf` (perde ticker/ano/mês/categoria e não é varredura por fonte); (b) árvore `bdr/` (semântica errada). A raiz própria com categoria atende à árvore da sub-aba e mantém o cache BDR intacto.
 
-### 2. Cache binário de PDFs
+### 2. Sem texto extraído na entidade
 
-Os PDFs são cacheados como arquivos binários em `~/.cache/flowscope/pdfs/pdf_{id_documento}.pdf`. Sem TTL — documentos históricos não mudam. O `CacheManager` existente é usado para a listagem (TTL 1 dia), mas o download usa cache de arquivo simples (Path.exists()).
+**Decisão**: `DocumentoRelevante` guarda apenas metadados. A extração de texto do PDF para preview fica em `visualizacao-documentos`; para indexação, em `llm-chat`.
 
-### 3. `RelevantesSource` definida em `documentos-relevantes`, não em `llm-chat`
+**Racional**: separa aquisição/cache (esta change) de consumo (preview/indexação), evitando dependência de biblioteca de PDF no caminho de aquisição.
 
-A implementação concreta de `RelevantesSource` vive nesta change, no módulo `infrastructure/document_sources/relevantes_source.py`. O `llm-chat` apenas importa e registra a fonte. Mesmo padrão de `ProventosSource` e `InformeMensalSource`.
+### 3. Endpoint `exibirDocumento` para o PDF
 
-### 4. Endpoint `exibirDocumento` para download de PDF
-
-A URL de visualização (`visualizarDocumento`) serve o HTML; o download do PDF usa `exibirDocumento?id={doc_id}`. O `B3FundosClient` já lida com ambos os endpoints (type=40/41 usa `exibirDocumento` para HTML; documentos relevantes usa `exibirDocumento` para PDF).
-
-### 5. Estrutura de diretórios (extensão)
-
-```
-src/flowscope/
-├── domain/structured/
-│   └── entities.py          # + DocumentoRelevante
-├── infrastructure/
-│   ├── b3/
-│   │   └── funds_client.py  # + listar_documentos_relevantes()
-│   └── document_sources/
-│       └── relevantes_source.py  # RelevantesSource(DocumentSource)
-```
+A URL de visualização (`visualizarDocumento`) serve o viewer; o download usa `exibirDocumento?id={doc_id}`. Mesmo endpoint já usado para os documentos estruturados (type=40/41), com validação `%PDF`.
 
 ## Risks / Trade-offs
 
-- **[Risco] PyPDF2 falha em PDFs com encoding não padrão** → Fallback: texto vazio, log warning. O pipeline continua com outros documentos.
-- **[Risco] PDFs grandes consomem memória** → Download em streaming (`response.content`). Para PDFs > 50MB, considerar `iter_content` com chunked reading no futuro.
-- **[Trade-off] Sem OCR** → PDFs baseados em imagem (scaneados) não terão texto extraível. Cobre a maioria dos documentos da B3 (gerados digitalmente).
+- **[Risco] PDFs grandes consomem memória** → Download com `response.content`; para PDFs > 50MB, considerar leitura em chunks no futuro.
+- **[Trade-off] Sem OCR/extração** → PDFs baseados em imagem ficam apenas como arquivo; preview textual e indexação são responsabilidade de quem consome.
+- **[Risco] `GetReportsRelevants` mudar de contrato** → Testes de contrato com fixture JSON e tolerância a falha por categoria.
+
+## Migration Plan
+
+1. Adicionar `listar_documentos_relevantes` ao cliente B3.
+2. Implementar download + validação + cache em árvore.
+3. Implementar entidade e mapeamento de categorias.
+4. Consumir a árvore pela sub-aba de documentos (change `visualizacao-documentos`) e pelo `llm-chat`.
+5. Rollback: mudanças aditivas; remover o módulo restaura o comportamento anterior.

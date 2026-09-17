@@ -1,15 +1,20 @@
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 import pytest
 
 from flowscope.domain.structured import (
+    CATEGORIAS_RELEVANTES,
     CNPJ,
     DocumentoProvento,
+    DocumentoRelevante,
     Entidade,
     ISIN,
     Provento,
     ValorProvento,
+    nome_categoria,
+    nome_por_slug,
+    slug_categoria,
 )
 
 
@@ -180,3 +185,64 @@ class TestDocumentoProvento:
         assert "2026-06-18" in texto
         assert "Isento de IR: Sim" in texto
         assert "Lei 11.033/2004" in texto
+
+
+class TestDocumentoRelevante:
+    def _documento(self) -> DocumentoRelevante:
+        return DocumentoRelevante(
+            ticker="ALZR11",
+            id_fnet="20294",
+            id_documento="1252542",
+            categoria="Assembleia",
+            descricao="Ata de Assembleia Geral Ordinária",
+            data_referencia=date(2026, 7, 17),
+            data_entrega="17/07/2026",
+            url=(
+                "https://fnet.bmfbovespa.com.br/fnet/publico/"
+                "visualizarDocumento?id=1252542"
+            ),
+            tamanho_bytes=245760,
+            data_extracao=datetime(2026, 7, 29, 14, 30, tzinfo=timezone.utc),
+        )
+
+    def test_metadados_acessiveis(self):
+        doc = self._documento()
+        assert doc.ticker == "ALZR11"
+        assert doc.id_fnet == "20294"
+        assert doc.id_documento == "1252542"
+        assert doc.categoria == "Assembleia"
+        assert doc.descricao == "Ata de Assembleia Geral Ordinária"
+        assert doc.data_referencia == date(2026, 7, 17)
+        assert doc.data_entrega == "17/07/2026"
+        assert doc.tamanho_bytes == 245760
+        assert doc.data_extracao == datetime(
+            2026, 7, 29, 14, 30, tzinfo=timezone.utc
+        )
+
+    def test_sem_texto_extraido(self):
+        doc = self._documento()
+        assert not hasattr(doc, "texto_extraido")
+        assert not hasattr(doc, "to_text")
+
+
+class TestCategoriasRelevantes:
+    def test_codigos_na_ordem(self):
+        assert CATEGORIAS_RELEVANTES == (1, 2, 3, 7)
+
+    def test_nome_e_slug_por_codigo(self):
+        esperado = {
+            1: ("Fato Relevante", "fato-relevante"),
+            2: ("Assembleia", "assembleia"),
+            3: ("Comunicado ao Mercado", "comunicado"),
+            7: ("Relatorio", "relatorio"),
+        }
+        for codigo, (nome, slug) in esperado.items():
+            assert nome_categoria(codigo) == nome
+            assert nome_categoria(str(codigo)) == nome
+            assert slug_categoria(codigo) == slug
+            assert slug_categoria(str(codigo)) == slug
+
+    def test_nome_por_slug(self):
+        assert nome_por_slug("fato-relevante") == "Fato Relevante"
+        assert nome_por_slug("relatorio") == "Relatorio"
+        assert nome_por_slug("desconhecido") is None

@@ -4,6 +4,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from flowscope.presentation.gui.app_tabs import ENABLED_TABS, TAB_CONFIGS
+from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
 from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
@@ -96,6 +97,13 @@ class TabsLayoutMixin:
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._fundamental_evolution_panel.frame.pack(fill=tk.BOTH, expand=True)
+                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
+            elif name == "Documentos":
+                self._documents_panel = DocumentTreePanel(
+                    frame,
+                    status_callback=getattr(self, "_set_status", None),
+                )
+                self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
                 self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             else:
                 text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),

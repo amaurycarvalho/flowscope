@@ -1,31 +1,32 @@
 ## Why
 
-O RFC-003 define a extração de documentos não estruturados (PDFs de Assembleias, Comunicados, Fatos Relevantes e Relatórios) de tickers listados na B3. Esta é a terceira fonte de documentos que alimentará o VectorStore do `llm-chat`, complementando `structured-earnings` (proventos, type=41) e `informe-mensal` (informes mensais, type=40). Mantida como change separada para isolar o domínio de PDFs (download binário, extração de texto, cache de arquivos) e o novo endpoint `GetReportsRelevants` da API B3.
+Os documentos não estruturados da B3 (Assembleias, Comunicados, Fatos Relevantes e Relatórios) são PDFs relevantes para análise de um ticker, mas hoje não há aquisição nem cache local deles. Esta change adiciona a listagem via `GetReportsRelevants`, o download com validação e o cache dos PDFs em uma árvore por ticker/ano/mês/categoria, tornando-os acessíveis à sub-aba de documentos. Fica separada das demais fontes por isolar o domínio de PDFs (download binário, validação `%PDF` e cache de arquivos).
 
 ## What Changes
 
-- Novo método `listar_documentos_relevantes(id_fnet, data_inicio, data_fim, category)` no `B3FundosClient` usando endpoint `GetReportsRelevants` com iteração por 4 categorias (1=Fatos Relevantes, 2=Assembleias, 3=Comunicados, 7=Relatórios), paginação e cache
-- Download de PDFs via `fnet.bmfbovespa.com.br` com validação de header `%PDF` e cache binário em `~/.cache/flowscope/pdfs/`
-- Extração de texto via PyPDF2 com fallback para ignorar PDFs corrompidos
-- Nova entidade `DocumentoRelevante` em `domain/structured/entities.py` com metadados e texto extraído
-- `DocumentoRelevante.to_text()` para alimentar o VectorStore do `llm-chat`
-- Ticker-agnóstico: retorna lista vazia quando resolução falha ou ticker não tem documentos
+- Novo método `listar_documentos_relevantes(id_fnet, data_inicio, data_fim, category)` no `B3FundosClient`, usando `GetReportsRelevants` com iteração pelas 4 categorias (1=Fatos Relevantes, 2=Assembleias, 3=Comunicados, 7=Relatórios), paginação e cache de listagem (TTL 1 dia).
+- Download dos PDFs via `exibirDocumento?id=` com validação de assinatura `%PDF`.
+- Cache binário em `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`, sem expiração.
+- Nova entidade `DocumentoRelevante` com metadados (ticker, id, categoria, descrição, datas, url) — **sem** `texto_extraido` e **sem** `to_text()`.
+- Mapeamento de categorias da API para nomes e slugs de pasta.
+- Ticker-agnóstico: retorna lista vazia quando a resolução falha ou o ticker não tem documentos.
+- Remover do escopo a preparação para o `llm-chat` (`DocumentoRelevante.to_text()`, `RelevantesSource`/`DocumentSource`, extração de texto para embedding), transferida para a change `llm-chat`.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `documentos-relevantes-domain`: Entidade `DocumentoRelevante` com metadados (ticker, id_documento, categoria, descricao, data_referencia, data_entrega, url) e `to_text()` para VectorStore
-- `documentos-relevantes-extraction`: Pipeline de extração de PDFs — listagem por categoria via `GetReportsRelevants`, download com validação, extração de texto via PyPDF2, cache binário, retorno vazio para tickers sem dados
+- `documentos-relevantes-domain`: entidade `DocumentoRelevante` (metadados) e mapeamento de categorias (nome e slug de pasta).
+- `documentos-relevantes-extraction`: listagem por categoria via `GetReportsRelevants`, download com validação `%PDF` e cache em árvore por ticker/ano/mês/categoria.
 
 ### Modified Capabilities
 
-_Nenhuma. Esta change adiciona ao `B3FundosClient` e `domain/structured/entities.py` sem modificar requisitos de specs existentes._
+_Nenhuma. Esta change adiciona ao `B3FundosClient` e ao domínio de documentos sem modificar requisitos de specs existentes._
 
 ## Impact
 
-- **Dependência**: Requer `structured-earnings` implementada (B3FundosClient, CacheManager, ticker-resolution)
-- **Código**: Extensão de `infrastructure/b3/funds_client.py`, `domain/structured/entities.py`; sem novos módulos de aplicação (usa protocolos e use cases existentes)
-- **Cache**: PDFs binários em `~/.cache/flowscope/pdfs/` com chave `pdf_{id_documento}`; listagem com cache TTL 1 dia
-- **APIs**: Endpoint `GetReportsRelevants` no domínio `sistemaswebb3-listados.b3.com.br`; download de PDFs em `fnet.bmfbovespa.com.br`
-- **Dependências**: PyPDF2 já está no grupo `[llm]`; nenhuma dependência nova exclusiva desta change
+- **Dependência**: reutiliza `B3FundosClient` e `CacheManager` já implementados.
+- **Código**: extensão de `infrastructure/b3/funds_client/` e `domain/structured/`; sem módulos de aplicação próprios.
+- **Cache**: nova raiz `~/.cache/flowscope/documentos-relevantes/`; listagem com cache TTL 1 dia.
+- **APIs**: `GetReportsRelevants` em `sistemaswebb3-listados.b3.com.br`; PDFs em `fnet.bmfbovespa.com.br`.
+- **Transferência**: extração de texto e fonte de indexação passam para `llm-chat` e para a change `visualizacao-documentos` (preview).

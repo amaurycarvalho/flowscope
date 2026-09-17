@@ -58,12 +58,15 @@ class TabActionsMixin:
     def _deve_atualizar(self: "TabActionsMixin", chart: object) -> bool:
         """Indica se o painel deve ser atualizado mesmo sem dados da B3.
 
-        A sub-aba de evolução dos fundamentos lê apenas o cache histórico e
-        por isso é atualizada independentemente de haver carga B3 corrente.
+        As sub-abas de evolução dos fundamentos e de documentos leem apenas
+        caches locais e por isso são atualizadas independentemente de haver
+        carga B3 corrente.
         """
         if self._current_data:
             return True
-        return chart is getattr(self, "_fundamental_evolution_panel", None)
+        return chart is getattr(self, "_fundamental_evolution_panel", None) or (
+            chart is getattr(self, "_documents_panel", None)
+        )
 
     @staticmethod
     def _select_tab(notebook: object, texto: str) -> bool:

@@ -27,12 +27,14 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     _PREFIXO_DOCUMENTO_HTML,
     _PREFIXO_IDENTIDADE,
     _TIPO_PROVENTOS,
+    _URL_DOCUMENTO_PDF,
     PARSER_VERSION,
     TIPOS_FUNDO,
     TTL_CADASTRO_EMPRESAS_DIAS,
     TTL_CODIGO_CVM_DIAS,
     TTL_DOCUMENTO_HTML_DIAS,
     TTL_DOCUMENTOS_LISTA_DIAS,
+    TTL_DOCUMENTOS_RELEVANTES_DIAS,
     TTL_FUNDOS_DIAS,
     TTL_IDENTIDADE_DIAS,
     TTL_MATERIAL_FACTS_DIAS,
@@ -46,6 +48,9 @@ from flowscope.infrastructure.b3.funds_client.cvm import (
     montar_indice_code_cvm,
 )
 from flowscope.infrastructure.b3.funds_client.documentos import FundosDocumentosMixin
+from flowscope.infrastructure.b3.funds_client.documentos_relevantes import (
+    FundosDocumentosRelevantesMixin,
+)
 from flowscope.infrastructure.b3.funds_client.fundos import FundosListagemMixin
 from flowscope.infrastructure.b3.funds_client.fundos_helpers import (
     _fund_root,
@@ -82,6 +87,7 @@ class B3FundosClient(
     _FundosBase,
     FundosListagemMixin,
     FundosDocumentosMixin,
+    FundosDocumentosRelevantesMixin,
     FundosCodeCvmMixin,
     FundosMaterialFactsMixin,
     FundosNoticiasMixin,
@@ -104,6 +110,7 @@ __all__ = [
     "TTL_CADASTRO_EMPRESAS_DIAS",
     "TTL_CODIGO_CVM_DIAS",
     "TTL_DOCUMENTOS_LISTA_DIAS",
+    "TTL_DOCUMENTOS_RELEVANTES_DIAS",
     "TTL_DOCUMENTO_HTML_DIAS",
     "TTL_FUNDOS_DIAS",
     "TTL_IDENTIDADE_DIAS",
@@ -123,7 +130,9 @@ __all__ = [
     "_PREFIXO_IDENTIDADE",
     "_ROTULOS_CLASSES",
     "_TIPO_PROVENTOS",
+    "_URL_DOCUMENTO_PDF",
     "B3FundosClient",
+    "FundosDocumentosRelevantesMixin",
     "_chave_cache",
     "_classe_material_fact",
     "_codigo_categoria",

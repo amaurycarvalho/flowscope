@@ -1,45 +1,42 @@
 ## 1. Pré-requisito
 
-- [ ] 1.1 Verificar que `structured-earnings` está implementada (B3FundosClient, CacheManager, ticker-resolution, value objects)
-- [ ] 1.2 Verificar que PyPDF2 está disponível (já no grupo `[llm]` do pyproject.toml)
+- [x] 1.1 Verificar que a infraestrutura base está implementada (`B3FundosClient`, `CacheManager`, resolução de ticker)
+- [x] 1.2 Confirmar que a leitura da árvore será consumida pela change `visualizacao-documentos` e que a extração de texto ficará fora desta change
 
-## 2. Domínio — Entidade
+## 2. Domínio — Entidade e categorias
 
-- [ ] 2.1 Implementar `DocumentoRelevante` dataclass em `domain/structured/entities.py` com todos os campos e `to_text()`
-- [ ] 2.2 Implementar `_MAPA_CATEGORIAS = {1: "Fato Relevante", 2: "Assembleia", 3: "Comunicado ao Mercado", 7: "Relatorio"}` e função `mapear_categoria(codigo: str) -> str`
-- [ ] 2.3 Atualizar `domain/structured/__init__.py`
+- [x] 2.1 Implementar `DocumentoRelevante` dataclass com metadados (sem `texto_extraido` e sem `to_text()`)
+- [x] 2.2 Implementar o mapeamento de categorias (`{1: "Fato Relevante", 2: "Assembleia", 3: "Comunicado ao Mercado", 7: "Relatorio"}`) e o slug de pasta correspondente
+- [x] 2.3 Atualizar o `__init__` do domínio de documentos
 
 ## 3. Testes do Domínio
 
-- [ ] 3.1 Testar `DocumentoRelevante` criação e `to_text()` com texto e sem texto
-- [ ] 3.2 Testar `mapear_categoria` com todos os códigos
+- [x] 3.1 Testar criação de `DocumentoRelevante` e acesso aos metadados
+- [x] 3.2 Testar o mapeamento de categoria (nome e slug) para todos os códigos
 
 ## 4. Infraestrutura — B3FundosClient
 
-- [ ] 4.1 Implementar `listar_documentos_relevantes(id_fnet, data_inicio, data_fim, category)` — endpoint `GetReportsRelevants`, token com `category`, paginação, cache TTL 1 dia
-- [ ] 4.2 Tratar `id_fnet=None` retornando lista vazia
-- [ ] 4.3 Implementar `baixar_pdf(id_documento)` — download via `exibirDocumento?id=`, validação `%PDF`, cache binário em `~/.cache/flowscope/pdfs/`
-- [ ] 4.4 Implementar `extrair_texto_pdf(pdf_bytes)` — PyPDF2, concatena páginas, retorna string vazia em falha
-- [ ] 4.5 Implementar `listar_todos_documentos_relevantes(id_fnet, data_inicio, data_fim)` — itera 4 categorias, consolida resultados, loga warning em falhas de categoria
+- [x] 4.1 Implementar `listar_documentos_relevantes(id_fnet, data_inicio, data_fim, category)` — `GetReportsRelevants`, token com `category`, paginação, cache TTL 1 dia
+- [x] 4.2 Tratar `id_fnet=None` retornando lista vazia
+- [x] 4.3 Implementar o download do PDF via `exibirDocumento?id=`, com validação `%PDF`
+- [x] 4.4 Implementar o cache em `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`, sem TTL, com reuso em cache hit
+- [x] 4.5 Implementar a listagem consolidada das 4 categorias, logando `logger.warning` em falhas por categoria
 
-## 5. Infraestrutura — RelevantesSource
+## 5. Leitura da árvore
 
-- [ ] 5.1 Implementar `RelevantesSource(DocumentSource)` em `infrastructure/document_sources/relevantes_source.py`
-- [ ] 5.2 `categoria` property retornando `"relevantes"`
-- [ ] 5.3 `listar(ticker, data_inicio, data_fim)` — resolve ticker, lista 4 categorias, retorna lista de `DocumentoMeta`
-- [ ] 5.4 `obter_texto(meta)` — baixa PDF, extrai texto, retorna `DocumentoRelevante.to_text()`
+- [x] 5.1 Expor listagem dos documentos em cache de um ticker, com caminho e categoria, ordenados do mais recente ao mais antigo
+- [x] 5.2 Retornar lista vazia para ticker sem cache, sem erro
 
 ## 6. Testes da Infraestrutura
 
-- [ ] 6.1 Testar `listar_documentos_relevantes` com mock de HTTP (fixture JSON de resposta)
-- [ ] 6.2 Testar `listar_documentos_relevantes` com id_fnet=None
-- [ ] 6.3 Testar `baixar_pdf` com PDF válido, conteúdo não-PDF, e cache hit
-- [ ] 6.4 Testar `extrair_texto_pdf` com PDF válido e PDF sem texto
-- [ ] 6.5 Testar `RelevantesSource` com mock de `B3FundosClient` — `listar()` e `obter_texto()`
-- [ ] 6.6 Testar `RelevantesSource` com ticker sem resolução — retorna vazio
+- [x] 6.1 Testar `listar_documentos_relevantes` com mock de HTTP (fixture JSON de resposta)
+- [x] 6.2 Testar `listar_documentos_relevantes` com `id_fnet=None`
+- [x] 6.3 Testar download com PDF válido, conteúdo não-PDF e cache hit
+- [x] 6.4 Testar a iteração pelas 4 categorias com falha isolada
+- [x] 6.5 Testar a leitura ordenada e o ticker sem documentos
 
 ## 7. Quality Gate
 
-- [ ] 7.1 Executar `make lint` e corrigir warnings/erros
-- [ ] 7.2 Executar `make test` e garantir todos os testes passam
-- [ ] 7.3 Verificar que testes de `structured-earnings` continuam passando
+- [x] 7.1 Executar `make lint` e corrigir avisos/erros
+- [x] 7.2 Executar `make test` e garantir que todos os testes passam
+- [x] 7.3 Executar `openspec validate documentos-relevantes` e garantir que a change permanece válida

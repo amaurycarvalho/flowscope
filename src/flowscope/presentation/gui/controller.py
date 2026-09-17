@@ -73,7 +73,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         self._presenter._gui._set_wait_cursor()
         try:
             current = self._presenter._gui._resolve_current_chart()
-            if current and self._presenter._gui._current_data:
+            if current and self._presenter._gui._deve_atualizar(current):
                 self._presenter._gui._do_update(current)
         finally:
             self._presenter._gui._clear_wait_cursor()

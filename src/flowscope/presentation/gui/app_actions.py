@@ -96,6 +96,8 @@ class ActionsMixin:
             chart.update({t: dados[t] for t in tickers if t in dados})
         elif chart is getattr(self, "_fundamental_evolution_panel", None):
             self._update_fundamental_evolution()
+        elif chart is getattr(self, "_documents_panel", None):
+            self._update_documents()
         elif chart in self._ticker_charts:
             chart.update(self._current_data, ticker=self._get_selected_ticker())
         else:
@@ -115,6 +117,13 @@ class ActionsMixin:
             return
         observacoes = store.historico(ticker, datas[0], datas[-1])
         painel.update(montar_series(observacoes), ticker=ticker)
+
+    def _update_documents(self: "ActionsMixin") -> None:
+        """Preenche o painel de documentos a partir do cache do ticker."""
+        painel = getattr(self, "_documents_panel", None)
+        if painel is None:
+            return
+        painel.update(self._get_selected_ticker())
 
     def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
         """Agenda a execução de ``callback`` na thread do Tk."""
