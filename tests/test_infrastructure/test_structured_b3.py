@@ -16,6 +16,7 @@ from flowscope.infrastructure.b3.funds_client import (
     B3FundosClient,
     _chave_cache,
 )
+from flowscope.infrastructure.b3.funds_client.constants import _TIMEOUT_DOCUMENTO
 from flowscope.infrastructure.b3.structured_extractor import extrair_documento_provento
 from flowscope.infrastructure.b3.structured_parser import (
     converter_data_br_para_iso,
@@ -387,6 +388,20 @@ class TestB3FundosClient:
         )
         html = client.buscar_html_documento("1224160")
         assert "documento" in html
+
+    def test_buscar_html_usa_timeout_curto(self, tmp_path, monkeypatch):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        capturado: dict[str, object] = {}
+
+        def _fake(url, timeout=30, **kwargs):
+            capturado["timeout"] = timeout
+            resposta = MagicMock()
+            resposta.text = "<html>ok</html>"
+            return resposta
+
+        monkeypatch.setattr(client, "_requisicao_get", _fake)
+        assert "ok" in client.buscar_html_documento("1")
+        assert capturado["timeout"] == _TIMEOUT_DOCUMENTO
 
 
 class TestFundosRepository:

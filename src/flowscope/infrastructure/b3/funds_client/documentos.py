@@ -8,6 +8,7 @@ import requests
 from flowscope.infrastructure.b3.funds_client.constants import (
     _PAGE_SIZE,
     _PREFIXO_DOCUMENTO_HTML,
+    _TIMEOUT_DOCUMENTO,
     _TIPO_PROVENTOS,
     TTL_DOCUMENTO_HTML_DIAS,
     TTL_DOCUMENTOS_LISTA_DIAS,
@@ -109,7 +110,7 @@ class FundosDocumentosMixin:
                 f"?id={id_documento}"
             )
             logger.info("Baixando documento %s via %s", id_documento, url)
-            resp = self._requisicao_get(url)
+            resp = self._requisicao_get(url, timeout=_TIMEOUT_DOCUMENTO)
             resp.encoding = resp.apparent_encoding or "utf-8"
             return {"html": resp.text}
 

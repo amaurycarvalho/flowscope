@@ -4,6 +4,7 @@ import base64
 import json
 from datetime import date, datetime, timezone
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import requests
 import responses
@@ -15,6 +16,7 @@ from flowscope.infrastructure.b3.documentos_relevantes import (
     resolver_data_referencia,
 )
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
+from flowscope.infrastructure.b3.funds_client.constants import _TIMEOUT_DOCUMENTO
 from flowscope.infrastructure.cache import CacheManager
 
 _BASE = B3FundosClient._BASE_URL
@@ -203,6 +205,39 @@ class TestBaixarPdfDocumento:
             f"{_URL_PDF}?id=1", body="<html>erro</html>", status=200
         )
         assert client.baixar_pdf_documento("1") is None
+
+    def test_usa_timeout_curto_para_nao_travar(self, tmp_path, monkeypatch):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        capturado: dict[str, object] = {}
+
+        def _fake(url, timeout=30, **kwargs):
+            capturado["timeout"] = timeout
+            resposta = MagicMock()
+            resposta.content = _PDF
+            return resposta
+
+        monkeypatch.setattr(client, "_requisicao_get", _fake)
+        assert client.baixar_pdf_documento("1") == _PDF
+        assert capturado["timeout"] == _TIMEOUT_DOCUMENTO
+
+    @responses.activate
+    def test_timeout_e_retentado_ate_sucesso(self, tmp_path):
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path), retry_delays=(0, 0)
+        )
+        chamadas: list[int] = []
+
+        def _callback(_request):
+            chamadas.append(1)
+            if len(chamadas) == 1:
+                raise requests.exceptions.ReadTimeout("sem resposta")
+            return (200, {}, _PDF)
+
+        responses.add_callback(
+            responses.GET, f"{_URL_PDF}?id=1252542", callback=_callback
+        )
+        assert client.baixar_pdf_documento("1252542") == _PDF
+        assert len(chamadas) == 2
 
 
 class TestCacheArvore:

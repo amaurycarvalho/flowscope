@@ -25,6 +25,13 @@ _AGENCIA_PADRAO = "18"
 #: URL do documento binário (PDF) no visualizador do FundosNet.
 _URL_DOCUMENTO_PDF = "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento"
 
+#: Timeout (segundos) das requisições de documentos no FundosNet.
+#:
+#: O host do FundosNet eventualmente aceita a conexão mas não responde por
+#: dezenas de segundos; com um timeout curto a tentativa falha rápido e o
+#: retry estabelece uma nova conexão, em vez de travar a aquisição.
+_TIMEOUT_DOCUMENTO = 10
+
 #: Tipos de fundo consultados na resolução de identidade, em ordem de tentativa.
 TIPOS_FUNDO = ("FII", "FIAGRO", "FIP", "FIDC")
 

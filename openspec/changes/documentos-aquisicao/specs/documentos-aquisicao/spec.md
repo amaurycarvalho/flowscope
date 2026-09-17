@@ -83,3 +83,15 @@ O sistema DEVE reutilizar arquivos já existentes em cache sem novo download. Um
 #### Scenario: Falha de rede isolada
 - **WHEN** o download de um documento falha
 - **THEN** o sistema DEVE sinalizar a falha para aquele documento, sem criar arquivo e sem interromper os demais
+
+### Requirement: Timeout limitado no download de documentos do FundosNet
+
+As requisições de documento no host do FundosNet (PDF de documentos relevantes e HTML de informe mensal) DEVEM usar um timeout limitado, menor que o timeout padrão das demais requisições, de modo que uma conexão que aceita e não responde falhe rápido e o retry reabra a conexão, sem travar a aquisição por dezenas de segundos por tentativa.
+
+#### Scenario: Host que aceita e não responde
+- **WHEN** o host do FundosNet não responde dentro do timeout limitado
+- **THEN** a tentativa DEVE falhar em tempo limitado e o retry DEVE abrir nova conexão
+
+#### Scenario: Timeout isolado não interrompe a aquisição
+- **WHEN** uma tentativa de download excede o timeout limitado
+- **THEN** o sistema DEVE retentar o documento, gravando-o se uma tentativa posterior obtiver o conteúdo

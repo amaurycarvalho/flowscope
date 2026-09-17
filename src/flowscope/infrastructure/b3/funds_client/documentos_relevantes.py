@@ -8,6 +8,7 @@ import requests
 from flowscope.domain.structured import CATEGORIAS_RELEVANTES
 from flowscope.infrastructure.b3.funds_client.constants import (
     _PAGE_SIZE,
+    _TIMEOUT_DOCUMENTO,
     _URL_DOCUMENTO_PDF,
     TTL_DOCUMENTOS_RELEVANTES_DIAS,
 )
@@ -82,7 +83,7 @@ class FundosDocumentosRelevantesMixin:
         """Baixa o PDF do documento, rejeitando conteúdo sem assinatura ``%PDF``."""
         url = f"{_URL_DOCUMENTO_PDF}?id={id_documento}"
         logger.info("Baixando PDF do documento %s via %s", id_documento, url)
-        resposta = self._requisicao_get(url)
+        resposta = self._requisicao_get(url, timeout=_TIMEOUT_DOCUMENTO)
         conteudo = resposta.content
         if not conteudo.startswith(b"%PDF"):
             logger.warning("Conteúdo não-PDF no documento %s", id_documento)

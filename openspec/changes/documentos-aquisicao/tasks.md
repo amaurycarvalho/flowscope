@@ -60,3 +60,9 @@
 - [x] 11.2 Corrigir o payload do `GetMaterialFacts` para `language`/`dateInitial`/`dateFinal`/`category`; verificar com os testes do cliente de material facts
 - [x] 11.3 Validar a aquisição ponta a ponta na API real para AGRO3, BBAS3, BRAP3, PETR3 e VALE3, confirmando os PDFs em `documentos-relevantes/`
 - [x] 11.4 Registrar as correções nas specs `code-cvm-resolution` e `material-facts-extraction` e nos artefatos desta change; verificar com `openspec validate documentos-aquisicao`
+
+## 12. Timeout limitado nos documentos do FundosNet (FIIs)
+
+- [x] 12.1 Adicionar `_TIMEOUT_DOCUMENTO` e usá-lo em `baixar_pdf_documento` e `buscar_html_documento`; verificar com testes de que o timeout curto é aplicado
+- [x] 12.2 Verificar que um `ReadTimeout` isolado é retentado até o sucesso; verificar com teste de callback que falha uma vez e responde na segunda
+- [x] 12.3 Validar a aquisição ponta a ponta na API real para KNCA11, KNCR11, BBGO11 e BTLG11, confirmando os PDFs em `documentos-relevantes/` sem travamento

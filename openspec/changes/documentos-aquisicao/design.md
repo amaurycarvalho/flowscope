@@ -68,6 +68,14 @@ A chave de cache da resolução passa a ser versionada (`_chave_cache`), pois ex
 
 **Alternativas**: manter `GetListedCompany` (não existe); buscar todos os emissores e indexar localmente (30 requisições e cache maior, sem ganho); usar o CSV de empresas listadas como caminho primário (a URL atual devolve HTML, não CSV).
 
+### 8. Timeout limitado nos documentos do FundosNet
+
+**Decisão**: as requisições de documento no host do FundosNet (`baixar_pdf_documento` e `buscar_html_documento`) usam `_TIMEOUT_DOCUMENTO = 10 s` em vez do timeout padrão de 30 s. O host às vezes aceita a conexão e não responde; com um timeout curto a tentativa falha rápido, o retry descarta a conexão e abre outra, que costuma responder em menos de 2 s.
+
+**Racional**: reproduzido contra o host real — com timeout de 30 s o primeiro documento de KNCA11/KNCR11/BBGO11/BTLG11 bloqueava de 30 s a >100 s (múltiplos `ReadTimeout` encadeados); com timeout curto a aquisição completa em segundos. As respostas normais chegam em menos de 2 s, inclusive PDFs de ~1,6 MB, então 10 s preserva a margem.
+
+**Alternativas**: aumentar o timeout (piora o travamento); sessão dedicada por host (não é a causa — a conexão em si que trava); baixar em paralelo (não resolve uma conexão que não responde e complica o cache).
+
 ## Risks / Trade-offs
 
 - **[Risco] Latência ao acionar "Atualizar"** → Aquisição em worker com estado de carregamento; a árvore só é remontada ao final. Abrir a sub-aba não baixa (somente cache).

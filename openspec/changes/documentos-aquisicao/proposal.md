@@ -4,6 +4,8 @@ A sub-aba "Documentos" só exibe arquivos que já existam nas raízes de cache. 
 
 Na validação da aquisição de ações, o botão "Atualizar" não localizou documentos para AGRO3, BBAS3, BRAP3, PETR3 e VALE3. A causa era dupla: a resolução `ticker → codeCVM` consultava o endpoint `GetListedCompany`, que não existe na API da B3 (404), resultando em `None` cacheado; e o `GetMaterialFacts` era chamado com os nomes de campo `linguagem`/`dataInicial`/`dataFinal`/`categoria`, que a API ignora, retornando zero documentos. Esta change corrige ambos os contratos.
 
+Na validação da aquisição de FIIs, o botão "Atualizar" ficou travado para KNCA11, KNCR11, BBGO11 e BTLG11. O host de documentos do FundosNet (`fnet.bmfbovespa.com.br`) intermitentemente aceita a conexão mas não responde; com o timeout de 30 s e o retry configurado, cada documento podia bloquear por ~2 minutos antes de uma nova tentativa, mantendo a operação (e o bloqueio dos botões) por tempo indeterminado. Esta change limita o timeout das requisições de documento, de modo que uma tentativa travada falhe rápido e o retry estabeleça uma nova conexão.
+
 ## What Changes
 
 - Nova orquestração de aquisição sob demanda dos documentos de um ticker, escolhendo a fonte pelo tipo:
@@ -18,6 +20,7 @@ Na validação da aquisição de ações, o botão "Atualizar" não localizou do
 - Reutiliza `B3FundosClient` (resolução de ticker/codeCVM, `GetReportsRelevants`, `GetMaterialFacts`), os provedores `DocumentosRelevantesProvider` e `InformeMensalArquivoProvider`, o catálogo `DocumentCatalog` e o mecanismo CVM `ExibirPDF`.
 - Corrigir a resolução `ticker → codeCVM` para consultar `GetInitialCompanies` (endpoint real do cadastro de empresas da B3) filtrando por `company` e casando o registro cujo `issuingCompany` é a raiz do ticker; a chave de cache passa a ser versionada para descartar `None` envenenado por execuções anteriores.
 - Corrigir o payload do `GetMaterialFacts` para os nomes de campo aceitos pela API (`language`, `dateInitial`, `dateFinal`, `category`), sem os quais a listagem retorna vazia.
+- Limitar o timeout das requisições de documento do FundosNet (PDF e HTML) para que uma conexão que aceita e não responde falhe rápido e o retry reabra a conexão, em vez de travar a aquisição por dezenas de segundos por tentativa.
 - Sem nova fonte para tickers sem documentos: falha de rede ou ausência de dados resulta em cache vazio, sem erro.
 
 ## Capabilities
