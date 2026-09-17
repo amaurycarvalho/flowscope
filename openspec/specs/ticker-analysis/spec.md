@@ -4,42 +4,67 @@ Define the per-ticker analysis interface, including ticker selection via TickerL
 
 ## Requirements
 
-### Requirement: Seleção de ticker via TickerList
+### Requirement: Seleção de ticker via tabela de Fundamentos
 
-O sistema DEVE derivar o ticker analisado na aba "Análise do Ticker" a partir da seleção na TickerList (painel direito). O primeiro ticker selecionado no Listbox (por ordem de aparição) DEVE ser usado como ticker atual para todas as sub-abas de indicadores.
+O sistema DEVE derivar o ticker analisado na aba "Análise do Ticker" da linha selecionada na tabela da sub-aba "Fundamentos" (aba "Análise Geral"). A seleção da tabela DEVE ser a única fonte do ticker para todas as sub-abas de indicadores e para a cópia CSV da "Análise do Ticker". Quando houver dados de fundamentos, o sistema DEVE selecionar automaticamente a primeira linha da tabela; quando não houver dados, NÃO DEVE haver seleção nem ticker analisado.
 
-#### Scenario: Primeiro ticker selecionado é o analisado
+#### Scenario: Linha selecionada define o ticker analisado
 
-- **WHEN** o usuário carrega dados para PETR4, VALE3, ITUB4 e seleciona VALE3 e ITUB4 no Listbox
-- **THEN** a aba "Análise do Ticker" DEVE exibir indicadores para VALE3 (primeiro da ordem de seleção)
+- **WHEN** o usuário seleciona a linha do ticker VALE3 na tabela de Fundamentos e navega para "Análise do Ticker"
+- **THEN** todas as sub-abas de indicadores DEVEM exibir dados de VALE3
 
-#### Scenario: Nenhum ticker selecionado usa o primeiro da lista
+#### Scenario: Seleção inicial automática
 
-- **WHEN** o usuário carrega dados para PETR4, VALE3, ITUB4 e nenhum está selecionado no Listbox
-- **THEN** a aba "Análise do Ticker" DEVE exibir indicadores para PETR4 (primeiro da lista completa)
+- **WHEN** a análise fundamentalista conclui com dados para PETR4, VALE3 e ITUB4 e nenhuma linha está selecionada
+- **THEN** o sistema DEVE selecionar automaticamente a primeira linha (PETR4) e usá-la como ticker analisado
 
-#### Scenario: Lista vazia exibe mensagem
+#### Scenario: Sem dados não há ticker analisado
 
-- **WHEN** a lista de tickers está vazia e o usuário navega para "Análise do Ticker"
-- **THEN** as sub-abas DEVENDO exibir "Selecione um ticker"
+- **WHEN** não há dados de fundamentos carregados
+- **THEN** a tabela NÃO DEVE ter linha selecionada e as sub-abas da "Análise do Ticker" NÃO DEVEM exibir indicadores de nenhum ticker
 
-### Requirement: Reordenação das sub-abas
+#### Scenario: Seleção desvinculada da TickerList
 
-A sub-aba "Evolução da Dominância" DEVE ser a primeira aba no notebook da "Análise do Ticker", antes de "Amplitude de Preço".
+- **WHEN** o usuário altera a seleção na TickerList sem alterar a linha selecionada na tabela de Fundamentos
+- **THEN** o ticker analisado nas sub-abas da "Análise do Ticker" DEVE permanecer o da tabela de Fundamentos
 
-#### Scenario: Evolução da Dominância como primeira aba
+#### Scenario: Duplo-clique seleciona e navega
+
+- **WHEN** o usuário dá duplo-clique em uma linha da tabela de Fundamentos
+- **THEN** o sistema DEVE selecionar o ticker da linha e navegar para "Análise do Ticker" na sub-aba "Evolução dos Fundamentos"
+
+#### Scenario: Seleção preservada após recarga
+
+- **WHEN** os dados de fundamentos são recarregados e o ticker antes selecionado continua presente
+- **THEN** a linha desse ticker DEVE permanecer selecionada e continuar sendo o ticker analisado
+
+### Requirement: Ordem das sub-abas da Análise do Ticker
+
+As sub-abas da "Análise do Ticker" DEVEM ser exibidas na ordem: "Evolução dos Fundamentos", "Evolução da Dominância", "Amplitude de Preço", "Fluxo Financeiro" e "Documentos". Somente sub-abas com painel implementado DEVEM ser renderizadas; sub-abas sem painel implementado NÃO DEVEM aparecer, nem mesmo como abas desabilitadas.
+
+#### Scenario: Ordem das sub-abas
 
 - **WHEN** o usuário navega para "Análise do Ticker"
-- **THEN** a primeira sub-aba DEVE ser "Evolução da Dominância" seguida por "Amplitude de Preço"
+- **THEN** a primeira sub-aba DEVE ser "Evolução dos Fundamentos" e a última "Documentos", seguidas por "Evolução da Dominância", "Amplitude de Preço" e "Fluxo Financeiro" nesta ordem
+
+#### Scenario: Sub-abas sem painel não são exibidas
+
+- **WHEN** o usuário navega para "Análise do Ticker"
+- **THEN** as sub-abas "Participação Institucional", "Eficiência do Movimento" e "Resumo Geral" NÃO DEVEM estar presentes no notebook
 
 ### Requirement: Atualização ao trocar seleção
 
-O sistema DEVE atualizar as sub-abas da "Análise do Ticker" quando o usuário alterar a seleção na TickerList, utilizando o mecanismo de lazy refresh existente (via `_charts_dirty` e `_on_ticker_edit`).
+O sistema DEVE atualizar as sub-abas da "Análise do Ticker" quando o ticker selecionado na tabela de Fundamentos mudar. A atualização DEVE ocorrer ao exibir a aba ou quando a seleção mudar enquanto a aba estiver visível.
 
 #### Scenario: Troca de ticker atualiza abas
 
-- **WHEN** o usuário está na aba "Análise do Ticker > Evolução da Dominância" visualizando PETR4 e clica em VALE3 no Listbox
+- **WHEN** o usuário está na sub-aba "Evolução da Dominância" visualizando PETR4, volta para a tabela de Fundamentos, seleciona VALE3 e retorna para "Análise do Ticker"
 - **THEN** o gráfico DEVE atualizar para mostrar dados de VALE3
+
+#### Scenario: Mesmo ticker mantém os painéis
+
+- **WHEN** o usuário retorna para "Análise do Ticker" sem alterar a linha selecionada na tabela de Fundamentos
+- **THEN** os painéis DEVEM continuar exibindo o mesmo ticker
 
 ### Requirement: Placeholder para Amplitude de Preço
 
@@ -181,29 +206,4 @@ O sistema DEVE implementar o classificador de fluxo financeiro em `src/flowscope
 - **WHEN** um painel importa `from flowscope.domain.strategies.classifiers.money_flow import classify_money_flow, MoneyFlowClassification`
 - **THEN** a função `classify_money_flow(score: float)` DEVE retornar uma `MoneyFlowClassification` com `label`, `short_label`, `color` e `score`
 
-### Requirement: Placeholder para Participação Institucional
 
-A sub-aba "Participação Institucional" DEVE exibir os indicadores de tamanho de negócio: Average Trade Size e Average Financial Ticket.
-
-#### Scenario: Exibição dos indicadores de tamanho de negócio
-
-- **WHEN** o usuário seleciona a sub-aba "Participação Institucional"
-- **THEN** o sistema DEVE exibir Average Trade Size e Average Financial Ticket para o ticker selecionado
-
-### Requirement: Placeholder para Eficiência do Movimento
-
-A sub-aba "Eficiência do Movimento" DEVE exibir o indicador Daily Efficiency.
-
-#### Scenario: Exibição do Daily Efficiency
-
-- **WHEN** o usuário seleciona a sub-aba "Eficiência do Movimento"
-- **THEN** o sistema DEVE exibir o Daily Efficiency para o ticker selecionado
-
-### Requirement: Placeholder para Resumo Geral
-
-A sub-aba "Resumo Geral" DEVE consolidar todos os indicadores do ticker em uma única visualização.
-
-#### Scenario: Exibição do resumo consolidado
-
-- **WHEN** o usuário seleciona a sub-aba "Resumo Geral"
-- **THEN** o sistema DEVE exibir todos os indicadores disponíveis para o ticker selecionado em formato consolidado (tabela ou painel)

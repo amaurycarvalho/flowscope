@@ -5,21 +5,25 @@ Aquisição determinística de identidade e documentos de FII na B3 (`fundsListe
 
 ## Requirements
 
-### Requirement: Resolução de ticker para fundo B3
+### Requirement: Resolução de ticker para múltiplos tipos de fundo
 
-O sistema DEVE resolver um ticker para a identidade do fundo na B3 em duas etapas: consultar `GetListFunds` para localizar o registro cujo `acronym` corresponde à raiz do ticker e obter o `id` primário; em seguida consultar `GetListClassFund` com esse `id` como `idFNET` e tratar a resposta como uma relação de registros (`id`, `idMain`, `fundName`, `tradingName`), NÃO assumindo que o primeiro registro é o identificador usado nas consultas seguintes. Quando houver registro com `idMain` não nulo, o `idFNET` final DEVE ser o `id` desse registro; caso contrário, o `id` primário. Ticker sem correspondência DEVE resultar em ausência de fundo, sem lançar exceção.
+O sistema DEVE resolver a identidade de um ticker de fundo na B3 consultando `GetListFunds` para mais de um tipo de fundo, tentando `FII`, `FIAGRO`, `FIP` e `FIDC` até encontrar o registro cujo `acronym` corresponde à raiz do ticker. Cada tipo DEVE ser consultado uma única vez por período de validade, com cache próprio por tipo. Encontrado o registro primário, o sistema DEVE resolver o `idFNET` final via `GetListClassFund` para aquele tipo, preferindo o registro com `idMain` não nulo. Ticker sem correspondência em nenhum tipo DEVE resultar em ausência de fundo, sem lançar exceção.
 
-#### Scenario: Resolução com registro derivado
-- **WHEN** `GetListFunds` retorna `acronym=ALZR, id=870` e `GetListClassFund(idFNET=870)` retorna um registro com `id=870, idMain=null` e outro com `id=20294, idMain=870`
-- **THEN** o `idFNET` resolvido DEVE ser `20294` e o nome DEVE vir de `fundName`
+#### Scenario: FIAGRO resolvido fora do tipo FII
+- **WHEN** `GetListFunds(typeFund="FII")` não retorna `BBGO`, mas `GetListFunds(typeFund="FIAGRO")` retorna `acronym=BBGO, id=6919`
+- **THEN** o sistema DEVE resolver o fundo e obter o `idFNET` derivado via `GetListClassFund` com `typeFund="FIAGRO"`
 
-#### Scenario: Ticker sem correspondência
-- **WHEN** nenhum registro de `GetListFunds` corresponde ao `acronym` do ticker
-- **THEN** o sistema DEVE indicar ausência de fundo sem erro e sem lançar exceção
+#### Scenario: Cache por tipo de fundo
+- **WHEN** a listagem do tipo `FIAGRO` já foi obtida dentro do período de validade
+- **THEN** o sistema DEVE reutilizá-la sem nova requisição HTTP ao consultar outro ticker FIAGRO
 
-#### Scenario: Resolução determinística e cacheada
-- **WHEN** o mesmo ticker é resolvido novamente dentro do período de cache
-- **THEN** o sistema DEVE retornar o mesmo resultado sem nova requisição HTTP
+#### Scenario: Ticker não encontrado em nenhum tipo
+- **WHEN** nenhum tipo de fundo contém o `acronym` do ticker
+- **THEN** o sistema DEVE indicar ausência de fundo sem erro
+
+#### Scenario: Ordem de tentativa preservada
+- **WHEN** o ticker corresponde a um FII clássico
+- **THEN** o sistema DEVE resolvê-lo na tentativa do tipo `FII`, sem consultar os tipos seguintes
 
 ### Requirement: Listagem paginada de documentos de rendimentos
 

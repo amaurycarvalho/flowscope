@@ -191,28 +191,53 @@ def _dados_fiscais(
     analise: AnaliseFundamental, exibicao: ClassificacaoExibicao
 ) -> str:
     """Concatena os itens de Dados fiscais, ou ``N/A`` quando vazio."""
+    itens = _itens_fiscais(analise, exibicao)
+    return _SEPARADOR_ITENS.join(itens) if itens else NA
+
+
+def _itens_fiscais(
+    analise: AnaliseFundamental, exibicao: ClassificacaoExibicao
+) -> list[str]:
+    """Reúne os itens de Dados fiscais aplicáveis ao tipo de ativo."""
     itens: list[str] = []
     if analise.cnpj:
         itens.append(f"CNPJ {formatar_cnpj(analise.cnpj)}")
     if exibicao.tipo == TIPO_EXIBICAO_FII:
-        administrador = _item_identidade(
-            "Administrador", analise.nome_administrador, analise.cnpj_administrador
-        )
-        if administrador is not None:
-            itens.append(administrador)
-        gestor = _item_identidade(
-            "Gestor", analise.nome_gestor, analise.cnpj_gestor
-        )
-        if gestor is not None:
-            itens.append(gestor)
-    if not (analise.cnpj or analise.nome_administrador or analise.nome_gestor):
-        if analise.nome_depositario:
-            itens.append(f"Depositário {analise.nome_depositario}")
-        if analise.nome_empresa_bdr:
-            itens.append(f"Empresa {analise.nome_empresa_bdr}")
-        if analise.isin:
-            itens.append(f"ISIN {analise.isin}")
-    return _SEPARADOR_ITENS.join(itens) if itens else NA
+        itens.extend(_itens_administracao(analise))
+    if not _tem_dados_fiscais(analise):
+        itens.extend(_itens_identidade_bdr(analise))
+    return itens
+
+
+def _itens_administracao(analise: AnaliseFundamental) -> list[str]:
+    """Monta os itens de Administrador e Gestor quando presentes."""
+    itens: list[str] = []
+    administrador = _item_identidade(
+        "Administrador", analise.nome_administrador, analise.cnpj_administrador
+    )
+    if administrador is not None:
+        itens.append(administrador)
+    gestor = _item_identidade("Gestor", analise.nome_gestor, analise.cnpj_gestor)
+    if gestor is not None:
+        itens.append(gestor)
+    return itens
+
+
+def _tem_dados_fiscais(analise: AnaliseFundamental) -> bool:
+    """Indica se há dados fiscais de FII/ação preenchidos."""
+    return bool(analise.cnpj or analise.nome_administrador or analise.nome_gestor)
+
+
+def _itens_identidade_bdr(analise: AnaliseFundamental) -> list[str]:
+    """Monta os itens de identidade de BDR quando presentes."""
+    itens: list[str] = []
+    if analise.nome_depositario:
+        itens.append(f"Depositário {analise.nome_depositario}")
+    if analise.nome_empresa_bdr:
+        itens.append(f"Empresa {analise.nome_empresa_bdr}")
+    if analise.isin:
+        itens.append(f"ISIN {analise.isin}")
+    return itens
 
 
 def _margem_ou_na(margens: MargensFii | None, atributo: str) -> str:

@@ -86,7 +86,15 @@ class BdrDividendProvider:
                 "Falha ao listar avisos de BDR de %s", ticker, exc_info=True
             )
             return None
+        return self._consolidar_avisos(ticker, avisos, reference_date)
 
+    def _consolidar_avisos(
+        self: "BdrDividendProvider",
+        ticker: str,
+        avisos: list[AvisoBdr],
+        reference_date: date,
+    ) -> DadosBdr:
+        """Consolida os avisos em dividendos e identidade fiscal do BDR."""
         dividendos: list[DividendoConsolidado] = []
         depositario: str | None = None
         empresa: str | None = None

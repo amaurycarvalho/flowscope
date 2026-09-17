@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import TypeVar
 
 from flowscope.application.fundamental_fields import (
     _avisos_ffo_ausente,
@@ -60,11 +61,13 @@ from flowscope.application.fundamental_ports import (
     observacao_completa,
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
+from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClassificacaoAtivo,
     ClassificacaoExibicao,
+    DividendoConsolidado,
     MargensFii,
     MetricasFii,
     PatrimonioFii,
@@ -225,9 +228,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         )
         dados, de_cache = self._obter_dados(ticker, reference_date)
         dados_bdr = self._obter_dados_bdr(ticker, reference_date, classificacao)
-        nome = _texto(dados, CAMPO_NOME) or self._repository.obter_nome(ticker)
-        if nome is None and dados_bdr is not None:
-            nome = dados_bdr.nome_empresa
+        nome = _resolver_nome(dados, ticker, dados_bdr, self._repository)
         exibicao = _classificacao_exibicao(dados, classificacao)
         proventos = self._repository.obter_proventos(ticker, reference_date)
         ultimo_dividendo = self._ultimo_dividendo(
@@ -235,11 +236,9 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             ticker,
             reference_date,
             proventos,
-            list(dados_bdr.dividendos) if dados_bdr is not None else None,
+            _dividendos_bdr(dados_bdr),
         )
-        total_por_cota = (
-            dividendos_12m(proventos, reference_date) if proventos else None
-        )
+        total_por_cota = _dividendos_12m(proventos, reference_date)
         patrimonio_repo = self._repository.obter_patrimonio(ticker, reference_date)
         patrimonio, cotistas = self._resolver_cotistas(
             ticker, reference_date, dados, classificacao, patrimonio_repo
@@ -256,9 +255,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             preco,
         )
         avisos = _avisos_ffo_ausente(metricas)
-        cotacao = _decimal_campo(dados, CAMPO_COTACAO)
-        if cotacao is None and preco is not None:
-            cotacao = preco.preco
+        cotacao = _resolver_cotacao(dados, preco)
         if classificacao.tipo is TipoAtivo.BDR:
             metricas = _metricas_bdr(metricas, cotacao, ultimo_dividendo)
         else:
@@ -270,9 +267,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             self._mercado, dados, ticker, reference_date
         )
         tipico = preco_tipico(maximo, minimo, cotacao)
-        data_referencia = _data_campo(dados, CAMPO_DATA_REFERENCIA)
-        if data_referencia is None and preco is not None:
-            data_referencia = preco.data_preco
+        data_referencia = _resolver_data_referencia(dados, preco)
         return AnaliseFundamental(
             ticker=ticker,
             nome=nome,
@@ -283,22 +278,18 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             margens=margens,
             cotacao=cotacao,
             vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
-            p_l=(
-                p_l_bdr(cotacao, ultimo_dividendo.valor)
-                if classificacao.tipo is TipoAtivo.BDR
-                else _p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo)
+            p_l=_resolver_p_l(
+                classificacao, cotacao, ultimo_dividendo, dados, exibicao
             ),
             classificacao_exibicao=exibicao,
             cotas=cotas,
             cotistas=cotistas,
             patrimonio=patrimonio,
-            classe_cotistas=(
-                classificar_cotistas(cotistas) if cotistas is not None else None
+            classe_cotistas=_classificar_se_presente(
+                cotistas, classificar_cotistas
             ),
-            classe_patrimonio=(
-                classificar_patrimonio(patrimonio)
-                if patrimonio is not None
-                else None
+            classe_patrimonio=_classificar_se_presente(
+                patrimonio, classificar_patrimonio
             ),
             data_referencia=data_referencia,
             lpa=_decimal_campo(dados, CAMPO_LPA),
@@ -315,19 +306,11 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             cnpj_administrador=_texto(dados, CAMPO_CNPJ_ADMINISTRADOR),
             nome_gestor=_texto(dados, CAMPO_GESTOR),
             cnpj_gestor=_texto(dados, CAMPO_CNPJ_GESTOR),
-            bdr_nivel=(
-                dados_bdr.nivel_programa if dados_bdr is not None else None
-            ),
-            bdr_observacao=(
-                dados_bdr.observacao if dados_bdr is not None else None
-            ),
-            nome_depositario=(
-                dados_bdr.nome_depositario if dados_bdr is not None else None
-            ),
-            nome_empresa_bdr=(
-                dados_bdr.nome_empresa if dados_bdr is not None else None
-            ),
-            isin=dados_bdr.isin if dados_bdr is not None else None,
+            bdr_nivel=_campo_bdr(dados_bdr, "nivel_programa"),
+            bdr_observacao=_campo_bdr(dados_bdr, "observacao"),
+            nome_depositario=_campo_bdr(dados_bdr, "nome_depositario"),
+            nome_empresa_bdr=_campo_bdr(dados_bdr, "nome_empresa"),
+            isin=_campo_bdr(dados_bdr, "isin"),
             avisos=avisos,
         ), de_cache
 
@@ -459,6 +442,89 @@ def _metricas_bdr(
             evidence=(),
         )
     return replace(metricas, dividend_yield=dividend_yield)
+
+
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+
+
+def _classificar_se_presente(
+    valor: _T | None, classificador: Callable[[_T], _R]
+) -> _R | None:
+    """Aplica ``classificador`` apenas quando ``valor`` está presente."""
+    if valor is None:
+        return None
+    return classificador(valor)
+
+
+def _resolver_nome(
+    dados: dict[str, CampoFundamental],
+    ticker: str,
+    dados_bdr: DadosBdr | None,
+    repository: FiiFundamentalRepository,
+) -> str | None:
+    """Resolve o nome de exibição, caindo para o BDR quando ausente."""
+    nome = _texto(dados, CAMPO_NOME) or repository.obter_nome(ticker)
+    if nome is None and dados_bdr is not None:
+        return dados_bdr.nome_empresa
+    return nome
+
+
+def _dividendos_bdr(
+    dados_bdr: DadosBdr | None,
+) -> list[DividendoConsolidado] | None:
+    """Lista os dividendos consolidados do BDR, ou ``None`` sem dados."""
+    if dados_bdr is None:
+        return None
+    return list(dados_bdr.dividendos)
+
+
+def _dividendos_12m(proventos: list, reference_date: date) -> Decimal | None:
+    """Total de dividendos dos últimos 12 meses, se houver proventos."""
+    if not proventos:
+        return None
+    return dividendos_12m(proventos, reference_date)
+
+
+def _resolver_cotacao(
+    dados: dict[str, CampoFundamental], preco: PrecoObservacao | None
+) -> Decimal | None:
+    """Usa a cotação do provedor e, na ausência, o preço de fechamento B3."""
+    cotacao = _decimal_campo(dados, CAMPO_COTACAO)
+    if cotacao is None and preco is not None:
+        return preco.preco
+    return cotacao
+
+
+def _resolver_data_referencia(
+    dados: dict[str, CampoFundamental], preco: PrecoObservacao | None
+) -> date | None:
+    """Usa a data do provedor e, na ausência, a data do preço de fechamento."""
+    data_referencia = _data_campo(dados, CAMPO_DATA_REFERENCIA)
+    if data_referencia is None and preco is not None:
+        return preco.data_preco
+    return data_referencia
+
+
+def _resolver_p_l(
+    classificacao: ClassificacaoAtivo,
+    cotacao: Decimal | None,
+    ultimo_dividendo: UltimoDividendo,
+    dados: dict[str, CampoFundamental],
+    exibicao: ClassificacaoExibicao,
+) -> Decimal | None:
+    """Calcula o P/L conforme o ativo seja BDR ou não."""
+    if classificacao.tipo is TipoAtivo.BDR:
+        return p_l_bdr(cotacao, ultimo_dividendo.valor)
+    return _p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo)
+
+
+def _campo_bdr(dados_bdr: DadosBdr | None, atributo: str) -> str | None:
+    """Lê um campo textual de identidade do BDR, ou ``None`` sem dados."""
+    if dados_bdr is None:
+        return None
+    valor = getattr(dados_bdr, atributo)
+    return valor if isinstance(valor, str) else None
 
 
 def _montar_margens(

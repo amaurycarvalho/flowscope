@@ -386,22 +386,29 @@ def parse_proventos_fii(
         return []
     dividendos: list[DividendoConsolidado] = []
     for linha in tabela.find_all("tr"):
-        celulas = [
-            celula.get_text(" ", strip=True) for celula in linha.find_all("td")
-        ]
-        if not celulas:
-            continue
-        data_base = para_data(_celula_fii(celulas, colunas.get("data_com")))
-        valor = para_decimal(_celula_fii(celulas, colunas.get("valor")))
-        if data_base is None or valor is None or valor <= 0:
-            continue
-        tipo = _celula_fii(celulas, colunas.get("tipo")) or ""
-        if not _eh_rendimento_fii(tipo):
-            continue
-        dividendos.append(
-            DividendoConsolidado(data_base=data_base, valor=valor, fonte=fonte)
-        )
+        dividendo = _dividendo_da_linha_fii(linha, colunas, fonte)
+        if dividendo is not None:
+            dividendos.append(dividendo)
     return dividendos
+
+
+def _dividendo_da_linha_fii(
+    linha: Tag, colunas: dict[str, int], fonte: str
+) -> DividendoConsolidado | None:
+    """Retorna o dividendo de uma linha, ou ``None`` se inválida."""
+    celulas = [
+        celula.get_text(" ", strip=True) for celula in linha.find_all("td")
+    ]
+    if not celulas:
+        return None
+    data_base = para_data(_celula_fii(celulas, colunas.get("data_com")))
+    valor = para_decimal(_celula_fii(celulas, colunas.get("valor")))
+    if data_base is None or valor is None or valor <= 0:
+        return None
+    tipo = _celula_fii(celulas, colunas.get("tipo")) or ""
+    if not _eh_rendimento_fii(tipo):
+        return None
+    return DividendoConsolidado(data_base=data_base, valor=valor, fonte=fonte)
 
 
 def _tabela_fii_proventos(soup: BeautifulSoup) -> Tag | None:
