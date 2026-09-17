@@ -47,6 +47,8 @@ class FundamentalMixin:
             acionistas_provider=self._fundamental_acionistas_provider,
             indexadores_provider=self._fundamental_indexadores_provider,
             historico_store=self._fundamental_history_store,
+            resolver_fiagro=self._fundamental_resolver_fiagro,
+            bdr_provider=self._fundamental_bdr_provider,
         )
         job = FundamentalJob(
             caso, tickers, ref_date, self._fundamental_generation,

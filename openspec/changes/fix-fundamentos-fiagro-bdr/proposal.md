@@ -8,13 +8,13 @@ Tickers FIAGRO (`BBGO11`, `KNCA11`) e BDRs (`EXXO34`) exibem campos vazios na su
 - Histórico de proventos do Fundamentus passa a ler `fii_proventos.php` para FIIs/FIAGROs (tabela `Última Data Com`/`Tipo`/`Data de Pagamento`/`Valor`), preenchendo data-com, dividendo anterior, tendência e o P/L derivado.
 - Classificação determinística de FIAGRO passa a reconhecê-los como `FII` com sub-tipo `FIAGRO`, eliminando `Desconhecido` no fallback e mantendo-os fora da elegibilidade FFO.
 - Nova fonte de dividendos para BDRs via **Plantão de Notícias da B3**: lista `Aviso aos Acionistas` mês a mês, baixa o PDF do documento na CVM (POST `ExibirPDF`, base64), cacheia por ticker/ano/mês, extrai último dividendo, dividendo anterior, data-com, ISIN, depositário e empresa, e calcula P/L e Dividend Yield com anualização **trimestral (×4)**.
-- A sub-aba Fundamentos passa a exibir, para BDRs, o caminho da pasta de cache dos PDFs em `Informações adicionais` e, quando não houver identidade fiscal, o depositário (ex.: `Banco B3 S.A.`), a empresa (ex.: `Exxon Mobil Corporation`) e o ISIN em `Dados fiscais`.
+- A sub-aba Fundamentos passa a exibir, para BDRs, o sub-tipo `BDR`, o nível do programa (ex.: `Nível I Não Patrocinado`) e a observação fiscal do aviso (dedução de IR/IOF/tarifa) em `Informações adicionais` — em vez do caminho da pasta de cache — e, quando não houver identidade fiscal, o depositário (ex.: `Banco B3 S.A.`), a empresa (ex.: `Exxon Mobil Corporation`) e o ISIN em `Dados fiscais`.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `bdr-dividend-fallback`: Extração de dividendos de BDRs a partir do Plantão de Notícias da B3 e dos PDFs de `Aviso aos Acionistas` da CVM — listagem mês a mês, download/cache por ticker/ano/mês, parsing do texto (valor por BDR, data-com, data de pagamento, ISIN, depositário, empresa), métricas derivadas (P/L trimestral e Dividend Yield) e exposição do caminho de cache e da identidade fiscal na tabela.
+- `bdr-dividend-fallback`: Extração de dividendos de BDRs a partir do Plantão de Notícias da B3 e dos PDFs de `Aviso aos Acionistas` da CVM — listagem mês a mês, download/cache por ticker/ano/mês, parsing do texto (valor por BDR, data-com, data de pagamento, ISIN, depositário, empresa, nível do programa e observação fiscal), métricas derivadas (P/L trimestral e Dividend Yield) e exposição do sub-tipo, do nível do programa, da observação fiscal e da identidade fiscal na tabela.
 
 ### Modified Capabilities
 

@@ -455,9 +455,79 @@ class TestListarFundos:
             "results": [{"acronym": "ALZR", "id": 870}],
         }
         classes = _fixture("fund_alzr.json")
-        client = self._client(tmp_path, [vazio, fundos, classes])
+        client = self._client(
+            tmp_path, [vazio, vazio, vazio, vazio, fundos, classes]
+        )
         assert client.resolver_ticker("ALZR11") is None
         assert client.resolver_ticker("ALZR11") == "20294"
+
+
+class TestResolucaoMultiTipo:
+    def _client(self, tmp_path, respostas):
+        return B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path),
+            session=_SessaoFake(respostas),
+            retry_delays=(0,),
+        )
+
+    def _vazio(self):
+        return {"page": {"totalPages": 1}, "results": []}
+
+    def _fiagro(self):
+        return {
+            "page": {"totalPages": 1},
+            "results": [{"acronym": "BBGO", "id": 6919}],
+        }
+
+    def _classe_fiagro(self):
+        return [
+            {
+                "id": "999",
+                "idMain": None,
+                "tradingName": "BBGO FUNDO - 12.345.678/0001-95",
+                "fundName": "BBGO FIAGRO",
+            }
+        ]
+
+    def test_fiagro_resolvido_fora_do_tipo_fii(self, tmp_path):
+        sessao = _SessaoFake([self._vazio(), self._fiagro(), self._classe_fiagro()])
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path),
+            session=sessao,
+            retry_delays=(0,),
+        )
+        assert client.resolver_ticker("BBGO11") == "999"
+        classe_url = [url for url in sessao.urls if "GetListClassFund" in url][-1]
+        assert _decodificar_token(classe_url)["typeFund"] == "FIAGRO"
+
+    def test_tipo_fundo_fiagro(self, tmp_path):
+        client = self._client(
+            tmp_path, [self._vazio(), self._fiagro(), self._classe_fiagro()]
+        )
+        assert client.tipo_fundo("BBGO11") == "FIAGRO"
+
+    def test_listagem_por_tipo_e_cacheada(self, tmp_path):
+        client = self._client(tmp_path, [self._fiagro()])
+        client.listar_fundos("FIAGRO")
+        client.listar_fundos("FIAGRO")
+        urls = [url for url in client._session.urls if "GetListFunds" in url]
+        assert len(urls) == 1
+
+    def test_ticker_inexistente_retorna_ausencia(self, tmp_path):
+        client = self._client(tmp_path, [self._vazio()])
+        assert client.resolver_ticker("XPTO11") is None
+        assert client.tipo_fundo("XPTO11") is None
+
+    def test_resolver_identidade_cnpj_fiagro(self, tmp_path):
+        from flowscope.infrastructure.cvm.identity import resolver_identidade
+
+        client = self._client(
+            tmp_path, [self._vazio(), self._fiagro(), self._classe_fiagro()]
+        )
+        repo = B3FundRepository(client=client)
+        identidade = resolver_identidade("BBGO11", fund_repository=repo)
+        assert identidade is not None
+        assert identidade.cnpj_fundo_classe == "12345678000195"
 
 
 class TestInformeMensalParser:
@@ -558,7 +628,7 @@ class TestB3FundamentalDataProvider:
             reference_month="07/2026",
             cotistas=16778,
             patrimonio_liquido=Decimal("346086182.72"),
-            cotas_emitidas=Decimal("36549445"),
+            cotas_emitidas=Decimal(36549445),
             valor_patrimonial_cota=Decimal("9.468986"),
             classificacao="Papel",
             subclassificacao="Híbrido",
@@ -585,7 +655,7 @@ class TestB3FundamentalDataProvider:
         patrimonio = PatrimonioFii(
             reference_date=REFERENCIA,
             net_asset_value=Decimal("346086182.72"),
-            shares_outstanding=Decimal("36549445"),
+            shares_outstanding=Decimal(36549445),
             cotistas=16778,
             fonte="B3",
             vp_cota=Decimal("9.468986"),
@@ -605,13 +675,13 @@ class TestB3FundamentalDataProvider:
         )
         patrimonio = PatrimonioFii(
             reference_date=REFERENCIA,
-            net_asset_value=Decimal("100"),
-            shares_outstanding=Decimal("10"),
+            net_asset_value=Decimal(100),
+            shares_outstanding=Decimal(10),
             cotistas=None,
             fonte="B3",
         )
         campos = self._provider(informe, patrimonio).obter("CYCR11", REFERENCIA)
-        assert campos["vp_cota"].valor == Decimal("10")
+        assert campos["vp_cota"].valor == Decimal(10)
 
     def test_sem_informe_emite_apenas_nome(self):
         campos = self._provider(None).obter("CYCR11", REFERENCIA)
@@ -637,8 +707,8 @@ class TestB3FundamentalRepositoryPatrimonio:
                 self.chamadas += 1
                 return PatrimonioFii(
                     reference_date=reference_date,
-                    net_asset_value=Decimal("100"),
-                    shares_outstanding=Decimal("10"),
+                    net_asset_value=Decimal(100),
+                    shares_outstanding=Decimal(10),
                     cotistas=None,
                     fonte="CVM",
                 )

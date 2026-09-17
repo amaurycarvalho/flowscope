@@ -339,6 +339,11 @@ def analise_para_dict(analise: AnaliseFundamental) -> dict:
         "cnpj_administrador": analise.cnpj_administrador,
         "nome_gestor": analise.nome_gestor,
         "cnpj_gestor": analise.cnpj_gestor,
+        "bdr_nivel": analise.bdr_nivel,
+        "bdr_observacao": analise.bdr_observacao,
+        "nome_depositario": analise.nome_depositario,
+        "nome_empresa_bdr": analise.nome_empresa_bdr,
+        "isin": analise.isin,
         "avisos": list(analise.avisos),
         "erro": analise.erro,
     }
@@ -378,6 +383,11 @@ def analise_de_dict(dados: Mapping) -> AnaliseFundamental:
         cnpj_administrador=dados.get("cnpj_administrador"),
         nome_gestor=dados.get("nome_gestor"),
         cnpj_gestor=dados.get("cnpj_gestor"),
+        bdr_nivel=dados.get("bdr_nivel"),
+        bdr_observacao=dados.get("bdr_observacao"),
+        nome_depositario=dados.get("nome_depositario"),
+        nome_empresa_bdr=dados.get("nome_empresa_bdr"),
+        isin=dados.get("isin"),
         avisos=tuple(str(aviso) for aviso in (dados.get("avisos") or [])),
         erro=dados.get("erro"),
     )

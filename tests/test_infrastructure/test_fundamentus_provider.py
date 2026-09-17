@@ -8,7 +8,10 @@ import requests
 from flowscope.domain.fii.fundamentus import TIPO_ACAO, TIPO_FII
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache import CacheOutcome, ConditionalCache
-from flowscope.infrastructure.fii.fundamentus.client import FundamentusClient
+from flowscope.infrastructure.fii.fundamentus.client import (
+    FII_PROVENTOS_URL,
+    FundamentusClient,
+)
 from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
     FundamentusDividendHistoryProvider,
 )
@@ -25,6 +28,7 @@ from flowscope.infrastructure.fii.fundamentus.normalizers import (
 from flowscope.infrastructure.fii.fundamentus.parser import (
     parse_ativo,
     parse_proventos,
+    parse_proventos_fii,
 )
 from flowscope.infrastructure.fii.fundamentus.provider import FundamentusProvider
 
@@ -265,6 +269,14 @@ class TestClient:
         )
         with pytest.raises(NetworkError):
             client.fetch("PETR4")
+
+    def test_fetch_fii_proventos_usa_url_de_fii(self):
+        session = _FakeSession(_FakeResponse(_fixture("fii_proventos_hgbs11.html")))
+        client = FundamentusClient(session=session, respect_robots=False)
+        texto = client.fetch_fii_proventos("HGBS11")
+        assert "Rendimento" in texto
+        assert session.chamadas[0]["url"] == FII_PROVENTOS_URL
+        assert session.chamadas[0]["params"] == {"papel": "HGBS11"}
 
 
 class TestProvider:
@@ -551,6 +563,26 @@ class TestParserProventos:
         assert parse_proventos("<html><body>nada</body></html>") == []
 
 
+class TestParserProventosFii:
+    def test_extrai_rendimentos_e_ignora_amortizacao(self):
+        dividendos = parse_proventos_fii(_fixture("fii_proventos_hgbs11.html"))
+        assert [d.data_base for d in dividendos] == [
+            date(2026, 9, 30),
+            date(2026, 8, 31),
+        ]
+        assert dividendos[0].valor == Decimal("0.6500")
+        assert dividendos[0].fonte == "FUNDAMENTUS"
+
+    def test_sem_tabela_retorna_vazio(self):
+        assert parse_proventos_fii("<html><body>nada</body></html>") == []
+
+    def test_remove_rotulo_quebra_contrato(self):
+        html = _fixture("fii_proventos_hgbs11.html").replace(
+            "&Uacute;ltima Data Com", "Data Com"
+        )
+        assert parse_proventos_fii(html) == []
+
+
 class TestDividendHistoryProvider:
     def test_obter_dividendos_filtra_por_data(self):
         provider = FundamentusDividendHistoryProvider(
@@ -563,7 +595,9 @@ class TestDividendHistoryProvider:
         ]
 
     def test_loader_vazio_retorna_lista_vazia(self):
-        provider = FundamentusDividendHistoryProvider(loader=lambda _t: "")
+        provider = FundamentusDividendHistoryProvider(
+            loader=lambda _t: "", fii_loader=lambda _t: ""
+        )
         assert provider.obter_dividendos("ITUB4", date(2026, 9, 1)) == []
 
     def test_usa_cache(self, tmp_path):
@@ -578,6 +612,28 @@ class TestDividendHistoryProvider:
         provider.obter_dividendos("ITUB4", date(2026, 9, 1))
         provider.obter_dividendos("ITUB4", date(2026, 9, 1))
         assert chamadas["n"] == 1
+
+    def test_fallback_para_fii_quando_acao_vazia(self):
+        chamadas: list[str] = []
+        provider = FundamentusDividendHistoryProvider(
+            loader=lambda _t: chamadas.append("acao") or "",
+            fii_loader=lambda _t: chamadas.append("fii")
+            or _fixture("fii_proventos_hgbs11.html"),
+        )
+        dividendos = provider.obter_dividendos("HGBS11", date(2026, 10, 1))
+        assert chamadas == ["acao", "fii"]
+        assert len(dividendos) == 2
+
+    def test_nao_consulta_fii_quando_acao_tem_proventos(self):
+        chamadas: list[str] = []
+        provider = FundamentusDividendHistoryProvider(
+            loader=lambda _t: chamadas.append("acao")
+            or _fixture("proventos_itub4.html"),
+            fii_loader=lambda _t: chamadas.append("fii") or "",
+        )
+        dividendos = provider.obter_dividendos("ITUB4", date(2026, 9, 1))
+        assert chamadas == ["acao"]
+        assert dividendos
 
 
 class TestAdapterVpa:
@@ -665,10 +721,10 @@ class TestAdapterReceitaRendimentos:
 
     def test_constantes_registradas(self):
         from flowscope.application.fundamental_ports import (
-            CAMPO_RECEITA_12M,
             CAMPO_RECEITA_3M,
-            CAMPO_RENDIMENTOS_12M,
+            CAMPO_RECEITA_12M,
             CAMPO_RENDIMENTOS_3M,
+            CAMPO_RENDIMENTOS_12M,
             CAMPOS_FUNDAMENTAIS,
         )
 

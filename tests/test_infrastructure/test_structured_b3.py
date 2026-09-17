@@ -12,6 +12,7 @@ import responses
 from flowscope.infrastructure.b3 import funds_client
 from flowscope.infrastructure.b3.funds_client import (
     PARSER_VERSION,
+    TIPOS_FUNDO,
     B3FundosClient,
     _chave_cache,
 )
@@ -24,8 +25,8 @@ from flowscope.infrastructure.b3.structured_parser import (
     identificar_tipo_provento,
     limpar_valor_monetario,
 )
-from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.b3.structured_repository import FundosRepository
+from flowscope.infrastructure.cache import CacheManager
 from tests.fixtures.structured_documents import (
     AMORTIZACAO_HTML,
     FLAT_HTML,
@@ -222,7 +223,7 @@ class TestDocumentoRealDuasColunas:
             "Valor do provento (R$/unidade)", "Campo removido"
         )
         doc = extrair_documento_provento(html, "1", "", "t", "ALZR11", "20294")
-        assert doc is None or doc.provento.valor_por_unidade.value == Decimal("0")
+        assert doc is None or doc.provento.valor_por_unidade.value == Decimal(0)
 
     def test_sem_rotulo_data_base_nao_extrai_data(self):
         html = _documento_rendimento_html().replace("Data-base (", "Removido (")
@@ -306,19 +307,20 @@ class TestB3FundosClient:
     @responses.activate
     def test_resolver_ticker_nao_cacheia_ausencia(self, tmp_path):
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
-        fundos = {
-            "language": "pt-br",
-            "typeFund": "FII",
-            "pageNumber": 1,
-            "pageSize": 20,
-        }
-        url = f"{_BASE}/GetListFunds/{_token(fundos)}"
-        responses.get(
-            url, json={"page": {"totalPages": 1}, "results": []}, status=200
-        )
+        for tipo in TIPOS_FUNDO:
+            fundos = {
+                "language": "pt-br",
+                "typeFund": tipo,
+                "pageNumber": 1,
+                "pageSize": 20,
+            }
+            url = f"{_BASE}/GetListFunds/{_token(fundos)}"
+            responses.get(
+                url, json={"page": {"totalPages": 1}, "results": []}, status=200
+            )
         assert client.resolver_ticker("PETR4") is None
         assert client.resolver_ticker("PETR4") is None
-        assert len(responses.calls) == 2
+        assert len(responses.calls) == 2 * len(TIPOS_FUNDO)
 
     @responses.activate
     def test_listar_documentos_pagina_unica(self, tmp_path):

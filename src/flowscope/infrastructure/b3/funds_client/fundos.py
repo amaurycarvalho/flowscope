@@ -7,6 +7,7 @@ import requests
 from flowscope.infrastructure.b3.funds_client.constants import (
     _PAGE_SIZE,
     _PREFIXO_IDENTIDADE,
+    TIPOS_FUNDO,
     TTL_FUNDOS_DIAS,
     TTL_IDENTIDADE_DIAS,
     TTL_RESOLUCAO_TICKER_DIAS,
@@ -71,14 +72,15 @@ class FundosListagemMixin:
     def listar_candidatos(
         self: "FundosListagemMixin",
         ticker: str,
-        type_fund: str = "FII",
+        type_fund: str | None = None,
     ) -> list[dict]:
         """Lista as classes do fundo do ticker na B3.
 
-        Resolve o ``id`` primário via ``GetListFunds`` e consulta
-        ``GetListClassFund`` com esse ``id`` como ``idFNET``.
+        Sem ``type_fund`` explícito, itera os tipos de fundo conhecidos até
+        encontrar o registro primário e consulta ``GetListClassFund`` com o
+        ``id`` encontrado como ``idFNET``.
         """
-        primario = self._resolver_primario(ticker, type_fund)
+        tipo, primario = self._resolver_primario_e_tipo(ticker, type_fund)
         if primario is None:
             return []
         id_primario = str(primario.get("id"))
@@ -91,7 +93,7 @@ class FundosListagemMixin:
                     "language": "pt-br",
                     "idFNET": id_primario,
                     "idCEM": _fund_root(ticker),
-                    "typeFund": type_fund,
+                    "typeFund": tipo,
                 },
             )
             candidatos = dados if isinstance(dados, list) else []
@@ -118,10 +120,38 @@ class FundosListagemMixin:
                 return fundo
         return None
 
+    def _resolver_primario_e_tipo(
+        self: "FundosListagemMixin",
+        ticker: str,
+        type_fund: str | None = None,
+    ) -> tuple[str | None, dict | None]:
+        """Localiza o registro primário iterando os tipos de fundo em ordem.
+
+        Com ``type_fund`` explícito consulta apenas aquele tipo; sem ele,
+        percorre ``TIPOS_FUNDO`` e retorna o primeiro tipo cujo ``acronym``
+        corresponde à raiz do ticker. Ticker sem correspondência retorna
+        ``(None, None)`` sem lançar exceção.
+        """
+        tipos = (type_fund,) if type_fund else TIPOS_FUNDO
+        for tipo in tipos:
+            primario = self._resolver_primario(ticker, tipo)
+            if primario is not None:
+                return tipo, primario
+        return None, None
+
+    def tipo_fundo(
+        self: "FundosListagemMixin",
+        ticker: str,
+        type_fund: str | None = None,
+    ) -> str | None:
+        """Retorna o tipo de fundo do ticker na B3, ou ``None`` sem dados."""
+        tipo, primario = self._resolver_primario_e_tipo(ticker, type_fund)
+        return tipo if primario is not None else None
+
     def selecionar_candidato(
         self: "FundosListagemMixin",
         ticker: str,
-        type_fund: str = "FII",
+        type_fund: str | None = None,
     ) -> dict | None:
         """Seleciona o registro de fundo usado nas consultas subsequentes."""
         return _selecionar_fund(self.listar_candidatos(ticker, type_fund))
@@ -129,7 +159,7 @@ class FundosListagemMixin:
     def resolver_ticker(
         self: "FundosListagemMixin",
         ticker: str,
-        type_fund: str = "FII",
+        type_fund: str | None = None,
     ) -> str | None:
         """Resolve o ticker para o ``idFNET`` na B3.
 

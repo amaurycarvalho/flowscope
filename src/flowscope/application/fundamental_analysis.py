@@ -69,7 +69,10 @@ from flowscope.domain.fii import (
     MetricasFii,
     PatrimonioFii,
     PrecoObservacao,
+    Quality,
+    ResolverFiagro,
     TaxonomiaFii,
+    TipoAtivo,
     UltimoDividendo,
     classe_fii_elegivel_ffo,
     classificar_cotistas,
@@ -80,6 +83,7 @@ from flowscope.domain.fii import (
     dividendos_receita,
     ffo_receita,
     normalizar_ticker,
+    p_l_bdr,
     percentual_preco_tipico,
     preco_tipico,
     tendencia_margem_ffo,
@@ -105,6 +109,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         acionistas_provider: AcionistasProvider | None = None,
         indexadores_provider: IndexadoresProvider | None = None,
         historico_store: FundamentalHistoryStore | None = None,
+        resolver_fiagro: ResolverFiagro | None = None,
+        bdr_provider: object | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -116,6 +122,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         self._acionistas_provider = acionistas_provider
         self._indexadores_provider = indexadores_provider
         self._historico_store = historico_store
+        self._resolver_fiagro = resolver_fiagro
+        self._bdr_provider = bdr_provider
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
 
@@ -154,7 +162,9 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
                         ticker=normalizado,
                         nome=None,
                         classificacao=classificar_ticker(
-                            normalizado, taxonomia_fii=self._taxonomia
+                            normalizado,
+                            taxonomia_fii=self._taxonomia,
+                            resolver_fiagro=self._resolver_fiagro,
                         ),
                         ultimo_dividendo=_sem_dividendo(),
                         dividendos_12m_por_cota=None,
@@ -209,14 +219,23 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         Retorna a análise e se os dados vieram do cache.
         """
         classificacao = classificar_ticker(
-            ticker, taxonomia_fii=self._taxonomia
+            ticker,
+            taxonomia_fii=self._taxonomia,
+            resolver_fiagro=self._resolver_fiagro,
         )
         dados, de_cache = self._obter_dados(ticker, reference_date)
+        dados_bdr = self._obter_dados_bdr(ticker, reference_date, classificacao)
         nome = _texto(dados, CAMPO_NOME) or self._repository.obter_nome(ticker)
+        if nome is None and dados_bdr is not None:
+            nome = dados_bdr.nome_empresa
         exibicao = _classificacao_exibicao(dados, classificacao)
         proventos = self._repository.obter_proventos(ticker, reference_date)
         ultimo_dividendo = self._ultimo_dividendo(
-            dados, ticker, reference_date, proventos
+            dados,
+            ticker,
+            reference_date,
+            proventos,
+            list(dados_bdr.dividendos) if dados_bdr is not None else None,
         )
         total_por_cota = (
             dividendos_12m(proventos, reference_date) if proventos else None
@@ -240,9 +259,12 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         cotacao = _decimal_campo(dados, CAMPO_COTACAO)
         if cotacao is None and preco is not None:
             cotacao = preco.preco
-        metricas = _recalcular_dividend_yield(
-            metricas, exibicao, cotacao, ultimo_dividendo
-        )
+        if classificacao.tipo is TipoAtivo.BDR:
+            metricas = _metricas_bdr(metricas, cotacao, ultimo_dividendo)
+        else:
+            metricas = _recalcular_dividend_yield(
+                metricas, exibicao, cotacao, ultimo_dividendo
+            )
         margens = _montar_margens(dados, exibicao)
         maximo, minimo = _extremos_52_sem(
             self._mercado, dados, ticker, reference_date
@@ -261,7 +283,11 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             margens=margens,
             cotacao=cotacao,
             vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
-            p_l=_p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo),
+            p_l=(
+                p_l_bdr(cotacao, ultimo_dividendo.valor)
+                if classificacao.tipo is TipoAtivo.BDR
+                else _p_l_do_ativo(dados, exibicao, cotacao, ultimo_dividendo)
+            ),
             classificacao_exibicao=exibicao,
             cotas=cotas,
             cotistas=cotistas,
@@ -289,6 +315,19 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             cnpj_administrador=_texto(dados, CAMPO_CNPJ_ADMINISTRADOR),
             nome_gestor=_texto(dados, CAMPO_GESTOR),
             cnpj_gestor=_texto(dados, CAMPO_CNPJ_GESTOR),
+            bdr_nivel=(
+                dados_bdr.nivel_programa if dados_bdr is not None else None
+            ),
+            bdr_observacao=(
+                dados_bdr.observacao if dados_bdr is not None else None
+            ),
+            nome_depositario=(
+                dados_bdr.nome_depositario if dados_bdr is not None else None
+            ),
+            nome_empresa_bdr=(
+                dados_bdr.nome_empresa if dados_bdr is not None else None
+            ),
+            isin=dados_bdr.isin if dados_bdr is not None else None,
             avisos=avisos,
         ), de_cache
 
@@ -384,6 +423,42 @@ def _recalcular_dividend_yield(
     if valor is None or cotacao is None or cotacao == Decimal(0):
         return metricas
     return replace(metricas, dividend_yield=(valor * Decimal(12)) / cotacao)
+
+
+#: Trimestres usados para anualizar o dividendo de um BDR.
+_TRIMESTRES_ANO_BDR = Decimal(4)
+
+
+def _metricas_bdr(
+    metricas: MetricasFii | None,
+    cotacao: Decimal | None,
+    ultimo_dividendo: UltimoDividendo,
+) -> MetricasFii | None:
+    """Recalcula o Dividend Yield de BDR como ``(último dividendo × 4) / cotação``.
+
+    Mantém as métricas originais quando o último dividendo ou a cotação estão
+    ausentes ou a cotação é zero.
+    """
+    valor = ultimo_dividendo.valor
+    if valor is None or cotacao is None or cotacao == Decimal(0):
+        return metricas
+    dividend_yield = (valor * _TRIMESTRES_ANO_BDR) / cotacao
+    if metricas is None:
+        return MetricasFii(
+            market_value=None,
+            ffo_yield=None,
+            dividend_yield=dividend_yield,
+            p_ffo=None,
+            p_vp=None,
+            ffo_momentum=None,
+            ffo_trend=None,
+            ffo_trend_change=None,
+            ffo_payout=None,
+            quality=Quality.PARTIAL,
+            warnings=(),
+            evidence=(),
+        )
+    return replace(metricas, dividend_yield=dividend_yield)
 
 
 def _montar_margens(

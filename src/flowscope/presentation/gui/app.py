@@ -14,7 +14,9 @@ from flowscope.application.fundamental_fallback import (
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
+from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
+from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
@@ -177,10 +179,13 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
-        fundamental_repo = B3FundamentalRepository(
-            patrimonio_source=CvmMonthlyPatrimonioSource()
-        )
         cache = CacheManager()
+        b3_fund_repository = B3FundRepository()
+        fundamental_repo = B3FundamentalRepository(
+            fund_repository=b3_fund_repository,
+            patrimonio_source=CvmMonthlyPatrimonioSource(),
+        )
+        fundamental_bdr_provider = BdrDividendProvider(cache=cache)
         fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
         fundamental_provider = CompositeFundamentalProvider(
             [
@@ -215,6 +220,10 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
             fundamental_acionistas_provider=fundamental_acionistas_provider,
             fundamental_indexadores_provider=fundamental_indexadores_provider,
             fundamental_history_store=self._fundamental_history_store,
+            fundamental_resolver_fiagro=(
+                lambda ticker: b3_fund_repository.tipo_fundo(ticker) == "FIAGRO"
+            ),
+            fundamental_bdr_provider=fundamental_bdr_provider,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

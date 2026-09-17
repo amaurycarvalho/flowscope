@@ -22,6 +22,9 @@ _TIPO_PROVENTOS = 41
 _PAGE_SIZE = 20
 _AGENCIA_PADRAO = "18"
 
+#: Tipos de fundo consultados na resolução de identidade, em ordem de tentativa.
+TIPOS_FUNDO = ("FII", "FIAGRO", "FIP", "FIDC")
+
 #: Versão do parser/aquisição usada para versionar as chaves de cache.
 PARSER_VERSION = "b3-fii-1"
 

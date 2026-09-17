@@ -1,8 +1,6 @@
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
@@ -16,6 +14,7 @@ from flowscope.application.fundamental_ports import (
     CampoFundamental,
     OrigemDados,
 )
+from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii import (
     ClasseCotistas,
     DividendoConsolidado,
@@ -83,6 +82,23 @@ class FakeDividendHistory:
         return self.dividendos_por_ticker.get(ticker, [])
 
 
+class FakeBdrProvider:
+    def __init__(self, dados_por_ticker=None, falhar=False):
+        self.dados_por_ticker = dados_por_ticker or {}
+        self.falhar = falhar
+        self.chamadas: list[str] = []
+
+    def obter_dados_bdr(self, ticker: str, reference_date: date):
+        self.chamadas.append(ticker)
+        if self.falhar:
+            raise RuntimeError("fonte de BDR indisponível")
+        return self.dados_por_ticker.get(ticker)
+
+    def obter_dividendos(self, ticker: str, reference_date: date):
+        dados = self.dados_por_ticker.get(ticker)
+        return list(dados.dividendos) if dados is not None else []
+
+
 class FakeFundamentusFonte:
     def __init__(self, campos):
         self.campos = campos
@@ -135,8 +151,8 @@ def _repo_hgbs11() -> FakeFundamentalRepository:
         patrimonio_por_ticker={
             "HGBS11": PatrimonioFii(
                 reference_date=REFERENCIA,
-                net_asset_value=Decimal("2942000000"),
-                shares_outstanding=Decimal("144355726"),
+                net_asset_value=Decimal(2942000000),
+                shares_outstanding=Decimal(144355726),
                 cotistas=100000,
                 fonte="CVM",
             ),
@@ -149,8 +165,8 @@ def _infra_completa():
         FakeFfoProvider(
             {
                 "HGBS11": FfoObservacao(
-                    ffo_12m=Decimal("220777000"),
-                    ffo_3m=Decimal("63802000"),
+                    ffo_12m=Decimal(220777000),
+                    ffo_3m=Decimal(63802000),
                     fonte="FUNDAMENTUS",
                 )
             }
@@ -368,39 +384,39 @@ class TestResolucaoCotas:
     def test_fii_prioriza_repositorio_sobre_fundamentus(self):
         repo = _repo_hgbs11()
         fonte = FakeFundamentusFonte(
-            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("999"))}
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(999))}
         )
         caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
-        assert resultado.cotas == Decimal("144355726")
+        assert resultado.cotas == Decimal(144355726)
 
     def test_fii_usa_fundamentus_quando_repositorio_ausente(self):
         repo = FakeFundamentalRepository()
         fonte = FakeFundamentusFonte(
-            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("144355726"))}
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(144355726))}
         )
         caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
-        assert resultado.cotas == Decimal("144355726")
+        assert resultado.cotas == Decimal(144355726)
 
     def test_papel_usa_fundamentus_e_ignora_repositorio(self):
         repo = FakeFundamentalRepository(
             patrimonio_por_ticker={
                 "PETR4": PatrimonioFii(
                     reference_date=REFERENCIA,
-                    net_asset_value=Decimal("1"),
-                    shares_outstanding=Decimal("111"),
+                    net_asset_value=Decimal(1),
+                    shares_outstanding=Decimal(111),
                     cotistas=1,
                     fonte="CVM",
                 )
             }
         )
         fonte = FakeFundamentusFonte(
-            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal("12888700000"))}
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(12888700000))}
         )
         caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
         resultado = caso.execute(["PETR4"], REFERENCIA)[0]
-        assert resultado.cotas == Decimal("12888700000")
+        assert resultado.cotas == Decimal(12888700000)
 
     def test_ausente_retorna_none(self):
         repo = FakeFundamentalRepository()
@@ -414,20 +430,20 @@ class TestPrecoTipicoEIndexadores:
         repo = _repo_hgbs11()
         fonte = FakeFundamentusFonte(
             {
-                CAMPO_COTACAO: CampoFundamental(Decimal("10")),
-                CAMPO_MIN_52_SEM: CampoFundamental(Decimal("8")),
-                CAMPO_MAX_52_SEM: CampoFundamental(Decimal("12")),
+                CAMPO_COTACAO: CampoFundamental(Decimal(10)),
+                CAMPO_MIN_52_SEM: CampoFundamental(Decimal(8)),
+                CAMPO_MAX_52_SEM: CampoFundamental(Decimal(12)),
             }
         )
         caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
-        assert resultado.preco_tipico == Decimal("10")
-        assert resultado.pct_preco_tipico == Decimal("0")
+        assert resultado.preco_tipico == Decimal(10)
+        assert resultado.pct_preco_tipico == Decimal(0)
 
     def test_preco_tipico_ausente_quando_falta_insumo(self):
         repo = _repo_hgbs11()
         fonte = FakeFundamentusFonte(
-            {CAMPO_COTACAO: CampoFundamental(Decimal("10"))}
+            {CAMPO_COTACAO: CampoFundamental(Decimal(10))}
         )
         caso = FundamentalAnalysisUseCase(repo, fundamental_provider=fonte)
         resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
@@ -623,3 +639,200 @@ class TestConsolidacaoPapel:
         assert resultado.ultimo_dividendo.valor == Decimal("0.55")
         assert resultado.ultimo_dividendo.valor_anterior == Decimal("0.50")
         assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.FORTE_ALTA
+
+    def test_p_l_de_fii_derivado_do_historico_secundario(self):
+        repo = FakeFundamentalRepository()
+        historico = FakeDividendHistory(
+            {
+                "HGBS11": [
+                    DividendoConsolidado(
+                        date(2026, 7, 10), Decimal("0.55"), "FUNDAMENTUS"
+                    )
+                ]
+            }
+        )
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTACAO: CampoFundamental(Decimal("18.74"))}
+        )
+        caso = FundamentalAnalysisUseCase(
+            repo, fundamental_provider=fonte, historico_dividendos=historico
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.p_l.quantize(Decimal("0.01")) == Decimal("2.84")
+
+
+def _dados_bdr(
+    valor: str = "0.50",
+    nivel: str | None = "Nível I Não Patrocinado",
+    observacao: str | None = "O valor informado já está deduzido de IR",
+):
+    return DadosBdr(
+        dividendos=(
+            DividendoConsolidado(date(2026, 8, 10), Decimal(valor), "BDR"),
+        ),
+        nivel_programa=nivel,
+        observacao=observacao,
+        nome_depositario="Banco B3 S.A.",
+        nome_empresa="Exxon Mobil Corporation",
+        isin="BREXXOBDR006",
+    )
+
+
+def _fonte_cotacao(valor: str):
+    return FakeFundamentusFonte(
+        {CAMPO_COTACAO: CampoFundamental(Decimal(valor))}
+    )
+
+
+class TestBdrDividendos:
+    def test_fonte_bdr_preenche_data_com_tendencia_e_origem(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=_fonte_cotacao("10.00"),
+            bdr_provider=fonte,
+        )
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.ultimo_dividendo.data_com == date(2026, 8, 10)
+        assert resultado.ultimo_dividendo.valor == Decimal("0.50")
+        assert resultado.ultimo_dividendo.tendencia is TendenciaDividendo.N_A
+
+    def test_pl_e_dividend_yield_bdr_anualizam_por_quatro(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=_fonte_cotacao("10.00"),
+            bdr_provider=fonte,
+        )
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.p_l == Decimal("5.00")
+        assert resultado.metricas is not None
+        assert resultado.metricas.dividend_yield == Decimal("0.20")
+
+    def test_bdr_sem_cotacao_retorna_pl_e_dy_na(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.p_l is None
+        assert resultado.metricas is None
+
+    def test_bdr_cotacao_zero_retorna_pl_e_dy_na(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=_fonte_cotacao("0"),
+            bdr_provider=fonte,
+        )
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.p_l is None
+        assert resultado.metricas is None
+
+    def test_bdr_sem_dividendo_nao_calcula(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider(
+            {"EXXO34": DadosBdr(dividendos=())}
+        )
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=_fonte_cotacao("10.00"),
+            bdr_provider=fonte,
+        )
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.p_l is None
+        assert resultado.ultimo_dividendo.valor is None
+
+    def test_nome_bdr_usa_empresa_do_aviso_como_fallback(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.nome == "Exxon Mobil Corporation"
+
+    def test_nome_de_fonte_primaria_tem_prioridade_sobre_bdr(self):
+        repo = FakeFundamentalRepository(nome_por_ticker={"EXXO34": "EXXO"})
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.nome == "EXXO"
+
+    def test_campos_de_bdr_preenchidos_apenas_para_bdr(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.bdr_nivel == "Nível I Não Patrocinado"
+        assert resultado.bdr_observacao == (
+            "O valor informado já está deduzido de IR"
+        )
+        assert resultado.nome_depositario == "Banco B3 S.A."
+        assert resultado.nome_empresa_bdr == "Exxon Mobil Corporation"
+        assert resultado.isin == "BREXXOBDR006"
+
+    def test_ativo_nao_bdr_nao_aciona_a_fonte(self):
+        repo = _repo_hgbs11()
+        fonte = FakeBdrProvider()
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert fonte.chamadas == []
+        assert resultado.bdr_nivel is None
+        assert resultado.bdr_observacao is None
+        assert resultado.nome_depositario is None
+
+    def test_falha_da_fonte_bdr_nao_quebra_o_ticker(self):
+        repo = FakeFundamentalRepository()
+        fonte = FakeBdrProvider(falhar=True)
+        caso = FundamentalAnalysisUseCase(repo, bdr_provider=fonte)
+        resultado = caso.execute(["EXXO34"], REFERENCIA)[0]
+        assert resultado.erro is None
+        assert resultado.ultimo_dividendo.valor is None
+
+
+class TestIntegracaoFiagroBdr:
+    def test_fiagro_classificado_e_com_campos(self):
+        repo = FakeFundamentalRepository(
+            nome_por_ticker={"BBGO11": "BBGO FIAGRO"},
+            patrimonio_por_ticker={
+                "BBGO11": PatrimonioFii(
+                    reference_date=REFERENCIA,
+                    net_asset_value=Decimal(1000000),
+                    shares_outstanding=Decimal(100000),
+                    cotistas=5000,
+                    fonte="B3",
+                )
+            },
+        )
+        fonte = _fonte_cotacao("10.00")
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=fonte,
+            resolver_fiagro=lambda ticker: ticker in {"BBGO11", "KNCA11"},
+        )
+        resultado = caso.execute(["BBGO11"], REFERENCIA)[0]
+        assert resultado.classificacao.tipo is TipoAtivo.FII
+        assert resultado.classificacao.sub_tipo is SubTipoFii.FIAGRO
+        assert resultado.classificacao.elegivel_ffo() is False
+        assert resultado.nome == "BBGO FIAGRO"
+        assert resultado.cotacao == Decimal("10.00")
+
+    def test_linhas_de_fiagro_e_bdr_preenchem_campos_alvo(self):
+        repo = FakeFundamentalRepository(
+            nome_por_ticker={"BBGO11": "BBGO FIAGRO", "KNCA11": "KNCA FIAGRO"},
+        )
+        bdr = FakeBdrProvider({"EXXO34": _dados_bdr()})
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=_fonte_cotacao("10.00"),
+            bdr_provider=bdr,
+            resolver_fiagro=lambda ticker: ticker in {"BBGO11", "KNCA11"},
+        )
+        resultados = caso.execute(["BBGO11", "KNCA11", "EXXO34"], REFERENCIA)
+        assert [r.ticker for r in resultados] == ["BBGO11", "KNCA11", "EXXO34"]
+        assert all(r.classificacao.sub_tipo is SubTipoFii.FIAGRO for r in resultados[:2])
+        exxo = resultados[2]
+        assert exxo.classificacao.tipo is TipoAtivo.BDR
+        assert exxo.nome_depositario == "Banco B3 S.A."
+        assert exxo.p_l == Decimal("5.00")

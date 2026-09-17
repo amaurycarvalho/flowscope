@@ -30,6 +30,7 @@ class FonteClassificacao(Enum):
     TAXONOMIA_ETF = "taxonomia_etf"
     SINTAXE = "sintaxe"
     CODE_CVM = "code_cvm"
+    FIAGRO = "fiagro"
     NAO_CLASSIFICAVEL = "nao_classificavel"
 
 
@@ -157,6 +158,7 @@ class ClassificacaoAtivo:
 
 
 ResolverCodeCvm = Callable[[str], str | None]
+ResolverFiagro = Callable[[str], bool]
 
 
 def _classificar_sufixo_acao(
@@ -193,14 +195,16 @@ def classificar_ticker(
     *,
     taxonomia_fii: TaxonomiaFii | None = None,
     resolver_code_cvm: ResolverCodeCvm | None = None,
+    resolver_fiagro: ResolverFiagro | None = None,
     etfs: Collection[str] = ETFS_CONHECIDOS,
 ) -> ClassificacaoAtivo:
     """Classifica o tipo e o sub-tipo de um ticker de forma determinística.
 
     A decisão combina o sufixo numérico do ticker (sintaxe) com a resolução
-    ``code-cvm-resolution`` (identidade CVM) e, para fundos, taxonomias
-    versionadas. Tickers sem classificação determinística retornam
-    ``TipoAtivo.DESCONHECIDO`` sem inferência a partir do nome.
+    ``code-cvm-resolution`` (identidade CVM), a resolução de FIAGRO na B3 e,
+    para fundos, taxonomias versionadas. Tickers sem classificação
+    determinística retornam ``TipoAtivo.DESCONHECIDO`` sem inferência a partir
+    do nome.
     """
     normalizado = normalizar_ticker(ticker)
     corresponde = _PADRAO_TICKER.match(normalizado)
@@ -228,7 +232,9 @@ def classificar_ticker(
             fonte=FonteClassificacao.SINTAXE,
         )
     if sufixo == "11":
-        return _classificar_sufixo_onze(normalizado, resolver, taxonomia_fii, etfs)
+        return _classificar_sufixo_onze(
+            normalizado, resolver, taxonomia_fii, etfs, resolver_fiagro
+        )
     if 3 <= int(sufixo) <= 9:
         return _classificar_sufixo_acao(sufixo, normalizado, resolver)
     return ClassificacaoAtivo(
@@ -244,6 +250,7 @@ def _classificar_sufixo_onze(
     resolver: ResolverCodeCvm | None,
     taxonomia_fii: TaxonomiaFii | None,
     etfs: Collection[str],
+    resolver_fiagro: ResolverFiagro | None = None,
 ) -> ClassificacaoAtivo:
     """Classifica tickers com sufixo ``11`` (fundos ou unidades de ação)."""
     taxonomia = taxonomia_fii or TAXONOMIA_FII_PADRAO
@@ -260,6 +267,13 @@ def _classificar_sufixo_onze(
             tipo=TipoAtivo.ETF,
             sub_tipo=SubTipoAcao.ETF,
             fonte=FonteClassificacao.TAXONOMIA_ETF,
+        )
+    if resolver_fiagro is not None and resolver_fiagro(ticker):
+        return ClassificacaoAtivo(
+            ticker=ticker,
+            tipo=TipoAtivo.FII,
+            sub_tipo=SubTipoFii.FIAGRO,
+            fonte=FonteClassificacao.FIAGRO,
         )
     if resolver is not None and resolver(ticker) is not None:
         return ClassificacaoAtivo(
@@ -285,6 +299,9 @@ def elegivel_ffo(classificacao: ClassificacaoAtivo) -> bool:
 TIPO_EXIBICAO_PAPEL = "Papel"
 TIPO_EXIBICAO_FII = "FII"
 TIPO_EXIBICAO_DESCONHECIDO = "Desconhecido"
+
+#: Sub-tipo exibido para BDRs, que não possuem sub-tipo derivado do ticker.
+SUBTIPO_EXIBICAO_BDR = "BDR"
 
 #: Classificação autorregulação da B3 para FII de papel.
 CLASSIFICACAO_FII_PAPEL = "papel"
@@ -386,6 +403,8 @@ def _exibicao_do_fallback(
     """Traduz a classificação determinística para os rótulos de exibição."""
     if fallback is None or fallback.tipo is TipoAtivo.DESCONHECIDO:
         return ClassificacaoExibicao(TIPO_EXIBICAO_DESCONHECIDO)
+    if fallback.tipo is TipoAtivo.BDR:
+        return ClassificacaoExibicao(TIPO_EXIBICAO_PAPEL, SUBTIPO_EXIBICAO_BDR)
     if fallback.tipo is TipoAtivo.FII:
         return ClassificacaoExibicao(
             TIPO_EXIBICAO_FII, _LABEL_SUB_TIPO_FII.get(fallback.sub_tipo)

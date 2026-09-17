@@ -1,7 +1,7 @@
 from flowscope.domain.fii import (
+    TAXONOMIA_FII_PADRAO,
     SubTipoAcao,
     SubTipoFii,
-    TAXONOMIA_FII_PADRAO,
     TaxonomiaFii,
     TipoAtivo,
     classe_fii_elegivel_ffo,
@@ -147,6 +147,28 @@ class TestClassificarTicker:
     def test_ticker_normalizado(self):
         assert normalizar_ticker(" knri11 ") == "KNRI11"
 
+    def test_fiagro_reconhecido_por_resolver(self):
+        classificacao = classificar_ticker(
+            "BBGO11", resolver_fiagro=lambda ticker: ticker == "BBGO11"
+        )
+        assert classificacao.tipo is TipoAtivo.FII
+        assert classificacao.sub_tipo is SubTipoFii.FIAGRO
+
+    def test_fiagro_nao_elegivel_ao_ffo(self):
+        classificacao = classificar_ticker(
+            "BBGO11", resolver_fiagro=lambda _ticker: True
+        )
+        assert elegivel_ffo(classificacao) is False
+
+    def test_ticker_11_nao_reconhecido_permanece_desconhecido(self):
+        classificacao = classificar_ticker(
+            "ZZZZ11",
+            taxonomia_fii=TaxonomiaFii(versao="teste", tickers={}),
+            resolver_fiagro=lambda _ticker: False,
+        )
+        assert classificacao.tipo is TipoAtivo.DESCONHECIDO
+        assert classificacao.sub_tipo is None
+
 
 class TestElegibilidade:
     def test_fii_de_tijolo_elegivel(self):
@@ -226,6 +248,13 @@ class TestClassificacaoExibicaoComB3:
             classificacao_fii="Híbrido",
         )
         assert exibicao.sub_tipo == "Tijolo:"
+
+    def test_bdr_exibe_papel_com_sub_tipo_bdr(self):
+        exibicao = classificar_exibicao(
+            discriminador=None, fallback=classificar_ticker("EXXO34")
+        )
+        assert exibicao.tipo == "Papel"
+        assert exibicao.sub_tipo == "BDR"
 
     def test_sem_classificacao_usa_qtd_imoveis(self):
         assert (

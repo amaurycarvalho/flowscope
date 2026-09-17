@@ -12,6 +12,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Protocol, runtime_checkable
 
+from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii.analysis import (
     AnaliseFundamental,
     FfoObservacao,
@@ -188,6 +189,17 @@ class DividendHistoryProvider(Protocol):
         self: "DividendHistoryProvider", ticker: str, reference_date: date
     ) -> list[DividendoConsolidado]:
         """Retorna os dividendos do ticker até a data de referência."""
+        ...
+
+
+@runtime_checkable
+class BdrDataProvider(Protocol):
+    """Contrato de uma fonte secundária de dividendos e identidade de BDR."""
+
+    def obter_dados_bdr(
+        self: "BdrDataProvider", ticker: str, reference_date: date
+    ) -> DadosBdr | None:
+        """Retorna dividendos e identidade fiscal do BDR, ou ``None`` sem dados."""
         ...
 
 

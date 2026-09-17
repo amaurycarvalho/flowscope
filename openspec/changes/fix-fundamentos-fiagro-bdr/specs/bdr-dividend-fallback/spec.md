@@ -46,7 +46,7 @@ O sistema DEVE, para cada aviso, resolver o documento vinculado na página de de
 
 ### Requirement: Extração de dividendos do texto do PDF
 
-O sistema DEVE extrair do texto do PDF do aviso, quando presentes, o valor do dividendo por BDR em reais, a data-com, a data de pagamento e o tipo do evento (dividendo ou juros sobre capital próprio), além do código ISIN, do nome do depositário e do nome da empresa. Cada aviso extraído DEVE ser normalizado em um dividendo com data-base e valor por unidade e origem BDR. Avisos cujo texto não permita extrair valor e data-com DEVEM ser ignorados.
+O sistema DEVE extrair do texto do PDF do aviso, quando presentes, o valor do dividendo por BDR em reais, a data-com, a data de pagamento e o tipo do evento (dividendo ou juros sobre capital próprio), além do código ISIN, do nome do depositário, do nome da empresa, do nível do programa de BDR (ex.: `Nível I Não Patrocinado`) e da observação fiscal (dedução de IR/IOF/tarifa). Cada aviso extraído DEVE ser normalizado em um dividendo com data-base e valor por unidade e origem BDR. Avisos cujo texto não permita extrair valor e data-com DEVEM ser ignorados.
 
 #### Scenario: Aviso de dividendo com valor por BDR
 - **WHEN** o texto informa `pagamento do(a) Dividendos no valor de USD 1,030000000 ... corresponde a um valor prévio de R$ 0,455484428 por BDR` e `titulares de BDRs em 10/02/2026`
@@ -55,6 +55,10 @@ O sistema DEVE extrair do texto do PDF do aviso, quando presentes, o valor do di
 #### Scenario: Tipo do evento
 - **WHEN** o texto informa `Juros sobre Capital Próprio` ou `Dividendos`
 - **THEN** o sistema DEVE registrar o tipo do evento correspondente
+
+#### Scenario: Nível do programa e observação fiscal
+- **WHEN** o texto informa `Programa de BDR Nível I Não Patrocinado da ...` e `Obs.: O valor informado acima já está deduzido de 30% de IR, 0,38% de IOF e 3% referente a tarifa cobrada pelo Banco B3.`
+- **THEN** o sistema DEVE extrair `Nível I Não Patrocinado` e a observação fiscal correspondente
 
 #### Scenario: Aviso sem valor extraível
 - **WHEN** o texto não contém valor por BDR nem data-com reconhecíveis
@@ -80,19 +84,27 @@ O sistema DEVE calcular o P/L de um BDR como `Cotação / (último dividendo × 
 - **WHEN** a cotação do BDR é zero
 - **THEN** o P/L e o Dividend Yield DEVEM ser `N/A`
 
-### Requirement: Exposição do caminho de cache e da identidade fiscal de BDR
+### Requirement: Exposição do sub-tipo, do nível do programa, da observação fiscal e da identidade fiscal de BDR
 
-O sistema DEVE expor, para BDRs, o caminho da pasta de cache dos PDFs em `Informações adicionais`. Quando `Dados fiscais` não tiver CNPJ nem administrador/gestor, o sistema DEVE exibir o nome do depositário, o nome da empresa e o código ISIN extraídos dos avisos, omitindo os itens que não puderem ser obtidos.
+O sistema DEVE exibir, para BDRs, o sub-tipo `BDR`, o nível do programa e a observação fiscal extraídos dos avisos em `Informações adicionais`. O caminho da pasta de cache NÃO DEVE ser exibido. Quando `Dados fiscais` não tiver CNPJ nem administrador/gestor, o sistema DEVE exibir o nome do depositário, o nome da empresa e o código ISIN extraídos dos avisos, omitindo os itens que não puderem ser obtidos.
 
-#### Scenario: Caminho de cache exibido
-- **WHEN** um BDR possui PDFs de aviso em cache
-- **THEN** a coluna `Informações adicionais` DEVE exibir o caminho da pasta de cache do ticker
+#### Scenario: Sub-tipo de BDR exibido
+- **WHEN** um BDR é classificado deterministicamente
+- **THEN** a coluna `Sub-tipo` DEVE exibir `BDR`
+
+#### Scenario: Nível do programa e observação fiscal exibidos
+- **WHEN** o aviso informa `Nível I Não Patrocinado` e a observação fiscal de dedução de IR/IOF/tarifa
+- **THEN** a coluna `Informações adicionais` DEVE exibir o nível do programa e a observação, sem exibir o caminho da pasta de cache
+
+#### Scenario: Item indisponível
+- **WHEN** o nível do programa ou a observação fiscal não está disponível
+- **THEN** o item DEVE ser omitido, sem impedir os demais
 
 #### Scenario: Identidade fiscal de BDR a partir dos avisos
 - **WHEN** o BDR não possui CNPJ/administrador/gestor nas fontes primárias e o aviso informa `Banco B3 S.A.`, `Exxon Mobil Corporation` e `BREXXOBDR006`
 - **THEN** `Dados fiscais` DEVE exibir depositário, empresa e ISIN
 
-#### Scenario: Item indisponível
+#### Scenario: Item de identidade fiscal indisponível
 - **WHEN** um dos itens de identidade fiscal do BDR não está disponível
 - **THEN** o item DEVE ser omitido, sem impedir os demais
 

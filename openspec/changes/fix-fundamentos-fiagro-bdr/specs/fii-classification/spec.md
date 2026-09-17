@@ -15,3 +15,11 @@ Quando a classificação determinística for acionada para um ticker com sufixo 
 #### Scenario: Ticker não reconhecido
 - **WHEN** o ticker com sufixo `11` não está na taxonomia de FIIs, não é ETF e não é um FIAGRO conhecido
 - **THEN** a classificação DEVE permanecer `DESCONHECIDO`, sem inferência a partir do nome
+
+### Requirement: Sub-tipo de exibição de BDR
+
+Quando a classificação determinística resultar em `BDR`, a exibição DEVE apresentar Tipo `Papel` e Sub-tipo `BDR`, sem inferência a partir do nome do ativo.
+
+#### Scenario: BDR exibido como Papel/BDR
+- **WHEN** a exibição é derivada de um ticker classificado como `BDR`
+- **THEN** o Tipo DEVE ser `Papel` e o Sub-tipo DEVE ser `BDR`

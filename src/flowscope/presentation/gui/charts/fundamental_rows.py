@@ -150,15 +150,26 @@ def _itens_indexadores(analise: AnaliseFundamental) -> list[str]:
     ]
 
 
+def _itens_bdr(analise: AnaliseFundamental) -> list[str]:
+    """Monta o nível do programa e a observação fiscal de um BDR."""
+    itens: list[str] = []
+    if analise.bdr_nivel:
+        itens.append(analise.bdr_nivel)
+    if analise.bdr_observacao:
+        itens.append(f"Obs.: {analise.bdr_observacao}")
+    return itens
+
+
 def _informacoes_adicionais(
     analise: AnaliseFundamental, exibicao: ClassificacaoExibicao
 ) -> str:
     """Concatena os itens de Informações adicionais, ou ``N/A`` quando vazio."""
+    itens = _itens_bdr(analise)
     if exibicao.tipo == TIPO_EXIBICAO_FII:
-        itens = _itens_imoveis(analise)
+        itens.extend(_itens_imoveis(analise))
         itens.extend(_itens_indexadores(analise))
     else:
-        itens = _itens_indicadores_acao(analise)
+        itens.extend(_itens_indicadores_acao(analise))
     return _SEPARADOR_ITENS.join(itens) if itens else NA
 
 
@@ -194,6 +205,13 @@ def _dados_fiscais(
         )
         if gestor is not None:
             itens.append(gestor)
+    if not (analise.cnpj or analise.nome_administrador or analise.nome_gestor):
+        if analise.nome_depositario:
+            itens.append(f"Depositário {analise.nome_depositario}")
+        if analise.nome_empresa_bdr:
+            itens.append(f"Empresa {analise.nome_empresa_bdr}")
+        if analise.isin:
+            itens.append(f"ISIN {analise.isin}")
     return _SEPARADOR_ITENS.join(itens) if itens else NA
 
 

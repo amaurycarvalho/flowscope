@@ -13,6 +13,10 @@ class B3FundRepository:
         """Inicializa o repositório com o cliente de fundos informado."""
         self._client = client or B3FundosClient()
 
+    def tipo_fundo(self: "B3FundRepository", ticker: str) -> str | None:
+        """Retorna o tipo de fundo do ticker na B3, ou ``None`` sem dados."""
+        return self._client.tipo_fundo(ticker)
+
     def find_by_ticker(self: "B3FundRepository", ticker: str) -> B3Fund | None:
         """Retorna a identidade do fundo do ticker, ou ``None`` sem dados."""
         candidato = self._client.selecionar_candidato(ticker)

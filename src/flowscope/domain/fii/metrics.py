@@ -31,6 +31,9 @@ FONTE_DERIVADA = "DERIVADO"
 #: Meses considerados para anualizar o último dividendo de um FII.
 MESES_POR_ANO = 12
 
+#: Número de trimestres usados para anualizar o dividendo de um BDR.
+TRIMESTRES_POR_ANO = 4
+
 
 class Quality(Enum):
     """Qualidade dos dados de uma análise fundamentalista."""
@@ -127,6 +130,21 @@ def p_l(preco: Decimal, ultimo_dividendo: Decimal | None) -> Decimal | None:
     if ultimo_dividendo is None or ultimo_dividendo == Decimal(0):
         return None
     return preco / (ultimo_dividendo * Decimal(MESES_POR_ANO))
+
+
+def p_l_bdr(
+    preco: Decimal | None, ultimo_dividendo: Decimal | None
+) -> Decimal | None:
+    """Calcula o P/L de um BDR como ``preco / (ultimo_dividendo × 4)``.
+
+    O dividendo de um BDR é trimestral; multiplicá-lo por 4 o anualiza. Retorna
+    ``None`` quando o preço ou o último dividendo são ausentes ou zero.
+    """
+    if preco is None or preco == Decimal(0):
+        return None
+    if ultimo_dividendo is None or ultimo_dividendo == Decimal(0):
+        return None
+    return preco / (ultimo_dividendo * Decimal(TRIMESTRES_POR_ANO))
 
 
 def dividend_yield(dividends_12m: Decimal, market_value: Decimal) -> Decimal:

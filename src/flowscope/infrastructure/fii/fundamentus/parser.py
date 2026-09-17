@@ -360,6 +360,92 @@ def _tabela_proventos(soup: BeautifulSoup) -> Tag | None:
     return None
 
 
+#: Rótulos normalizados das colunas da tabela de rendimentos de FII.
+_ROTULO_FII_DATA_COM = "ultimadatacom"
+_ROTULO_FII_TIPO = "tipo"
+_ROTULO_FII_DATA_PAGAMENTO = "datadepagamento"
+_ROTULO_FII_VALOR = "valor"
+
+
+def parse_proventos_fii(
+    html: str, fonte: str = "FUNDAMENTUS"
+) -> list[DividendoConsolidado]:
+    """Extrai o histórico de rendimentos de um FII/FIAGRO da ``fii_proventos.php``.
+
+    A tabela é identificada pelos cabeçalhos ``Última Data Com`` e ``Valor``;
+    cada linha com data-base, valor positivo e tipo de rendimento vira um
+    ``DividendoConsolidado``. Linhas de amortização ou sem data/valor válidos
+    são ignoradas.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    tabela = _tabela_fii_proventos(soup)
+    if tabela is None:
+        return []
+    colunas = _colunas_fii_proventos(tabela)
+    if colunas is None:
+        return []
+    dividendos: list[DividendoConsolidado] = []
+    for linha in tabela.find_all("tr"):
+        celulas = [
+            celula.get_text(" ", strip=True) for celula in linha.find_all("td")
+        ]
+        if not celulas:
+            continue
+        data_base = para_data(_celula_fii(celulas, colunas.get("data_com")))
+        valor = para_decimal(_celula_fii(celulas, colunas.get("valor")))
+        if data_base is None or valor is None or valor <= 0:
+            continue
+        tipo = _celula_fii(celulas, colunas.get("tipo")) or ""
+        if not _eh_rendimento_fii(tipo):
+            continue
+        dividendos.append(
+            DividendoConsolidado(data_base=data_base, valor=valor, fonte=fonte)
+        )
+    return dividendos
+
+
+def _tabela_fii_proventos(soup: BeautifulSoup) -> Tag | None:
+    """Localiza a tabela de rendimentos pela presença das colunas-chave."""
+    for candidata in soup.find_all("table"):
+        rotulos = {
+            _sem_acentos(th.get_text(" ", strip=True))
+            for th in candidata.find_all("th")
+        }
+        if _ROTULO_FII_DATA_COM in rotulos and _ROTULO_FII_VALOR in rotulos:
+            return candidata
+    return None
+
+
+def _colunas_fii_proventos(tabela: Tag) -> dict[str, int] | None:
+    """Mapeia os índices das colunas de rendimentos de FII pelos cabeçalhos."""
+    colunas: dict[str, int] = {}
+    for indice, th in enumerate(tabela.find_all("th")):
+        rotulo = _sem_acentos(th.get_text(" ", strip=True))
+        if rotulo == _ROTULO_FII_DATA_COM:
+            colunas["data_com"] = indice
+        elif rotulo == _ROTULO_FII_TIPO:
+            colunas["tipo"] = indice
+        elif rotulo == _ROTULO_FII_DATA_PAGAMENTO:
+            colunas["data_pagamento"] = indice
+        elif rotulo == _ROTULO_FII_VALOR:
+            colunas["valor"] = indice
+    if "data_com" not in colunas or "valor" not in colunas:
+        return None
+    return colunas
+
+
+def _celula_fii(celulas: list[str], indice: int | None) -> str | None:
+    """Retorna a célula do índice informado, ou ``None`` quando ausente."""
+    if indice is None or indice >= len(celulas):
+        return None
+    return celulas[indice]
+
+
+def _eh_rendimento_fii(tipo: str) -> bool:
+    """Indica se o tipo de rendimento de FII é dividendo (não amortização)."""
+    return "rendimento" in _sem_acentos(tipo)
+
+
 def _eh_rendimento(tipo: str) -> bool:
     """Indica se o tipo de provento de ação é rendimento (não amortização)."""
     normalizado = _sem_acentos(tipo)

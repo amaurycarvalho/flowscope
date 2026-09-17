@@ -11,6 +11,7 @@ from .errors import NetworkError, TickerNotFound
 
 BASE_URL = "https://www.fundamentus.com.br/detalhes.php"
 PROVENTOS_URL = "https://www.fundamentus.com.br/proventos.php"
+FII_PROVENTOS_URL = "https://www.fundamentus.com.br/fii_proventos.php"
 ROBOTS_URL = "https://www.fundamentus.com.br/robots.txt"
 USER_AGENT = "FlowScope/1.0"
 DEFAULT_TIMEOUT = 15.0
@@ -82,17 +83,29 @@ class FundamentusClient:
         return resposta
 
     def fetch_proventos(self: "FundamentusClient", ticker: str) -> str:
-        """Baixa a página de proventos do ticker, respeitando rate-limit.
+        """Baixa a página de proventos de ações do ticker, respeitando rate-limit.
 
         Uma falha de rede é sinalizada como ``NetworkError``; a ausência de
         proventos não é erro (a página retorna uma lista vazia).
         """
-        if self._respect_robots and not self._pode_acessar(PROVENTOS_URL):
+        return self._fetch_pagina(PROVENTOS_URL, ticker)
+
+    def fetch_fii_proventos(self: "FundamentusClient", ticker: str) -> str:
+        """Baixa a página de rendimentos de FII/FIAGRO do ticker.
+
+        Uma falha de rede é sinalizada como ``NetworkError``; a ausência de
+        proventos não é erro (a página retorna uma lista vazia).
+        """
+        return self._fetch_pagina(FII_PROVENTOS_URL, ticker)
+
+    def _fetch_pagina(self: "FundamentusClient", url: str, ticker: str) -> str:
+        """Baixa uma página de proventos do Fundamentus, respeitando rate-limit."""
+        if self._respect_robots and not self._pode_acessar(url):
             raise NetworkError("Acesso bloqueado pelo robots.txt do Fundamentus")
         self._respeitar_limite()
         try:
             resposta = self._session.get(
-                PROVENTOS_URL,
+                url,
                 params={"papel": ticker.strip().upper()},
                 timeout=self._timeout,
                 headers={"User-Agent": USER_AGENT},

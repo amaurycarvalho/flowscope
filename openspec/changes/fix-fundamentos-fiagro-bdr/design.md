@@ -51,7 +51,7 @@ Ver `proposal.md - Why`. A sub-aba Fundamentos é alimentada por `FundamentalAna
 
 ### 5. Cache de PDFs em árvore por ticker/ano/mês
 
-**Decisão**: `<cache_dir>/bdr/<TICKER>/<AAAA>/<MM>/<id>.pdf`, sem TTL (documentos históricos não mudam). Reutiliza `CacheManager.get_cache_dir()` como raiz. O caminho da pasta do ticker é exposto em `Informações adicionais`.
+**Decisão**: `<cache_dir>/bdr/<TICKER>/<AAAA>/<MM>/<id>.pdf`, sem TTL (documentos históricos não mudam). Reutiliza `CacheManager.get_cache_dir()` como raiz. O cache é interno: o caminho da pasta não é exibido na tabela (decisão revista; ver decisão 7).
 
 **Alternativas**: cache JSON do `CacheManager` (não comporta binário grande); nome achatado `bdr_{id}.pdf` (perde a organização pedida). A árvore por ticker/ano/mês atende ao requisito e facilita inspeção manual.
 
@@ -63,9 +63,9 @@ Ver `proposal.md - Why`. A sub-aba Fundamentos é alimentada por `FundamentalAna
 
 ### 7. Campos de BDR no modelo e na apresentação
 
-**Decisão**: estender `AnaliseFundamental` com `bdr_cache_path`, `nome_depositario`, `nome_empresa_bdr` e `isin`, preenchidos apenas para BDR. Em `fundamental_rows`, `Informações adicionais` exibe o caminho de cache e `Dados fiscais` exibe depositário/empresa/ISIN quando não houver CNPJ/administrador/gestor.
+**Decisão**: estender `AnaliseFundamental` com `bdr_nivel`, `bdr_observacao`, `nome_depositario`, `nome_empresa_bdr` e `isin`, preenchidos apenas para BDR. O sub-tipo exibido de um BDR é `BDR` (Tipo permanece `Papel`, conforme a spec `gui-interface`). Em `fundamental_rows`, `Informações adicionais` exibe o nível do programa (ex.: `Nível I Não Patrocinado`) e a observação fiscal do aviso (dedução de IR/IOF/tarifa) — substituindo a exposição do caminho de cache — e `Dados fiscais` exibe depositário/empresa/ISIN quando não houver CNPJ/administrador/gestor.
 
-**Alternativas**: reaproveitar `indexadores` para carregar texto (semântica errada). Campos explícitos mantêm o modelo legível e testável.
+**Alternativas**: reaproveitar `indexadores` para carregar texto (semântica errada) ou expor o caminho de cache (decisão revista; informação operacional, não fundamentalista). Campos explícitos mantêm o modelo legível e testável.
 
 ## Risks / Trade-offs
 

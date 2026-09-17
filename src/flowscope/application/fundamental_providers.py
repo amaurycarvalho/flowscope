@@ -12,6 +12,7 @@ from flowscope.application.fundamental_ports import (
     CampoFundamental,
     OrigemDados,
 )
+from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii import (
     ClassificacaoAtivo,
     DividendoConsolidado,
@@ -62,11 +63,14 @@ class FundamentalDataMixin:
         ticker: str,
         reference_date: date,
         proventos: list,
+        dividendos_bdr: list[DividendoConsolidado] | None = None,
     ) -> UltimoDividendo:
-        """Consolida B3, CVM e Fundamentus e calcula o último dividendo."""
+        """Consolida B3, CVM/Fundamentus e BDR e calcula o último dividendo."""
         b3 = dividendos_de_proventos(proventos, "B3")
         consolidados = consolidar_dividendos(
-            b3, self._dividendos_secundarios(ticker, reference_date)
+            b3,
+            self._dividendos_secundarios(ticker, reference_date),
+            list(dividendos_bdr or []),
         )
         if not consolidados:
             valor = _decimal_campo(dados, CAMPO_DIVIDENDO_POR_COTA)
@@ -97,6 +101,30 @@ class FundamentalDataMixin:
                 exc_info=True,
             )
             return []
+
+    def _obter_dados_bdr(
+        self: "FundamentalDataMixin",
+        ticker: str,
+        reference_date: date,
+        classificacao: ClassificacaoAtivo,
+    ) -> DadosBdr | None:
+        """Obtém dividendos e identidade de BDR apenas para ativos BDR.
+
+        A fonte é acionada exclusivamente para tickers classificados como BDR;
+        falhas são toleradas e resultam em ``None`` sem interromper a análise.
+        """
+        if self._bdr_provider is None or classificacao.tipo is not TipoAtivo.BDR:
+            return None
+        obter = getattr(self._bdr_provider, "obter_dados_bdr", None)
+        if not callable(obter):
+            return None
+        try:
+            return obter(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter dados de BDR de %s", ticker, exc_info=True
+            )
+            return None
 
     def _obter_acionistas(
         self: "FundamentalDataMixin",

@@ -101,5 +101,10 @@ class AnaliseFundamental:
     cnpj_administrador: str | None = None
     nome_gestor: str | None = None
     cnpj_gestor: str | None = None
+    bdr_nivel: str | None = None
+    bdr_observacao: str | None = None
+    nome_depositario: str | None = None
+    nome_empresa_bdr: str | None = None
+    isin: str | None = None
     avisos: tuple[str, ...] = ()
     erro: str | None = None

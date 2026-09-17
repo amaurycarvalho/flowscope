@@ -13,8 +13,8 @@ from flowscope.domain.fii import (
     AnaliseFundamental,
     ClasseCotistas,
     ClassePatrimonio,
-    FiiSnapshot,
     FfoObservacao,
+    FiiSnapshot,
     MargensFii,
     MotivoMargem,
     PatrimonioFii,
@@ -82,11 +82,11 @@ def _analise_hgbs11() -> AnaliseFundamental:
             ticker="HGBS11",
             reference_date=date(2026, 9, 4),
             price=Decimal("18.74"),
-            shares_outstanding=Decimal("144355726"),
-            net_asset_value=Decimal("2942000000"),
-            ffo_12m=Decimal("220777000"),
-            ffo_3m=Decimal("63802000"),
-            dividends_12m=Decimal("213080000"),
+            shares_outstanding=Decimal(144355726),
+            net_asset_value=Decimal(2942000000),
+            ffo_12m=Decimal(220777000),
+            ffo_3m=Decimal(63802000),
+            dividends_12m=Decimal(213080000),
         )
     )
     return AnaliseFundamental(
@@ -102,7 +102,7 @@ def _analise_hgbs11() -> AnaliseFundamental:
         dividendos_12m_por_cota=Decimal("1.05"),
         metricas=metricas,
         margens=_margens_hgbs11(),
-        cotas=Decimal("144355726"),
+        cotas=Decimal(144355726),
     )
 
 
@@ -131,7 +131,7 @@ class TestFormatadores:
         assert formatar_valor(Decimal("0.08355")) == "0,08"
         assert formatar_valor(Decimal("0.7")) == "0,70"
         assert formatar_valor(Decimal("15.5")) == "15,50"
-        assert formatar_valor(Decimal("9")) == "9,00"
+        assert formatar_valor(Decimal(9)) == "9,00"
 
     def test_formatar_data_na(self):
         assert formatar_data(None) == NA
@@ -171,14 +171,14 @@ class TestFormatadores:
         assert formatar_inteiro(None) == NA
 
     def test_formatar_quantidade(self):
-        assert formatar_quantidade(Decimal("144355726")) == "144.355.726"
+        assert formatar_quantidade(Decimal(144355726)) == "144.355.726"
         assert formatar_quantidade(Decimal("1000000.0000")) == "1.000.000"
         assert formatar_quantidade(None) == NA
 
     def test_formatar_patrimonio(self):
-        assert formatar_patrimonio(Decimal("2942000000")) == "R$ 2,94 bi"
-        assert formatar_patrimonio(Decimal("150000000")) == "R$ 150,00 mi"
-        assert formatar_patrimonio(Decimal("250000")) == "R$ 250.000,00"
+        assert formatar_patrimonio(Decimal(2942000000)) == "R$ 2,94 bi"
+        assert formatar_patrimonio(Decimal(150000000)) == "R$ 150,00 mi"
+        assert formatar_patrimonio(Decimal(250000)) == "R$ 250.000,00"
         assert formatar_patrimonio(None) == NA
 
     def test_rotulos_de_classe(self):
@@ -311,8 +311,8 @@ class TestMontarLinhas:
     def test_colunas_preco_tipico_e_p_pt_apos_cotacao(self):
         analise = replace(
             _analise_hgbs11(),
-            cotacao=Decimal("9"),
-            preco_tipico=Decimal("10"),
+            cotacao=Decimal(9),
+            preco_tipico=Decimal(10),
             pct_preco_tipico=Decimal("-0.10"),
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
@@ -348,7 +348,7 @@ def _acao_com_indicadores() -> AnaliseFundamental:
         lpa=Decimal("1.23"),
         roe=Decimal("0.154"),
         roic=Decimal("0.12"),
-        preco_tipico=Decimal("10"),
+        preco_tipico=Decimal(10),
         pct_preco_tipico=Decimal("-0.10"),
     )
 
@@ -359,9 +359,34 @@ def _fii_de_tijolo() -> AnaliseFundamental:
         qtd_imoveis=16,
         cap_rate=Decimal("0.065"),
         vacancia_media=Decimal("0.032"),
-        preco_tipico=Decimal("10"),
+        preco_tipico=Decimal(10),
         pct_preco_tipico=Decimal("-0.10"),
         indexadores={"IPCA": Decimal("0.22"), "INCC": Decimal("0.05")},
+    )
+
+
+def _analise_bdr() -> AnaliseFundamental:
+    return AnaliseFundamental(
+        ticker="EXXO34",
+        nome="Exxon Mobil",
+        classificacao=classificar_ticker("EXXO34"),
+        ultimo_dividendo=UltimoDividendo(
+            data_com=date(2026, 8, 10),
+            valor=Decimal("0.50"),
+            valor_anterior=None,
+            tendencia=TendenciaDividendo.N_A,
+        ),
+        dividendos_12m_por_cota=None,
+        metricas=None,
+        cotacao=Decimal("10.00"),
+        p_l=Decimal("5.00"),
+        bdr_nivel="Nível I Não Patrocinado",
+        bdr_observacao=(
+            "O valor informado já está deduzido de IR, IOF e tarifa"
+        ),
+        nome_depositario="Banco B3 S.A.",
+        nome_empresa_bdr="Exxon Mobil Corporation",
+        isin="BREXXOBDR006",
     )
 
 
@@ -414,6 +439,23 @@ class TestInformacoesAdicionais:
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
         assert colunas[28] == NA
+
+    def test_bdr_exibe_nivel_e_observacao_fiscal(self):
+        colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
+        assert colunas[28] == (
+            "Nível I Não Patrocinado | Obs.: O valor informado já está "
+            "deduzido de IR, IOF e tarifa"
+        )
+
+    def test_bdr_sem_nivel_e_observacao_exibe_na(self):
+        analise = replace(_analise_bdr(), bdr_nivel=None, bdr_observacao=None)
+        colunas = montar_linhas({"EXXO34": analise})[0]
+        assert colunas[28] == NA
+
+    def test_bdr_exibe_tipo_papel_e_sub_tipo_bdr(self):
+        colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
+        assert colunas[2] == "Papel"
+        assert colunas[3] == "BDR"
 
 
 class TestDadosFiscais:
@@ -482,6 +524,25 @@ class TestDadosFiscais:
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
         assert colunas[29] == NA
+
+    def test_bdr_exibe_depositario_empresa_e_isin(self):
+        colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
+        assert colunas[29] == (
+            "Depositário Banco B3 S.A. | Empresa Exxon Mobil Corporation | "
+            "ISIN BREXXOBDR006"
+        )
+
+    def test_bdr_item_indisponivel_omitido(self):
+        analise = replace(_analise_bdr(), isin=None)
+        colunas = montar_linhas({"EXXO34": analise})[0]
+        assert colunas[29] == (
+            "Depositário Banco B3 S.A. | Empresa Exxon Mobil Corporation"
+        )
+
+    def test_bdr_com_cnpj_nao_usa_identidade_dos_avisos(self):
+        analise = replace(_analise_bdr(), cnpj="12.345.678/0001-90")
+        colunas = montar_linhas({"EXXO34": analise})[0]
+        assert colunas[29] == "CNPJ 12.345.678/0001-90"
 
 
 class TestMontarCsv:
@@ -871,8 +932,8 @@ class _FakeRepo:
         self.patrimonio = {
             "HGBS11": PatrimonioFii(
                 reference_date=date(2026, 9, 4),
-                net_asset_value=Decimal("2942000000"),
-                shares_outstanding=Decimal("144355726"),
+                net_asset_value=Decimal(2942000000),
+                shares_outstanding=Decimal(144355726),
                 cotistas=100000,
                 fonte="CVM",
             ),
@@ -897,8 +958,8 @@ class _FakeFfo:
     def obter_ffo(self, ticker, reference_date):
         if ticker == "HGBS11":
             return FfoObservacao(
-                ffo_12m=Decimal("220777000"),
-                ffo_3m=Decimal("63802000"),
+                ffo_12m=Decimal(220777000),
+                ffo_3m=Decimal(63802000),
                 fonte="FUNDAMENTUS",
             )
         return None

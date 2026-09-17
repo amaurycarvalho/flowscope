@@ -28,6 +28,7 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     _PREFIXO_IDENTIDADE,
     _TIPO_PROVENTOS,
     PARSER_VERSION,
+    TIPOS_FUNDO,
     TTL_CADASTRO_EMPRESAS_DIAS,
     TTL_CODIGO_CVM_DIAS,
     TTL_DOCUMENTO_HTML_DIAS,
@@ -99,6 +100,7 @@ class B3FundosClient(
 
 __all__ = [
     "PARSER_VERSION",
+    "TIPOS_FUNDO",
     "TTL_CADASTRO_EMPRESAS_DIAS",
     "TTL_CODIGO_CVM_DIAS",
     "TTL_DOCUMENTOS_LISTA_DIAS",

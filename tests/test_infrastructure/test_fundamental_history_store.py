@@ -63,7 +63,7 @@ def _evidencia() -> MetricEvidence:
 
 def _metricas() -> MetricasFii:
     return MetricasFii(
-        market_value=Decimal("2705230000"),
+        market_value=Decimal(2705230000),
         ffo_yield=Decimal("0.0816"),
         dividend_yield=Decimal("0.03"),
         p_ffo=Decimal("12.25"),
@@ -108,9 +108,9 @@ def _analise_completa() -> AnaliseFundamental:
         vp_cota=Decimal("115.82"),
         p_l=Decimal("2.84"),
         classificacao_exibicao=ClassificacaoExibicao("FII", "Tijolo: Logística"),
-        cotas=Decimal("144355726"),
+        cotas=Decimal(144355726),
         cotistas=100000,
-        patrimonio=Decimal("2942000000"),
+        patrimonio=Decimal(2942000000),
         classe_cotistas=ClasseCotistas.MUITO_GRANDE,
         classe_patrimonio=ClassePatrimonio.GIGANTE,
         data_referencia=REFERENCIA,
@@ -120,7 +120,7 @@ def _analise_completa() -> AnaliseFundamental:
         cap_rate=Decimal("0.08"),
         vacancia_media=Decimal("0.05"),
         qtd_imoveis=12,
-        preco_tipico=Decimal("100"),
+        preco_tipico=Decimal(100),
         pct_preco_tipico=Decimal("0.04"),
         indexadores={"IPCA": Decimal("0.22"), "INCC": Decimal("0.05")},
         cnpj="12.345.678/0001-90",
@@ -181,6 +181,24 @@ class TestCodec:
     def test_dict_inclui_data_referencia(self):
         dados = analise_para_dict(_analise_completa())
         assert dados["data_referencia"] == "2026-09-04"
+
+    def test_round_trip_preserva_campos_de_bdr(self):
+        analise = replace(
+            _analise_completa(),
+            bdr_nivel="Nível I Não Patrocinado",
+            bdr_observacao="O valor informado já está deduzido de IR",
+            nome_depositario="Banco B3 S.A.",
+            nome_empresa_bdr="Exxon Mobil Corporation",
+            isin="BREXXOBDR006",
+        )
+        restaurada = analise_de_dict(analise_para_dict(analise))
+        assert restaurada.bdr_nivel == "Nível I Não Patrocinado"
+        assert restaurada.bdr_observacao == (
+            "O valor informado já está deduzido de IR"
+        )
+        assert restaurada.nome_depositario == "Banco B3 S.A."
+        assert restaurada.nome_empresa_bdr == "Exxon Mobil Corporation"
+        assert restaurada.isin == "BREXXOBDR006"
 
 
 class TestStoreBasico:
@@ -302,13 +320,13 @@ class TestPoliticaParcialidade:
         store = _store(tmp_path)
         original = _analise_completa()
         store.registrar("HGBS11", REFERENCIA, original)
-        outra = replace(original, cotacao=Decimal("1"))
+        outra = replace(original, cotacao=Decimal(1))
         store.registrar("HGBS11", REFERENCIA, outra)
         assert store.obter("HGBS11", REFERENCIA) == original
 
     def test_force_sobrescreve_completa(self, tmp_path):
         store = _store(tmp_path)
         store.registrar("HGBS11", REFERENCIA, _analise_completa())
-        nova = replace(_analise_completa(), cotacao=Decimal("1"))
+        nova = replace(_analise_completa(), cotacao=Decimal(1))
         store.registrar("HGBS11", REFERENCIA, nova, force=True)
         assert store.obter("HGBS11", REFERENCIA) == nova
