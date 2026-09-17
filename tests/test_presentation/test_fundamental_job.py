@@ -1,3 +1,4 @@
+import time
 from datetime import date
 from unittest.mock import MagicMock
 
@@ -210,7 +211,7 @@ class TestDrenarResiliente:
         )
         job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
         controller._fundamental_job = job
-        controller._fundamental_ultima_atividade = 0.0
+        controller._fundamental_ultima_atividade = time.monotonic() - 1000.0
         presenter.on_fundamental_started()
 
         controller._drenar_fundamental(job)
