@@ -1,33 +1,55 @@
 ## 1. Pré-requisito
 
-- [ ] 1.1 Confirmar que `DocumentosRelevantesProvider`, `InformeMensalArquivoProvider`, `listar_fatos_relevantes` e o download CVM (`ExibirPDF`) já existem e são reutilizáveis
-- [ ] 1.2 Confirmar que `DocumentCatalog` e a sub-aba "Documentos" (change `visualizacao-documentos`) permanecem somente-leitura e sem requisitos alterados
+- [x] 1.1 Confirmar que `DocumentosRelevantesProvider`, `InformeMensalArquivoProvider`, `listar_fatos_relevantes` e o download CVM (`ExibirPDF`) já existem e são reutilizáveis
+- [x] 1.2 Confirmar que `DocumentCatalog` e a sub-aba "Documentos" (change `visualizacao-documentos`) permanecem somente-leitura e sem requisitos alterados
 
 ## 2. Download CVM compartilhado
 
-- [ ] 2.1 Extrair o download de PDF da CVM (POST `ExibirPDF` com `numeroProtocolo`, base64 e validação `%PDF`) para um helper reutilizável em `infrastructure/cvm/`, verificando com teste que PDF válido retorna bytes e conteúdo não-PDF retorna `None`
-- [ ] 2.2 Fazer `BdrClient.baixar_pdf` delegar ao helper, verificando que os testes existentes de BDR continuam passando
+- [x] 2.1 Extrair o download de PDF da CVM (POST `ExibirPDF` com `numeroProtocolo`, base64 e validação `%PDF`) para um helper reutilizável em `infrastructure/cvm/`, verificando com teste que PDF válido retorna bytes e conteúdo não-PDF retorna `None`
+- [x] 2.2 Fazer `BdrClient.baixar_pdf` delegar ao helper, verificando que os testes existentes de BDR continuam passando
 
 ## 3. Orquestrador de aquisição
 
-- [ ] 3.1 Implementar `AquisicaoDocumentos.adquirir(ticker, reference_date)` com detecção de tipo (`resolver_ticker` → FII; `resolver_code_cvm` → ação/BDR) e sem download quando a identidade não resolve, verificando com teste que ticker não resolvido não dispara download
-- [ ] 3.2 Implementar a aquisição de material facts (fatos relevantes e assembleias) listando, baixando o PDF da CVM e gravando em `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`, verificando com teste de gravação e mapeamento de slug
-- [ ] 3.3 Implementar a aquisição de FIIs (documentos relevantes das 4 categorias e informe mensal mais recente), verificando com teste que os PDFs e o HTML são gravados nas árvores corretas
-- [ ] 3.4 Garantir reuso de cache sem novo download e tolerância a falha individual, verificando com teste de cache hit e de falha de rede sem arquivo criado
+- [x] 3.1 Implementar `AquisicaoDocumentos.adquirir(ticker, reference_date)` com detecção de tipo (`resolver_ticker` → FII; `resolver_code_cvm` → ação/BDR) e sem download quando a identidade não resolve, verificando com teste que ticker não resolvido não dispara download
+- [x] 3.2 Implementar a aquisição de material facts (fatos relevantes e assembleias) listando, baixando o PDF da CVM e gravando em `<cache>/documentos-relevantes/<TICKER>/<AAAA>/<MM>/<categoria>/<id>.pdf`, verificando com teste de gravação e mapeamento de slug
+- [x] 3.3 Implementar a aquisição de FIIs (documentos relevantes das 4 categorias e informe mensal mais recente), verificando com teste que os PDFs e o HTML são gravados nas árvores corretas
+- [x] 3.4 Garantir reuso de cache sem novo download e tolerância a falha individual, verificando com teste de cache hit e de falha de rede sem arquivo criado
 
 ## 4. Acionamento no painel e na interface
 
-- [ ] 4.1 Adicionar `acquire_callback` opcional ao `DocumentTreePanel` (acionado em `update`/refresh quando definido) mantendo a varredura pura quando ausente, verificando com teste do painel
-- [ ] 4.2 Acionar a aquisição em thread de trabalho na GUI, com estado de carregamento e remontagem da árvore na thread do Tk ao concluir, verificando com teste de integração do acionamento
-- [ ] 4.3 Usar o ticker apresentado (sincronizado com "Evolução dos Fundamentos") na aquisição, verificando com teste de que ambas as sub-abas recebem o mesmo ticker
+- [x] 4.1 Adicionar `acquire_callback` opcional ao `DocumentTreePanel` (acionado em `update`/refresh quando definido) mantendo a varredura pura quando ausente, verificando com teste do painel
+- [x] 4.2 Acionar a aquisição em thread de trabalho na GUI, com estado de carregamento e remontagem da árvore na thread do Tk ao concluir, verificando com teste de integração do acionamento
+- [x] 4.3 Usar o ticker apresentado (sincronizado com "Evolução dos Fundamentos") na aquisição, verificando com teste de que ambas as sub-abas recebem o mesmo ticker
 
 ## 5. Testes de integração
 
-- [ ] 5.1 Testar a orquestração ponta a ponta com cliente e download mockados (ação e FII), verificando os arquivos criados
-- [ ] 5.2 Testar que falha de aquisição mantém a árvore utilizável e exibe o estado vazio sem erro
+- [x] 5.1 Testar a orquestração ponta a ponta com cliente e download mockados (ação e FII), verificando os arquivos criados
+- [x] 5.2 Testar que falha de aquisição mantém a árvore utilizável e exibe o estado vazio sem erro
 
 ## 6. Quality Gate
 
-- [ ] 6.1 Executar `make lint` e corrigir avisos/erros introduzidos
-- [ ] 6.2 Executar `make test` e garantir que todos os testes passam
-- [ ] 6.3 Executar `openspec validate documentos-aquisicao` e garantir que a change permanece válida
+- [x] 6.1 Executar `make lint` e corrigir avisos/erros introduzidos
+- [x] 6.2 Executar `make test` e garantir que todos os testes passam
+- [x] 6.3 Executar `openspec validate documentos-aquisicao` e garantir que a change permanece válida
+
+## 7. Ajustes de comportamento da sub-aba
+
+- [x] 7.1 Fazer `update` do painel apenas ler o catálogo de cache (sem aquisição) e mover o acionamento para o botão "Atualizar"; verificar com teste que abrir não dispara o callback e "Atualizar" dispara
+- [x] 7.2 Unificar a janela de aquisição em 12 meses (documentos relevantes, material facts e informe mensal) com reuso de cache; verificar com teste do início da janela
+- [x] 7.3 Renomear o botão para "Abrir documento" e habilitá-lo somente com um documento selecionado; verificar com testes de estado do botão
+
+## 8. Progresso e bloqueio da interface no "Atualizar"
+
+- [x] 8.1 Reportar progresso por documento em `AquisicaoDocumentos.adquirir` (callback opcional) e publicar mensagens de progresso no `DocumentosJob`; verificar com teste de progresso
+- [x] 8.2 Na GUI, desabilitar os botões, ativar o cursor de espera e atualizar barra de status/progresso durante o "Atualizar", com guard de reentrância e restauração ao término; verificar com teste de integração
+- [x] 8.3 Alinhar o requisito de abertura do `documentos-ticker-panel` (change `visualizacao-documentos`) ao botão "Abrir documento"; verificar com `openspec validate`
+
+## 9. Bloqueio global do botão "Atualizar"
+
+- [x] 9.1 Expor `refresh_button()` no `DocumentTreePanel` e incluí-lo em `_disable_all_buttons`/`_restore_all_buttons`; verificar com teste que o botão é desabilitado e restaurado
+- [x] 9.2 Remover o `set_busy` local (substituído pelo bloqueio global) e ajustar os testes; verificar com a suíte
+
+## 10. Bloqueio global do botão "Abrir documento"
+
+- [x] 10.1 Expor `all_buttons()` no `DocumentTreePanel` (incluindo "Abrir documento") e integrá-lo ao bloqueio global; reavaliar o estado pela seleção ao restaurar (`refresh_open_button`); verificar com testes
+- [x] 10.2 Atualizar os testes de estado do painel e de bloqueio global; verificar com `make test` e `make lint`

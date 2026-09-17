@@ -9,7 +9,7 @@ O download de PDF da CVM via `ExibirPDF` já é feito por `BdrClient.baixar_pdf`
 **Goals:**
 - Orquestrador único de aquisição sob demanda por ticker, escolhendo a fonte pelo tipo.
 - Popular `documentos-relevantes/` (ações e FIIs) e `informe-mensal/` (FIIs).
-- Acionar a aquisição ao abrir/atualizar a sub-aba "Documentos", fora da thread da interface.
+- Acionar a aquisição somente pelo botão "Atualizar", fora da thread da interface; abrir a sub-aba apenas lê o catálogo de cache.
 
 **Non-Goals:**
 - OCR ou extração de texto dos PDFs (pertence a `visualizacao-documentos`/`llm-chat`).
@@ -37,21 +37,27 @@ O download de PDF da CVM via `ExibirPDF` já é feito por `BdrClient.baixar_pdf`
 
 **Alternativas**: duplicar a lógica em um novo cliente; reusar `BdrClient` diretamente (acoplaria material facts ao domínio BDR). O helper compartilhado evita duplicação e mantém a semântica de cada fonte.
 
-### 4. Acionamento pela sub-aba em worker, via hook do painel
+### 4. Aquisição somente pelo botão "Atualizar", via hook do painel
 
-**Decisão**: o `DocumentTreePanel` ganha um `acquire_callback` opcional. Quando definido, `update`/refresh o invoca com o ticker apresentado em vez de apenas varrer; a GUI fornece um método que executa `AquisicaoDocumentos.adquirir` em thread de trabalho e, ao concluir, remonta a árvore na thread do Tk (fila consumida por `after`, como no `FundamentalJob`). Sem o hook, o painel mantém o comportamento atual (só varredura), preservando os testes.
+**Decisão**: o `DocumentTreePanel` ganha um `acquire_callback` opcional, invocado **apenas** pelo botão "Atualizar". Ao abrir a sub-aba, `update` somente lê o catálogo de leitura do cache e remonta a árvore, sem download. Quando o hook está definido, a GUI executa `AquisicaoDocumentos.adquirir` em thread de trabalho e, ao concluir, remonta a árvore na thread do Tk (fila consumida por `after`, como no `FundamentalJob`). Sem o hook, "Atualizar" apenas revarre o catálogo, preservando os testes.
 
-**Alternativas**: fazer o painel baixar diretamente (acopla a view à rede); acionar sem worker (bloqueia a interface). O hook mantém o painel somente-leitura e a rede fora da thread da interface.
+**Alternativas**: adquirir ao abrir (bloqueia a abertura e baixa sem intenção do usuário); fazer o painel baixar diretamente (acopla a view à rede); acionar sem worker (bloqueia a interface). O hook mantém o painel somente-leitura e a rede fora da thread da interface.
+
+Durante a execução, a GUI usa o presenter (`on_operation_started`/`on_operation_finished` e `on_progress`) para desabilitar os botões da aplicação, ativar o cursor de espera (hourglass) e atualizar a barra de status e a barra de progresso. O `DocumentosJob` publica mensagens de progresso na fila, consumidas na thread do Tk, e o `AquisicaoDocumentos` reporta o avanço por documento via callback opcional. Os botões "Atualizar" e "Abrir documento" do painel são expostos por `all_buttons()` e integrados ao bloqueio global (`_disable_all_buttons`/`_restore_all_buttons`), ficando desabilitados durante qualquer operação, inclusive as cargas de dados. Ao restaurar, o painel reavalia o "Abrir documento" pela seleção corrente (`refresh_open_button`), evitando que ele fique habilitado sem seleção após a remontagem da árvore. Um guard de reentrância (`_documentos_job`) evita disparar o job duas vezes.
 
 ### 5. Período de referência
 
-**Decisão**: documentos relevantes e material facts usam janela de 12 meses até a data de referência; o informe mensal usa 24 meses e persiste o mais recente aplicável.
+**Decisão**: documentos relevantes, material facts e informe mensal usam a mesma janela de 12 meses até a data de referência; o informe persiste o mais recente aplicável dentro da janela.
 
-**Racional**: janela suficiente para os documentos usuais, alinhada à janela de proventos, sem varreduras longas.
+**Racional**: janela única e suficiente para os documentos usuais, alinhada à janela de proventos, sem varreduras longas. Arquivos já em cache são reutilizados sem novo download.
+
+### 6. Botão "Abrir documento" habilitado conforme a seleção
+
+**Decisão**: o botão de abertura é rotulado "Abrir documento" e começa desabilitado; habilita quando um nó de arquivo está selecionado e volta a desabilitar quando a seleção é de pasta ou inexistente. A abertura por duplo-clique e Enter permanece.
 
 ## Risks / Trade-offs
 
-- **[Risco] Latência ao abrir a sub-aba** → Aquisição em worker com estado de carregamento; a árvore só é remontada ao final.
+- **[Risco] Latência ao acionar "Atualizar"** → Aquisição em worker com estado de carregamento; a árvore só é remontada ao final. Abrir a sub-aba não baixa (somente cache).
 - **[Risco] Contrato da CVM (`ExibirPDF`) mudar** → Reutiliza o mecanismo já testado e valida `%PDF`; falha isolada é tolerada.
 - **[Risco] Muitos documentos em FIIs** → Download sequencial tolerante; cache hit evita rebaixar.
 - **[Trade-off] Material facts de BDR** → BDRs podem não ter material facts; o cache BDR já cobre avisos, então a ausência não é erro.

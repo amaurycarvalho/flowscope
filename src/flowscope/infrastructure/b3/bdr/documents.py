@@ -1,18 +1,22 @@
-"""Resolução e decodificação do PDF de um aviso aos acionistas de BDR.
+"""Resolução do documento de um aviso aos acionistas de BDR.
 
 A página ``Detail`` do Plantão B3 aponta para o documento no visualizador da
-CVM; o PDF é obtido por POST ``ExibirPDF``, que devolve JSON com o conteúdo em
-base64. O sistema valida que o conteúdo decodificado começa com ``%PDF``.
+CVM; o download e a validação do PDF ficam em ``infrastructure.cvm.pdf``.
 """
 
-import base64
-import logging
 import re
 from urllib.parse import parse_qs, urlparse
 
 from bs4 import BeautifulSoup
 
-logger = logging.getLogger("flowscope")
+from flowscope.infrastructure.cvm.pdf import conteudo_e_pdf, decodificar_pdf
+
+__all__ = [
+    "conteudo_e_pdf",
+    "decodificar_pdf",
+    "id_protocolo",
+    "resolver_url_documento",
+]
 
 #: Trecho que identifica o visualizador de arquivos externos da CVM.
 _MARCADOR_DOCUMENTO = "frmExibirArquivoIPEExterno"
@@ -59,27 +63,3 @@ def id_protocolo(url_documento: str) -> str | None:
         if chave.lower() == "id" and valores:
             return valores[0]
     return None
-
-
-def decodificar_pdf(payload: object) -> bytes | None:
-    """Decodifica o PDF de um payload ``{"d": "<base64>"}``.
-
-    Retorna ``None`` quando o payload não contém o campo, quando o base64 é
-    inválido ou quando o conteúdo não começa com ``%PDF``.
-    """
-    conteudo = payload.get("d") if isinstance(payload, dict) else None
-    if not isinstance(conteudo, str) or not conteudo:
-        return None
-    try:
-        dados = base64.b64decode(conteudo, validate=True)
-    except ValueError:
-        logger.warning("Conteúdo base64 inválido no aviso de BDR", exc_info=True)
-        return None
-    if not conteudo_e_pdf(dados):
-        return None
-    return dados
-
-
-def conteudo_e_pdf(dados: bytes) -> bool:
-    """Indica se o conteúdo começa com a assinatura ``%PDF``."""
-    return dados.startswith(b"%PDF")

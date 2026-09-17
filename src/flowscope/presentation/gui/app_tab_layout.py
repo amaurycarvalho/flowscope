@@ -21,6 +21,21 @@ class TabsLayoutMixin:
     """Constrói as abas de análise e restaura o estado dos separadores."""
 
     def _build_general_tabs(self: "TabsLayoutMixin") -> None:
+        general_fundamental_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_fundamental_frame, text="Fundamentos")
+        self._fundamental_table = FundamentalTablePanel(
+            general_fundamental_frame,
+            widths=getattr(self, "_prefs", {}).get("fundamental_column_widths"),
+            on_widths_changed=self._on_fundamental_widths_changed,
+            on_row_activated=getattr(
+                self, "_on_fundamental_row_activated", None
+            ),
+            on_ticker_selected=getattr(
+                self, "_on_fundamental_ticker_selected", None
+            ),
+        )
+        self._fundamental_table.frame.pack(fill=tk.BOTH, expand=True)
+
         general_vwap_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_vwap_frame, text="VWAP")
         self._vwap_chart = VWAPHistChart(general_vwap_frame, copy_chart_callback=self._copy_chart)
@@ -42,18 +57,6 @@ class TabsLayoutMixin:
         )
         self._dominance_ranking.frame.pack(fill=tk.BOTH, expand=True)
 
-        general_fundamental_frame = ttk.Frame(self._general_notebook)
-        self._general_notebook.add(general_fundamental_frame, text="Fundamentos")
-        self._fundamental_table = FundamentalTablePanel(
-            general_fundamental_frame,
-            widths=getattr(self, "_prefs", {}).get("fundamental_column_widths"),
-            on_widths_changed=self._on_fundamental_widths_changed,
-            on_row_activated=getattr(
-                self, "_on_fundamental_row_activated", None
-            ),
-        )
-        self._fundamental_table.frame.pack(fill=tk.BOTH, expand=True)
-
     def _on_fundamental_widths_changed(self: "TabsLayoutMixin", widths: dict) -> None:
         """Guarda as larguras das colunas para persistir no fechamento."""
         if hasattr(self, "_prefs"):
@@ -66,50 +69,39 @@ class TabsLayoutMixin:
         self._ticker_notebook = ttk.Notebook(ticker_main_frame)
         self._ticker_notebook.pack(fill=tk.BOTH, expand=True)
 
-        self._ticker_indicator_frames = {}
-        for name, *keys in TAB_CONFIGS:
-            frame = ttk.Frame(self._ticker_notebook)
-            kwargs = {"text": name}
+        for name, *_ in TAB_CONFIGS:
             if name not in ENABLED_TABS:
-                kwargs["state"] = "disabled"
-            self._ticker_notebook.add(frame, **kwargs)
+                continue
+            frame = ttk.Frame(self._ticker_notebook)
+            self._ticker_notebook.add(frame, text=name)
             if name == "Evolução da Dominância":
                 self._dominance_timeline = DominanceTimelineChart(
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._dominance_timeline.frame.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             elif name == "Amplitude de Preço":
                 self._price_range_panel = PriceRangePanel(
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._price_range_panel.frame.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             elif name == "Fluxo Financeiro":
                 self._financial_flow_panel = FinancialFlowPanel(
                     frame, copy_chart_callback=self._copy_chart,
                     summary_callback=self._on_flow_summary,
                 )
                 self._financial_flow_panel.frame.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             elif name == "Evolução dos Fundamentos":
                 self._fundamental_evolution_panel = FundamentalEvolutionPanel(
                     frame, copy_chart_callback=self._copy_chart,
                 )
                 self._fundamental_evolution_panel.frame.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
             elif name == "Documentos":
                 self._documents_panel = DocumentTreePanel(
                     frame,
                     status_callback=getattr(self, "_set_status", None),
+                    acquire_callback=getattr(self, "_adquirir_documentos", None),
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": None, "keys": keys}
-            else:
-                text_widget = tk.Text(frame, wrap=tk.WORD, font=("TkDefaultFont", 11),
-                                      padx=8, pady=8, relief=tk.FLAT, state=tk.DISABLED)
-                text_widget.pack(fill=tk.BOTH, expand=True)
-                self._ticker_indicator_frames[name] = {"frame": frame, "text": text_widget, "keys": keys}
 
     def _restore_tabs(self: "TabsLayoutMixin", last_tab: str, last_subtab: str) -> None:
         try:

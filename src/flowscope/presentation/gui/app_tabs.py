@@ -1,16 +1,16 @@
 """Dados das abas e textos de orientação da interface gráfica do FlowScope."""
 
 TAB_CONFIGS = [
+    ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
+     "ultimo_dividendo", "cotistas", "cotas"),
     ("Evolução da Dominância", "clv", "daily_efficiency", "dominance_score", "daily_money_flow"),
     ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
     ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume",
      "buying_pressure", "selling_pressure", "vwap_distance"),
-    ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
-     "ultimo_dividendo", "cotistas", "cotas"),
-    ("Documentos", None),
     ("Participação Institucional", "average_trade_size", "average_financial_ticket"),
     ("Eficiência do Movimento", "daily_efficiency"),
     ("Resumo Geral", None),
+    ("Documentos", None),
 ]
 
 ENABLED_TABS = {

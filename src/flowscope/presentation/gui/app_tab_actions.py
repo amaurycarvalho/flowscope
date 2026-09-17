@@ -80,16 +80,20 @@ class TabActionsMixin:
             return False
         return False
 
+    def _on_fundamental_ticker_selected(self: "TabActionsMixin", ticker: str) -> None:
+        """Atualiza o ticker apresentado nas sub-abas da Análise do Ticker."""
+        if ticker:
+            self._ticker_selecionado = ticker
+
     def _on_fundamental_row_activated(self: "TabActionsMixin", ticker: str) -> None:
-        """Fixa o ticker e ativa a sub-aba de evolução dos fundamentos."""
+        """Ativa a sub-aba de evolução dos fundamentos para o ticker."""
         if not ticker:
             return
-        self._evolution_ticker = ticker
+        self._ticker_selecionado = ticker
         if self._select_tab(self._main_notebook, "Análise do Ticker"):
             self._select_tab(self._ticker_notebook, "Evolução dos Fundamentos")
 
     def _on_ticker_edit(self: "TabActionsMixin") -> None:
-        self._evolution_ticker = None
         self._controller.on_ticker_edit()
 
     def _show_summary(self: "TabActionsMixin", main_tab: str, sub_tab: str,

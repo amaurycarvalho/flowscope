@@ -1,5 +1,10 @@
 """Constantes da aquisição de avisos aos acionistas de BDR."""
 
+from flowscope.infrastructure.cvm.pdf import (  # noqa: F401  (reexport)
+    CODIGO_INSTITUICAO,
+    CVM_PDF_URL,
+)
+
 #: Base do Plantão de Notícias da B3.
 _B3_NOTICIAS_BASE = "https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias"
 
@@ -8,15 +13,6 @@ NOTICIAS_URL = f"{_B3_NOTICIAS_BASE}/ListarTitulosNoticias"
 
 #: Endpoint da página de detalhe de uma notícia do Plantão B3.
 DETAIL_URL = f"{_B3_NOTICIAS_BASE}/Detail"
-
-#: Endpoint do visualizador de arquivos externos da CVM.
-CVM_PDF_URL = (
-    "https://www.rad.cvm.gov.br/ENETWEB/"
-    "frmExibirArquivoIPEExterno.aspx/ExibirPDF"
-)
-
-#: Código de instituição usado ao consultar o PDF pelo ``ID`` do documento.
-CODIGO_INSTITUICAO = "2"
 
 #: Agência usada na consulta do Plantão de Notícias.
 AGENCIA = "18"

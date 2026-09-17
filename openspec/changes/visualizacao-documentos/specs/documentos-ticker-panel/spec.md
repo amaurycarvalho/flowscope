@@ -50,7 +50,7 @@ Ao selecionar um arquivo, o sistema DEVE exibir uma pré-visualização textual 
 
 ### Requirement: Abertura no aplicativo padrão
 
-O sistema DEVE abrir o arquivo selecionado no aplicativo padrão do sistema operacional — PDF no leitor de PDFs e HTML no navegador — por duplo-clique, pela tecla Enter ou pelo botão "Abrir".
+O sistema DEVE abrir o arquivo selecionado no aplicativo padrão do sistema operacional — PDF no leitor de PDFs e HTML no navegador — por duplo-clique, pela tecla Enter ou pelo botão "Abrir documento". O botão "Abrir documento" DEVE permanecer desabilitado enquanto nenhum arquivo estiver selecionado, habilitando-se apenas quando um documento for selecionado.
 
 #### Scenario: Abrir PDF
 - **WHEN** o usuário dá duplo-clique em um arquivo PDF
@@ -61,8 +61,12 @@ O sistema DEVE abrir o arquivo selecionado no aplicativo padrão do sistema oper
 - **THEN** o arquivo DEVE ser aberto no navegador padrão do sistema
 
 #### Scenario: Abrir pela tecla ou botão
-- **WHEN** o usuário pressiona Enter ou clica em "Abrir" com um arquivo selecionado
+- **WHEN** o usuário pressiona Enter ou clica em "Abrir documento" com um arquivo selecionado
 - **THEN** o arquivo DEVE ser aberto no aplicativo padrão correspondente ao seu tipo
+
+#### Scenario: Botão desabilitado sem documento selecionado
+- **WHEN** nenhum arquivo está selecionado ou uma pasta está selecionada
+- **THEN** o botão "Abrir documento" DEVE estar desabilitado
 
 ### Requirement: Estado vazio e atualização
 

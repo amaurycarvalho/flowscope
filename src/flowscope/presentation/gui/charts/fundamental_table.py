@@ -81,15 +81,18 @@ class FundamentalTablePanel:
         widths: Mapping[str, object] | None = None,
         on_widths_changed: object | None = None,
         on_row_activated: object | None = None,
+        on_ticker_selected: object | None = None,
     ) -> None:
         """Constrói o painel com os dois ``Treeview`` e as barras de rolagem."""
         self.frame = ttk.Frame(parent)
         self._on_widths_changed = on_widths_changed
         self._on_row_activated = on_row_activated
+        self._on_ticker_selected = on_ticker_selected
         self._columns = [coluna_id for coluna_id, _cabecalho in _COLUNAS]
         self._columns_fixas = [coluna_id for coluna_id, _ in _COLUNAS_FIXAS]
         self._columns_rolantes = [coluna_id for coluna_id, _ in _COLUNAS_ROLANTES]
         self._syncing_selection = False
+        self._ultimo_ticker_notificado: str | None = None
         self._largura_fixo_atual = -1
 
         self._frame_fixo = ttk.Frame(self.frame)
@@ -212,14 +215,28 @@ class FundamentalTablePanel:
         return "break"
 
     def _on_select_fixo(self: "FundamentalTablePanel", event: object = None) -> None:
-        """Espelha a seleção do painel congelado no rolável."""
+        """Espelha a seleção do painel congelado no rolável e notifica o ticker."""
         self._espelhar_selecao(self._tree_fixo, self._tree_rolavel)
+        self._notificar_selecao(self._tree_fixo)
 
     def _on_select_rolavel(
         self: "FundamentalTablePanel", event: object = None
     ) -> None:
-        """Espelha a seleção do painel rolável no congelado."""
+        """Espelha a seleção do painel rolável no congelado e notifica o ticker."""
         self._espelhar_selecao(self._tree_rolavel, self._tree_fixo)
+        self._notificar_selecao(self._tree_rolavel)
+
+    def _notificar_selecao(self: "FundamentalTablePanel", tree: ttk.Treeview) -> None:
+        """Notifica o ticker selecionado uma única vez por mudança."""
+        selecionados = tree.selection()
+        if not selecionados:
+            return
+        ticker = selecionados[0]
+        if ticker == self._ultimo_ticker_notificado:
+            return
+        self._ultimo_ticker_notificado = ticker
+        if callable(self._on_ticker_selected):
+            self._on_ticker_selected(ticker)
 
     def _espelhar_selecao(
         self: "FundamentalTablePanel",
@@ -254,6 +271,29 @@ class FundamentalTablePanel:
         if selecionados and callable(self._on_row_activated):
             self._on_row_activated(selecionados[0])
         return "break"
+
+    def get_selected_ticker(self: "FundamentalTablePanel") -> str | None:
+        """Retorna o ticker da linha selecionada, ou ``None``."""
+        selecionados = self._tree_fixo.selection()
+        return selecionados[0] if selecionados else None
+
+    def has_ticker(self: "FundamentalTablePanel", ticker: str) -> bool:
+        """Indica se a tabela possui uma linha para o ticker informado."""
+        return bool(ticker) and self._tree_fixo.exists(ticker)
+
+    def first_ticker(self: "FundamentalTablePanel") -> str | None:
+        """Retorna o ticker da primeira linha da tabela, ou ``None``."""
+        filhos = self._tree_fixo.get_children()
+        return filhos[0] if filhos else None
+
+    def select_ticker(self: "FundamentalTablePanel", ticker: str) -> None:
+        """Seleciona a linha do ticker informado, se existir."""
+        if not self.has_ticker(ticker):
+            return
+        self._tree_fixo.selection_set(ticker)
+        self._tree_fixo.focus(ticker)
+        self._tree_fixo.see(ticker)
+        self._tree_rolavel.see(ticker)
 
     def get_column_widths(self: "FundamentalTablePanel") -> dict[str, int]:
         """Retorna a largura atual de cada coluna, indexada pelo id."""
@@ -309,6 +349,7 @@ class FundamentalTablePanel:
             iid = linha[0]
             self._tree_fixo.insert("", "end", iid=iid, values=linha[:2])
             self._tree_rolavel.insert("", "end", iid=iid, values=linha[2:])
+        self._ultimo_ticker_notificado = None
 
     def reset(self: "FundamentalTablePanel") -> None:
         """Limpa o painel exibindo nenhuma linha."""

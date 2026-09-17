@@ -1,7 +1,8 @@
 """Ações de configuração e atualização de gráficos da interface gráfica."""
 
+import queue
 import tkinter as tk
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.charts.fundamental_evolution_data import (
@@ -9,6 +10,10 @@ from flowscope.presentation.gui.charts.fundamental_evolution_data import (
 )
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
+from flowscope.presentation.gui.documentos_job import (
+    MENSAGEM_PROGRESSO,
+    DocumentosJob,
+)
 
 
 class ActionsMixin:
@@ -94,24 +99,37 @@ class ActionsMixin:
         elif isinstance(chart, FundamentalTablePanel):
             dados = getattr(self, "_fundamental_data", {})
             chart.update({t: dados[t] for t in tickers if t in dados})
+            self._sincronizar_selecao_fundamental()
         elif chart is getattr(self, "_fundamental_evolution_panel", None):
             self._update_fundamental_evolution()
         elif chart is getattr(self, "_documents_panel", None):
             self._update_documents()
         elif chart in self._ticker_charts:
-            chart.update(self._current_data, ticker=self._get_selected_ticker())
+            chart.update(self._current_data, ticker=self._ticker_apresentado())
         else:
             chart.update(filtered)
 
     def _ticker_apresentado(self: "ActionsMixin") -> str | None:
         """Retorna o ticker apresentado nas sub-abas por ticker.
 
-        Usa o ticker fixado (via duplo-clique nos Fundamentos) e, na sua
-        ausência, o ticker selecionado na lista. As sub-abas "Evolução dos
-        Fundamentos" e "Documentos" compartilham essa mesma fonte para exibir
-        o mesmo ticker.
+        O ticker é sempre o selecionado na tabela da sub-aba "Fundamentos",
+        fonte única compartilhada por todas as sub-abas da "Análise do Ticker".
         """
-        return getattr(self, "_evolution_ticker", None) or self._get_selected_ticker()
+        return getattr(self, "_ticker_selecionado", None)
+
+    def _sincronizar_selecao_fundamental(self: "ActionsMixin") -> None:
+        """Seleciona na tabela o ticker atual ou a primeira linha disponível."""
+        tabela = getattr(self, "_fundamental_table", None)
+        if tabela is None:
+            return
+        ticker = getattr(self, "_ticker_selecionado", None)
+        if not (ticker and tabela.has_ticker(ticker)):
+            ticker = tabela.first_ticker()
+        if ticker:
+            self._ticker_selecionado = ticker
+            tabela.select_ticker(ticker)
+        else:
+            self._ticker_selecionado = None
 
     def _update_fundamental_evolution(self: "ActionsMixin") -> None:
         """Preenche o painel de evolução a partir do cache histórico."""
@@ -132,20 +150,81 @@ class ActionsMixin:
         """Preenche o painel de documentos a partir do cache do ticker.
 
         O ticker é o mesmo apresentado na sub-aba "Evolução dos Fundamentos",
-        mantendo as duas sub-abas sincronizadas.
+        mantendo as duas sub-abas sincronizadas. A exibição é somente-leitura;
+        a aquisição de novos documentos ocorre apenas no botão "Atualizar".
         """
         painel = getattr(self, "_documents_panel", None)
         if painel is None:
             return
         painel.update(self._ticker_apresentado())
 
+    def _adquirir_documentos(self: "ActionsMixin", ticker: str) -> None:
+        """Adquire os documentos do ticker em thread e remonta a árvore."""
+        painel = getattr(self, "_documents_panel", None)
+        aquisicao = getattr(self, "_aquisicao_documentos", None)
+        if painel is None:
+            return
+        if aquisicao is None or not ticker:
+            painel.update(ticker)
+            return
+        if getattr(self, "_documentos_job", None) is not None:
+            return
+        painel.mostrar_carregando(ticker)
+        job = DocumentosJob(aquisicao, ticker, self._data_referencia())
+        self._documentos_job = job
+        self._presenter.on_operation_started()
+        job.iniciar()
+        self._poll_documentos_job(job, ticker)
+
+    def _poll_documentos_job(self: "ActionsMixin", job: DocumentosJob, ticker: str) -> None:
+        """Consome a fila do job na thread do Tk até a aquisição concluir."""
+        terminou = False
+        try:
+            while True:
+                mensagem = job.fila.get_nowait()
+                if (
+                    isinstance(mensagem, tuple)
+                    and mensagem
+                    and mensagem[0] == MENSAGEM_PROGRESSO
+                ):
+                    _tipo, current, total, label = mensagem
+                    self._presenter.on_progress(current, total, label)
+                else:
+                    terminou = True
+        except queue.Empty:
+            pass
+        if terminou:
+            if getattr(self, "_documentos_job", None) is job:
+                self._documentos_job = None
+            painel = getattr(self, "_documents_panel", None)
+            if painel is not None:
+                painel.update(ticker)
+            self._presenter.on_operation_finished()
+            self._flash_status("Documentos atualizados!")
+            return
+        self.after(50, lambda: self._poll_documentos_job(job, ticker))
+
+    def _data_referencia(self: "ActionsMixin") -> date:
+        """Retorna a data de referência selecionada, ou a data corrente."""
+        entry = getattr(self, "_date_entry", None)
+        if entry is not None:
+            return entry.get_date()
+        return datetime.now(timezone.utc).date()
+
     def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
         """Agenda a execução de ``callback`` na thread do Tk."""
         return self.after(ms, callback)
 
     def set_fundamental_data(self: "ActionsMixin", dados: dict) -> None:
-        """Armazena os resultados da análise fundamentalista por ticker."""
+        """Armazena os resultados da análise fundamentalista por ticker.
+
+        Garante que o ticker apresentado continue válido: mantém o atual
+        quando ainda presente e, caso contrário, adota o primeiro disponível.
+        """
         self._fundamental_data = dados
+        atual = getattr(self, "_ticker_selecionado", None)
+        if atual not in dados:
+            self._ticker_selecionado = next(iter(dados), None)
 
     def _copy_chart(self: "ActionsMixin", figure: object) -> None:
         from flowscope.infrastructure.clipboard_image import (

@@ -109,6 +109,38 @@ class TestDisableIdempotente:
             gui.destroy()
 
 
+class TestDisableDocumentosBotoes:
+    @needs_display
+    def test_botoes_documentos_desabilitados_e_restaurados(self):
+        gui = _DisableHost()
+        try:
+            gui._flash_after_id = None
+            gui._load_button = tk.Button(gui, state=tk.NORMAL)
+            gui._today_button = tk.Button(gui, state=tk.NORMAL)
+            gui._shortcut_btn = None
+            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
+            gui._ticker_list = MagicMock()
+            gui._ticker_list.all_buttons.return_value = []
+            gui._period_combo = ttk.Combobox(gui, state="readonly")
+            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
+            gui._date_entry = ttk.Entry(gui)
+            refresh = tk.Button(gui, state=tk.NORMAL)
+            abrir = tk.Button(gui, state=tk.NORMAL)
+            gui._documents_panel = MagicMock()
+            gui._documents_panel.all_buttons.return_value = [refresh, abrir]
+
+            gui.disable_all_buttons()
+            assert refresh.cget("state") == tk.DISABLED
+            assert abrir.cget("state") == tk.DISABLED
+
+            gui.restore_all_buttons()
+            assert refresh.cget("state") == tk.NORMAL
+            assert abrir.cget("state") == tk.NORMAL
+            gui._documents_panel.refresh_open_button.assert_called_once()
+        finally:
+            gui.destroy()
+
+
 class _FundamentalCursorHost(tk.Tk, StatusMixin):
     def disable_all_buttons(self) -> None:
         pass

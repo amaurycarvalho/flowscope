@@ -16,6 +16,7 @@ from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
+from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
@@ -131,7 +132,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
         self._fundamental_data: dict = {}
-        self._evolution_ticker: str | None = None
+        self._ticker_selecionado: str | None = None
         self._loading_after_id = None
         self._flash_after_id = None
 
@@ -178,8 +179,10 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         load_portfolio = LoadIndexPortfolioUseCase(repo)
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
+        self._presenter = presenter
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
         cache = CacheManager()
+        self._aquisicao_documentos = AquisicaoDocumentos(cache=cache)
         b3_fund_repository = B3FundRepository()
         fundamental_repo = B3FundamentalRepository(
             fund_repository=b3_fund_repository,
@@ -267,7 +270,7 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._prefs["window_geometry"] = self.geometry()
         self._prefs["last_date"] = str(self._date_entry.get_date())
         self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
-        self._prefs["last_subtab"] = self._prefs.get("last_subtab", "VWAP")
+        self._prefs["last_subtab"] = self._prefs.get("last_subtab", "Fundamentos")
         self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
         if hasattr(self, "_fundamental_table"):
             self._prefs["fundamental_column_widths"] = (

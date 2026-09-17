@@ -105,6 +105,47 @@ class TestWiringSubAba:
             root.destroy()
 
 
+class TestOrdemSubAbas:
+    def test_configs_ordenam_implementadas_primeiro(self):
+        nomes = [config[0] for config in TAB_CONFIGS]
+        implementadas = [nome for nome in nomes if nome in ENABLED_TABS]
+        assert implementadas == [
+            "Evolução dos Fundamentos",
+            "Evolução da Dominância",
+            "Amplitude de Preço",
+            "Fluxo Financeiro",
+            "Documentos",
+        ]
+
+    @needs_display
+    def test_sub_abas_visiveis_e_ordem(self):
+        root = tk.Tk()
+        try:
+            host = _Host()
+            host._main_notebook = ttk.Notebook(root)
+            host._copy_chart = lambda _figure: None
+            host._build_ticker_tabs()
+            abas = [
+                host._ticker_notebook.tab(indice, "text")
+                for indice in range(host._ticker_notebook.index("end"))
+            ]
+            assert abas == [
+                "Evolução dos Fundamentos",
+                "Evolução da Dominância",
+                "Amplitude de Preço",
+                "Fluxo Financeiro",
+                "Documentos",
+            ]
+            for oculta in (
+                "Participação Institucional",
+                "Eficiência do Movimento",
+                "Resumo Geral",
+            ):
+                assert oculta not in abas
+        finally:
+            root.destroy()
+
+
 class TestDoubleClickTabela:
     @needs_display
     def test_callback_recebe_ticker_da_linha(self):
@@ -173,7 +214,7 @@ class TestHandlerDuploClique:
 
             host._on_fundamental_row_activated("HGBS11")
 
-            assert host._evolution_ticker == "HGBS11"
+            assert host._ticker_selecionado == "HGBS11"
             assert host._main_notebook.tab(
                 host._main_notebook.select(), "text"
             ) == "Análise do Ticker"
@@ -194,7 +235,7 @@ class TestUpdateFundamentalEvolution:
     def test_preenche_a_partir_do_store(self):
         host = ActionsMixin()
         host._fundamental_evolution_panel = MagicMock()
-        host._evolution_ticker = "HGBS11"
+        host._ticker_selecionado = "HGBS11"
         host._fundamental_history_store = _FakeStore()
 
         host._update_fundamental_evolution()
@@ -206,7 +247,7 @@ class TestUpdateFundamentalEvolution:
     def test_sem_historico_usa_estado_vazio(self):
         host = ActionsMixin()
         host._fundamental_evolution_panel = MagicMock()
-        host._evolution_ticker = "HGBS11"
+        host._ticker_selecionado = "HGBS11"
 
         class _Vazio:
             def datas(self, ticker):
@@ -225,7 +266,7 @@ class TestUpdateFundamentalEvolution:
     def test_sem_store_usa_estado_vazio(self):
         host = ActionsMixin()
         host._fundamental_evolution_panel = MagicMock()
-        host._evolution_ticker = "HGBS11"
+        host._ticker_selecionado = "HGBS11"
 
         host._update_fundamental_evolution()
 
@@ -233,10 +274,10 @@ class TestUpdateFundamentalEvolution:
             (), ticker="HGBS11"
         )
 
-    def test_fallback_para_ticker_selecionado(self):
+    def test_sem_ticker_selecionado_nao_usa_fallback_da_lista(self):
         host = ActionsMixin()
         host._fundamental_evolution_panel = MagicMock()
-        host._evolution_ticker = None
+        host._ticker_selecionado = None
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["PETR4"]
         host._fundamental_history_store = _FakeStore()
@@ -244,7 +285,7 @@ class TestUpdateFundamentalEvolution:
         host._update_fundamental_evolution()
 
         _args, kwargs = host._fundamental_evolution_panel.update.call_args
-        assert kwargs["ticker"] == "PETR4"
+        assert kwargs["ticker"] is None
 
     def test_do_update_despacha_para_evolucao(self):
         host = ActionsMixin()
@@ -254,12 +295,72 @@ class TestUpdateFundamentalEvolution:
         host._ticker_charts = set()
         host._fundamental_evolution_panel = MagicMock()
         host._fundamental_evolution_panel.update = MagicMock()
-        host._evolution_ticker = "HGBS11"
+        host._ticker_selecionado = "HGBS11"
         host._fundamental_history_store = _FakeStore()
 
         host._do_update(host._fundamental_evolution_panel)
 
         host._fundamental_evolution_panel.update.assert_called_once()
+
+
+class TestSincronizarSelecaoFundamental:
+    def test_preserva_ticker_presente(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = "VALE3"
+        host._fundamental_table = MagicMock()
+        host._fundamental_table.has_ticker.return_value = True
+
+        host._sincronizar_selecao_fundamental()
+
+        host._fundamental_table.select_ticker.assert_called_once_with("VALE3")
+        host._fundamental_table.first_ticker.assert_not_called()
+
+    def test_auto_seleciona_primeiro(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = None
+        host._fundamental_table = MagicMock()
+        host._fundamental_table.first_ticker.return_value = "AAA00"
+
+        host._sincronizar_selecao_fundamental()
+
+        assert host._ticker_selecionado == "AAA00"
+        host._fundamental_table.select_ticker.assert_called_once_with("AAA00")
+
+    def test_sem_linhas_limpa_selecao(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = "VALE3"
+        host._fundamental_table = MagicMock()
+        host._fundamental_table.has_ticker.return_value = False
+        host._fundamental_table.first_ticker.return_value = None
+
+        host._sincronizar_selecao_fundamental()
+
+        assert host._ticker_selecionado is None
+        host._fundamental_table.select_ticker.assert_not_called()
+
+    def test_sem_tabela_nao_falha(self):
+        host = ActionsMixin()
+        host._sincronizar_selecao_fundamental()
+
+
+class TestSetFundamentalData:
+    def test_adota_primeiro_quando_sem_selecao(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = None
+        host.set_fundamental_data({"PETR4": {}, "VALE3": {}})
+        assert host._ticker_selecionado == "PETR4"
+
+    def test_preserva_selecao_valida(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = "VALE3"
+        host.set_fundamental_data({"PETR4": {}, "VALE3": {}})
+        assert host._ticker_selecionado == "VALE3"
+
+    def test_sem_dados_limpa_selecao(self):
+        host = ActionsMixin()
+        host._ticker_selecionado = "PETR4"
+        host.set_fundamental_data({})
+        assert host._ticker_selecionado is None
 
 
 class TestDeveAtualizar:
@@ -283,14 +384,14 @@ class TestDeveAtualizar:
 
 
 class TestPinTicker:
-    def test_editar_tickers_limpa_o_pin(self):
+    def test_editar_tickers_preserva_ticker_selecionado(self):
         host = TabActionsMixin()
-        host._evolution_ticker = "HGBS11"
+        host._ticker_selecionado = "HGBS11"
         host._controller = MagicMock()
 
         host._on_ticker_edit()
 
-        assert host._evolution_ticker is None
+        assert host._ticker_selecionado == "HGBS11"
         host._controller.on_ticker_edit.assert_called_once()
 
     def test_select_tab_inexistente_retorna_false(self):

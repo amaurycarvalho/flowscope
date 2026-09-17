@@ -1,8 +1,10 @@
 """Testes do painel de documentos, do preview e da abertura de arquivos."""
 
 import os
+import queue
 import time
 import tkinter as tk
+from datetime import date
 from pathlib import Path
 from tkinter import ttk
 from unittest.mock import MagicMock
@@ -10,8 +12,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from flowscope.infrastructure.document_catalog import DocumentCatalog
-from flowscope.presentation.gui import document_actions
+from flowscope.presentation.gui import app_actions, document_actions
 from flowscope.presentation.gui.app_actions import ActionsMixin
+from flowscope.presentation.gui.documentos_job import (
+    MENSAGEM_PROGRESSO,
+    DocumentosJob,
+)
 from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import (
@@ -301,6 +307,133 @@ class TestEstadoVazioERefresh:
             root.destroy()
 
 
+class TestAcquireCallback:
+    @needs_display
+    def test_update_nao_aciona_callback(self, tmp_path):
+        root = tk.Tk()
+        try:
+            chamadas = []
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path),
+                acquire_callback=chamadas.append, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            assert chamadas == []
+            assert painel._tree.get_children() != ()
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_refresh_aciona_callback(self, tmp_path):
+        root = tk.Tk()
+        try:
+            chamadas = []
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path),
+                acquire_callback=chamadas.append, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            painel._on_refresh()
+            assert chamadas == ["ALZR11"]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_mostrar_carregando(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel.mostrar_carregando("ALZR11")
+            assert "Carregando" in painel._empty_label.cget("text")
+            assert painel._empty_label.winfo_manager() == "pack"
+        finally:
+            root.destroy()
+
+
+class TestBotaoAbrir:
+    @needs_display
+    def test_botao_rotulo_e_desabilitado_sem_selecao(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            assert painel._open_btn.cget("text") == "Abrir documento"
+            assert str(painel._open_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_botao_habilita_com_arquivo_selecionado(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
+            root.update()
+            assert str(painel._open_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_botao_desabilita_com_pasta_selecionada(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            pasta = painel._tree.get_children()[0]
+            painel._tree.selection_set(pasta)
+            root.update()
+            assert str(painel._open_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_reset_desabilita_botao(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
+            root.update()
+            painel.reset()
+            assert str(painel._open_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_all_buttons_e_refresh_open_button(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            assert painel.all_buttons() == [
+                painel._refresh_btn,
+                painel._open_btn,
+            ]
+            painel.update("ALZR11")
+            painel._open_btn.config(state=tk.NORMAL)
+            painel.refresh_open_button()
+            assert str(painel._open_btn.cget("state")) == "disabled"
+
+            painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
+            painel.refresh_open_button()
+            assert str(painel._open_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+
 class TestPreviewEmThread:
     @needs_display
     def test_carregando_e_aplicacao(self, tmp_path, monkeypatch):
@@ -384,27 +517,27 @@ class TestUpdateDocuments:
         host._documents_panel = MagicMock()
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["ALZR11"]
-        host._evolution_ticker = None
+        host._ticker_selecionado = "ALZR11"
         host._update_documents()
         host._documents_panel.update.assert_called_once_with("ALZR11")
 
-    def test_update_documents_usa_ticker_fixado(self):
+    def test_update_documents_usa_ticker_selecionado(self):
         host = ActionsMixin()
         host._documents_panel = MagicMock()
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["PETR3"]
-        host._evolution_ticker = "EXXO34"
+        host._ticker_selecionado = "EXXO34"
         host._update_documents()
         host._documents_panel.update.assert_called_once_with("EXXO34")
 
-    def test_ticker_apresentado_sincroniza_com_evolucao(self):
+    def test_ticker_apresentado_usa_selecao_dos_fundamentos(self):
         host = ActionsMixin()
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["PETR3"]
-        host._evolution_ticker = "EXXO34"
+        host._ticker_selecionado = "EXXO34"
         assert host._ticker_apresentado() == "EXXO34"
-        host._evolution_ticker = None
-        assert host._ticker_apresentado() == "PETR3"
+        host._ticker_selecionado = None
+        assert host._ticker_apresentado() is None
 
     def test_documentos_e_evolucao_recebem_mesmo_ticker(self):
         host = ActionsMixin()
@@ -412,7 +545,7 @@ class TestUpdateDocuments:
         host._fundamental_evolution_panel = MagicMock()
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["PETR3"]
-        host._evolution_ticker = "EXXO34"
+        host._ticker_selecionado = "EXXO34"
         host._fundamental_history_store = None
 
         host._update_documents()
@@ -455,3 +588,130 @@ class TestControllerTickerEdit:
         )
         controller.on_ticker_edit()
         gui._do_update.assert_called_once()
+
+
+class _JobFake:
+    def __init__(self, aquisicao, ticker, reference_date):
+        self._aquisicao = aquisicao
+        self._ticker = ticker
+        self._reference_date = reference_date
+        self.fila = queue.Queue()
+
+    def iniciar(self):
+        try:
+            self._aquisicao.adquirir(self._ticker, self._reference_date)
+        except Exception:
+            pass
+        finally:
+            self.fila.put(True)
+
+
+class _HostDocumentos(ActionsMixin):
+    def __init__(self):
+        self._documents_panel = MagicMock()
+        self._aquisicao_documentos = MagicMock()
+        self._presenter = MagicMock()
+        self._documentos_job = None
+        self._date_entry = MagicMock()
+        self._date_entry.get_date.return_value = date(2026, 7, 29)
+        self.agendados = []
+
+    def after(self, ms, callback):
+        self.agendados.append((ms, callback))
+        return "id"
+
+    def _flash_status(self, *args, **kwargs):
+        pass
+
+
+class TestAdquirirDocumentos:
+    def test_executa_e_remonta_arvore(self, monkeypatch):
+        host = _HostDocumentos()
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobFake)
+        host._adquirir_documentos("EXXO34")
+        host._aquisicao_documentos.adquirir.assert_called_once_with(
+            "EXXO34", date(2026, 7, 29)
+        )
+        host._documents_panel.mostrar_carregando.assert_called_once_with("EXXO34")
+        host._documents_panel.update.assert_called_once_with("EXXO34")
+
+    def test_falha_de_aquisicao_ainda_remonta(self, monkeypatch):
+        host = _HostDocumentos()
+        host._aquisicao_documentos.adquirir.side_effect = RuntimeError("offline")
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobFake)
+        host._adquirir_documentos("PETR3")
+        host._documents_panel.update.assert_called_once_with("PETR3")
+
+    def test_sem_aquisicao_apenas_varre(self):
+        host = _HostDocumentos()
+        host._aquisicao_documentos = None
+        host._adquirir_documentos("PETR3")
+        host._documents_panel.update.assert_called_once_with("PETR3")
+
+    def test_ticker_vazio_apenas_varre(self):
+        host = _HostDocumentos()
+        host._adquirir_documentos("")
+        host._documents_panel.update.assert_called_once_with("")
+
+    def test_sem_painel_nao_falha(self):
+        host = _HostDocumentos()
+        host._documents_panel = None
+        host._adquirir_documentos("PETR3")
+
+    def test_bloqueia_e_restaura_controles(self, monkeypatch):
+        host = _HostDocumentos()
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobFake)
+        host._adquirir_documentos("EXXO34")
+
+        host._presenter.on_operation_started.assert_called_once()
+        host._presenter.on_operation_finished.assert_called_once()
+
+    def test_reentrancia_ignora_segundo_acionamento(self, monkeypatch):
+        class _JobPendente:
+            def __init__(self, *args, **kwargs):
+                self.fila = queue.Queue()
+
+            def iniciar(self):
+                return None
+
+        host = _HostDocumentos()
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobPendente)
+        host._adquirir_documentos("EXXO34")
+        host._aquisicao_documentos.adquirir.reset_mock()
+        host._presenter.on_operation_started.reset_mock()
+
+        host._adquirir_documentos("EXXO34")
+
+        host._aquisicao_documentos.adquirir.assert_not_called()
+        host._presenter.on_operation_started.assert_not_called()
+
+
+class TestDocumentosJob:
+    def test_publica_termino_apos_falha(self):
+        class _AquisicaoFalha:
+            def adquirir(self, ticker, reference_date, progress=None):
+                raise RuntimeError("offline")
+
+        job = DocumentosJob(_AquisicaoFalha(), "PETR3", date(2026, 7, 29))
+        job.iniciar().join()
+        assert job.fila.get_nowait() is True
+
+    def test_publica_progresso_antes_do_termino(self):
+        class _AquisicaoProgresso:
+            def adquirir(self, ticker, reference_date, progress=None):
+                progress(1, 2, "• Documentos de PETR3 (1/2)")
+                progress(2, 2, "• Documentos de PETR3 (2/2)")
+
+        job = DocumentosJob(_AquisicaoProgresso(), "PETR3", date(2026, 7, 29))
+        job.iniciar().join()
+
+        mensagens = []
+        while not job.fila.empty():
+            mensagens.append(job.fila.get_nowait())
+        assert mensagens[0] == (
+            MENSAGEM_PROGRESSO, 1, 2, "• Documentos de PETR3 (1/2)"
+        )
+        assert mensagens[1] == (
+            MENSAGEM_PROGRESSO, 2, 2, "• Documentos de PETR3 (2/2)"
+        )
+        assert mensagens[-1] is True

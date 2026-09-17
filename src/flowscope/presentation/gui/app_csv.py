@@ -30,7 +30,7 @@ class CsvMixin:
 
     def _csv_tickers(self: "CsvMixin", main_tab: str) -> list[str]:
         if main_tab == "Análise do Ticker":
-            ticker = self._get_selected_ticker()
+            ticker = self._ticker_apresentado()
             return [ticker] if ticker else []
         tickers = self._ticker_list.get_tickers()
         if not tickers:

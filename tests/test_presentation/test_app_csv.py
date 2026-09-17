@@ -22,6 +22,9 @@ class _Host(CsvMixin):
     def _current_tabs(self):
         return self._tabs
 
+    def _ticker_apresentado(self):
+        return getattr(self, "_ticker_selecionado", None)
+
     def _flash_status(self, msg, icon=""):
         self.status.append(msg)
 
@@ -67,6 +70,18 @@ class TestBuildFundamentalCsv:
         host = _host(tickers=())
         assert host._build_fundamental_csv() == ""
         assert host.status == ["Nenhum ticker disponível para cópia."]
+
+
+class TestCsvTickers:
+    def test_analise_do_ticker_usa_ticker_apresentado(self):
+        host = _host(tabs=("Análise do Ticker", "Fluxo Financeiro"))
+        host._ticker_selecionado = "VALE3"
+        assert host._csv_tickers("Análise do Ticker") == ["VALE3"]
+
+    def test_analise_do_ticker_sem_selecao(self):
+        host = _host(tabs=("Análise do Ticker", "Fluxo Financeiro"))
+        host._ticker_selecionado = None
+        assert host._csv_tickers("Análise do Ticker") == []
 
 
 class TestBuildCsvForCurrentTab:

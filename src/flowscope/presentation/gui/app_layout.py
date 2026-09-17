@@ -152,7 +152,7 @@ class LayoutMixin:
         self._general_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         self._ticker_notebook.bind("<<NotebookTabChanged>>", self._on_tab_changed)
         last_tab = self._prefs.get("last_tab", "Análise Geral")
-        last_subtab = self._prefs.get("last_subtab", "VWAP")
+        last_subtab = self._prefs.get("last_subtab", "Fundamentos")
         self.after(10, lambda: self._restore_tabs(last_tab, last_subtab))
 
         right_pw = tk.PanedWindow(

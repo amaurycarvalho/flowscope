@@ -41,12 +41,14 @@ class DocumentTreePanel:
         catalog: DocumentCatalog | None = None,
         open_callback: Callable[[Path], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
+        acquire_callback: Callable[[str], None] | None = None,
         debounce_ms: int = 150,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles."""
         self._catalog = catalog or DocumentCatalog()
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
+        self._acquire_callback = acquire_callback
         self._debounce_ms = debounce_ms
         self._itens: dict[str, DocumentoArquivo] = {}
         self._preview_cache: dict[Path, str] = {}
@@ -68,7 +70,8 @@ class DocumentTreePanel:
         )
         self._refresh_btn.pack(side=tk.LEFT, padx=2)
         self._open_btn = ttk.Button(
-            barra, text="Abrir", command=self._on_open_selected
+            barra, text="Abrir documento", command=self._on_open_selected,
+            state=tk.DISABLED,
         )
         self._open_btn.pack(side=tk.LEFT, padx=2)
 
@@ -118,8 +121,14 @@ class DocumentTreePanel:
         rolagem.pack(side=tk.RIGHT, fill=tk.Y)
         return quadro
 
-    def update(self: "DocumentTreePanel", ticker: str | None) -> None:
-        """Recarrega o catálogo do ticker e remonta a árvore."""
+    def update(
+        self: "DocumentTreePanel", ticker: str | None
+    ) -> None:
+        """Recarrega o catálogo de leitura do ticker e remonta a árvore.
+
+        A exibição é somente-leitura: nenhuma aquisição é acionada aqui. A
+        aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
+        """
         self._current_ticker = ticker
         self._limpar()
         if not ticker:
@@ -131,6 +140,26 @@ class DocumentTreePanel:
             return
         self._show_content()
         self._popular(catalogo)
+
+    def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
+        """Retorna os botões do painel para o bloqueio global da interface."""
+        return [self._refresh_btn, self._open_btn]
+
+    def refresh_open_button(self: "DocumentTreePanel") -> None:
+        """Reavalia o estado do botão "Abrir documento" conforme a seleção."""
+        self._atualizar_botao_abrir()
+
+    def mostrar_carregando(
+        self: "DocumentTreePanel", ticker: str | None = None
+    ) -> None:
+        """Exibe o estado de carregamento enquanto a aquisição ocorre."""
+        self._limpar()
+        mensagem = (
+            f"Carregando documentos de {ticker}…"
+            if ticker
+            else "Carregando documentos…"
+        )
+        self._show_empty(mensagem)
 
     def reset(self: "DocumentTreePanel") -> None:
         """Limpa a árvore e exibe o estado vazio."""
@@ -146,6 +175,7 @@ class DocumentTreePanel:
         if filhos:
             self._tree.delete(*filhos)
         self._set_preview_text("")
+        self._atualizar_botao_abrir()
 
     def _popular(
         self: "DocumentTreePanel", catalogo: CatalogoTicker
@@ -188,10 +218,20 @@ class DocumentTreePanel:
     def _on_select(
         self: "DocumentTreePanel", event: tk.Event | None = None
     ) -> None:
-        """Agenda a pré-visualização do arquivo selecionado."""
+        """Agenda a pré-visualização e ajusta o botão de abertura."""
         arquivo = self._arquivo_selecionado()
+        self._atualizar_botao_abrir()
         if arquivo is not None:
             self._agendar_preview(arquivo)
+
+    def _atualizar_botao_abrir(self: "DocumentTreePanel") -> None:
+        """Habilita o botão "Abrir documento" somente com arquivo selecionado."""
+        estado = (
+            tk.NORMAL
+            if self._arquivo_selecionado() is not None
+            else tk.DISABLED
+        )
+        self._open_btn.config(state=estado)
 
     def _agendar_preview(
         self: "DocumentTreePanel", arquivo: DocumentoArquivo
@@ -308,5 +348,9 @@ class DocumentTreePanel:
                 )
 
     def _on_refresh(self: "DocumentTreePanel") -> None:
-        """Atualiza o catálogo do ticker atual."""
-        self.update(self._current_ticker)
+        """Aciona a aquisição (se houver) e remonta o catálogo do ticker atual."""
+        ticker = self._current_ticker
+        if self._acquire_callback is not None and ticker:
+            self._acquire_callback(ticker)
+            return
+        self.update(ticker)

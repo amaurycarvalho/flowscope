@@ -882,6 +882,47 @@ class TestFundamentalTablePanel:
             root.destroy()
 
     @needs_display
+    def test_selecao_notifica_ticker_uma_vez(self):
+        root = tk.Tk()
+        try:
+            registros: list[str] = []
+            painel = FundamentalTablePanel(root, on_ticker_selected=registros.append)
+            painel.update({f"AAA{i:02d}": {"daily_data": []} for i in range(5)})
+
+            painel._tree_fixo.selection_set("AAA02")
+            root.update()
+            assert registros == ["AAA02"]
+
+            painel._tree_rolavel.selection_set("AAA04")
+            root.update()
+            assert registros == ["AAA02", "AAA04"]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_select_ticker_e_helpers(self):
+        root = tk.Tk()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.update({f"AAA{i:02d}": {"daily_data": []} for i in range(3)})
+
+            assert painel.first_ticker() == "AAA00"
+            assert painel.has_ticker("AAA01") is True
+            assert painel.has_ticker("XXXX99") is False
+            assert painel.get_selected_ticker() is None
+
+            painel.select_ticker("AAA01")
+            root.update()
+            assert painel.get_selected_ticker() == "AAA01"
+            assert painel._tree_rolavel.selection() == ("AAA01",)
+
+            painel.select_ticker("XXXX99")
+            root.update()
+            assert painel.get_selected_ticker() == "AAA01"
+        finally:
+            root.destroy()
+
+    @needs_display
     def test_painel_alinhamento_das_colunas(self):
         root = tk.Tk()
         try:
@@ -1093,6 +1134,7 @@ class TestWiringSubAba:
                 for indice in range(host._general_notebook.index("end"))
             ]
             assert "Fundamentos" in abas
+            assert abas[0] == "Fundamentos"
             assert hasattr(host, "_fundamental_table")
         finally:
             root.destroy()

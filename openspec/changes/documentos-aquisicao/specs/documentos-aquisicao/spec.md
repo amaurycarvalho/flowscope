@@ -60,6 +60,18 @@ Para FIIs, o sistema DEVE persistir o HTML do informe mensal estruturado mais re
 - **WHEN** o arquivo do informe mensal já existe no cache
 - **THEN** o sistema DEVE reutilizá-lo sem novo download
 
+### Requirement: Janela de aquisição de 12 meses
+
+Toda aquisição DEVE consultar e baixar apenas os documentos do ticker dentro da janela de 12 meses até a data de referência — para documentos relevantes, material facts e informe mensal — reutilizando sem novo download os arquivos já existentes em cache.
+
+#### Scenario: Início da janela
+- **WHEN** a aquisição é acionada para uma data de referência
+- **THEN** o sistema DEVE usar como início a data de referência menos 12 meses
+
+#### Scenario: Documento anterior à janela
+- **WHEN** um documento existe antes do início da janela de 12 meses
+- **THEN** o sistema NÃO DEVE baixá-lo
+
 ### Requirement: Reuso de cache e tolerância a falhas
 
 O sistema DEVE reutilizar arquivos já existentes em cache sem novo download. Uma falha de rede ou de um documento individual DEVE ser sinalizada sem criar arquivo e sem interromper a aquisição dos demais documentos nem de outros tickers.
