@@ -109,6 +109,45 @@ class TestDisableIdempotente:
             gui.destroy()
 
 
+class _FundamentalCursorHost(tk.Tk, StatusMixin):
+    def disable_all_buttons(self) -> None:
+        pass
+
+    def restore_all_buttons(self) -> None:
+        pass
+
+    def clear_progress(self) -> None:
+        pass
+
+    def config_copy_button_state(self, state: str) -> None:
+        pass
+
+
+class TestWaitCursorFundamentos:
+    @needs_display
+    def test_cursor_treeview_restaurado_apos_substituicao_de_job(self):
+        from flowscope.presentation.gui.presenter import FlowScopePresenter
+
+        gui = _FundamentalCursorHost()
+        try:
+            tree = ttk.Treeview(gui, columns=("ticker",), show="headings")
+            tree.pack()
+            tree.config(cursor="hand2")
+            presenter = FlowScopePresenter(gui)
+
+            presenter.on_operation_started()
+            presenter.on_fundamental_started()
+            presenter.on_operation_finished()
+            presenter.on_fundamental_started()
+            presenter.on_fundamental_finished()
+            assert str(tree.cget("cursor")) == "watch"
+
+            presenter.on_fundamental_finished()
+            assert str(tree.cget("cursor")) == "hand2"
+        finally:
+            gui.destroy()
+
+
 class TestWaitCursor:
     @needs_display
     def test_cursor_watch_sobrepoe_e_restaura(self):

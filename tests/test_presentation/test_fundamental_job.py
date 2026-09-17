@@ -7,6 +7,7 @@ from flowscope.presentation.gui.fundamental_job import (
     MENSAGEM_RESULTADO,
     FundamentalJob,
 )
+from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 REFERENCIA = date(2026, 9, 4)
 
@@ -143,6 +144,129 @@ class TestGenerationToken:
         controller._drenar_fundamental(job)
         presenter.on_fundamental_error.assert_called_once()
         presenter.on_fundamental_finished.assert_called_once()
+
+
+class TestDrenarResiliente:
+    def test_erro_ao_tratar_resultado_ainda_encerra_job(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        controller._fundamental_generation = 1
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+        presenter.on_fundamental_result = MagicMock(
+            side_effect=RuntimeError("render boom")
+        )
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        assert presenter._operacoes_ativas == 0
+        view.clear_wait_cursor.assert_called_once()
+
+    def test_erro_na_consumicao_da_fila_ainda_encerra_job(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+        controller._consumir_fila = MagicMock(
+            side_effect=RuntimeError("queue boom")
+        )
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        assert presenter._operacoes_ativas == 0
+        view.clear_wait_cursor.assert_called_once()
+
+    def test_job_sem_progresso_e_encerrado_por_timeout(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        controller._fundamental_job = job
+        controller._fundamental_ultima_atividade = 0.0
+        presenter.on_fundamental_started()
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        assert presenter._operacoes_ativas == 0
+        view.clear_wait_cursor.assert_called_once()
+
+    def test_job_com_thread_morta_e_encerrado(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.thread = MagicMock()
+        job.thread.is_alive.return_value = False
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        assert presenter._operacoes_ativas == 0
+
+    def test_erro_em_progresso_nao_interrompe_drenagem(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        controller._fundamental_generation = 1
+        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
+        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False, 1, 1))
+        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+        presenter.on_fundamental_progress = MagicMock(
+            side_effect=RuntimeError("progress boom")
+        )
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        view.set_fundamental_data.assert_called_once()
+        assert presenter._operacoes_ativas == 0
 
 
 class TestJobFalhaRecuperavel:

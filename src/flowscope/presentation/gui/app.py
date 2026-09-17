@@ -158,6 +158,18 @@ class FlowScopeGUI(TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, A
         self._set_status("Pronto. Selecione uma data e clique em Carregar.")
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def report_callback_exception(
+        self: "FlowScopeGUI",
+        exc: type[BaseException],
+        val: BaseException,
+        tb: object,
+    ) -> None:
+        """Registra no log exceções não tratadas em callbacks do Tk."""
+        logging.getLogger("flowscope").error(
+            "Exceção não tratada em callback da interface",
+            exc_info=(exc, val, tb),
+        )
+
     def _wire_controller(self: "FlowScopeGUI") -> None:
         repo = B3DataRepository(B3Client())
         guard = OperationGuard()

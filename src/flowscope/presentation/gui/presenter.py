@@ -185,6 +185,7 @@ class FlowScopePresenter:
     def on_fundamental_started(self: "FlowScopePresenter") -> None:
         """Sinaliza o início da análise fundamentalista em background."""
         self._operacoes_ativas += 1
+        self._view.disable_all_buttons()
         self._view.set_wait_cursor()
 
     def on_fundamental_finished(self: "FlowScopePresenter") -> None:

@@ -1,9 +1,11 @@
 """Mixin de análise fundamentalista em background do controlador."""
 
 import queue
+import time
 from datetime import date
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
+from flowscope.application.logging_port import LogEntry
 from flowscope.infrastructure.fii.b3_price import B3MarketPriceFromResult
 from flowscope.presentation.gui.fundamental_job import (
     MENSAGEM_ERRO,
@@ -11,6 +13,9 @@ from flowscope.presentation.gui.fundamental_job import (
     MENSAGEM_RESULTADO,
     FundamentalJob,
 )
+
+#: Tempo máximo sem progresso antes de encerrar a análise por inatividade.
+_LIMITE_INATIVIDADE_S = 120.0
 
 
 class FundamentalMixin:
@@ -31,6 +36,7 @@ class FundamentalMixin:
             for ticker, dados in result.items()
             if isinstance(dados, dict)
         }
+        job_anterior = self._fundamental_job
         self._fundamental_generation += 1
         caso = FundamentalAnalysisUseCase(
             repository=self._fundamental_repo,
@@ -47,7 +53,10 @@ class FundamentalMixin:
             force_refresh=force,
         )
         self._fundamental_job = job
+        self._fundamental_ultima_atividade = time.monotonic()
         self._presenter.on_fundamental_started()
+        if job_anterior is not None:
+            self._presenter.on_fundamental_finished()
         self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
         job.iniciar()
         self._drenar_fundamental(job)
@@ -55,6 +64,8 @@ class FundamentalMixin:
     def on_atualizar_fundamentos(self: "FundamentalMixin") -> None:
         """Força a recomputação dos fundamentos da data, ignorando o cache."""
         if self._fundamental_repo is None:
+            return
+        if self._fundamental_job is not None:
             return
         tickers = self._presenter.get_current_tickers()
         if not tickers:
@@ -70,20 +81,69 @@ class FundamentalMixin:
         job = job or self._fundamental_job
         if job is None or job is not self._fundamental_job:
             return
-        if self._consumir_fila(job):
+        try:
+            terminou = self._consumir_fila(job)
+        except Exception as e:
+            self._logger.error(LogEntry(
+                message=str(e),
+                level="ERROR",
+                component="Controller._drenar_fundamental",
+                exception=e,
+            ))
+            terminou = True
+        if not terminou and self._job_travado(job):
+            self._logger.warning(LogEntry(
+                message=(
+                    "Análise fundamentalista sem progresso; encerrando para "
+                    "restaurar a interface."
+                ),
+                level="WARNING",
+                component="Controller._drenar_fundamental",
+                context={"generation": getattr(job, "generation", "")},
+            ))
+            terminou = True
+        if terminou:
             if job is self._fundamental_job:
                 self._fundamental_job = None
             self._presenter.on_fundamental_finished()
             return
         self._presenter.agendar(100, lambda: self._drenar_fundamental(job))
 
+    def _job_travado(self: "FundamentalMixin", job: FundamentalJob) -> bool:
+        """Indica se o job morreu ou ficou sem progresso por tempo demais."""
+        thread = getattr(job, "thread", None)
+        if thread is not None and not thread.is_alive() and job.fila.empty():
+            return True
+        ultima = getattr(self, "_fundamental_ultima_atividade", None)
+        if ultima is None:
+            return False
+        return time.monotonic() - ultima > _LIMITE_INATIVIDADE_S
+
     def _consumir_fila(self: "FundamentalMixin", job: FundamentalJob) -> bool:
-        """Esvazia a fila do job e informa se ele foi concluído."""
+        """Esvazia a fila do job e informa se ele foi concluído.
+
+        Uma falha ao tratar uma mensagem (ex.: erro de renderização de um
+        painel) é registrada no log e não interrompe o esvaziamento da fila.
+        Mensagens terminais tratadas com falha ainda encerram o job, de modo
+        que o cursor e os controles sempre sejam restaurados.
+        """
         terminou = False
         try:
             while True:
                 mensagem = job.fila.get_nowait()
-                terminou = self._tratar_mensagem(job, mensagem) or terminou
+                try:
+                    terminou = self._tratar_mensagem(job, mensagem) or terminou
+                except Exception as e:
+                    self._logger.error(LogEntry(
+                        message=str(e),
+                        level="ERROR",
+                        component="Controller._consumir_fila",
+                        exception=e,
+                        context={"tipo_mensagem": str(mensagem[0])},
+                    ))
+                    terminou = terminou or mensagem[0] in (
+                        MENSAGEM_RESULTADO, MENSAGEM_ERRO
+                    )
         except queue.Empty:
             pass
         return terminou
@@ -109,6 +169,7 @@ class FundamentalMixin:
 
     def _tratar_progresso(self: "FundamentalMixin", mensagem: tuple) -> None:
         """Repassa uma mensagem de progresso ao presenter."""
+        self._fundamental_ultima_atividade = time.monotonic()
         detalhe = mensagem[1]
         if len(mensagem) >= 5:
             self._presenter.on_fundamental_progress(

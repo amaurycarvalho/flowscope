@@ -68,7 +68,9 @@ class DataLoadMixin:
                 self._iniciar_analise_fundamental(tickers, ref_date, result)
 
             except PortfolioNotFoundError:
-                self._presenter.on_operation_finished()
+                self._presenter.set_status(
+                    f"Não foi possível carregar a carteira {index}.", "⚠",
+                )
             except Exception as e:
                 ref = self._logger.error(LogEntry(
                     message=str(e),

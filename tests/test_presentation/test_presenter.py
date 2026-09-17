@@ -143,6 +143,28 @@ class TestFlowScopePresenter:
         presenter.on_fundamental_finished()
         view.clear_wait_cursor.assert_called_once()
 
+    def test_on_fundamental_started_desabilita_controles(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_started()
+        view.disable_all_buttons.assert_called_once()
+        view.set_wait_cursor.assert_called_once()
+
+    def test_substituicao_de_job_mantem_contador_consistente(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_fundamental_started()
+        presenter.on_operation_finished()
+        presenter.on_fundamental_started()
+        presenter.on_fundamental_finished()
+        view.clear_wait_cursor.assert_not_called()
+        assert presenter._operacoes_ativas == 1
+        presenter.on_fundamental_finished()
+        view.clear_wait_cursor.assert_called_once()
+        view.restore_all_buttons.assert_called_once()
+        assert presenter._operacoes_ativas == 0
+
     def test_nao_limpa_progresso_com_operacao_fundamental_ativa(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)

@@ -34,12 +34,14 @@ class FundamentalJob:
         self.generation = generation
         self._force_refresh = force_refresh
         self.fila: queue.Queue = queue.Queue()
+        self.thread: threading.Thread | None = None
 
     def iniciar(self: "FundamentalJob") -> threading.Thread:
         """Inicia a thread de trabalho e a retorna."""
         thread = threading.Thread(
             target=self._executar, name="flowscope-fundamental", daemon=True
         )
+        self.thread = thread
         thread.start()
         return thread
 

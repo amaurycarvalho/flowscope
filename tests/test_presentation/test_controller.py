@@ -99,6 +99,8 @@ class TestOnIndexClicked:
         idx_finished = mc.index(call.on_operation_finished())
         assert idx_started < idx_finished
         assert call.on_result not in mc
+        presenter.on_operation_finished.assert_called_once()
+        presenter.set_status.assert_called_once()
 
     def test_excecao_generica_chama_on_technical_error(self):
         guard = MagicMock()
@@ -338,6 +340,104 @@ class TestAtualizarFundamentos:
             controller.on_atualizar_fundamentos()
 
         iniciar.assert_not_called()
+
+    def test_nao_dispara_com_job_ativo(self):
+        presenter = MagicMock()
+        presenter.get_current_tickers.return_value = ["HGBS11"]
+        presenter.get_reference_date.return_value = date(2026, 9, 4)
+        controller = _make_controller(presenter=presenter, fundamental_repo=object())
+        controller._fundamental_job = object()
+
+        with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
+            controller.on_atualizar_fundamentos()
+
+        iniciar.assert_not_called()
+
+
+class TestSubstituicaoJobFundamental:
+    def _controller(self):
+        view = MagicMock()
+        view.get_current_tickers.return_value = ["PETR4"]
+        view.get_reference_date.return_value = date(2026, 9, 4)
+        view.get_sampling_config.return_value = MagicMock()
+        presenter = FlowScopePresenter(view)
+        guard = MagicMock()
+        guard.acquire.return_value = _mock_context(True)
+        analyze = MagicMock()
+        analyze.execute.return_value = {"PETR4": {"daily_data": []}}
+        controller = _make_controller(
+            guard=guard,
+            load_portfolio=MagicMock(),
+            analyze=analyze,
+            presenter=presenter,
+            fundamental_repo=object(),
+        )
+        return controller, presenter, view
+
+    def test_job_substituido_balanceia_contador_e_libera_cursor(self):
+        controller, presenter, view = self._controller()
+        with patch.object(controller, "_drenar_fundamental"), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental"
+                    ".FundamentalAnalysisUseCase"
+                ), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
+                ):
+            controller._iniciar_analise_fundamental(
+                ["PETR4"], date(2026, 9, 4), {}
+            )
+            controller._iniciar_analise_fundamental(
+                ["PETR4"], date(2026, 9, 4), {}
+            )
+            assert presenter._operacoes_ativas == 1
+            presenter.on_fundamental_finished()
+
+        assert presenter._operacoes_ativas == 0
+        view.clear_wait_cursor.assert_called_once()
+        view.restore_all_buttons.assert_called_once()
+
+    def test_callback_do_job_substituido_nao_altera_contagem(self):
+        controller, presenter, view = self._controller()
+        with patch.object(controller, "_drenar_fundamental"), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental"
+                    ".FundamentalAnalysisUseCase"
+                ), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
+                ):
+            controller._iniciar_analise_fundamental(
+                ["PETR4"], date(2026, 9, 4), {}
+            )
+            job_substituido = controller._fundamental_job
+            controller._iniciar_analise_fundamental(
+                ["PETR4"], date(2026, 9, 4), {}
+            )
+            ativo = presenter._operacoes_ativas
+            controller._drenar_fundamental(job_substituido)
+
+        assert presenter._operacoes_ativas == ativo
+
+    def test_carga_substitui_job_ativo_e_balanceia(self):
+        controller, presenter, view = self._controller()
+        with patch.object(controller, "_drenar_fundamental"), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental"
+                    ".FundamentalAnalysisUseCase"
+                ), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
+                ):
+            controller._iniciar_analise_fundamental(
+                ["PETR4"], date(2026, 9, 4), {}
+            )
+            controller.on_load_data()
+            assert presenter._operacoes_ativas == 1
+            presenter.on_fundamental_finished()
+
+        assert presenter._operacoes_ativas == 0
+        view.clear_wait_cursor.assert_called()
 
 
 class TestWiringHistorico:
