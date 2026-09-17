@@ -384,8 +384,44 @@ class TestUpdateDocuments:
         host._documents_panel = MagicMock()
         host._ticker_list = MagicMock()
         host._ticker_list.get_tickers.return_value = ["ALZR11"]
+        host._evolution_ticker = None
         host._update_documents()
         host._documents_panel.update.assert_called_once_with("ALZR11")
+
+    def test_update_documents_usa_ticker_fixado(self):
+        host = ActionsMixin()
+        host._documents_panel = MagicMock()
+        host._ticker_list = MagicMock()
+        host._ticker_list.get_tickers.return_value = ["PETR3"]
+        host._evolution_ticker = "EXXO34"
+        host._update_documents()
+        host._documents_panel.update.assert_called_once_with("EXXO34")
+
+    def test_ticker_apresentado_sincroniza_com_evolucao(self):
+        host = ActionsMixin()
+        host._ticker_list = MagicMock()
+        host._ticker_list.get_tickers.return_value = ["PETR3"]
+        host._evolution_ticker = "EXXO34"
+        assert host._ticker_apresentado() == "EXXO34"
+        host._evolution_ticker = None
+        assert host._ticker_apresentado() == "PETR3"
+
+    def test_documentos_e_evolucao_recebem_mesmo_ticker(self):
+        host = ActionsMixin()
+        host._documents_panel = MagicMock()
+        host._fundamental_evolution_panel = MagicMock()
+        host._ticker_list = MagicMock()
+        host._ticker_list.get_tickers.return_value = ["PETR3"]
+        host._evolution_ticker = "EXXO34"
+        host._fundamental_history_store = None
+
+        host._update_documents()
+        host._update_fundamental_evolution()
+
+        host._documents_panel.update.assert_called_once_with("EXXO34")
+        host._fundamental_evolution_panel.update.assert_called_once_with(
+            (), ticker="EXXO34"
+        )
 
     def test_do_update_despacha_para_documentos(self):
         host = ActionsMixin()

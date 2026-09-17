@@ -103,10 +103,20 @@ class ActionsMixin:
         else:
             chart.update(filtered)
 
+    def _ticker_apresentado(self: "ActionsMixin") -> str | None:
+        """Retorna o ticker apresentado nas sub-abas por ticker.
+
+        Usa o ticker fixado (via duplo-clique nos Fundamentos) e, na sua
+        ausência, o ticker selecionado na lista. As sub-abas "Evolução dos
+        Fundamentos" e "Documentos" compartilham essa mesma fonte para exibir
+        o mesmo ticker.
+        """
+        return getattr(self, "_evolution_ticker", None) or self._get_selected_ticker()
+
     def _update_fundamental_evolution(self: "ActionsMixin") -> None:
         """Preenche o painel de evolução a partir do cache histórico."""
         painel = self._fundamental_evolution_panel
-        ticker = self._evolution_ticker or self._get_selected_ticker()
+        ticker = self._ticker_apresentado()
         store = getattr(self, "_fundamental_history_store", None)
         if not ticker or store is None:
             painel.update((), ticker=ticker)
@@ -119,11 +129,15 @@ class ActionsMixin:
         painel.update(montar_series(observacoes), ticker=ticker)
 
     def _update_documents(self: "ActionsMixin") -> None:
-        """Preenche o painel de documentos a partir do cache do ticker."""
+        """Preenche o painel de documentos a partir do cache do ticker.
+
+        O ticker é o mesmo apresentado na sub-aba "Evolução dos Fundamentos",
+        mantendo as duas sub-abas sincronizadas.
+        """
         painel = getattr(self, "_documents_panel", None)
         if painel is None:
             return
-        painel.update(self._get_selected_ticker())
+        painel.update(self._ticker_apresentado())
 
     def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
         """Agenda a execução de ``callback`` na thread do Tk."""

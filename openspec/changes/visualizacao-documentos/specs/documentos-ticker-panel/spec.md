@@ -6,15 +6,19 @@ Disponibilizar uma sub-aba na "Análise do Ticker" para navegar, pré-visualizar
 
 ### Requirement: Sub-aba "Documentos" na Análise do Ticker
 
-O sistema DEVE adicionar a sub-aba "Documentos" à "Análise do Ticker". Ao se tornar ativa, a sub-aba DEVE carregar o catálogo de documentos do ticker selecionado e exibir a árvore correspondente.
+O sistema DEVE adicionar a sub-aba "Documentos" à "Análise do Ticker". Ao se tornar ativa, a sub-aba DEVE carregar o catálogo de documentos do ticker apresentado e exibir a árvore correspondente.
 
 #### Scenario: Sub-aba disponível
 - **WHEN** o usuário navega para a "Análise do Ticker"
 - **THEN** a sub-aba "Documentos" DEVE estar disponível
 
 #### Scenario: Ativação carrega o catálogo
-- **WHEN** a sub-aba "Documentos" se torna ativa para o ticker selecionado
+- **WHEN** a sub-aba "Documentos" se torna ativa para o ticker apresentado
 - **THEN** a árvore DEVE ser montada a partir do catálogo do ticker
+
+#### Scenario: Ticker sincronizado com a Evolução dos Fundamentos
+- **WHEN** há um ticker fixado na sub-aba "Evolução dos Fundamentos"
+- **THEN** a sub-aba "Documentos" DEVE carregar o catálogo desse mesmo ticker
 
 ### Requirement: Árvore hierárquica de documentos
 

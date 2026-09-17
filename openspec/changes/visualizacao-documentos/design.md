@@ -50,6 +50,14 @@ Esta change adiciona um catálogo que lê as raízes e um painel de árvore + pr
 
 **Decisão**: arquivos exibidos pelo nome do arquivo (id) com a data do caminho; ano/mês decrescentes, categorias alfabéticas e arquivos do mais recente ao mais antigo.
 
+### 7. Ticker compartilhado com a sub-aba "Evolução dos Fundamentos"
+
+**Decisão**: a sub-aba "Documentos" exibe o mesmo ticker da sub-aba "Evolução dos Fundamentos": o ticker fixado por duplo-clique nos Fundamentos (`_evolution_ticker`) e, na sua ausência, o ticker selecionado na lista. Ambas usam um único helper `_ticker_apresentado()`.
+
+**Alternativas**: (a) usar sempre o primeiro ticker selecionado — com uma watchlist inteira selecionada, o painel exibia um ticker arbitrário (o primeiro da lista) sem relação com o que o usuário estava analisando; (b) criar um estado de ticker próprio para documentos — duplicaria o estado de pin e divergiria das demais sub-abas por ticker. Compartilhar a fonte mantém as sub-abas coerentes e faz o pin dos Fundamentos refletir em Documentos.
+
+**Racional**: o usuário relatou que a sub-aba parecia vazia porque apresentava um ticker diferente do que estava analisando. Sincronizar com a Evolução dos Fundamentos elimina a ambiguidade sem introduzir novo estado.
+
 ## Risks / Trade-offs
 
 - **[Risco] Muitos arquivos por ticker** → A árvore com níveis de ano/mês/categoria mantém a navegação; a varredura é somente leitura.
