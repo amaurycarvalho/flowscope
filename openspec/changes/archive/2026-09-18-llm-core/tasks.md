@@ -59,3 +59,9 @@
 - [x] 10.1 Registrar em log (nível aviso, logger `flowscope`) as falhas do botão "Testar" com provedor, modelo, API URL e tipo/mensagem do erro, verificando com `caplog` a entrada gerada
 - [x] 10.2 Garantir que a chave de API não seja registrada, verificando com teste que o valor não aparece na mensagem de log
 - [x] 10.3 Fazer o registro na thread da interface (ao consumir o desfecho da fila), mantendo a exibição na tela e a suíte de GUI estável
+
+## 11. Plugins do tiktoken no Executável
+
+- [x] 11.1 Incluir `tiktoken_ext` e `tiktoken_ext.openai_public` como `hiddenimports` no `flowscope.spec` (via `collect_submodules('tiktoken_ext')`)
+- [x] 11.2 Verificar com um build congelado mínimo que o `tiktoken` resolve o encoding `cl100k_base` sem o erro `Unknown encoding`
+- [x] 11.3 Reconstruir o executável e verificar que `tiktoken_ext.openai_public` está no TOC e que o binário inicia (`--version`)

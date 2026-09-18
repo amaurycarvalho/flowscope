@@ -34,10 +34,12 @@ from flowscope.presentation.gui.charts.document_preview import (
     texto_de_pdf,
     texto_preview,
 )
+from flowscope.presentation.gui.charts.document_grouping import (
+    mensagem_indisponivel,
+)
 from flowscope.presentation.gui.charts.document_tree_panel import (
     CARREGANDO,
     DocumentTreePanel,
-    mensagem_indisponivel,
 )
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
@@ -52,7 +54,7 @@ needs_display = pytest.mark.skipif(
 def _sem_llm_por_padrao(monkeypatch):
     """Torna a disponibilidade da LLM determinística nos testes do painel."""
     monkeypatch.setattr(
-        "flowscope.presentation.gui.charts.document_tree_panel._llm_configurada",
+        "flowscope.presentation.gui.charts.document_summary.llm_configurada",
         lambda: False,
     )
 

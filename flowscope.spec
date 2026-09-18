@@ -21,6 +21,11 @@ litellm_datas = [
 ]
 litellm_hiddenimports = collect_submodules('litellm')
 
+# O tiktoken descobre os encodings via `pkgutil.iter_modules` sobre o pacote de
+# namespace `tiktoken_ext`; sem o submódulo `openai_public` o registro fica
+# vazio e o liteLLM falha com "Unknown encoding cl100k_base".
+tiktoken_hiddenimports = collect_submodules('tiktoken_ext')
+
 if sys.platform == 'win32':
     icon_file = 'src/flowscope/icons/flowscope.ico'
 elif sys.platform == 'darwin':
@@ -55,6 +60,7 @@ a = Analysis(
         'tkcalendar.calendar_',
         'tkcalendar.tooltip',
         *litellm_hiddenimports,
+        *tiktoken_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

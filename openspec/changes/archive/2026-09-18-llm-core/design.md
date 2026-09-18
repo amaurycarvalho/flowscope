@@ -140,6 +140,15 @@ presentation/gui/llm/
 
 **Consequências:** a fila do teste passa a carregar também a configuração e a exceção, e o log vai para o arquivo rotativo `~/.flowscope/logs/flowscope.log`.
 
+### 14. Plugins do `tiktoken` no executável
+
+**Decisão:** incluir `tiktoken_ext` e `tiktoken_ext.openai_public` como `hiddenimports` no `flowscope.spec` (via `collect_submodules('tiktoken_ext')`). O `tiktoken` descobre os encodings com `pkgutil.iter_modules` sobre o pacote de namespace `tiktoken_ext`; sem o submódulo, o registro fica vazio e o liteLLM falha com `ValueError: Unknown encoding cl100k_base. Plugins found: []`.
+
+**Alternativa considerada:** confiar apenas na análise estática do PyInstaller sobre o `tiktoken`.
+**Rejeitada porque:** o pacote de namespace `tiktoken_ext` é descoberto dinamicamente e seus submódulos não são detectados; é preciso declará-los explicitamente.
+
+**Consequências:** a contagem de tokens do liteLLM funciona no executável; os arquivos BPE (`cl100k_base`, etc.) continuam sendo baixados/cacheados pelo `tiktoken` na primeira utilização, o que exige rede — aceitável, pois a chamada ao provedor também exige.
+
 ## Risks / Trade-offs
 
 - **[Risco] `custom_llm_provider="openai"` não funciona em endpoints nativos de Anthropic/Gemini** → Mitigação: documentar que os presets exigem endpoints OpenAI-compatible; erros chegam como `LLMProviderError` com a mensagem do provedor; prefixos nativos podem ser adicionados depois sem quebrar a porta.

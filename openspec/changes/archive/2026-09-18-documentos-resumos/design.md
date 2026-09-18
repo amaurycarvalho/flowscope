@@ -81,13 +81,18 @@ Ver `proposal.md` para a motivação. O estado atual relevante:
 application/resumo_documento.py        ResumirDocumentoUseCase, ResumoDocumento
 infrastructure/document_summaries.py   JsonDocumentSummaryStore (load/save por ticker)
 infrastructure/document_catalog.py     DocumentoArquivo + campos; catalogo() enriquece
-presentation/gui/widgets/readonly_text.py   ReadonlyText
-presentation/gui/charts/document_tree_panel.py  visão de agrupamento + geração
+presentation/gui/widgets/readonly_text.py       ReadonlyText
+presentation/gui/charts/document_grouping.py    Agrupamento, render_grupo, mensagem_indisponivel
+presentation/gui/charts/document_summary.py     DocumentSummaryService (disponibilidade/geração/persistência)
+presentation/gui/charts/document_tree_view.py   DocumentTreeView (Treeview + mapas de nós)
+presentation/gui/charts/document_tree_panel.py  painel (toolbar, preview, orquestração)
 ```
 
-**Decisão:** o store é infraestrutura; o serviço é aplicação; o widget é apresentação.
-**Alternativa considerada:** colocar o store dentro de `document_catalog.py`.
-**Rejeitada porque:** separa a varredura (somente leitura) da persistência (leitura/escrita) e facilita testar cada um isoladamente.
+**Decisão:** o store é infraestrutura; o serviço é aplicação; o widget é apresentação. No painel, a renderização de agrupamentos, o serviço de resumo e a árvore/mapas ficam em módulos próprios (`document_grouping`, `document_summary`, `document_tree_view`), deixando `document_tree_panel` com a orquestração da interface.
+
+**Alternativa considerada:** manter tudo em `document_tree_panel.py`.
+**Rejeitada porque:** concentrar agrupamento, geração e árvore no painel elevava o arquivo a um MI de 17.2 (limite 30 do `make complexity`) e a complexidade de `render_grupo` a rank C; a divisão por responsabilidade baixa o MI do painel para ~31 e mantém cada módulo coeso e testável isoladamente.
+
 
 ### 9. Atalho Ctrl+A explícito no `ReadonlyText`
 

@@ -32,6 +32,19 @@ DEFAULT_CONFIG = {
 }
 
 
+def _ler_preferencias_salvas() -> dict:
+    """Lê do arquivo apenas as chaves de preferência conhecidas."""
+    if not CONFIG_PATH.exists():
+        return {}
+    try:
+        data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {chave: data[chave] for chave in DEFAULT_CONFIG if chave in data}
+
+
 def load_preferences() -> dict:
     """Carrega as preferências salvas no arquivo de configuração.
 
@@ -40,19 +53,7 @@ def load_preferences() -> dict:
     interface, para não serem sobrescritos ao fechar a aplicação.
     """
     prefs = dict(DEFAULT_CONFIG)
-    try:
-        if CONFIG_PATH.exists():
-            data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                prefs.update(
-                    {
-                        chave: data[chave]
-                        for chave in DEFAULT_CONFIG
-                        if chave in data
-                    }
-                )
-    except (json.JSONDecodeError, OSError):
-        pass
+    prefs.update(_ler_preferencias_salvas())
     last_tickers = prefs.get("last_tickers")
     if not isinstance(last_tickers, list):
         prefs["last_tickers"] = None

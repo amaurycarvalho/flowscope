@@ -1,8 +1,10 @@
+# llm-config Specification
+
 ## Purpose
 
 Define como a configuração do LLM é persistida e lida a partir do `config.json` existente, como as dependências opcionais `[llm]` são detectadas e como os presets de provedores são expostos para a GUI e para os consumidores.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Persistência do bloco `llm.chat`
 
@@ -51,6 +53,10 @@ O executável gerado pelo PyInstaller DEVE incluir o liteLLM e seus arquivos de 
 #### Scenario: Executável com suporte a LLM
 - **WHEN** o executável é gerado por `make build` e executado em uma máquina sem Python instalado
 - **THEN** a detecção das dependências `[llm]` DEVE retornar verdadeiro e o diálogo de I.A. DEVE permitir configurar e testar o provedor
+
+#### Scenario: Encodings do tiktoken disponíveis
+- **WHEN** o executável é gerado e o liteLLM precisa contar tokens (ex.: provedor Gemini)
+- **THEN** o pacote de plugins `tiktoken_ext.openai_public` DEVE estar incluído e o encoding `cl100k_base` DEVE ser resolvido sem o erro `Unknown encoding`
 
 #### Scenario: Build sem o grupo `[llm]`
 - **WHEN** o liteLLM não está instalado no ambiente de build

@@ -7,7 +7,7 @@ Esta change é a fundação reutilizável de LLM: expõe uma porta genérica de 
 ## What Changes
 
 - Novo grupo opcional `[llm]` em `pyproject.toml` com `litellm` (`pip install flowscope[llm]`).
-- O executável do PyInstaller passa a embutir o liteLLM: o alvo `build` instala `[llm]` antes de empacotar e a especificação coleta submódulos e arquivos de dados do litellm, garantindo os recursos de I.A. em máquinas que rodam apenas o binário (sem Python/pip).
+- O executável do PyInstaller passa a embutir o liteLLM: o alvo `build` instala `[llm]` antes de empacotar e a especificação coleta submódulos e arquivos de dados do litellm, garantindo os recursos de I.A. em máquinas que rodam apenas o binário (sem Python/pip). Inclui também o pacote de plugins `tiktoken_ext.openai_public`, necessário para a contagem de tokens do liteLLM.
 - Novo domínio `domain/llm/`: porta genérica `LLMPort` (completion) e hierarquia de exceções (`LLMUnavailableError`, `LLMConfigurationError`, `LLMCommunicationError`, `LLMProviderError`, `LLMRateLimitError`).
 - Nova infraestrutura `infrastructure/llm/`: presets de provedores (`none`, `openai`, `gemini`, `copilot`, `claude`, `deepseek`, `ollama`, `custom`), adaptador `LiteLLMChatAdapter` via `litellm.completion()` com `custom_llm_provider`, rate limiter configurável (RPM, default 5), load/save de config, detecção das dependências `[llm]` e factory `create_llm_provider(config)`.
 - Bloco `llm.chat` no `~/.flowscope/config.json` com `provider` (default `none`), `api_url`, `model`, `api_key` e `rpm`, preservando as demais preferências do arquivo.

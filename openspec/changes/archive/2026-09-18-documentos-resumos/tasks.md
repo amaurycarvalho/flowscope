@@ -58,3 +58,10 @@
 - [x] 10.1 Fazer o botão "Salvar" do diálogo de I.A. gravar o bloco `llm.chat` e fechar a janela, verificando com teste que o diálogo deixa de existir após salvar
 - [x] 10.2 Garantir que o fechamento da aplicação não sobrescreva o bloco `llm`: `load_preferences` carrega apenas as chaves de preferência e `save_preferences` faz *read-modify-write*, verificando com testes a preservação do bloco
 - [x] 10.3 Verificar que a configuração salva é recarregada no próximo início e reaparece preenchida ao reabrir o diálogo, com teste de reabertura
+
+## 11. Quality Gate
+
+- [x] 11.1 Extrair `document_grouping.py` (Agrupamento, `render_grupo`, mensagem de indisponibilidade) e reduzir a complexidade de `render_grupo` de C para A
+- [x] 11.2 Extrair `document_summary.py` (`DocumentSummaryService`) e `document_tree_view.py` (`DocumentTreeView`) do painel, elevando o MI de `document_tree_panel.py` de 17.2 para >= 30
+- [x] 11.3 Reduzir a complexidade de `load_preferences` em `app.py` (rank C no xenon) extraindo `_ler_preferencias_salvas`
+- [x] 11.4 Executar `make quality-gate` e garantir lint, complexidade, duplicação, testes, segurança e mutação aprovados
