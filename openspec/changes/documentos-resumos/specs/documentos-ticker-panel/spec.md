@@ -76,11 +76,15 @@ Ao selecionar um documento sem `long_summary` com a LLM configurada, o sistema D
 
 ### Requirement: Campo de texto somente-leitura com atalhos e cursor
 
-O campo de texto DEVE permanecer somente-leitura, impedindo alterações de conteúdo, e ao mesmo tempo DEVE aceitar os atalhos de teclado de seleção e cópia (Ctrl+A, Ctrl+C, Shift+setas) e a navegação pelo teclado, exibindo o cursor de foco. A seleção com o mouse DEVE continuar funcionando.
+O campo de texto DEVE permanecer somente-leitura, impedindo alterações de conteúdo, e ao mesmo tempo DEVE aceitar os atalhos de teclado de seleção e cópia (Ctrl+A, Ctrl+C, Shift+setas) e a navegação pelo teclado, exibindo o cursor de foco. A seleção com o mouse DEVE continuar funcionando. O atalho Ctrl+A DEVE ser vinculado explicitamente ao campo, independentemente do mapeamento padrão do toolkit.
 
 #### Scenario: Selecionar tudo com Ctrl+A
 - **WHEN** o campo de texto está focado e o usuário pressiona Ctrl+A
 - **THEN** todo o conteúdo DEVE ser selecionado
+
+#### Scenario: Ctrl+A independente do toolkit
+- **WHEN** o atalho padrão de "selecionar tudo" do toolkit não estiver associado a Ctrl+A (ex.: X11, onde `<<SelectAll>>` é Ctrl+barra)
+- **THEN** Ctrl+A DEVE ainda selecionar todo o conteúdo do campo
 
 #### Scenario: Cópia com Ctrl+C
 - **WHEN** o usuário pressiona Ctrl+C com texto selecionado
@@ -93,3 +97,35 @@ O campo de texto DEVE permanecer somente-leitura, impedindo alterações de cont
 #### Scenario: Edição bloqueada
 - **WHEN** o usuário pressiona uma tecla que alteraria o conteúdo (ex.: uma letra)
 - **THEN** o conteúdo DEVE permanecer inalterado
+
+### Requirement: Cópia do conteúdo da pré-visualização
+
+Quando a sub-aba "Documentos" estiver ativa, o botão "Copiar dados CSV" DEVE copiar o conteúdo atual do campo de texto da pré-visualização para a área de transferência e DEVE estar habilitado nessa sub-aba mesmo sem dados da B3 carregados. Nas demais sub-abas, o botão DEVE preservar o comportamento de cópia de CSV.
+
+#### Scenario: Documentos ativa copia a pré-visualização
+- **WHEN** a sub-aba "Documentos" está ativa e o usuário aciona o botão "Copiar dados CSV"
+- **THEN** o conteúdo atual do campo de texto DEVE ser copiado para a área de transferência
+
+#### Scenario: Botão habilitado em Documentos sem dados
+- **WHEN** o usuário entra na sub-aba "Documentos" sem dados da B3 carregados
+- **THEN** o botão "Copiar dados CSV" DEVE estar habilitado
+
+#### Scenario: Outra sub-aba mantém a cópia de CSV
+- **WHEN** a sub-aba ativa não é "Documentos" e o usuário aciona o botão "Copiar dados CSV"
+- **THEN** o CSV do contexto atual DEVE ser copiado
+
+### Requirement: Persistência da configuração de I.A.
+
+O botão "Salvar" do diálogo de configuração de I.A. DEVE gravar a última configuração de `llm.chat` e fechar o diálogo. A configuração DEVE permanecer no arquivo após o fechamento da aplicação, DEVE ser recarregada para uso do sistema no próximo início e DEVE aparecer preenchida quando o diálogo for reaberto. A gravação das preferências da interface NÃO DEVE sobrescrever o bloco `llm`.
+
+#### Scenario: Salvar fecha o diálogo
+- **WHEN** o usuário aciona "Salvar" no diálogo de I.A.
+- **THEN** a configuração DEVE ser gravada e o diálogo DEVE ser fechado
+
+#### Scenario: Reabertura mostra a última configuração
+- **WHEN** o diálogo de I.A. é reaberto após um salvamento
+- **THEN** os campos DEVEM exibir os últimos valores salvos
+
+#### Scenario: Configuração sobrevive ao fechamento da aplicação
+- **WHEN** a aplicação é fechada após salvar a configuração de I.A.
+- **THEN** o bloco `llm.chat` DEVE permanecer no arquivo e ser recarregado no próximo início

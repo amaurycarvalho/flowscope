@@ -6,6 +6,7 @@ from flowscope.infrastructure.document_catalog import (
     CatalogoTicker,
     DocumentCatalog,
 )
+from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 
 
 def _touch(caminho: Path, conteudo: bytes = b"x") -> None:
@@ -116,3 +117,45 @@ class TestOrdenacao:
         catalogo = DocumentCatalog(cache_dir=tmp_path).catalogo("ALZR11")
         assert catalogo.vazio
         assert catalogo.anos == ()
+
+
+class TestResumos:
+    def test_campos_nulos_por_padrao(self, tmp_path):
+        _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        catalogo = DocumentCatalog(cache_dir=tmp_path).catalogo("ALZR11")
+        arquivo = _arquivos(catalogo)[0]
+        assert arquivo.short_summary is None
+        assert arquivo.long_summary is None
+
+    def test_documento_com_resumo_enriquecido(self, tmp_path):
+        _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar(
+            "ALZR11", "bdr/ALZR11/2026/02/10.pdf", "curto", "longo"
+        )
+        catalogo = DocumentCatalog(
+            cache_dir=tmp_path, summary_store=store
+        ).catalogo("ALZR11")
+        arquivo = _arquivos(catalogo)[0]
+        assert arquivo.short_summary == "curto"
+        assert arquivo.long_summary == "longo"
+
+    def test_chave_estavel_entre_varreduras(self, tmp_path):
+        _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar(
+            "ALZR11", "bdr/ALZR11/2026/02/10.pdf", "curto", "longo"
+        )
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        primeira = _arquivos(catalogo.catalogo("ALZR11"))[0]
+        segunda = _arquivos(catalogo.catalogo("ALZR11"))[0]
+        assert primeira.short_summary == segunda.short_summary == "curto"
+
+    def test_resumo_de_outro_ticker_nao_vaza(self, tmp_path):
+        _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar("BOVA11", "bdr/BOVA11/2026/02/10.pdf", "curto", "longo")
+        catalogo = DocumentCatalog(
+            cache_dir=tmp_path, summary_store=store
+        ).catalogo("ALZR11")
+        assert _arquivos(catalogo)[0].short_summary is None

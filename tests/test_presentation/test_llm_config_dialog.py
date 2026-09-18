@@ -84,6 +84,41 @@ class TestCargaESalvamento:
             root.destroy()
 
     @needs_display
+    def test_salvar_fecha_dialogo(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog._salvar()
+            assert dialog.winfo_exists() == 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_reabertura_mostra_config_salva(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog._provider_var.set("deepseek")
+            dialog._api_url_var.set("https://api.deepseek.com/v1")
+            dialog._model_var.set("deepseek-chat")
+            dialog._api_key_var.set("sk-9")
+            dialog._rpm_var.set("8")
+            dialog._salvar()
+            reaberto = LLMConfigDialog(root, config_path=caminho)
+            try:
+                assert reaberto._provider_var.get() == "deepseek"
+                assert reaberto._api_url_var.get() == "https://api.deepseek.com/v1"
+                assert reaberto._model_var.get() == "deepseek-chat"
+                assert reaberto._api_key_var.get() == "sk-9"
+                assert reaberto._rpm_var.get() == "8"
+            finally:
+                reaberto.destroy()
+        finally:
+            root.destroy()
+
+    @needs_display
     def test_chave_mascarada(self, tmp_path):
         root = tk.Tk()
         try:

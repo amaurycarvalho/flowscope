@@ -200,9 +200,9 @@ class LLMConfigDialog(tk.Toplevel):
         }
 
     def _salvar(self: "LLMConfigDialog") -> None:
-        """Grava o bloco ``llm.chat`` e informa o desfecho no status."""
+        """Grava o bloco ``llm.chat`` e fecha o diálogo."""
         save_llm_config(self._coletar_config(), self._config_path)
-        self._status_var.set("Configuração salva.")
+        self.destroy()
 
     def _on_testar(self: "LLMConfigDialog") -> None:
         """Inicia o teste de conexão, impedindo execuções concorrentes."""

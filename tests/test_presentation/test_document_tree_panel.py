@@ -12,6 +12,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from flowscope.infrastructure.document_catalog import DocumentCatalog
+from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
+from flowscope.domain.llm import LLMCommunicationError
 from flowscope.presentation.gui import app_actions, document_actions
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.documentos_job import (
@@ -35,13 +37,24 @@ from flowscope.presentation.gui.charts.document_preview import (
 from flowscope.presentation.gui.charts.document_tree_panel import (
     CARREGANDO,
     DocumentTreePanel,
+    mensagem_indisponivel,
 )
 from flowscope.presentation.gui.controller import FlowScopeController
+from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
 needs_display = pytest.mark.skipif(
     not os.environ.get("DISPLAY"),
     reason="Test requires a display (no DISPLAY env var)",
 )
+
+
+@pytest.fixture(autouse=True)
+def _sem_llm_por_padrao(monkeypatch):
+    """Torna a disponibilidade da LLM determinística nos testes do painel."""
+    monkeypatch.setattr(
+        "flowscope.presentation.gui.charts.document_tree_panel._llm_configurada",
+        lambda: False,
+    )
 
 
 def _touch(caminho: Path, conteudo: bytes = b"x") -> None:
@@ -63,11 +76,52 @@ def _catalogo(tmp_path: Path) -> DocumentCatalog:
     return DocumentCatalog(cache_dir=tmp_path)
 
 
+def _catalogo_com_html(tmp_path: Path) -> DocumentCatalog:
+    _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+    _touch(
+        tmp_path / "informe-mensal" / "ALZR11" / "2026" / "02" / "20.html",
+        b"<html><body>Conteudo do informe</body></html>",
+    )
+    return DocumentCatalog(cache_dir=tmp_path)
+
+
+def _pump(root: tk.Tk, condicao, timeout: float = 2.0) -> bool:
+    limite = time.time() + timeout
+    while time.time() < limite:
+        root.update()
+        if condicao():
+            return True
+        time.sleep(0.01)
+    return condicao()
+
+
 def _no_arquivo(painel: DocumentTreePanel, nome: str) -> str:
     for iid, arquivo in painel._itens.items():
         if arquivo.nome == nome:
             return iid
     raise AssertionError(f"arquivo {nome} não encontrado na árvore")
+
+
+def _no_grupo(painel: DocumentTreePanel, tipo: str, titulo: str | None = None) -> str:
+    for iid, grupo in painel._grupos.items():
+        if grupo.tipo == tipo and (titulo is None or grupo.titulo == titulo):
+            return iid
+    raise AssertionError(f"agrupamento {tipo}/{titulo} não encontrado")
+
+
+class _LLMFake:
+    """Porta de LLM que registra chamadas e pode bloquear até ser liberada."""
+
+    def __init__(self, resposta: str = "", liberar=None) -> None:
+        self.resposta = resposta
+        self.liberar = liberar
+        self.chamadas: list[list[dict]] = []
+
+    def complete(self, messages: list[dict], system_prompt=None) -> str:
+        self.chamadas.append(messages)
+        if self.liberar is not None:
+            self.liberar.wait(2.0)
+        return self.resposta
 
 
 class TestPreview:
@@ -165,9 +219,12 @@ class TestMontagemArvore:
             )
             painel.update("ALZR11")
             arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            painel._aplicar_preview(arquivo, "conteúdo cacheado")
+            painel._preview_cache[arquivo.caminho] = "conteúdo cacheado"
             painel._iniciar_preview(arquivo)
-            assert painel._preview.get("1.0", "end-1c") == "conteúdo cacheado"
+            esperado = (
+                f"{mensagem_indisponivel(False)}\n\n---\n\nconteúdo cacheado"
+            )
+            assert painel._preview.get("1.0", "end-1c") == esperado
         finally:
             root.destroy()
 
@@ -507,14 +564,13 @@ class TestPreviewEmThread:
                 lambda _caminho: "extraído",
             )
             painel._tree.selection_set(no)
-            painel._iniciar_preview(arquivo)
-            assert painel._preview.get("1.0", "end-1c") in (CARREGANDO, "extraído")
-            for _ in range(100):
+            esperado = f"{mensagem_indisponivel(False)}\n\n---\n\nextraído"
+            for _ in range(200):
                 root.update()
-                if painel._preview.get("1.0", "end-1c") == "extraído":
+                if painel._preview.get("1.0", "end-1c") == esperado:
                     break
                 time.sleep(0.01)
-            assert painel._preview.get("1.0", "end-1c") == "extraído"
+            assert painel._preview.get("1.0", "end-1c") == esperado
         finally:
             root.destroy()
 
@@ -572,6 +628,65 @@ class TestWiringSubAba:
             assert host.chamadas == [True]
         finally:
             root.destroy()
+
+
+class TestSyncCopyButton:
+    @needs_display
+    def test_habilita_em_documentos(self):
+        root = tk.Tk()
+        try:
+            host = TabActionsMixin()
+            host._copy_data_btn = tk.Button(root, state=tk.DISABLED)
+            host._current_data = {}
+            host._button_states = {}
+            host._sync_copy_button_for_tab("Análise do Ticker", "Documentos")
+            assert str(host._copy_data_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_desabilita_fora_de_documentos_sem_dados(self):
+        root = tk.Tk()
+        try:
+            host = TabActionsMixin()
+            host._copy_data_btn = tk.Button(root, state=tk.NORMAL)
+            host._current_data = {}
+            host._button_states = {}
+            host._sync_copy_button_for_tab("Análise Geral", "Fundamentos")
+            assert str(host._copy_data_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_mantem_habilitado_com_dados(self):
+        root = tk.Tk()
+        try:
+            host = TabActionsMixin()
+            host._copy_data_btn = tk.Button(root, state=tk.DISABLED)
+            host._current_data = {"PETR4": {}}
+            host._button_states = {}
+            host._sync_copy_button_for_tab("Análise Geral", "Fundamentos")
+            assert str(host._copy_data_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_nao_sobrescreve_bloqueio_global(self):
+        root = tk.Tk()
+        try:
+            host = TabActionsMixin()
+            host._copy_data_btn = tk.Button(root, state=tk.DISABLED)
+            host._current_data = {}
+            host._button_states = {host._copy_data_btn: tk.DISABLED}
+            host._sync_copy_button_for_tab("Análise do Ticker", "Documentos")
+            assert str(host._copy_data_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    def test_sem_botao_nao_falha(self):
+        host = TabActionsMixin()
+        host._button_states = {}
+        host._sync_copy_button_for_tab("Análise do Ticker", "Documentos")
 
 
 class TestAbrirConfigLLM:
@@ -805,3 +920,276 @@ class TestDocumentosJob:
             MENSAGEM_PROGRESSO, 2, 2, "• Documentos de PETR3 (2/2)"
         )
         assert mensagens[-1] is True
+
+
+class TestWidgetSomenteLeitura:
+    @needs_display
+    def test_preview_usa_readonly_text(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            assert isinstance(painel._preview, ReadonlyText)
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_texto_atual_reflete_a_preview(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel._set_preview_text("conteudo atual")
+            assert painel.texto_atual() == "conteudo atual"
+        finally:
+            root.destroy()
+
+
+class TestAgrupamento:
+    @needs_display
+    def test_nos_de_agrupamento_tem_payload(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            tipos = {grupo.tipo for grupo in painel._grupos.values()}
+            assert tipos == {"ticker", "ano", "mes", "categoria"}
+            assert _no_arquivo(painel, "10.pdf") not in painel._grupos
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_lista_do_ticker_com_niveis_relativos(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_grupo(painel, "ticker"))
+            root.update()
+            texto = painel._preview.get("1.0", "end-1c")
+            assert texto.startswith("# ALZR11\n## 2026\n### 02\n")
+            assert "#### Assembleia" in texto
+            assert "#### Aviso aos Acionistas" in texto
+            assert "- 10.pdf —" in texto
+            assert "- 20.pdf —" in texto
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_lista_da_categoria(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(
+                _no_grupo(painel, "categoria", "Aviso aos Acionistas")
+            )
+            root.update()
+            texto = painel._preview.get("1.0", "end-1c")
+            assert texto.startswith("# Aviso aos Acionistas\n")
+            assert "- 10.pdf —" in texto
+            assert "20.pdf" not in texto
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_item_exibe_short_summary_armazenado(self, tmp_path):
+        root = tk.Tk()
+        try:
+            _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            store.salvar(
+                "ALZR11", "bdr/ALZR11/2026/02/10.pdf", "resumo curto", "longo"
+            )
+            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_grupo(painel, "ticker"))
+            root.update()
+            assert "- 10.pdf — resumo curto" in painel._preview.get(
+                "1.0", "end-1c"
+            )
+        finally:
+            root.destroy()
+
+
+class TestMensagemIndisponibilidade:
+    def test_dois_sufixos(self):
+        assert mensagem_indisponivel(True) == (
+            "Resumo indisponível. Clique no documento para análise."
+        )
+        assert mensagem_indisponivel(False) == (
+            "Resumo indisponível. Configure a LLM via o botão I.A. e teste "
+            "a comunicação."
+        )
+
+    @needs_display
+    def test_lista_usa_sufixo_da_llm_configurada(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path),
+                llm_available=lambda: True, llm_factory=lambda: object(),
+                debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_grupo(painel, "ticker"))
+            root.update()
+            assert mensagem_indisponivel(True) in painel._preview.get(
+                "1.0", "end-1c"
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_lista_usa_sufixo_sem_llm(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            painel._tree.selection_set(_no_grupo(painel, "ticker"))
+            root.update()
+            assert mensagem_indisponivel(False) in painel._preview.get(
+                "1.0", "end-1c"
+            )
+        finally:
+            root.destroy()
+
+
+class TestGeracaoDeResumo:
+    def _painel(self, root, tmp_path, llm, disponivel=True):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(
+            catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026" / "02"
+            / "20.html",
+            b"<html><body>Conteudo do informe</body></html>",
+        )
+        painel = DocumentTreePanel(
+            root, catalog=catalogo, summary_store=store,
+            llm_available=lambda: disponivel, llm_factory=lambda: llm,
+            debounce_ms=0,
+        )
+        painel.update("ALZR11")
+        return painel, store
+
+    @needs_display
+    def test_preview_composta_com_resumo_longo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            store.salvar(
+                "ALZR11", "informe-mensal/ALZR11/2026/02/20.html",
+                "curto", "resumo longo",
+            )
+            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+            _touch(
+                catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026"
+                / "02" / "20.html",
+                b"<html><body>Conteudo do informe</body></html>",
+            )
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "20.html")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root,
+                lambda: painel._preview.get("1.0", "end-1c")
+                == "resumo longo\n\n---\n\nConteudo do informe",
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_gera_resumo_persiste_e_atualiza_catalogo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            llm = _LLMFake("CURTO: curto\nLONGO: longo")
+            painel, store = self._painel(root, tmp_path, llm)
+            no = _no_arquivo(painel, "20.html")
+            painel._tree.selection_set(no)
+            assert _pump(root, lambda: "longo" in painel._preview.get("1.0", "end-1c"))
+            texto = painel._preview.get("1.0", "end-1c")
+            assert texto == "longo\n\n---\n\nConteudo do informe"
+            assert painel._itens[no].short_summary == "curto"
+            assert painel._itens[no].long_summary == "longo"
+            assert len(llm.chamadas) == 1
+            chave = "informe-mensal/ALZR11/2026/02/20.html"
+            assert store.obter("ALZR11", chave).long_summary == "longo"
+            painel._tree.selection_set(_no_grupo(painel, "ticker"))
+            root.update()
+            assert "- 20.html — curto" in painel._preview.get("1.0", "end-1c")
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_llm_exibe_mensagem_sem_chamar(self, tmp_path):
+        root = tk.Tk()
+        try:
+            llm = _LLMFake("CURTO: curto\nLONGO: longo")
+            painel, store = self._painel(root, tmp_path, llm, disponivel=False)
+            no = _no_arquivo(painel, "20.html")
+            painel._tree.selection_set(no)
+            esperado = (
+                f"{mensagem_indisponivel(False)}\n\n---\n\nConteudo do informe"
+            )
+            assert _pump(root, lambda: painel._preview.get("1.0", "end-1c") == esperado)
+            assert llm.chamadas == []
+            assert store.resumos("ALZR11") == {}
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_falha_tipada_exibe_mensagem(self, tmp_path):
+        root = tk.Tk()
+        try:
+            class _Falha:
+                def complete(self, messages, system_prompt=None):
+                    raise LLMCommunicationError("timeout")
+
+            painel, _ = self._painel(root, tmp_path, _Falha())
+            no = _no_arquivo(painel, "20.html")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root,
+                lambda: mensagem_indisponivel(True)
+                in painel._preview.get("1.0", "end-1c"),
+            )
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_resultado_obsoleto_descartado(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("ALZR11")
+            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+            painel._set_preview_text("ATUAL")
+            fila: queue.Queue = queue.Queue()
+            req_antigo = painel._req_id
+            painel._req_id += 1
+            painel._agendar_poll(arquivo, fila, req_antigo)
+            fila.put(("texto antigo", None))
+            for _ in range(50):
+                root.update()
+                time.sleep(0.005)
+            assert painel._preview.get("1.0", "end-1c") == "ATUAL"
+        finally:
+            root.destroy()

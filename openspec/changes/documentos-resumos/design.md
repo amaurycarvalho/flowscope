@@ -89,6 +89,31 @@ presentation/gui/charts/document_tree_panel.py  visão de agrupamento + geraçã
 **Alternativa considerada:** colocar o store dentro de `document_catalog.py`.
 **Rejeitada porque:** separa a varredura (somente leitura) da persistência (leitura/escrita) e facilita testar cada um isoladamente.
 
+### 9. Atalho Ctrl+A explícito no `ReadonlyText`
+
+**Decisão:** vincular `<Control-Key-a>` (e `<Control-Key-A>`) diretamente no `ReadonlyText`, selecionando `1.0`–`end-1c` e retornando `"break"`. Não confiar apenas no evento virtual `<<SelectAll>>` do Tk.
+
+**Alternativa considerada:** depender do binding de classe `<<SelectAll>>` do `tk.Text`.
+**Rejeitada porque:** no X11 o Tk mapeia `<<SelectAll>>` para `<Control-Key-slash>`, de modo que Ctrl+A não selecionava nada no Linux; o requisito de Ctrl+A precisa de um vínculo explícito.
+
+### 10. Cópia contextual do botão "Copiar dados CSV"
+
+**Decisão:** `CsvMixin._copy_data` passa a escolher o conteúdo por contexto. Quando a sub-aba ativa é `("Análise do Ticker", "Documentos")`, copia o texto atual da pré-visualização via `DocumentTreePanel.texto_atual()`; nas demais abas mantém a montagem de CSV (Fundamentos ou bruto). O botão é habilitado ao entrar na sub-aba Documentos, mesmo sem dados da B3, e restaurado ao sair conforme a existência de dados, sem sobrescrever um bloqueio global de operação em andamento.
+
+**Alternativa considerada:** criar um botão "Copiar" dedicado dentro do painel de documentos.
+**Rejeitada porque:** duplicaria controle e atalho; reaproveitar o botão existente mantém a interface enxuta e o atalho Ctrl+Shift+C já ligado a `_copy_data`.
+
+**Consequências:** o painel expõe `texto_atual()` como leitura do campo, e a sincronização do estado do botão por aba convive com o snapshot de bloqueio (`_button_states`).
+
+### 11. Persistência da configuração de I.A. entre o diálogo e as preferências
+
+**Decisão:** o botão "Salvar" do diálogo de I.A. grava o bloco `llm.chat` (via `save_llm_config`, que já preserva as demais chaves) e fecha a janela. `load_preferences` passa a carregar apenas as chaves de preferência conhecidas (não o arquivo inteiro), e `save_preferences` passa a fazer *read-modify-write*, relendo o arquivo e aplicando só as preferências. Assim o bloco `llm` gravado pelo diálogo sobrevive ao fechamento da aplicação, é recarregado no próximo início (via `load_llm_config`, lido sob demanda) e reaparece preenchido ao reabrir o diálogo (`_carregar`).
+
+**Alternativa considerada:** manter `load_preferences`/`save_preferences` lendo e gravando o arquivo inteiro.
+**Rejeitada porque:** o `self._prefs` da GUI é carregado no início da sessão e não contém o `llm.chat` salvo depois pelo diálogo; ao fechar a aplicação, `save_preferences` reescrevia o arquivo sem esse bloco e apagava a configuração recém-salva.
+
+**Consequências:** cada módulo passa a ser responsável por seu próprio bloco do `config.json`; `llm` e preferências de interface coexistem sem se sobrescrever.
+
 ## Risks / Trade-offs
 
 - **[Risco] documentos longos excedem a janela de contexto** → Mitigação: orçamento máximo de entrada com truncamento; map-reduce fica para uma evolução futura.

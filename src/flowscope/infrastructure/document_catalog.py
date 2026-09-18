@@ -6,11 +6,16 @@ encontrados em uma hierarquia pronta para exibição. A varredura é somente
 leitura e ignora raízes inexistentes.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
+from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.structured import nome_por_slug
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.document_summaries import (
+    JsonDocumentSummaryStore,
+    chave_documento,
+)
 
 #: Raízes com categoria fixa e o tipo de arquivo esperado.
 _RAIZES_FIXAS: tuple[tuple[str, str, str], ...] = (
@@ -33,6 +38,8 @@ class DocumentoArquivo:
     nome: str
     tipo: str
     caminho: Path
+    short_summary: str | None = None
+    long_summary: str | None = None
 
 
 @dataclass(frozen=True)
@@ -76,13 +83,20 @@ class DocumentCatalog:
     """Varre as raízes de cache e normaliza os documentos de um ticker."""
 
     def __init__(
-        self: "DocumentCatalog", cache_dir: Path | None = None
+        self: "DocumentCatalog",
+        cache_dir: Path | None = None,
+        summary_store: JsonDocumentSummaryStore | None = None,
     ) -> None:
-        """Inicializa o catálogo com o diretório raiz de cache informado."""
+        """Inicializa o catálogo com o diretório raiz e o store de resumos."""
         self._base = (
             Path(cache_dir)
             if cache_dir is not None
             else CacheManager().get_cache_dir()
+        )
+        self._store = (
+            summary_store
+            if summary_store is not None
+            else JsonDocumentSummaryStore(cache_dir=self._base)
         )
 
     @property
@@ -90,9 +104,15 @@ class DocumentCatalog:
         """Retorna o diretório raiz de cache varrido."""
         return self._base
 
+    @property
+    def summary_store(self: "DocumentCatalog") -> JsonDocumentSummaryStore:
+        """Retorna o store de resumos associado ao catálogo."""
+        return self._store
+
     def catalogo(self: "DocumentCatalog", ticker: str) -> CatalogoTicker:
         """Retorna o catálogo de documentos em cache do ticker informado."""
         chave = ticker.strip().upper()
+        resumos = self._store.resumos(chave)
         arquivos: list[DocumentoArquivo] = []
         for pasta, categoria, tipo in _RAIZES_FIXAS:
             arquivos.extend(
@@ -105,7 +125,24 @@ class DocumentCatalog:
                 self._base / _RAIZ_DOCUMENTOS_RELEVANTES, chave
             )
         )
+        arquivos = [_enriquecer(arquivo, resumos, self._base) for arquivo in arquivos]
         return _montar_catalogo(chave, arquivos)
+
+
+def _enriquecer(
+    arquivo: DocumentoArquivo,
+    resumos: dict[str, ResumoDocumento],
+    base: Path,
+) -> DocumentoArquivo:
+    """Preenche os resumos do arquivo a partir do mapa do ticker."""
+    resumo = resumos.get(chave_documento(arquivo.caminho, base))
+    if resumo is None:
+        return arquivo
+    return replace(
+        arquivo,
+        short_summary=resumo.short_summary,
+        long_summary=resumo.long_summary,
+    )
 
 
 def _varrer_categoria_fixa(

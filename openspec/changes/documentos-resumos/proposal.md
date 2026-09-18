@@ -8,7 +8,10 @@ Os documentos em cache (avisos de BDR, informes mensais e documentos relevantes)
 - Ao selecionar um **agrupador** da árvore (ticker, ano, mês ou categoria), o campo de texto DEVE exibir uma lista Markdown de todos os documentos contidos no agrupamento, agrupada pelos sub-agrupamentos, com o `short_summary` de cada documento. Sem resumo, exibe a mensagem de indisponibilidade com a instrução condicional (clicar no documento ou configurar a LLM).
 - Ao selecionar um **documento**, o campo de texto DEVE exibir `long_summary`, seguido de linha em branco, `---`, linha em branco e o texto integral do documento. Sem `long_summary`, o sistema gera os dois resumos via LLM (fórmula XYZ) e os persiste; se a LLM não estiver configurada/funcional, exibe a mensagem de indisponibilidade.
 - O campo de texto permanece somente-leitura, mas passa a aceitar os atalhos de teclado (Ctrl+A, Shift+setas, Ctrl+C, navegação) e a exibir o cursor de foco, facilitando a cópia de trechos.
+- O atalho Ctrl+A é vinculado explicitamente no widget, pois no X11 o evento virtual `<<SelectAll>>` do Tk mapeia para Ctrl+barra e não para Ctrl+A.
+- O botão "Copiar dados CSV" passa a copiar o conteúdo do campo de texto quando a sub-aba "Documentos" está ativa, ficando habilitado nessa sub-aba mesmo sem dados da B3; nas demais abas o comportamento de cópia de CSV é preservado.
 - Novo serviço especializado `ResumirDocumentoUseCase` que recebe um texto e produz os dois resumos, consumindo a porta `LLMPort` da change `llm-core`.
+- A configuração de I.A. salva pelo diálogo passa a persistir de fato: o botão "Salvar" grava o bloco `llm.chat` e fecha o diálogo; ao reabrir a aplicação a configuração é recarregada para uso do sistema e o diálogo reabre exibindo os últimos valores salvos. A gravação de preferências da interface deixa de sobrescrever o bloco `llm`.
 
 ## Capabilities
 

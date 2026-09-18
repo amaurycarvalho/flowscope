@@ -33,12 +33,24 @@ DEFAULT_CONFIG = {
 
 
 def load_preferences() -> dict:
-    """Carrega as preferências salvas no arquivo de configuração."""
+    """Carrega as preferências salvas no arquivo de configuração.
+
+    Apenas as chaves de preferência são carregadas. Blocos geridos por outros
+    módulos (como ``llm``) permanecem no arquivo, mas não entram no estado da
+    interface, para não serem sobrescritos ao fechar a aplicação.
+    """
     prefs = dict(DEFAULT_CONFIG)
     try:
         if CONFIG_PATH.exists():
             data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-            prefs.update(data)
+            if isinstance(data, dict):
+                prefs.update(
+                    {
+                        chave: data[chave]
+                        for chave in DEFAULT_CONFIG
+                        if chave in data
+                    }
+                )
     except (json.JSONDecodeError, OSError):
         pass
     last_tickers = prefs.get("last_tickers")
@@ -52,10 +64,25 @@ def load_preferences() -> dict:
 
 
 def save_preferences(data: dict) -> None:
-    """Salva as preferências da interface no arquivo de configuração."""
+    """Salva as preferências preservando os demais blocos do arquivo.
+
+    A gravação é *read-modify-write*: relê o arquivo e aplica apenas as chaves
+    de preferência, mantendo blocos como ``llm`` gravados por outros módulos.
+    """
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        CONFIG_PATH.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        existente: dict = {}
+        if CONFIG_PATH.exists():
+            try:
+                carregado = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+                if isinstance(carregado, dict):
+                    existente = carregado
+            except (json.JSONDecodeError, OSError):
+                existente = {}
+        existente.update(data)
+        CONFIG_PATH.write_text(
+            json.dumps(existente, indent=2, default=str), encoding="utf-8"
+        )
     except OSError:
         pass
 

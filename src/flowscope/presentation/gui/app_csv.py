@@ -75,16 +75,27 @@ class CsvMixin:
         return f"{sd.isoformat()};{ticker};;;;;;;"
 
     def _copy_data(self: "CsvMixin") -> None:
-        csv_text = self._build_csv_for_current_tab()
-        if not csv_text:
+        texto = self._texto_para_copiar()
+        if not texto:
             return
         try:
             import pyxclip
 
-            pyxclip.copy(csv_text)
+            pyxclip.copy(texto)
             self._flash_status("Dados copiados!")
         except (OSError, ImportError):
-            self._fallback_clipboard_text(csv_text)
+            self._fallback_clipboard_text(texto)
+
+    def _texto_para_copiar(self: "CsvMixin") -> str:
+        """Seleciona o conteúdo conforme a sub-aba ativa.
+
+        Na sub-aba "Documentos", copia o texto exibido no campo de
+        pré-visualização; nas demais, monta o CSV do contexto atual.
+        """
+        if self._current_tabs() == ("Análise do Ticker", "Documentos"):
+            painel = getattr(self, "_documents_panel", None)
+            return painel.texto_atual() if painel is not None else ""
+        return self._build_csv_for_current_tab()
 
     def _build_csv_for_current_tab(self: "CsvMixin") -> str:
         """Monta o CSV do contexto atual: tabela de Fundamentos ou CSV bruto."""

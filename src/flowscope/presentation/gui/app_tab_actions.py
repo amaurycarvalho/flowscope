@@ -43,6 +43,24 @@ class TabActionsMixin:
         self._prefs["last_tab"] = main_tab
         self._prefs["last_subtab"] = sub_tab
         self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
+        self._sync_copy_button_for_tab(main_tab, sub_tab)
+
+    def _sync_copy_button_for_tab(
+        self: "TabActionsMixin", main_tab: str, sub_tab: str
+    ) -> None:
+        """Habilita a cópia na sub-aba Documentos, mesmo sem dados da B3.
+
+        Nas demais abas, restaura o estado conforme a existência de dados. Um
+        bloqueio global em andamento (``_button_states``) não é sobrescrito.
+        """
+        botao = getattr(self, "_copy_data_btn", None)
+        if botao is None or getattr(self, "_button_states", None):
+            return
+        em_documentos = (main_tab, sub_tab) == ("Análise do Ticker", "Documentos")
+        if em_documentos or getattr(self, "_current_data", None):
+            botao.config(state=tk.NORMAL)
+        else:
+            botao.config(state=tk.DISABLED)
 
     def _sync_fundamental_refresh_visibility(
         self: "TabActionsMixin", main_tab: str, sub_tab: str

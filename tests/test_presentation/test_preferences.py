@@ -47,6 +47,57 @@ class TestLastTickersPreferences:
             assert loaded["last_tickers"] is None
 
 
+class TestPreservacaoDeBlocosExternos:
+    def test_save_preferences_preserva_bloco_llm(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps({"llm": {"chat": {"provider": "openai"}}, "last_tab": "X"}),
+            encoding="utf-8",
+        )
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", path
+        ):
+            save_preferences({"last_tickers": ["PETR4"]})
+            dados = json.loads(path.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "openai"
+        assert dados["last_tickers"] == ["PETR4"]
+        assert dados["last_tab"] == "X"
+
+    def test_load_preferences_ignora_bloco_llm(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps({"llm": {"chat": {"provider": "openai"}}}),
+            encoding="utf-8",
+        )
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", path
+        ):
+            loaded = load_preferences()
+        assert "llm" not in loaded
+
+    def test_fechar_app_preserva_config_salva_do_dialogo(self, tmp_path):
+        from flowscope.infrastructure.llm.config import save_llm_config
+
+        path = tmp_path / "config.json"
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", path
+        ):
+            save_llm_config(
+                {
+                    "provider": "deepseek",
+                    "api_url": "https://api.deepseek.com/v1",
+                    "model": "deepseek-chat",
+                    "api_key": "sk-1",
+                    "rpm": 8,
+                },
+                path,
+            )
+            save_preferences({"last_tickers": ["PETR4"]})
+            dados = json.loads(path.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "deepseek"
+        assert dados["llm"]["chat"]["api_key"] == "sk-1"
+
+
 class TestFundamentalColumnWidthsPreferences:
     def test_round_trip_persists_widths(self, tmp_path):
         with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(

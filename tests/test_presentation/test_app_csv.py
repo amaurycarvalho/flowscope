@@ -140,6 +140,39 @@ class TestCopyData:
         assert host.status == ["Nenhum ticker disponível para cópia."]
 
 
+class TestCopyDocumentos:
+    def test_documentos_copia_texto_do_painel(self, monkeypatch):
+        copiado: list[str] = []
+        fake = type("pyxclip", (), {"copy": staticmethod(copiado.append)})
+        monkeypatch.setitem(sys.modules, "pyxclip", fake)
+
+        host = _host(tabs=("Análise do Ticker", "Documentos"))
+        host._documents_panel = type(
+            "P", (), {"texto_atual": lambda self: "texto do campo"}
+        )()
+        host._copy_data()
+        assert copiado == ["texto do campo"]
+        assert host.status == ["Dados copiados!"]
+
+    def test_documentos_sem_painel_nao_copia(self, monkeypatch):
+        copiado: list[str] = []
+        fake = type("pyxclip", (), {"copy": staticmethod(copiado.append)})
+        monkeypatch.setitem(sys.modules, "pyxclip", fake)
+
+        host = _host(tabs=("Análise do Ticker", "Documentos"))
+        host._copy_data()
+        assert copiado == []
+
+    def test_documentos_fallback_quando_pyxclip_indisponivel(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "pyxclip", None)
+        host = _host(tabs=("Análise do Ticker", "Documentos"))
+        host._documents_panel = type(
+            "P", (), {"texto_atual": lambda self: "texto do campo"}
+        )()
+        host._copy_data()
+        assert host.clipboard == ["texto do campo"]
+
+
 class TestFallbackClipboardText:
     def test_copia_texto_informado(self):
         host = _host()
