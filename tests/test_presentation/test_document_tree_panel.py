@@ -421,6 +421,7 @@ class TestBotaoAbrir:
             assert painel.all_buttons() == [
                 painel._refresh_btn,
                 painel._open_btn,
+                painel._ia_btn,
             ]
             painel.update("ALZR11")
             painel._open_btn.config(state=tk.NORMAL)
@@ -430,6 +431,62 @@ class TestBotaoAbrir:
             painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
             painel.refresh_open_button()
             assert str(painel._open_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+
+class TestBotaoIA:
+    @needs_display
+    def test_botao_aparece_apos_abrir_documento(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            filhos = list(painel._refresh_btn.master.winfo_children())
+            assert filhos == [
+                painel._refresh_btn,
+                painel._open_btn,
+                painel._ia_btn,
+            ]
+            assert painel._ia_btn.cget("text") == "I.A."
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_botao_habilitado_sem_documentos(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.update("SEMDOC")
+            assert str(painel._ia_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_acionamento_chama_callback(self, tmp_path):
+        root = tk.Tk()
+        try:
+            chamadas = []
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path),
+                ia_callback=lambda: chamadas.append(True), debounce_ms=0,
+            )
+            painel._ia_btn.invoke()
+            assert chamadas == [True]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_callback_nao_falha(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel._on_ia()
         finally:
             root.destroy()
 
@@ -495,6 +552,39 @@ class TestWiringSubAba:
             assert hasattr(host, "_documents_panel")
         finally:
             root.destroy()
+
+    @needs_display
+    def test_ia_callback_injetado_no_painel(self):
+        root = tk.Tk()
+        try:
+            class _HostIA(_Host):
+                def __init__(self):
+                    self.chamadas = []
+
+                def _abrir_config_llm(self):
+                    self.chamadas.append(True)
+
+            host = _HostIA()
+            host._main_notebook = ttk.Notebook(root)
+            host._copy_chart = lambda _figure: None
+            host._build_ticker_tabs()
+            host._documents_panel._ia_btn.invoke()
+            assert host.chamadas == [True]
+        finally:
+            root.destroy()
+
+
+class TestAbrirConfigLLM:
+    def test_abre_dialogo(self, monkeypatch):
+        chamadas = []
+        monkeypatch.setattr(
+            app_actions,
+            "LLMConfigDialog",
+            lambda parent: chamadas.append(parent),
+        )
+        host = ActionsMixin()
+        host._abrir_config_llm()
+        assert chamadas == [host]
 
 
 class TestDeveAtualizar:

@@ -64,7 +64,7 @@ O sistema DEVE expor `IndexarDocumentosUseCase` que orquestra as `DocumentSource
 - **THEN** o use case DEVE registrar o erro e continuar as demais fontes
 
 ### Requirement: ConsultarDocumentosUseCase
-O sistema DEVE expor `ConsultarDocumentosUseCase` que recebe uma pergunta, o VectorStore, o `EmbeddingPort`, o `ChatPort` e um ticker opcional, executando embed → busca semântica → prompt RAG → resposta com as fontes.
+O sistema DEVE expor `ConsultarDocumentosUseCase` que recebe uma pergunta, o VectorStore, o `EmbeddingPort`, o `LLMPort` (da `llm-core`) e um ticker opcional, executando embed → busca semântica → prompt RAG → resposta com as fontes.
 
 #### Scenario: Sem documentos indexados
 - **WHEN** o VectorStore está vazio para o ticker

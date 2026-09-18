@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.presentation.gui.app_status import StatusMixin
+from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 
 
 @pytest.fixture
@@ -137,6 +139,34 @@ class TestDisableDocumentosBotoes:
             assert refresh.cget("state") == tk.NORMAL
             assert abrir.cget("state") == tk.NORMAL
             gui._documents_panel.refresh_open_button.assert_called_once()
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_botao_ia_desabilitado_e_restaurado(self, tmp_path):
+        gui = _DisableHost()
+        try:
+            gui._flash_after_id = None
+            gui._load_button = tk.Button(gui, state=tk.NORMAL)
+            gui._today_button = tk.Button(gui, state=tk.NORMAL)
+            gui._shortcut_btn = None
+            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
+            gui._ticker_list = MagicMock()
+            gui._ticker_list.all_buttons.return_value = []
+            gui._period_combo = ttk.Combobox(gui, state="readonly")
+            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
+            gui._date_entry = ttk.Entry(gui)
+            gui._documents_panel = DocumentTreePanel(
+                gui, catalog=DocumentCatalog(cache_dir=tmp_path)
+            )
+
+            gui.disable_all_buttons()
+            assert (
+                str(gui._documents_panel._ia_btn.cget("state")) == "disabled"
+            )
+
+            gui.restore_all_buttons()
+            assert str(gui._documents_panel._ia_btn.cget("state")) == "normal"
         finally:
             gui.destroy()
 

@@ -42,6 +42,7 @@ class DocumentTreePanel:
         open_callback: Callable[[Path], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         acquire_callback: Callable[[str], None] | None = None,
+        ia_callback: Callable[[], None] | None = None,
         debounce_ms: int = 150,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles."""
@@ -49,6 +50,7 @@ class DocumentTreePanel:
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
+        self._ia_callback = ia_callback
         self._debounce_ms = debounce_ms
         self._itens: dict[str, DocumentoArquivo] = {}
         self._preview_cache: dict[Path, str] = {}
@@ -74,6 +76,10 @@ class DocumentTreePanel:
             state=tk.DISABLED,
         )
         self._open_btn.pack(side=tk.LEFT, padx=2)
+        self._ia_btn = ttk.Button(
+            barra, text="I.A.", command=self._on_ia
+        )
+        self._ia_btn.pack(side=tk.LEFT, padx=2)
 
     def _build_container(self: "DocumentTreePanel") -> None:
         """Constrói a área de conteúdo com a árvore e a pré-visualização."""
@@ -143,7 +149,7 @@ class DocumentTreePanel:
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""
-        return [self._refresh_btn, self._open_btn]
+        return [self._refresh_btn, self._open_btn, self._ia_btn]
 
     def refresh_open_button(self: "DocumentTreePanel") -> None:
         """Reavalia o estado do botão "Abrir documento" conforme a seleção."""
@@ -333,6 +339,11 @@ class DocumentTreePanel:
         arquivo = self._arquivo_selecionado()
         if arquivo is not None:
             self._abrir(arquivo)
+
+    def _on_ia(self: "DocumentTreePanel") -> None:
+        """Aciona o callback de abertura do diálogo de configuração de LLM."""
+        if self._ia_callback is not None:
+            self._ia_callback()
 
     def _abrir(self: "DocumentTreePanel", arquivo: DocumentoArquivo) -> None:
         """Abre o arquivo tolerando falha do aplicativo padrão."""

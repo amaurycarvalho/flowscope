@@ -1,11 +1,11 @@
 ## 1. Pré-requisitos e Setup
 
-- [ ] 1.1 Verificar que `structured-earnings` está implementada (B3FundosClient, ticker-resolution, value objects, DocumentoProvento, ProventosRepository)
-- [ ] 1.2 Verificar que as portas `DocumentoIndexavel` e `DocumentSource` já existem em `domain/chat/ports.py`
-- [ ] 1.3 Verificar que as fontes `MaterialFactsSource` e `NoticiasSource` já existem em `infrastructure/document_sources/`
-- [ ] 1.4 Verificar que os caches de `informe-mensal` e `documentos-relevantes` existem e são legíveis
-- [ ] 1.5 Adicionar grupo `[llm]` ao `pyproject.toml` com `litellm>=1.50`, `fastembed>=0.4`, `pypdf>=4`
-- [ ] 1.6 Marcador pytest `llm` em `pyproject.toml`
+- [ ] 1.1 Verificar que a change `llm-core` está implementada (`LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, exceções tipadas)
+- [ ] 1.2 Verificar que `structured-earnings` está implementada (B3FundosClient, ticker-resolution, value objects, DocumentoProvento, ProventosRepository)
+- [ ] 1.3 Verificar que as portas `DocumentoIndexavel` e `DocumentSource` já existem em `domain/chat/ports.py`
+- [ ] 1.4 Verificar que as fontes `MaterialFactsSource` e `NoticiasSource` já existem em `infrastructure/document_sources/`
+- [ ] 1.5 Verificar que os caches de `informe-mensal` e `documentos-relevantes` existem e são legíveis
+- [ ] 1.6 Estender o grupo `[llm]` do `pyproject.toml` com `fastembed>=0.4` (`litellm` já é adicionado pela `llm-core`; `pypdf` já é base)
 - [ ] 1.7 Criar a estrutura de diretórios restante
 - [ ] 1.8 Atualizar README.md com seção "Chat com IA" e `pip install flowscope[llm]`
 
@@ -40,12 +40,11 @@
 - [ ] 6.3 `LiteLLMEmbeddingAdapter` — API, erro HTTP
 - [ ] 6.4 `create_embedding_provider(config)` factory
 
-## 7. Infraestrutura — Chat LLM
+## 7. Infraestrutura — RAG sobre o LLMPort da llm-core
 
-- [ ] 7.1 `ChatPort` protocol
-- [ ] 7.2 `LiteLLMChatAdapter` — `chat()`, base_url custom
-- [ ] 7.3 `build_rag_prompt()`
-- [ ] 7.4 `create_chat_provider(config)` factory
+- [ ] 7.1 Consumir `LLMPort`/`create_llm_provider` da `llm-core` no fluxo de consulta, sem definir cliente de LLM próprio
+- [ ] 7.2 `build_rag_prompt()` — system prompt, chunks com fonte/data e pergunta
+- [ ] 7.3 Mapear `LLMUnavailableError` da `llm-core` para o estado "Chat desabilitado" na GUI
 
 ## 8. Infraestrutura — Document Sources (reconciliadas + transferidas)
 
@@ -58,20 +57,22 @@
 ## 9. Aplicação — Use Cases
 
 - [ ] 9.1 `IndexarDocumentosUseCase` — sources disponíveis, VectorStore, EmbeddingPort, progress
-- [ ] 9.2 `ConsultarDocumentosUseCase` — embed → search → prompt → chat → resposta + fontes
+- [ ] 9.2 `ConsultarDocumentosUseCase` — embed → search → prompt RAG → `LLMPort` da `llm-core` → resposta + fontes
 - [ ] 9.3 Erro em uma fonte não interrompe as outras
 
 ## 10. Testes Infraestrutura
 
 - [ ] 10.1 VectorStore: criar, inserir, buscar, deduplicar
 - [ ] 10.2 Embedding adapters com mocks
-- [ ] 10.3 Chat adapter com mock
+- [ ] 10.3 Consumo do `LLMPort` da `llm-core` com mock
 - [ ] 10.4 Document sources com mocks (incluindo `InformeMensalSource` e `RelevantesSource` sobre caches temporários)
 - [ ] 10.5 Use cases com mocks — fluxo completo, fonte falhando, VectorStore vazio
 
-## 11. Config — LLM Config
+## 11. Config — Embedding Config
 
-- [ ] 11.1 `load_llm_config()`, `save_llm_config()`, `get_presets()`, `check_llm_deps()`
+- [ ] 11.1 `load_embedding_config()`/`save_embedding_config()` no sub-bloco `llm.embedding`, reutilizando o read-modify-write da `llm-core`
+- [ ] 11.2 Estender `check_llm_deps()` da `llm-core` para também exigir `fastembed`
+- [ ] 11.3 `get_embedding_presets()`
 
 ## 12. GUI — ChatPanel
 
@@ -80,15 +81,15 @@
 - [ ] 12.3 Copy/paste livre, scroll automático
 - [ ] 12.4 Barra de progresso "Atualizar Documentos"
 
-## 13. GUI — ConfigDialog
+## 13. GUI — Integração com o diálogo da llm-core
 
-- [ ] 13.1 `ConfigDialog(tkinter.Toplevel)` — presets, API key, testar conexão
+- [ ] 13.1 Botão "Configurar" do ChatPanel abre o `LLMConfigDialog` da `llm-core`
 
 ## 14. GUI — Integração
 
 - [ ] 14.1 Aba "Chat Geral" com `ChatPanel(ticker=None)`
 - [ ] 14.2 Aba "Chat Ticker" com `ChatPanel(ticker=<selecionado>)`
-- [ ] 14.3 Visibilidade condicionada a `chat.provider`
+- [ ] 14.3 Visibilidade condicionada a `llm.chat.provider`
 
 ## 15. CLI
 
@@ -97,7 +98,7 @@
 
 ## 16. Testes GUI
 
-- [ ] 16.1 ChatPanel estados, ConfigDialog presets, load_llm_config
+- [ ] 16.1 ChatPanel estados, integração com o diálogo da `llm-core`, load_embedding_config
 
 ## 17. Quality Gate
 

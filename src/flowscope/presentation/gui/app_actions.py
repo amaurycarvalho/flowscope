@@ -14,6 +14,7 @@ from flowscope.presentation.gui.documentos_job import (
     MENSAGEM_PROGRESSO,
     DocumentosJob,
 )
+from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 
 class ActionsMixin:
@@ -65,6 +66,10 @@ class ActionsMixin:
     def _on_atualizar_fundamentos(self: "ActionsMixin") -> None:
         """Força a recomputação dos fundamentos da data, ignorando o cache."""
         self._controller.on_atualizar_fundamentos()
+
+    def _abrir_config_llm(self: "ActionsMixin") -> None:
+        """Abre o diálogo de configuração de LLM."""
+        LLMConfigDialog(self)
 
     def _get_selected_ticker(self: "ActionsMixin") -> str | None:
         selected = self._ticker_list.get_tickers()

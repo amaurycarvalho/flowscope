@@ -100,6 +100,7 @@ class TabsLayoutMixin:
                     frame,
                     status_callback=getattr(self, "_set_status", None),
                     acquire_callback=getattr(self, "_adquirir_documentos", None),
+                    ia_callback=getattr(self, "_abrir_config_llm", None),
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
 

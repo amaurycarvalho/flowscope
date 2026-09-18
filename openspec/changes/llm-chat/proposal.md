@@ -12,14 +12,13 @@ Esta change também centraliza a **preparação para indexação** (contratos `D
 - Extração de texto para indexação (HTML→texto e PDF→texto via `pypdf`) como responsabilidade desta change.
 - VectorStore em SQLite puro com busca por cosine similarity — zero dependências nativas adicionais para armazenamento.
 - Módulo de embeddings com dois provedores: `fastembed` (local, default) e liteLLM (API, configurável).
-- Módulo de chat LLM via liteLLM com suporte a OpenAI, Claude, Gemini, DeepSeek, Copilot e OpenAI-compatible.
+- **Herdado da change `llm-core`**: a camada base de LLM (`LLMPort`, adaptador liteLLM, presets, rate limiting por RPM e exceções tipadas). Esta change NÃO redefine cliente, config de completion nem diálogo de configuração; consome `create_llm_provider` e `load_llm_config`.
 - Pipeline de indexação via `IndexarDocumentosUseCase`, consumindo as `DocumentSource` disponíveis.
 - Chunker de texto em Python puro (split por parágrafo, overlap configurável, sem langchain).
 - Widget `ChatPanel` tkinter reutilizável com scroll, copy/paste livre e envio de perguntas.
 - Duas abas de chat na GUI: "Chat Geral" (busca global) e "Chat Ticker" (busca filtrada por `WHERE ticker = ?`).
-- Diálogo de configuração de provedores LLM com presets.
-- Abas de chat desabilitadas quando `chat.provider` não está configurado.
-- Dependências opcionais `[llm]` em `pyproject.toml`: `litellm`, `fastembed`, `pypdf`.
+- Abas de chat desabilitadas quando `llm.chat.provider` não está configurado ou é `none`, com botão "Configurar" que abre o diálogo de configuração da `llm-core`.
+- Dependências opcionais `[llm]` em `pyproject.toml`: a `llm-core` adiciona `litellm`; esta change adiciona `fastembed` (`pypdf` já é dependência base).
 - Testes com marcador `pytest.mark.llm`.
 - README com instrução `pip install flowscope[llm]`.
 - CLI: `--index <TICKER>` para pré-indexar documentos.
@@ -31,10 +30,10 @@ Esta change também centraliza a **preparação para indexação** (contratos `D
 - `llm-chat-domain`: `ChatMessage`, `ChatSession`, protocolo `DocumentoIndexavel`, ABC `DocumentSource`
 - `llm-chat-vector-store`: VectorStore SQLite puro, busca cosine, chunker sem deps nativas
 - `llm-chat-embeddings`: `FastembedAdapter` (local) + `LiteLLMEmbeddingAdapter` (API), `EmbeddingPort`
-- `llm-chat-llm`: `LiteLLMChatAdapter`, `ChatPort`, prompt RAG
+- `llm-chat-llm`: consumo do `LLMPort` da `llm-core` + prompt RAG
 - `llm-chat-indexing`: `DocumentSource` concretas (`MaterialFactsSource`, `NoticiasSource`, `InformeMensalSource`, `RelevantesSource`), extração de texto, `IndexarDocumentosUseCase`, `ConsultarDocumentosUseCase`
-- `llm-chat-gui`: `ChatPanel` widget, `ConfigDialog`, abas Chat Geral + Chat Ticker
-- `llm-chat-config`: Persistência em `config.json`, detecção `[llm]`, presets
+- `llm-chat-gui`: `ChatPanel` widget, abas Chat Geral + Chat Ticker (o `ConfigDialog` é fornecido pela `llm-core`)
+- `llm-chat-config`: persistência da configuração de **embedding** em `config.json`, detecção estendida de `[llm]`, presets de embedding
 
 ### Modified Capabilities
 
@@ -42,8 +41,8 @@ Esta change também centraliza a **preparação para indexação** (contratos `D
 
 ## Impact
 
-- **Dependências**: Grupo opcional `[llm]` com `litellm`, `fastembed`, `pypdf`
-- **Pré-requisitos**: `structured-earnings` implementada; caches de documento das changes `informe-mensal` e `documentos-relevantes` para as fontes correspondentes
+- **Dependências**: a `llm-core` define `[llm]` com `litellm`; esta change estende com `fastembed` (`pypdf` já é base)
+- **Pré-requisitos**: `llm-core` implementada; `structured-earnings` implementada; caches de documento das changes `informe-mensal` e `documentos-relevantes` para as fontes correspondentes
 - **Binário**: ~45MB base; ~185MB com `[llm]`
 - **Cache**: `~/.flowscope/fii_docs.db` + leitura dos caches `~/.cache/flowscope/bdr/`, `informe-mensal/` e `documentos-relevantes/`
 - **Ticker-agnóstico**: Qualquer ticker pode ser indexado e consultado; fontes retornam vazio quando não há dados

@@ -36,6 +36,16 @@ Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 ./flowscope-linux --version              # exibir versão
 ```
 
+### Recursos de I.A. (opcional)
+
+Os recursos de I.A. exigem o grupo opcional `[llm]`, que instala o liteLLM:
+
+```bash
+pip install flowscope[llm]
+```
+
+Na sub-aba "Documentos", o botão "I.A." (logo após "Abrir documento") abre o diálogo de configuração do provedor, onde é possível escolher um preset, informar a chave de API, ajustar o RPM e testar a conexão. Enquanto o provedor for `none`, nenhuma chamada de rede é realizada.
+
 ---
 
 ## 👨‍🔧 Para Desenvolvedores
