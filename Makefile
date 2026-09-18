@@ -29,11 +29,11 @@ venv: $(ACTIVATE)
 install: $(ACTIVATE)
 	@echo "Installing dependencies..."
 	@$(PIP) install -q -e .
-	@$(PIP) install -q -e ".[dev]"
+	@$(PIP) install -q -e ".[dev,llm]"
 
 install-quality-tools: $(ACTIVATE)
 	@echo "Installing quality gate dependencies..."
-	@$(PIP) install -q -e ".[dev,quality]"
+	@$(PIP) install -q -e ".[dev,quality,llm]"
 	@npm install -g jscpd@4.0.1
 	@mkdir -p mutants/
 
