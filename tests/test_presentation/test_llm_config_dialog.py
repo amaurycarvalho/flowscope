@@ -199,6 +199,32 @@ class TestTestarConexao:
             root.destroy()
 
     @needs_display
+    def test_falha_registra_log_sem_chave(self, tmp_path, monkeypatch, caplog):
+        def _falha(_config):
+            raise LLMCommunicationError("timeout de rede")
+
+        monkeypatch.setattr(config_dialog, "create_llm_provider", _falha)
+        root, dialog = self._dialogo(tmp_path)
+        try:
+            dialog._provider_var.set("deepseek")
+            dialog._model_var.set("deepseek-chat")
+            dialog._api_key_var.set("sk-segredo")
+            with caplog.at_level("WARNING", logger="flowscope"):
+                dialog._on_testar()
+                _aguardar(root, dialog)
+            mensagens = [registro.getMessage() for registro in caplog.records]
+            assert any(
+                "Teste de conexão da LLM falhou" in mensagem
+                and "LLMCommunicationError" in mensagem
+                and "timeout de rede" in mensagem
+                for mensagem in mensagens
+            )
+            assert any("provider=deepseek" in mensagem for mensagem in mensagens)
+            assert all("sk-segredo" not in mensagem for mensagem in mensagens)
+        finally:
+            root.destroy()
+
+    @needs_display
     def test_bloqueio_durante_teste(self, tmp_path, monkeypatch):
         liberar = threading.Event()
         chamadas: list[int] = []

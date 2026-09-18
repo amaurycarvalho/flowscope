@@ -7,10 +7,11 @@ Esta change é a fundação reutilizável de LLM: expõe uma porta genérica de 
 ## What Changes
 
 - Novo grupo opcional `[llm]` em `pyproject.toml` com `litellm` (`pip install flowscope[llm]`).
+- O executável do PyInstaller passa a embutir o liteLLM: o alvo `build` instala `[llm]` antes de empacotar e a especificação coleta submódulos e arquivos de dados do litellm, garantindo os recursos de I.A. em máquinas que rodam apenas o binário (sem Python/pip).
 - Novo domínio `domain/llm/`: porta genérica `LLMPort` (completion) e hierarquia de exceções (`LLMUnavailableError`, `LLMConfigurationError`, `LLMCommunicationError`, `LLMProviderError`, `LLMRateLimitError`).
 - Nova infraestrutura `infrastructure/llm/`: presets de provedores (`none`, `openai`, `gemini`, `copilot`, `claude`, `deepseek`, `ollama`, `custom`), adaptador `LiteLLMChatAdapter` via `litellm.completion()` com `custom_llm_provider`, rate limiter configurável (RPM, default 5), load/save de config, detecção das dependências `[llm]` e factory `create_llm_provider(config)`.
 - Bloco `llm.chat` no `~/.flowscope/config.json` com `provider` (default `none`), `api_url`, `model`, `api_key` e `rpm`, preservando as demais preferências do arquivo.
-- Diálogo de configuração de LLM na GUI (modal e não redimensionável) com dropdown de presets, `api_url`, `model`, chave de API mascarada, RPM, botão "Salvar" e botão "Testar" — este envia um texto `hello` pela porta `LLMPort` e exibe sucesso ou o motivo da falha.
+- Diálogo de configuração de LLM na GUI (modal e não redimensionável) com dropdown de presets, `api_url`, `model`, chave de API mascarada, RPM, botão "Salvar" e botão "Testar" — este envia um texto `hello` pela porta `LLMPort` e exibe sucesso ou o motivo da falha. As falhas do teste são também registradas em log (nível aviso, no logger `flowscope`, sem a chave de API) para análise posterior.
 - Botão "I.A." na barra da sub-aba "Documentos" (logo após "Abrir documento") que abre o diálogo de configuração e segue o bloqueio global dos demais botões durante as cargas de dados.
 - README com a seção de instalação `pip install flowscope[llm]`.
 - Adaptação da change `llm-chat` para herdar `llm-core` (remove a duplicação de cliente de chat, config e diálogo, mantendo embeddings, VectorStore, RAG e o ChatPanel).

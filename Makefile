@@ -48,6 +48,7 @@ quality-gate: $(ACTIVATE)
 
 build: $(ACTIVATE)
 	@echo "Building..."
+	@$(PIP) install -q -e ".[llm]"
 	@$(PIP) install -q pyinstaller
 	@$(PYTHON) -m PyInstaller flowscope.spec
 

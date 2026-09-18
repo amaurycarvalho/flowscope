@@ -38,7 +38,9 @@ Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 
 ### Recursos de I.A. (opcional)
 
-Os recursos de I.A. exigem o grupo opcional `[llm]`, que instala o liteLLM:
+Os binários publicados na [página de releases](https://github.com/amaurycarvalho/flowscope/releases) já incluem o liteLLM, então os recursos de I.A. funcionam sem instalação adicional.
+
+Ao instalar a partir do código-fonte, os recursos de I.A. exigem o grupo opcional `[llm]`, que instala o liteLLM:
 
 ```bash
 pip install flowscope[llm]

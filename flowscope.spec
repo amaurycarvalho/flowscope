@@ -1,8 +1,25 @@
 # -*- mode: python ; coding: utf-8 -*-
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
+import importlib.util
 import sys
 import os
+
+if importlib.util.find_spec('litellm') is None:
+    raise SystemExit(
+        "litellm não instalado: rode 'pip install -e \".[llm]\"' antes de compilar."
+    )
+
+# O liteLLM é importado tardiamente pelo adaptador; coletamos submódulos e
+# arquivos de dados (ex.: tabela de preços/contexto) para garantir o suporte a
+# LLM em máquinas que rodam apenas o executável. Os assets do proxy web são
+# dispensáveis e ficam de fora para não inflar o binário.
+litellm_datas = [
+    item
+    for item in collect_data_files('litellm')
+    if 'proxy/_experimental' not in item[0]
+]
+litellm_hiddenimports = collect_submodules('litellm')
 
 if sys.platform == 'win32':
     icon_file = 'src/flowscope/icons/flowscope.ico'
@@ -20,6 +37,7 @@ a = Analysis(
     binaries=[],
     datas=[
         ('src/flowscope/icons', 'icons'),
+        *litellm_datas,
     ],
     hiddenimports=[
         'tkinter',
@@ -36,6 +54,7 @@ a = Analysis(
         'tkcalendar.entry',
         'tkcalendar.calendar_',
         'tkcalendar.tooltip',
+        *litellm_hiddenimports,
     ],
     hookspath=[],
     hooksconfig={},

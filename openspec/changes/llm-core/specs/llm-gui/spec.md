@@ -48,6 +48,18 @@ O diálogo DEVE oferecer um botão "Testar" que monta um provedor com os valores
 - **WHEN** o provedor `custom` é selecionado sem modelo ou sem API URL
 - **THEN** o diálogo DEVE exibir o motivo de configuração inválida
 
+### Requirement: Registro em log das falhas do teste
+
+Além de exibir o motivo na tela, o diálogo DEVE registrar em log as falhas obtidas ao acionar o botão "Testar", para análise posterior. O registro DEVE ocorrer no logger da aplicação (`flowscope`, gravado em `~/.flowscope/logs/flowscope.log`) e DEVE conter o provedor, o modelo, a API URL e o tipo e a mensagem do erro. A chave de API NÃO DEVE ser registrada. O registro DEVE ocorrer na thread da interface, ao consumir o desfecho do teste.
+
+#### Scenario: Falha registrada no log
+- **WHEN** o teste de conexão falha por indisponibilidade, comunicação, provedor ou configuração
+- **THEN** uma entrada de log de nível aviso DEVE ser gravada com o provedor, o modelo, a API URL e o erro
+
+#### Scenario: Chave de API não é registrada
+- **WHEN** o teste falha com uma chave de API preenchida
+- **THEN** a chave NÃO DEVE aparecer na entrada de log
+
 ### Requirement: Bloqueio durante o teste
 
 Enquanto o teste estiver em andamento, o diálogo DEVE impedir testes concorrentes, mantendo a janela responsiva.

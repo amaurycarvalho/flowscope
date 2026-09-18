@@ -5,6 +5,7 @@ de persistir o bloco ``llm.chat`` e testar a conexão com o provedor em thread
 de trabalho, publicando o desfecho na thread do Tk por fila.
 """
 
+import logging
 import queue
 import threading
 import tkinter as tk
@@ -19,6 +20,8 @@ from flowscope.infrastructure.llm.config import (
     save_llm_config,
 )
 from flowscope.infrastructure.llm.factory import create_llm_provider
+
+logger = logging.getLogger("flowscope")
 
 #: Mensagem exibida quando as dependências opcionais não estão instaladas.
 MENSAGEM_DEPS = (
@@ -231,18 +234,37 @@ class LLMConfigDialog(tk.Toplevel):
                 [{"role": "user", "content": TEXTO_TESTE}]
             )
         except LLMError as exc:
-            fila.put(("erro", str(exc)))
+            fila.put(("erro", str(exc), config, exc))
         except Exception as exc:
-            fila.put(("erro", str(exc)))
+            fila.put(("erro", str(exc), config, exc))
         else:
-            fila.put(("ok", resposta))
+            fila.put(("ok", resposta, config, None))
+
+    @staticmethod
+    def _registrar_falha(
+        config: dict, exc: Exception
+    ) -> None:
+        """Registra a falha do teste de conexão para análise posterior.
+
+        A chave de API nunca é registrada. O provedor, o modelo e a API URL
+        identificam a configuração usada no teste.
+        """
+        logger.warning(
+            "Teste de conexão da LLM falhou "
+            "(provider=%s, model=%s, api_url=%s): %s: %s",
+            config.get("provider"),
+            config.get("model"),
+            config.get("api_url"),
+            type(exc).__name__,
+            exc,
+        )
 
     def _verificar_teste(
         self: "LLMConfigDialog", fila: queue.Queue
     ) -> None:
         """Consome o desfecho do teste na thread do Tk, reabilitando o botão."""
         try:
-            estado, mensagem = fila.get_nowait()
+            estado, mensagem, config, exc = fila.get_nowait()
         except queue.Empty:
             self.after(20, lambda: self._verificar_teste(fila))
             return
@@ -251,6 +273,8 @@ class LLMConfigDialog(tk.Toplevel):
         if estado == "ok":
             self._status_var.set(MENSAGEM_SUCESSO.format(resposta=mensagem))
         else:
+            if exc is not None:
+                self._registrar_falha(config, exc)
             self._status_var.set(mensagem)
 
     def _atualizar_botao_teste(self: "LLMConfigDialog") -> None:

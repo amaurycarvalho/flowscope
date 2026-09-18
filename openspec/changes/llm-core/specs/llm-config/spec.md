@@ -44,6 +44,18 @@ O sistema DEVE detectar se as dependências opcionais `[llm]` (notadamente `lite
 - **WHEN** o `litellm` não pode ser importado e o diálogo de configuração é aberto
 - **THEN** o diálogo DEVE exibir a mensagem de instalação com `pip install flowscope[llm]` e desabilitar a configuração e o teste
 
+### Requirement: Empacotamento do liteLLM no executável
+
+O executável gerado pelo PyInstaller DEVE incluir o liteLLM e seus arquivos de dados, de modo que a detecção das dependências `[llm]` retorne verdadeiro em máquinas que rodam apenas o binário, sem Python ou `pip` disponíveis. O build DEVE instalar o grupo `[llm]` antes de empacotar e a especificação do PyInstaller DEVE coletar os submódulos e os arquivos de dados necessários do liteLLM. Se o liteLLM não estiver instalado no ambiente de build, a compilação DEVE falhar com orientação para instalar `.[llm]`.
+
+#### Scenario: Executável com suporte a LLM
+- **WHEN** o executável é gerado por `make build` e executado em uma máquina sem Python instalado
+- **THEN** a detecção das dependências `[llm]` DEVE retornar verdadeiro e o diálogo de I.A. DEVE permitir configurar e testar o provedor
+
+#### Scenario: Build sem o grupo `[llm]`
+- **WHEN** o liteLLM não está instalado no ambiente de build
+- **THEN** a compilação DEVE falhar com orientação para instalar `.[llm]`, em vez de gerar um binário sem suporte a LLM
+
 ### Requirement: Presets de configuração de provedores
 
 O sistema DEVE expor os presets de provedores suportados (`none`, `openai`, `gemini`, `copilot`, `claude`, `deepseek`, `ollama` e `custom`), cada um com seu modelo e API URL padrão, para uso pelo diálogo de configuração. Selecionar um preset DEVE preencher o modelo e a API URL correspondentes, que permanecem editáveis.

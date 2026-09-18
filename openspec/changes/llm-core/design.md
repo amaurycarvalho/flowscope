@@ -122,13 +122,31 @@ presentation/gui/llm/
 **Alternativa considerada:** janela redimensionável e não modal.
 **Rejeitada porque:** o diálogo é um formulário curto de configuração; travar o redimensionamento preserva o layout e o modal evita edições concorrentes na janela principal, inclusive enquanto o teste de conexão roda em thread de trabalho.
 
+### 12. liteLLM embutido no executável do PyInstaller
+
+**Decisão:** o alvo `build` do Makefile instala `.[llm]` antes de empacotar, e `flowscope.spec` coleta os submódulos (`collect_submodules`) e os arquivos de dados (`collect_data_files`, exceto os assets do proxy web) do `litellm`, falhando com mensagem clara se o pacote não estiver instalado. Assim o executável inclui o LLM e `check_llm_deps()` retorna verdadeiro em máquinas sem Python/pip.
+
+**Alternativa considerada:** manter o liteLLM fora do binário e depender de `pip install flowscope[llm]` na máquina de destino.
+**Rejeitada porque:** máquinas que rodam apenas o executável do PyInstaller não têm Python nem pip; sem embutir, os recursos de I.A. ficam inacessíveis nesses ambientes.
+
+**Consequências:** o binário cresce (passa a incluir o liteLLM e sua tabela de preços/contexto) e o build passa a exigir o grupo `[llm]`; o PyInstaller detecta o import tardio do adaptador apenas quando o pacote está presente no ambiente de build.
+
+### 13. Registro em log das falhas do teste de conexão
+
+**Decisão:** as falhas do botão "Testar" são registradas via `logging.getLogger("flowscope")` em nível `WARNING`, com provedor, modelo, API URL e o tipo/mensagem do erro — nunca a chave de API. O log é feito na thread da interface, em `_verificar_teste`, ao consumir o desfecho da fila; a exibição na tela permanece inalterada.
+
+**Alternativa considerada:** registrar o log diretamente na thread de trabalho, dentro de `_executar_teste`.
+**Rejeitada porque:** o registro em thread de trabalho interfere na captura de logs do pytest/Tk do ambiente de testes e atrasa a publicação do desfecho; concentrar o registro na thread da interface mantém o padrão do projeto (a thread de trabalho só publica na fila) e evita concorrência no handler de log.
+
+**Consequências:** a fila do teste passa a carregar também a configuração e a exceção, e o log vai para o arquivo rotativo `~/.flowscope/logs/flowscope.log`.
+
 ## Risks / Trade-offs
 
 - **[Risco] `custom_llm_provider="openai"` não funciona em endpoints nativos de Anthropic/Gemini** → Mitigação: documentar que os presets exigem endpoints OpenAI-compatible; erros chegam como `LLMProviderError` com a mensagem do provedor; prefixos nativos podem ser adicionados depois sem quebrar a porta.
 - **[Risco] chave de API em texto claro no `config.json`** → Mitigação: arquivo local do usuário, chave mascarada na GUI; sem log de segredos.
 - **[Risco] rate limiter bloqueante na thread da GUI** → Mitigação: todas as chamadas ocorrem em threads de trabalho com fila.
 - **[Trade-off] rate limit global por processo** → Simplifica; múltiplas instâncias do FlowScope não compartilham o limite. Aceitável para uso desktop.
-- **[Trade-off] `litellm` é uma dependência grande** → Mantida opcional em `[llm]`; o binário base não cresce.
+- **[Trade-off] `litellm` é uma dependência grande** → Embutida no executável para funcionar em máquinas sem Python/pip; o binário cresce, mas os recursos de I.A. ficam disponíveis sem instalação. Em instalações via código-fonte permanece opcional em `[llm]`.
 - **[Risco] teste de conexão consome cota real** → Aceitável; é acionado manualmente e o rate limiter protege a cota configurada.
 
 ## Migration Plan
