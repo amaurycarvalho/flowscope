@@ -9,6 +9,7 @@ import logging
 import queue
 import threading
 import tkinter as tk
+from collections.abc import Callable
 from pathlib import Path
 from tkinter import ttk
 
@@ -46,11 +47,13 @@ class LLMConfigDialog(tk.Toplevel):
         parent: tk.Misc,
         *,
         config_path: Path | None = None,
+        on_saved: Callable[[], None] | None = None,
     ) -> None:
         """Constrói o diálogo, carrega a configuração salva e aplica as deps."""
         super().__init__(parent)
         self.title("Configuração de I.A.")
         self._config_path = config_path
+        self._on_saved = on_saved
         self._presets = get_presets()
         self._widgets_config: list[tk.Widget] = []
         self._fila: queue.Queue = queue.Queue()
@@ -203,8 +206,10 @@ class LLMConfigDialog(tk.Toplevel):
         }
 
     def _salvar(self: "LLMConfigDialog") -> None:
-        """Grava o bloco ``llm.chat`` e fecha o diálogo."""
+        """Grava o bloco ``llm.chat``, notifica o salvamento e fecha o diálogo."""
         save_llm_config(self._coletar_config(), self._config_path)
+        if self._on_saved is not None:
+            self._on_saved()
         self.destroy()
 
     def _on_testar(self: "LLMConfigDialog") -> None:

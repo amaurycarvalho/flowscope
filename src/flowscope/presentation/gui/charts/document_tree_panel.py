@@ -9,13 +9,12 @@ resultados obsoletos, e o campo de texto é somente-leitura copiável.
 
 import logging
 import queue
-import threading
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
 from tkinter import ttk
 
-from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.domain.llm import LLMPort
 from flowscope.infrastructure.document_catalog import (
     CatalogoTicker,
@@ -23,31 +22,27 @@ from flowscope.infrastructure.document_catalog import (
     DocumentoArquivo,
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
-from flowscope.presentation.gui.charts.document_grouping import (
-    Agrupamento,
-    render_grupo,
+from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.presentation.gui.charts.document_flow_mixin import (
+    CARREGANDO,
+    GERANDO_RESUMO,
+    DocumentFlowMixin,
 )
-from flowscope.presentation.gui.charts.document_preview import (
-    SEM_TEXTO,
-    texto_preview,
-)
+from flowscope.presentation.gui.charts.document_grouping import Agrupamento
 from flowscope.presentation.gui.charts.document_summary import (
     DocumentSummaryService,
 )
 from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
+from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
 logger = logging.getLogger("flowscope")
 
-#: Texto exibido enquanto a pré-visualização é extraída em segundo plano.
-CARREGANDO = "Carregando…"
-
-#: Texto exibido enquanto o resumo é gerado em segundo plano.
-GERANDO_RESUMO = "Gerando resumo…"
+__all__ = ["CARREGANDO", "GERANDO_RESUMO", "DocumentTreePanel"]
 
 
-class DocumentTreePanel:
+class DocumentTreePanel(DocumentFlowMixin):
     """Árvore de documentos em cache com pré-visualização e resumo sob demanda."""
 
     def __init__(
@@ -56,12 +51,14 @@ class DocumentTreePanel:
         *,
         catalog: DocumentCatalog | None = None,
         summary_store: JsonDocumentSummaryStore | None = None,
+        text_store: DocumentTextStore | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[Path], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         acquire_callback: Callable[[str], None] | None = None,
         ia_callback: Callable[[], None] | None = None,
+        resumir_callback: Callable[[], None] | None = None,
         debounce_ms: int = 150,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles."""
@@ -74,10 +71,16 @@ class DocumentTreePanel:
         self._summary = DocumentSummaryService(
             store, self._catalog.base_dir, llm_factory, llm_available
         )
+        self._text_store: DocumentTextStore = (
+            text_store
+            or getattr(self._catalog, "text_store", None)
+            or JsonDocumentTextStore(cache_dir=self._catalog.base_dir)
+        )
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
         self._ia_callback = ia_callback
+        self._resumir_callback = resumir_callback
         self._debounce_ms = debounce_ms
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, Agrupamento] = {}
@@ -111,6 +114,11 @@ class DocumentTreePanel:
             barra, text="I.A.", command=self._on_ia
         )
         self._ia_btn.pack(side=tk.LEFT, padx=2)
+        self._resumir_btn = ttk.Button(
+            barra, text="Resumir pendentes", command=self._on_resumir,
+            state=tk.DISABLED,
+        )
+        self._resumir_btn.pack(side=tk.LEFT, padx=2)
 
     def _build_container(self: "DocumentTreePanel") -> None:
         """Constrói a área de conteúdo com a árvore e a pré-visualização."""
@@ -143,12 +151,13 @@ class DocumentTreePanel:
         self._preview = ReadonlyText(
             quadro, wrap=tk.WORD, padx=8, pady=8,
         )
-        rolagem = ttk.Scrollbar(
+        self._preview_scrollbar = ttk.Scrollbar(
             quadro, orient=tk.VERTICAL, command=self._preview.yview
         )
-        self._preview.configure(yscrollcommand=rolagem.set)
+        self._preview.configure(yscrollcommand=self._preview_scrollbar.set)
+        self._preview_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self._preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        rolagem.pack(side=tk.RIGHT, fill=tk.Y)
+        vincular_roda(self._preview, self._preview)
         return quadro
 
     def update(
@@ -163,17 +172,20 @@ class DocumentTreePanel:
         self._limpar()
         if not ticker:
             self._show_empty("Selecione um ticker")
-            return
-        catalogo = self._catalog.catalogo(ticker)
-        if catalogo.vazio:
-            self._show_empty(f"Sem documentos em cache para {ticker}")
-            return
-        self._show_content()
-        self._popular(catalogo)
+        else:
+            catalogo = self._catalog.catalogo(ticker)
+            if catalogo.vazio:
+                self._show_empty(f"Sem documentos em cache para {ticker}")
+            else:
+                self._show_content()
+                self._popular(catalogo)
+        self.refresh_resumir_button()
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""
-        return [self._refresh_btn, self._open_btn, self._ia_btn]
+        return [
+            self._refresh_btn, self._open_btn, self._ia_btn, self._resumir_btn
+        ]
 
     def texto_atual(self: "DocumentTreePanel") -> str:
         """Retorna o conteúdo atual do campo de pré-visualização."""
@@ -254,114 +266,6 @@ class DocumentTreePanel:
         )
         self._open_btn.config(state=estado)
 
-    def _mostrar_grupo(self: "DocumentTreePanel", grupo: Agrupamento) -> None:
-        """Renderiza a lista Markdown do agrupamento selecionado."""
-        if self._catalogo_atual is None:
-            return
-        texto = render_grupo(
-            self._catalogo_atual,
-            grupo,
-            self._por_caminho,
-            self._summary.mensagem_indisponivel(),
-        )
-        self._set_preview_text(texto)
-
-    def _agendar_preview(
-        self: "DocumentTreePanel", arquivo: DocumentoArquivo
-    ) -> None:
-        """Agenda a extração com debounce, cancelando a anterior."""
-        if self._after_id is not None:
-            try:
-                self.frame.after_cancel(self._after_id)
-            except tk.TclError:
-                pass
-        self._after_id = self.frame.after(
-            self._debounce_ms, lambda: self._iniciar_preview(arquivo)
-        )
-
-    def _iniciar_preview(
-        self: "DocumentTreePanel", arquivo: DocumentoArquivo
-    ) -> None:
-        """Exibe o estado de carregamento e inicia extração/resumo em thread."""
-        self._after_id = None
-        req = self._req_id
-        texto = self._preview_cache.get(arquivo.caminho)
-        if texto is not None and not self._summary.precisa_resumo(arquivo, texto):
-            self._mostrar_documento(
-                texto, self._summary.resumo_para_exibir(arquivo, texto)
-            )
-            return
-        precisa = self._summary.precisa_resumo(arquivo, texto)
-        self._set_preview_text(GERANDO_RESUMO if precisa else CARREGANDO)
-        fila: queue.Queue = queue.Queue()
-        self._fila = fila
-        threading.Thread(
-            target=self._trabalhar,
-            args=(arquivo, fila, texto),
-            daemon=True,
-        ).start()
-        self._agendar_poll(arquivo, fila, req)
-
-    def _trabalhar(
-        self: "DocumentTreePanel",
-        arquivo: DocumentoArquivo,
-        fila: queue.Queue,
-        texto_conhecido: str | None,
-    ) -> None:
-        """Extrai o texto e, se preciso, gera o resumo, publicando na fila."""
-        texto = (
-            texto_conhecido
-            if texto_conhecido is not None
-            else texto_preview(arquivo.caminho)
-        )
-        resumo = self._summary.gerar(arquivo, texto)
-        fila.put((texto, resumo))
-
-    def _agendar_poll(
-        self: "DocumentTreePanel",
-        arquivo: DocumentoArquivo,
-        fila: queue.Queue,
-        req: int,
-    ) -> None:
-        """Consome a fila na thread do Tk até o resultado estar disponível."""
-
-        def _verificar() -> None:
-            try:
-                texto, resumo = fila.get_nowait()
-            except queue.Empty:
-                self.frame.after(20, _verificar)
-                return
-            if req != self._req_id:
-                return
-            self._aplicar_preview(arquivo, texto, resumo)
-
-        self.frame.after(0, _verificar)
-
-    def _aplicar_preview(
-        self: "DocumentTreePanel",
-        arquivo: DocumentoArquivo,
-        texto: str,
-        resumo: ResumoDocumento | None = None,
-    ) -> None:
-        """Cacheia o texto e exibe a pré-visualização se o arquivo seguir selecionado."""
-        self._preview_cache[arquivo.caminho] = texto
-        if self._arquivo_selecionado() is not arquivo:
-            return
-        long_summary = self._summary.resumo_para_exibir(arquivo, texto)
-        if resumo is not None:
-            self._atualizar_resumo(self._summary.persistir(arquivo, resumo))
-            long_summary = resumo.long_summary
-        self._mostrar_documento(texto, long_summary)
-
-    def _atualizar_resumo(
-        self: "DocumentTreePanel", atualizado: DocumentoArquivo
-    ) -> None:
-        """Atualiza o catálogo em memória com os resumos recém-gerados."""
-        for no, item in self._itens.items():
-            if item.caminho == atualizado.caminho:
-                self._itens[no] = atualizado
-        self._por_caminho[atualizado.caminho] = atualizado
-
     def _no_selecionado(self: "DocumentTreePanel") -> str | None:
         """Retorna o iid do nó selecionado, ou ``None``."""
         return self._view.selecionado()
@@ -369,21 +273,6 @@ class DocumentTreePanel:
     def _arquivo_selecionado(self: "DocumentTreePanel") -> DocumentoArquivo | None:
         """Retorna o arquivo do nó selecionado, ou ``None`` para pastas."""
         return self._view.arquivo_selecionado()
-
-    def _mostrar_documento(
-        self: "DocumentTreePanel", texto: str, long_summary: str | None
-    ) -> None:
-        """Compõe a pré-visualização do documento com o resumo longo."""
-        corpo = texto if texto.strip() else SEM_TEXTO
-        if long_summary:
-            self._set_preview_text(f"{long_summary}\n\n---\n\n{corpo}")
-        else:
-            self._set_preview_text(corpo)
-
-    def _set_preview_text(self: "DocumentTreePanel", texto: str) -> None:
-        """Substitui o conteúdo da caixa de pré-visualização somente-leitura."""
-        self._preview.delete("1.0", tk.END)
-        self._preview.insert("1.0", texto)
 
     def _on_double_click(
         self: "DocumentTreePanel", event: tk.Event | None = None
@@ -409,6 +298,11 @@ class DocumentTreePanel:
         """Aciona o callback de abertura do diálogo de configuração de LLM."""
         if self._ia_callback is not None:
             self._ia_callback()
+
+    def _on_resumir(self: "DocumentTreePanel") -> None:
+        """Aciona o callback de resumo em lote dos documentos pendentes."""
+        if self._resumir_callback is not None:
+            self._resumir_callback()
 
     def _abrir(self: "DocumentTreePanel", arquivo: DocumentoArquivo) -> None:
         """Abre o arquivo tolerando falha do aplicativo padrão."""

@@ -261,6 +261,33 @@ class TestTestarConexao:
             root.destroy()
 
 
+class TestOnSaved:
+    @needs_display
+    def test_on_saved_invocado_apos_salvar(self, tmp_path):
+        chamadas = []
+        caminho = tmp_path / "config.json"
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=caminho,
+                on_saved=lambda: chamadas.append(True),
+            )
+            dialog._salvar()
+            assert chamadas == [True]
+            assert caminho.exists()
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_on_saved_nao_falha(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog._salvar()
+        finally:
+            root.destroy()
+
+
 class TestModalidade:
     @needs_display
     def test_nao_redimensionavel(self, tmp_path):

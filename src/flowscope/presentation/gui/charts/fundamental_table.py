@@ -40,6 +40,10 @@ from flowscope.presentation.gui.charts.fundamental_rows import (
     montar_csv,
     montar_linhas,
 )
+from flowscope.presentation.gui.widgets.mousewheel import (
+    passo_da_roda,
+    vincular_roda,
+)
 
 __all__ = [
     "NA",
@@ -197,21 +201,11 @@ class FundamentalTablePanel:
 
     def _vincular_roda(self: "FundamentalTablePanel", tree: ttk.Treeview) -> None:
         """Associa os eventos de roda do mouse do painel ao rolável."""
-        tree.bind("<MouseWheel>", self._on_mousewheel, add="+")
-        tree.bind("<Button-4>", self._on_mousewheel, add="+")
-        tree.bind("<Button-5>", self._on_mousewheel, add="+")
+        vincular_roda(tree, self._tree_rolavel)
 
     def _on_mousewheel(self: "FundamentalTablePanel", event: object) -> str:
         """Encaminha a roda do mouse para o painel rolável."""
-        numero = getattr(event, "num", None)
-        delta = getattr(event, "delta", 0)
-        if numero == 4:
-            passo = -1
-        elif numero == 5:
-            passo = 1
-        else:
-            passo = -1 if delta > 0 else 1
-        self._tree_rolavel.yview_scroll(passo, "units")
+        self._tree_rolavel.yview_scroll(passo_da_roda(event), "units")
         return "break"
 
     def _on_select_fixo(self: "FundamentalTablePanel", event: object = None) -> None:

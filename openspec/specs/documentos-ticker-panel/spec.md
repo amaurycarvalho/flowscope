@@ -36,7 +36,7 @@ A sub-aba DEVE exibir uma árvore com o nome do ticker no topo e, abaixo, os ní
 
 ### Requirement: Pré-visualização textual
 
-Ao selecionar um arquivo, o sistema DEVE exibir uma pré-visualização textual em caixa de texto somente-leitura ao lado da árvore. Para arquivos HTML, o texto DEVE ser derivado do HTML; para PDFs, o texto DEVE ser extraído com `pypdf`. A extração DEVE ocorrer fora da thread da interface, com estado de carregamento, e DEVE resultar em mensagem informativa quando não houver texto extraível. A pré-visualização de um documento DEVE ser composta pelo `long_summary`, por uma linha em branco, uma linha contendo `---`, outra linha em branco e o texto integral do documento.
+Ao selecionar um arquivo, o sistema DEVE exibir uma pré-visualização textual em caixa de texto somente-leitura ao lado da árvore. Para arquivos HTML, o texto DEVE ser derivado do HTML; para PDFs, o texto DEVE ser extraído com `pypdf`. A extração DEVE ocorrer fora da thread da interface, com estado de carregamento, e DEVE resultar em mensagem informativa quando não houver texto extraível. O texto do documento DEVE ser lido do cache persistente de texto por documento; a conversão do arquivo DEVE ocorrer apenas quando o texto ainda não estiver em cache, e o resultado DEVE ser gravado no cache para os acessos seguintes. A pré-visualização de um documento DEVE ser composta pelo `long_summary`, por uma linha em branco, uma linha contendo `---`, outra linha em branco e o texto integral do documento.
 
 #### Scenario: Seleção de PDF
 - **WHEN** o usuário seleciona um arquivo PDF
@@ -53,6 +53,14 @@ Ao selecionar um arquivo, o sistema DEVE exibir uma pré-visualização textual 
 #### Scenario: Documento com resumo longo
 - **WHEN** o documento selecionado tem `long_summary` preenchido
 - **THEN** a caixa DEVE exibir o `long_summary`, seguido de linha em branco, `---`, linha em branco e o texto integral do documento
+
+#### Scenario: Texto lido do cache
+- **WHEN** o texto de um documento já está em cache e o documento é selecionado
+- **THEN** a caixa DEVE exibir o texto do cache, sem reconverter o arquivo
+
+#### Scenario: Conversão apenas no primeiro acesso
+- **WHEN** o texto de um documento não está em cache e o documento é selecionado
+- **THEN** o sistema DEVE converter o arquivo, gravar o texto no cache e exibir a pré-visualização
 
 ### Requirement: Abertura no aplicativo padrão
 
@@ -136,7 +144,7 @@ Quando um resumo não estiver preenchido, o sistema DEVE exibir `Resumo indispon
 
 ### Requirement: Geração de resumo sob demanda
 
-Ao selecionar um documento sem `long_summary` com a LLM configurada, o sistema DEVE enviar o texto integral do documento ao serviço de resumo, persistir o `short_summary` e o `long_summary` resultantes no catálogo do documento e exibir a pré-visualização composta. A geração DEVE ocorrer fora da thread da interface, com estado de carregamento, e resultados de seleções anteriores DEVEM ser descartados quando a seleção mudar.
+Ao selecionar um documento sem `long_summary` com a LLM configurada, o sistema DEVE enviar o texto integral do documento ao serviço de resumo, persistir o `short_summary` e o `long_summary` resultantes no catálogo do documento e exibir a pré-visualização composta. A geração DEVE ocorrer fora da thread da interface, com estado de carregamento, e resultados de seleções anteriores DEVEM ser descartados quando a seleção mudar. Quando não houver texto extraível para o documento, o sistema NÃO DEVE gerar resumo nem chamar a LLM, exibindo o marcador de ausência de texto.
 
 #### Scenario: Documento sem resumo com LLM configurada
 - **WHEN** o usuário seleciona um documento sem `long_summary` e a LLM está configurada
@@ -157,6 +165,10 @@ Ao selecionar um documento sem `long_summary` com a LLM configurada, o sistema D
 #### Scenario: Falha na geração
 - **WHEN** a geração do resumo falha por indisponibilidade, comunicação, provedor ou cota
 - **THEN** o sistema DEVE exibir a mensagem de indisponibilidade, sem interromper a interface
+
+#### Scenario: Sem texto extraível não gera resumo
+- **WHEN** o documento não tem texto extraível e a LLM está configurada
+- **THEN** o sistema NÃO DEVE chamar a LLM nem persistir resumo, exibindo o marcador de ausência de texto
 
 ### Requirement: Campo de texto somente-leitura com atalhos e cursor
 
@@ -213,3 +225,95 @@ O botão "Salvar" do diálogo de configuração de I.A. DEVE gravar a última co
 #### Scenario: Configuração sobrevive ao fechamento da aplicação
 - **WHEN** a aplicação é fechada após salvar a configuração de I.A.
 - **THEN** o bloco `llm.chat` DEVE permanecer no arquivo e ser recarregado no próximo início
+
+### Requirement: Rolagem vertical na árvore e na pré-visualização
+
+A árvore de documentos e o campo de texto da pré-visualização DEVEM exibir uma barra de rolagem vertical visível e funcional, inclusive quando o painel for mais estreito que a largura requisitada pelo conteúdo. A rolagem vertical DEVE funcionar pela barra e pela roda do mouse.
+
+#### Scenario: Barra visível na árvore
+- **WHEN** a sub-aba "Documentos" exibe a árvore
+- **THEN** a barra de rolagem vertical da árvore DEVE estar visível e mapeada
+
+#### Scenario: Barra visível na pré-visualização
+- **WHEN** a sub-aba "Documentos" exibe o campo de texto
+- **THEN** a barra de rolagem vertical do campo DEVE estar visível e mapeada
+
+#### Scenario: Painel estreito não oculta a barra
+- **WHEN** o painel da árvore ou da pré-visualização é mais estreito que a largura requisitada pelo conteúdo
+- **THEN** a barra de rolagem vertical DEVE permanecer visível
+
+#### Scenario: Rolagem pela roda do mouse
+- **WHEN** o ponteiro está sobre a árvore ou sobre o campo de texto e o usuário usa a roda do mouse
+- **THEN** o conteúdo DEVE rolar verticalmente
+
+### Requirement: Botão "Resumir pendentes" na barra de documentos
+
+A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de controles, imediatamente após o botão "I.A.", sempre visível. O botão DEVE estar habilitado somente quando a LLM estiver configurada, existir ao menos um documento do ticker apresentado sem `long_summary` e nenhum resumo em lote estiver em andamento; caso contrário DEVE estar desabilitado. A LLM DEVE ser considerada configurada quando o provedor for diferente de `none` e as dependências `[llm]` estiverem presentes. Ao salvar a configuração no diálogo de I.A., o estado do botão DEVE ser reavaliado. Durante o lote e durante as cargas de dados, o botão DEVE ser desabilitado e restaurado ao término, junto com os demais botões do painel.
+
+#### Scenario: Botão disponível na barra
+- **WHEN** o usuário navega para a sub-aba "Documentos"
+- **THEN** o botão "Resumir pendentes" DEVE ser exibido imediatamente após o botão "I.A."
+
+#### Scenario: Habilitado com pendentes e LLM configurada
+- **WHEN** a LLM está configurada e o ticker apresentado tem ao menos um documento sem `long_summary`
+- **THEN** o botão "Resumir pendentes" DEVE estar habilitado
+
+#### Scenario: Desabilitado sem LLM configurada
+- **WHEN** a LLM não está configurada
+- **THEN** o botão "Resumir pendentes" DEVE estar desabilitado, sem ser ocultado
+
+#### Scenario: Desabilitado sem pendentes
+- **WHEN** todos os documentos do ticker apresentado já têm `long_summary`
+- **THEN** o botão "Resumir pendentes" DEVE estar desabilitado
+
+#### Scenario: Reavaliação quando o catálogo muda
+- **WHEN** o último documento pendente passa a ter `long_summary` por um resumo individual (sem troca de aba)
+- **THEN** o botão "Resumir pendentes" DEVE ser reavaliado e ficar desabilitado
+
+#### Scenario: Reavaliação após salvar a configuração
+- **WHEN** o usuário salva uma configuração de LLM válida no diálogo de I.A. e há documentos pendentes
+- **THEN** o botão "Resumir pendentes" DEVE passar a estar habilitado
+
+#### Scenario: Desabilitado durante o lote e cargas de dados
+- **WHEN** um resumo em lote ou uma carga de dados está em andamento
+- **THEN** o botão "Resumir pendentes" DEVE ser desabilitado junto com os demais botões do painel e restaurado ao término
+
+### Requirement: Resumo em lote dos documentos pendentes
+
+Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da thread da interface, todos os documentos do ticker apresentado sem `long_summary`, em duas fases: preparar o texto — reutilizando o texto em cache e convertendo apenas quando ausente — e gerar o resumo via LLM, como se cada documento tivesse sido selecionado. O `short_summary` e o `long_summary` resultantes DEVEM ser persistidos e refletidos no catálogo do documento. O andamento DEVE ser exibido na barra de status com a barra de progresso, uma fase por vez. Documentos sem texto extraível DEVEM ser pulados, sem chamada à LLM. Ao concluir, o sistema DEVE exibir o desfecho e reavaliar o estado do botão.
+
+#### Scenario: Lote com documentos pendentes
+- **WHEN** o usuário aciona "Resumir pendentes" com a LLM configurada e documentos sem `long_summary`
+- **THEN** o sistema DEVE gerar e persistir os resumos de cada documento pendente e exibir o desfecho
+
+#### Scenario: Progresso em duas fases
+- **WHEN** o lote está em andamento
+- **THEN** a barra de status e a barra de progresso DEVEM exibir a fase corrente ("preparar texto" e, em seguida, "resumir") com o avanço de cada uma, indicando quantos documentos foram concluídos e o total (ex.: `Preparando textos — 3/40`)
+
+#### Scenario: Avanço da fase é exibido durante o processamento
+- **WHEN** uma fase processa vários documentos e cada um leva tempo para concluir
+- **THEN** a barra de progresso e a barra de status DEVEM avançar a cada documento concluído, sem aguardar o término da fase
+
+#### Scenario: Fase instantânea continua visível
+- **WHEN** a preparação dos textos é instantânea (todos os textos já estão em cache) e o lote avança para a fase de resumo
+- **THEN** a fase "preparar texto" DEVE ter sido exibida na barra de status antes de "resumir", ainda que por tempo mínimo
+
+#### Scenario: Documento já resumido é pulado
+- **WHEN** um documento do ticker já tem `long_summary`
+- **THEN** ele NÃO DEVE ser reprocessado no lote
+
+#### Scenario: Documento sem texto extraível é pulado
+- **WHEN** um documento pendente não tem texto extraível
+- **THEN** o sistema NÃO DEVE chamar a LLM para ele e DEVE contabilizá-lo como pulado no desfecho
+
+#### Scenario: Resumo gerado fica disponível na lista
+- **WHEN** o lote conclui
+- **THEN** uma seleção posterior do agrupamento DEVE exibir o `short_summary` dos documentos resumidos
+
+#### Scenario: Interrupção por erro
+- **WHEN** ocorre um erro em qualquer documento durante o lote
+- **THEN** o lote DEVE ser interrompido, a barra de status DEVE reportar o documento e o motivo da falha e os controles DEVEM ser liberados
+
+#### Scenario: Resultado do lote é descartado ao trocar de ticker
+- **WHEN** o ticker apresentado muda enquanto o lote está em andamento
+- **THEN** os resultados do lote anterior NÃO DEVEM ser aplicados ao novo ticker

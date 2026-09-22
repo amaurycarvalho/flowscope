@@ -176,6 +176,7 @@ class StatusMixin:
         painel_documentos = getattr(self, "_documents_panel", None)
         if painel_documentos is not None:
             painel_documentos.refresh_open_button()
+            painel_documentos.refresh_resumir_button()
 
     # ── GUIView protocol public methods ──────────────────────────────
 

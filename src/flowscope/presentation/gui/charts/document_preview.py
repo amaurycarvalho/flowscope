@@ -17,6 +17,14 @@ logger = logging.getLogger("flowscope")
 SEM_TEXTO = "Sem texto extraível para pré-visualização."
 
 
+def tem_texto(texto: str | None) -> bool:
+    """Indica se o texto contém conteúdo extraído (e não o marcador de ausência)."""
+    if not texto:
+        return False
+    limpo = texto.strip()
+    return bool(limpo) and limpo != SEM_TEXTO
+
+
 def texto_de_html(html: str) -> str:
     """Extrai o texto visível de um documento HTML."""
     if not html:

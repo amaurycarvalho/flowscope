@@ -12,14 +12,33 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from flowscope.infrastructure.document_catalog import DocumentCatalog
+from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.infrastructure.document_catalog import (
+    DocumentCatalog,
+    DocumentoArquivo,
+)
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
+from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.domain.llm import LLMCommunicationError
-from flowscope.presentation.gui import app_actions, document_actions
+from flowscope.presentation.gui import (
+    app_actions,
+    app_resumos_actions,
+    document_actions,
+)
 from flowscope.presentation.gui.app_actions import ActionsMixin
+from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
+from flowscope.presentation.gui.charts.document_summary import (
+    DocumentSummaryService,
+)
 from flowscope.presentation.gui.documentos_job import (
     MENSAGEM_PROGRESSO,
     DocumentosJob,
+)
+from flowscope.presentation.gui.progress import ProgressReporter
+from flowscope.presentation.gui.resumos_job import (
+    MENSAGEM_ERRO as RESUMO_ERRO,
+    MENSAGEM_RESULTADO as RESUMO_RESULTADO,
+    ResumosPendentesJob,
 )
 from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
@@ -31,6 +50,7 @@ from flowscope.presentation.gui.app_tabs import (
 from flowscope.presentation.gui.charts import document_preview
 from flowscope.presentation.gui.charts.document_preview import (
     SEM_TEXTO,
+    tem_texto,
     texto_de_html,
     texto_de_pdf,
     texto_preview,
@@ -42,6 +62,7 @@ from flowscope.presentation.gui.charts.document_tree_panel import (
     CARREGANDO,
     DocumentTreePanel,
 )
+from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
@@ -152,6 +173,18 @@ class TestPreview:
         caminho = tmp_path / "doc.txt"
         caminho.write_text("x", encoding="utf-8")
         assert texto_preview(caminho) == ""
+
+    def test_tem_texto_vazio(self):
+        assert tem_texto("") is False
+
+    def test_tem_texto_apenas_espacos(self):
+        assert tem_texto("   \n\t ") is False
+
+    def test_tem_texto_marcador(self):
+        assert tem_texto(SEM_TEXTO) is False
+
+    def test_tem_texto_com_conteudo(self):
+        assert tem_texto("conteudo do documento") is True
 
 
 class TestAbertura:
@@ -482,6 +515,7 @@ class TestBotaoAbrir:
                 painel._refresh_btn,
                 painel._open_btn,
                 painel._ia_btn,
+                painel._resumir_btn,
             ]
             painel.update("ALZR11")
             painel._open_btn.config(state=tk.NORMAL)
@@ -508,8 +542,10 @@ class TestBotaoIA:
                 painel._refresh_btn,
                 painel._open_btn,
                 painel._ia_btn,
+                painel._resumir_btn,
             ]
             assert painel._ia_btn.cget("text") == "I.A."
+            assert painel._resumir_btn.cget("text") == "Resumir pendentes"
         finally:
             root.destroy()
 
@@ -563,7 +599,7 @@ class TestPreviewEmThread:
             no = _no_arquivo(painel, "10.pdf")
             arquivo = painel._itens[no]
             monkeypatch.setattr(
-                "flowscope.presentation.gui.charts.document_tree_panel.texto_preview",
+                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
                 lambda _caminho: "extraído",
             )
             painel._tree.selection_set(no)
@@ -574,6 +610,482 @@ class TestPreviewEmThread:
                     break
                 time.sleep(0.01)
             assert painel._preview.get("1.0", "end-1c") == esperado
+        finally:
+            root.destroy()
+
+
+class TestCacheTextoPreview:
+    def _painel(self, root, tmp_path, monkeypatch, texto_convertido):
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        chamadas = []
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
+            lambda caminho: chamadas.append(caminho) or texto_convertido,
+        )
+        painel = DocumentTreePanel(
+            root, catalog=catalogo, text_store=store, debounce_ms=0
+        )
+        painel.update("ALZR11")
+        return painel, store, chamadas
+
+    @needs_display
+    def test_miss_converte_e_grava_no_cache(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        try:
+            painel, store, chamadas = self._painel(
+                root, tmp_path, monkeypatch, "extraído"
+            )
+            no = _no_arquivo(painel, "10.pdf")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root, lambda: "extraído" in painel._preview.get("1.0", "end-1c")
+            )
+            assert len(chamadas) == 1
+            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == "extraído"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_miss_sem_texto_grava_marcador(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        try:
+            painel, store, _ = self._painel(root, tmp_path, monkeypatch, "")
+            no = _no_arquivo(painel, "10.pdf")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
+            )
+            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == SEM_TEXTO
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_hit_usa_cache_sem_converter(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        try:
+            store = JsonDocumentTextStore(cache_dir=tmp_path)
+            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "do cache")
+            catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            chamadas = []
+            monkeypatch.setattr(
+                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
+                lambda caminho: chamadas.append(caminho) or "convertido",
+            )
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, text_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            painel._tree.selection_set(no)
+            esperado = f"{mensagem_indisponivel(False)}\n\n---\n\ndo cache"
+            assert _pump(
+                root, lambda: painel._preview.get("1.0", "end-1c") == esperado
+            )
+            assert chamadas == []
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_marcador_em_cache_nao_reconverte(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        try:
+            store = JsonDocumentTextStore(cache_dir=tmp_path)
+            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", SEM_TEXTO)
+            catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            chamadas = []
+            monkeypatch.setattr(
+                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
+                lambda caminho: chamadas.append(caminho) or "convertido",
+            )
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, text_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
+            )
+            assert chamadas == []
+        finally:
+            root.destroy()
+
+
+class TestAberturaSemTexto:
+    @needs_display
+    def test_abertura_permanece_funcional_sem_texto(self, tmp_path):
+        root = tk.Tk()
+        try:
+            abertos = []
+            store = JsonDocumentTextStore(cache_dir=tmp_path)
+            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", SEM_TEXTO)
+            catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, text_store=store,
+                open_callback=abertos.append, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
+            )
+            assert str(painel._open_btn.cget("state")) == "normal"
+
+            painel._open_btn.invoke()
+            assert abertos == [painel._itens[no].caminho]
+
+            assert painel._on_double_click() == "break"
+            assert abertos[-1] == painel._itens[no].caminho
+        finally:
+            root.destroy()
+
+
+class TestRolagemDocumentos:
+    @needs_display
+    def test_barra_da_arvore_mapeada_em_painel_estreito(self):
+        root = tk.Tk()
+        try:
+            view = DocumentTreeView(root)
+            view.frame.pack_propagate(False)
+            view.frame.configure(width=50, height=100)
+            view.frame.pack()
+            root.update()
+            assert view.rolagem.winfo_ismapped()
+            assert view.rolagem.winfo_width() > 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_barra_da_preview_mapeada_em_painel_estreito(self, tmp_path):
+        root = tk.Tk()
+        try:
+            root.geometry("600x300")
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            painel.update("ALZR11")
+            root.update()
+            painel._content.sash_place(0, 590, 0)
+            root.update()
+            assert painel._preview.master.winfo_width() < 20
+            assert painel._preview_scrollbar.winfo_ismapped()
+            assert painel._preview_scrollbar.winfo_width() > 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_barras_mapeadas_no_painel(self, tmp_path):
+        root = tk.Tk()
+        try:
+            root.geometry("600x400")
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            painel.update("ALZR11")
+            root.update()
+            assert painel._view.rolagem.winfo_ismapped()
+            assert painel._view.rolagem.winfo_width() > 0
+            assert painel._preview_scrollbar.winfo_ismapped()
+            assert painel._preview_scrollbar.winfo_width() > 0
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_roda_rola_arvore(self, tmp_path):
+        root = tk.Tk()
+        try:
+            root.geometry("600x200")
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            painel.update("ALZR11")
+            for indice in range(100):
+                painel._tree.insert("", "end", text=f"item {indice}")
+            root.update()
+            antes = painel._tree.yview()
+            painel._tree.event_generate("<Button-5>", x=5, y=5)
+            root.update()
+            assert painel._tree.yview() != antes
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_roda_rola_preview(self, tmp_path):
+        root = tk.Tk()
+        try:
+            root.geometry("600x200")
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            painel._set_preview_text("\n".join(f"linha {i}" for i in range(200)))
+            root.update()
+            antes = painel._preview.yview()
+            painel._preview.event_generate("<Button-5>", x=5, y=5)
+            root.update()
+            assert painel._preview.yview() != antes
+        finally:
+            root.destroy()
+
+
+def _arquivo(tmp_path: Path, nome: str = "10.pdf") -> DocumentoArquivo:
+    return DocumentoArquivo(
+        ticker="ALZR11",
+        ano=2026,
+        mes=2,
+        categoria="Aviso aos Acionistas",
+        nome=nome,
+        tipo="pdf",
+        caminho=tmp_path / nome,
+    )
+
+
+class TestFachadaDocumentos:
+    @needs_display
+    def test_documentos_sem_resumo_em_ordem_da_arvore(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "c", "l")
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        _touch(
+            catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026" / "02"
+            / "20.html",
+            b"<html><body>Conteudo</body></html>",
+        )
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            pendentes = painel.documentos_sem_resumo()
+            assert [arquivo.nome for arquivo in pendentes] == ["20.html"]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_preparar_texto_miss_converte_e_grava(self, tmp_path, monkeypatch):
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        chamadas = []
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
+            lambda caminho: chamadas.append(caminho) or "extraído",
+        )
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, text_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+            assert painel.preparar_texto(arquivo) == "extraído"
+            assert chamadas == [arquivo.caminho]
+            assert store.obter(
+                "ALZR11", "bdr/ALZR11/2026/02/10.pdf"
+            ) == "extraído"
+            assert painel._preview_cache[arquivo.caminho] == "extraído"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_preparar_texto_hit_nao_converte(self, tmp_path, monkeypatch):
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "do cache")
+        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        chamadas = []
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
+            lambda caminho: chamadas.append(caminho) or "convertido",
+        )
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, text_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+            assert painel.preparar_texto(arquivo) == "do cache"
+            assert chamadas == []
+        finally:
+            root.destroy()
+
+
+class TestGerarEstrito:
+    def _servico(self, tmp_path, llm):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        return DocumentSummaryService(
+            store, tmp_path, llm_factory=lambda: llm, llm_available=lambda: True
+        )
+
+    def test_propaga_llm_error(self, tmp_path):
+        class _Falha:
+            def complete(self, messages, system_prompt=None):
+                raise LLMCommunicationError("timeout")
+
+        servico = self._servico(tmp_path, _Falha())
+        with pytest.raises(LLMCommunicationError):
+            servico.gerar_estrito(_arquivo(tmp_path), "texto")
+
+    def test_propaga_excecao_inesperada(self, tmp_path):
+        class _Falha:
+            def complete(self, messages, system_prompt=None):
+                raise RuntimeError("boom")
+
+        servico = self._servico(tmp_path, _Falha())
+        with pytest.raises(RuntimeError):
+            servico.gerar_estrito(_arquivo(tmp_path), "texto")
+
+    def test_gerar_continua_tolerante(self, tmp_path):
+        class _Falha:
+            def complete(self, messages, system_prompt=None):
+                raise LLMCommunicationError("timeout")
+
+        servico = self._servico(tmp_path, _Falha())
+        assert servico.gerar(_arquivo(tmp_path), "texto") is None
+
+
+class TestAplicarResumo:
+    @needs_display
+    def test_grava_e_atualiza_catalogo(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            arquivo = painel._itens[no]
+            painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
+            assert painel._itens[no].long_summary == "longo"
+            assert painel._por_caminho[arquivo.caminho].long_summary == "longo"
+            salvo = store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf")
+            assert salvo.long_summary == "longo"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_atualiza_estado_do_botao(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                llm_available=lambda: True, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+            painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_recompoe_preview_quando_selecionado(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            arquivo = painel._itens[no]
+            painel._tree.selection_set(no)
+            painel._preview_cache[arquivo.caminho] = "texto integral"
+            painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
+            assert painel._preview.get("1.0", "end-1c") == (
+                "longo\n\n---\n\ntexto integral"
+            )
+        finally:
+            root.destroy()
+
+
+class TestBotaoResumir:
+    @needs_display
+    def test_acionamento_chama_callback(self, tmp_path):
+        root = tk.Tk()
+        try:
+            chamadas = []
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path),
+                resumir_callback=lambda: chamadas.append(True), debounce_ms=0,
+            )
+            painel._resumir_btn.config(state=tk.NORMAL)
+            painel._resumir_btn.invoke()
+            assert chamadas == [True]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_callback_nao_falha(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            painel._on_resumir()
+        finally:
+            root.destroy()
+
+
+class TestRefreshResumirButton:
+    def _painel(self, root, tmp_path, disponivel=True, com_resumo=False):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        if com_resumo:
+            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "c", "l")
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        painel = DocumentTreePanel(
+            root, catalog=catalogo, summary_store=store,
+            llm_available=lambda: disponivel, debounce_ms=0,
+        )
+        painel.update("ALZR11")
+        return painel
+
+    @needs_display
+    def test_habilitado_com_llm_e_pendentes(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path, disponivel=True)
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_desabilitado_sem_llm(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path, disponivel=False)
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_desabilitado_sem_pendentes(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path, com_resumo=True)
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
         finally:
             root.destroy()
 
@@ -609,6 +1121,7 @@ class TestWiringSubAba:
             ]
             assert "Documentos" in abas
             assert hasattr(host, "_documents_panel")
+            assert host._documents_panel._text_store is not None
         finally:
             root.destroy()
 
@@ -628,6 +1141,27 @@ class TestWiringSubAba:
             host._copy_chart = lambda _figure: None
             host._build_ticker_tabs()
             host._documents_panel._ia_btn.invoke()
+            assert host.chamadas == [True]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_resumir_callback_injetado_no_painel(self):
+        root = tk.Tk()
+        try:
+            class _HostResumo(_Host):
+                def __init__(self):
+                    self.chamadas = []
+
+                def _resumir_documentos_pendentes(self):
+                    self.chamadas.append(True)
+
+            host = _HostResumo()
+            host._main_notebook = ttk.Notebook(root)
+            host._copy_chart = lambda _figure: None
+            host._build_ticker_tabs()
+            host._documents_panel._resumir_btn.config(state=tk.NORMAL)
+            host._documents_panel._resumir_btn.invoke()
             assert host.chamadas == [True]
         finally:
             root.destroy()
@@ -698,11 +1232,24 @@ class TestAbrirConfigLLM:
         monkeypatch.setattr(
             app_actions,
             "LLMConfigDialog",
-            lambda parent: chamadas.append(parent),
+            lambda parent, **kwargs: chamadas.append((parent, kwargs)),
         )
         host = ActionsMixin()
         host._abrir_config_llm()
-        assert chamadas == [host]
+        assert chamadas == [(host, {"on_saved": None})]
+
+    def test_injeta_refresh_do_painel(self, monkeypatch):
+        chamadas = []
+        monkeypatch.setattr(
+            app_actions,
+            "LLMConfigDialog",
+            lambda parent, **kwargs: chamadas.append(kwargs),
+        )
+        host = ActionsMixin()
+        painel = MagicMock()
+        host._documents_panel = painel
+        host._abrir_config_llm()
+        assert chamadas == [{"on_saved": painel.refresh_resumir_button}]
 
 
 class TestDeveAtualizar:
@@ -988,6 +1535,174 @@ class TestDocumentosJob:
         assert mensagens[-1] is True
 
 
+class _PainelResumosFake:
+    def __init__(self, pendentes, textos, falha_em=None):
+        self._pendentes = list(pendentes)
+        self._textos = textos
+        self._falha_em = falha_em
+        self.aplicados: list[str] = []
+        self.refreshes = 0
+
+    def documentos_sem_resumo(self):
+        return list(self._pendentes)
+
+    def preparar_texto(self, arquivo):
+        return self._textos.get(arquivo.nome, "")
+
+    def gerar_resumo_estrito(self, arquivo, texto):
+        if self._falha_em == arquivo.nome:
+            raise LLMCommunicationError("timeout")
+        return ResumoDocumento("curto", "longo")
+
+    def aplicar_resumo(self, arquivo, resumo):
+        self.aplicados.append(arquivo.nome)
+
+    def refresh_resumir_button(self):
+        self.refreshes += 1
+
+
+class _HostResumos(ActionsMixin, ResumosActionsMixin):
+    def __init__(self, painel):
+        self._documents_panel = painel
+        self._presenter = MagicMock()
+        self._ticker_selecionado = "ALZR11"
+        self.agendados = []
+        self.status = []
+
+    def after(self, ms, callback):
+        self.agendados.append((ms, callback))
+        callback()
+        return "id"
+
+    def _set_status(self, msg, icon=""):
+        self.status.append((msg, icon))
+
+    def _flash_status(self, msg, icon="✓", clear_ms=2500):
+        self.status.append((msg, icon))
+
+
+def _preparar_poll(host):
+    host._resumos_reporter = ProgressReporter(
+        on_update=host._presenter.on_progress
+    )
+    host._resumos_fase = None
+    host._resumos_resumidos = 0
+    host._resumos_interrompido = False
+
+
+class TestOrquestrarResumos:
+    def test_reentrancia_ignora_segundo_acionamento(self):
+        painel = MagicMock()
+        host = _HostResumos(painel)
+        host._resumos_job = object()
+        host._resumir_documentos_pendentes()
+        painel.documentos_sem_resumo.assert_not_called()
+        host._presenter.enter.assert_not_called()
+
+    def test_sem_pendentes_reavalia_botao(self):
+        painel = MagicMock()
+        painel.documentos_sem_resumo.return_value = []
+        host = _HostResumos(painel)
+        host._resumir_documentos_pendentes()
+        painel.refresh_resumir_button.assert_called_once()
+        host._presenter.enter.assert_not_called()
+
+    def test_atraso_minimo_ao_termino_da_fase(self):
+        host = _HostResumos(MagicMock())
+        host._resumos_fase_completa = True
+        host._resumos_fase_inicio = time.monotonic()
+        assert host._atraso_poll_resumos("processou") > 0
+
+        host._resumos_fase_inicio = time.monotonic() - 10
+        assert host._atraso_poll_resumos("processou") == 0
+        assert host._atraso_poll_resumos("vazio") == 50
+
+    def test_sem_atraso_durante_avanco_da_fase(self):
+        host = _HostResumos(MagicMock())
+        host._resumos_fase_inicio = time.monotonic()
+        host._resumos_fase_completa = False
+        assert host._atraso_poll_resumos("processou") == 0
+
+    def test_balanceia_enter_exit(self, tmp_path, monkeypatch):
+        arquivos = [_arquivo(tmp_path, "10.pdf")]
+        painel = _PainelResumosFake(arquivos, {"10.pdf": "texto"})
+        host = _HostResumos(painel)
+
+        class _JobFake:
+            def __init__(self, _painel, _arquivos):
+                self.fila = queue.Queue()
+                self.fila.put(True)
+                self.total = len(_arquivos)
+                self.sem_texto = 0
+                self.thread = None
+
+            def iniciar(self):
+                return None
+
+        monkeypatch.setattr(app_resumos_actions, "ResumosPendentesJob", _JobFake)
+        host._resumir_documentos_pendentes()
+        host._presenter.enter.assert_called_once()
+        host._presenter.exit.assert_called_once()
+        assert painel.refreshes == 1
+
+    def test_progresso_resultado_e_desfecho(self, tmp_path):
+        arquivos = [_arquivo(tmp_path, "10.pdf"), _arquivo(tmp_path, "20.pdf")]
+        painel = _PainelResumosFake(arquivos, {"10.pdf": "texto", "20.pdf": ""})
+        host = _HostResumos(painel)
+        _preparar_poll(host)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        host._resumos_job = job
+
+        host._poll_resumos_job(job, "ALZR11")
+
+        assert painel.aplicados == ["10.pdf"]
+        host._presenter.on_progress.assert_called()
+        assert any(
+            "/" in chamada.args[2]
+            for chamada in host._presenter.on_progress.call_args_list
+        )
+        assert any(
+            "Resumos gerados: 1 de 2 (1 sem texto)." in msg
+            for msg, _icon in host.status
+        )
+
+    def test_interrupcao_publica_status_e_libera(self, tmp_path):
+        arquivos = [_arquivo(tmp_path, "10.pdf"), _arquivo(tmp_path, "20.pdf")]
+        painel = _PainelResumosFake(
+            arquivos, {"10.pdf": "texto", "20.pdf": "texto"},
+            falha_em="20.pdf",
+        )
+        host = _HostResumos(painel)
+        _preparar_poll(host)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        host._resumos_job = job
+
+        host._poll_resumos_job(job, "ALZR11")
+
+        assert painel.aplicados == ["10.pdf"]
+        assert any(
+            "20.pdf" in msg and "timeout" in msg
+            for msg, _icon in host.status
+        )
+        host._presenter.exit.assert_called_once()
+
+    def test_descarta_resultado_ao_trocar_ticker(self, tmp_path):
+        arquivos = [_arquivo(tmp_path, "10.pdf")]
+        painel = _PainelResumosFake(arquivos, {"10.pdf": "texto"})
+        host = _HostResumos(painel)
+        _preparar_poll(host)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        host._resumos_job = job
+        host._ticker_selecionado = "OUTRO"
+
+        host._poll_resumos_job(job, "ALZR11")
+
+        assert painel.aplicados == []
+
+
 class TestWidgetSomenteLeitura:
     @needs_display
     def test_preview_usa_readonly_text(self, tmp_path):
@@ -1214,6 +1929,37 @@ class TestGeracaoDeResumo:
                 f"{mensagem_indisponivel(False)}\n\n---\n\nConteudo do informe"
             )
             assert _pump(root, lambda: painel._preview.get("1.0", "end-1c") == esperado)
+            assert llm.chamadas == []
+            assert store.resumos("ALZR11") == {}
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_sem_texto_nao_chama_llm_nem_persiste(self, tmp_path):
+        root = tk.Tk()
+        try:
+            llm = _LLMFake("CURTO: curto\nLONGO: longo")
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            text_store = JsonDocumentTextStore(cache_dir=tmp_path)
+            catalogo = DocumentCatalog(
+                cache_dir=tmp_path, summary_store=store, text_store=text_store
+            )
+            _touch(
+                catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026"
+                / "02" / "20.html",
+                b"<html><body></body></html>",
+            )
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                text_store=text_store, llm_available=lambda: True,
+                llm_factory=lambda: llm, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "20.html")
+            painel._tree.selection_set(no)
+            assert _pump(
+                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
+            )
             assert llm.chamadas == []
             assert store.resumos("ALZR11") == {}
         finally:

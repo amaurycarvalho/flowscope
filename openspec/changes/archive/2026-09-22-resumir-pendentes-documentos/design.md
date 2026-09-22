@@ -46,9 +46,13 @@ Novo `ResumosPendentesJob` (modelo de `DocumentosJob`) recebe o snapshot de arqu
 - Fase 1 — **"Preparando textos"** (`total = N`): para cada arquivo, obtém o texto pelo cache (conversão só em *miss*), gravando o resultado.
 - Fase 2 — **"Resumindo documentos"** (`total = M`, apenas os com `tem_texto`): gera o resumo e persiste.
 - O app-layer cria um `ProgressReporter(on_update=presenter.on_progress)` e traduz as mensagens da fila em `start_phase`/`advance`/`finish_phase`.
+- **Drenagem uma mensagem por vez:** o poll consome **uma** mensagem por callback e reagenda com `after(0)` enquanto há mensagens (ou `after(50)` quando a fila está vazia). Drenar a fila inteira num único callback empacotava e escondia a barra no mesmo ciclo, sem o Tk repintar.
+- **Fase reportada no início:** ao detectar a troca de fase, o poll chama `start_phase` e `advance(0, "0/N")`, de modo que a barra e o rótulo da fase apareçam imediatamente (o `start_phase` sozinho não notifica). O rótulo exibe o avanço da fase (`current/total`), para que o usuário veja quantos documentos faltam e quantos terminaram.
+- **Retenção ao término, não no início:** `_FASE_RESUMOS_MINIMA_S = 0.4` garante que cada fase permaneça visível por ao menos ~0,4 s, mesmo quando a preparação é instantânea (textos já em cache). O tempo mínimo é medido a partir do início da fase, mas a retenção só é aplicada quando a fase atinge a última unidade (`current == total`): durante o avanço, o poll drena sem atraso para refletir cada unidade na barra; fora da janela, não há atraso. Reter o poll logo após a primeira mensagem empacotava todo o progresso produzido durante a janela e o despejava de uma vez, fazendo a barra saltar de 0% a 100% sem exibir o avanço.
+- **Status imediato:** ao iniciar o lote, exibe `Resumindo N documento(s)…` para dar retorno antes da primeira mensagem de progresso.
 
 - **Por quê:** atende "duas fases" com o relator já existente e o mesmo padrão de progresso da carga de dados. O job mantém os textos preparados em memória para a fase 2, sem tocar widgets.
-- **Alternativas:** fase única com conversão+resumo por documento (rejeitado: o pedido é explícito em duas fases); usar `DocumentosJob` (rejeitado: mensagens e semântica diferentes).
+- **Alternativas:** fase única com conversão+resumo por documento (rejeitado: o pedido é explícito em duas fases); usar `DocumentosJob` (rejeitado: mensagens e semântica diferentes); reportar só no primeiro `advance` (rejeitado: a fase 1 some quando é instantânea); drenar a fila inteira por callback (rejeitado: a barra não chega a ser pintada); reter o poll logo após a primeira mensagem da fase (rejeitado: empacota o progresso produzido na janela e faz a barra saltar de 0% a 100%, sem exibir o avanço).
 
 ### 4. Modo estrito de geração que propaga o erro
 
@@ -75,8 +79,10 @@ O job captura qualquer exceção por documento, publica `(erro, arquivo, exceç�
 
 O botão é sempre visível. `DocumentTreePanel.refresh_resumir_button()` calcula `habilitado = _summary.disponivel() and ha_pendentes`; `all_buttons()` passa a incluir o botão (o bloqueio global cobre o "durante o lote/carga") e `_restore_all_buttons` chama `refresh_resumir_button()` ao lado de `refresh_open_button()`. O `LLMConfigDialog` ganha `on_saved` e `_abrir_config_llm` injeta o refresh.
 
-- **Por quê:** segue o padrão do botão "Abrir documento" e atende "desabilitar em vez de esconder" e a reavaliação após salvar.
-- **Alternativas:** esconder quando a LLM não está configurada (rejeitado pela decisão do usuário); recalcular só na troca de aba (rejeitado: o botão não refletiria o salvamento imediato).
+Além disso, o estado é reavaliado sempre que o catálogo muda (`_atualizar_resumo`, chamado tanto pelo resumo individual quanto pelo lote) e quando o lote detecta zero pendentes. Sem isso, resumir o último documento individualmente deixaria o botão habilitado, e o clique seguinte retornaria silenciosamente sem processar nada.
+
+- **Por quê:** segue o padrão do botão "Abrir documento" e atende "desabilitar em vez de esconder" e a reavaliação após salvar e após qualquer mudança de pendências.
+- **Alternativas:** esconder quando a LLM não está configurada (rejeitado pela decisão do usuário); recalcular só na troca de aba (rejeitado: o botão não refletiria o salvamento nem o resumo individual imediatos).
 
 ### 8. Aplicação dos resultados na thread do Tk e descarte por ticker
 
@@ -87,7 +93,8 @@ A thread de trabalho não toca widgets: publica na fila. O poll chama `painel.ap
 
 ## Risks / Trade-offs
 
-- **[Barra reinicia entre fases]** → comportamento já existente na carga de dados; aceito por consistência. Se incomodar, o `ProgressReporter` poderia reportar o percentual global, mas isso é fora do escopo.
+- **[Barra reinicia entre fases]** → comportamento já existente na carga de dados; aceito por consistência. Cada fase fica visível por ao menos `_FASE_RESUMOS_MINIMA_S` (~0,4 s), o que adiciona esse atraso à transição quando a fase é instantânea. Se incomodar, o `ProgressReporter` poderia reportar o percentual global, mas isso é fora do escopo.
+- **[Fase instantânea não visível]** → a fase "Preparando textos" termina em menos de um frame quando os textos já estão em cache; mitigação: tempo mínimo por fase e relato no início (ver Decisão 3).
 - **[Lote longo com muitos documentos]** → o rate limiter limita o RPM e o progresso mantém o usuário informado; o watchdog herdado de `centralizar-controle-cursor` cobre travamento.
 - **[Erro em um documento aborta todo o lote]** → decisão explícita do usuário; o desfecho indica o documento e o motivo, permitindo reexecutar após corrigir.
 - **[Conversão de texto grande na fase 1]** → reutiliza o cache de `cache-texto-documentos`; só converte em *miss*.

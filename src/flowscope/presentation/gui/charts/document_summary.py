@@ -25,6 +25,7 @@ from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.presentation.gui.charts.document_grouping import (
     mensagem_indisponivel,
 )
+from flowscope.presentation.gui.charts.document_preview import tem_texto
 
 logger = logging.getLogger("flowscope")
 
@@ -75,7 +76,7 @@ class DocumentSummaryService:
         return (
             arquivo.long_summary is None
             and self.disponivel()
-            and bool((texto or "").strip())
+            and tem_texto(texto)
         )
 
     def resumo_para_exibir(
@@ -86,7 +87,7 @@ class DocumentSummaryService:
         """Resolve o resumo a exibir quando não há geração pendente."""
         if arquivo.long_summary is not None:
             return arquivo.long_summary
-        if texto.strip():
+        if tem_texto(texto):
             return self.mensagem_indisponivel()
         return None
 
@@ -110,6 +111,20 @@ class DocumentSummaryService:
                 "Erro inesperado ao resumir %s: %s", arquivo.caminho, exc
             )
             return None
+
+    def gerar_estrito(
+        self: "DocumentSummaryService",
+        arquivo: DocumentoArquivo,
+        texto: str,
+    ) -> ResumoDocumento | None:
+        """Gera o resumo propagando falhas da LLM (contrato do lote).
+
+        Diferente de :meth:`gerar`, não suprime erros: o chamador precisa ser
+        notificado para interromper o processamento em lote.
+        """
+        if not self.precisa_resumo(arquivo, texto):
+            return None
+        return ResumirDocumentoUseCase(self._criar_llm()).resumir(texto)
 
     def persistir(
         self: "DocumentSummaryService",

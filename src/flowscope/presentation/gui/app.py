@@ -11,6 +11,7 @@ from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_constants import TITLE_PREFIX
 from flowscope.presentation.gui.app_csv import CsvMixin
 from flowscope.presentation.gui.app_layout import LayoutMixin
+from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
 from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
@@ -88,7 +89,7 @@ def save_preferences(data: dict) -> None:
         pass
 
 
-class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, CsvMixin, tk.Tk):
+class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
     """Janela principal da aplicação FlowScope."""
 
     def __init__(self: "FlowScopeGUI") -> None:

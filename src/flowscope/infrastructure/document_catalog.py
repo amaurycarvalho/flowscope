@@ -16,6 +16,7 @@ from flowscope.infrastructure.document_summaries import (
     JsonDocumentSummaryStore,
     chave_documento,
 )
+from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 
 #: Raízes com categoria fixa e o tipo de arquivo esperado.
 _RAIZES_FIXAS: tuple[tuple[str, str, str], ...] = (
@@ -86,8 +87,9 @@ class DocumentCatalog:
         self: "DocumentCatalog",
         cache_dir: Path | None = None,
         summary_store: JsonDocumentSummaryStore | None = None,
+        text_store: JsonDocumentTextStore | None = None,
     ) -> None:
-        """Inicializa o catálogo com o diretório raiz e o store de resumos."""
+        """Inicializa o catálogo com o diretório raiz e os stores de conteúdo."""
         self._base = (
             Path(cache_dir)
             if cache_dir is not None
@@ -97,6 +99,11 @@ class DocumentCatalog:
             summary_store
             if summary_store is not None
             else JsonDocumentSummaryStore(cache_dir=self._base)
+        )
+        self._text_store = (
+            text_store
+            if text_store is not None
+            else JsonDocumentTextStore(cache_dir=self._base)
         )
 
     @property
@@ -108,6 +115,11 @@ class DocumentCatalog:
     def summary_store(self: "DocumentCatalog") -> JsonDocumentSummaryStore:
         """Retorna o store de resumos associado ao catálogo."""
         return self._store
+
+    @property
+    def text_store(self: "DocumentCatalog") -> JsonDocumentTextStore:
+        """Retorna o store de textos associado ao catálogo."""
+        return self._text_store
 
     def catalogo(self: "DocumentCatalog", ticker: str) -> CatalogoTicker:
         """Retorna o catálogo de documentos em cache do ticker informado."""

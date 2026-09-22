@@ -171,6 +171,40 @@ class TestDisableDocumentosBotoes:
         finally:
             gui.destroy()
 
+    @needs_display
+    def test_botao_resumir_desabilitado_e_restaurado(self, tmp_path):
+        gui = _DisableHost()
+        try:
+            gui._flash_after_id = None
+            gui._load_button = tk.Button(gui, state=tk.NORMAL)
+            gui._today_button = tk.Button(gui, state=tk.NORMAL)
+            gui._shortcut_btn = None
+            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
+            gui._ticker_list = MagicMock()
+            gui._ticker_list.all_buttons.return_value = []
+            gui._period_combo = ttk.Combobox(gui, state="readonly")
+            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
+            gui._date_entry = ttk.Entry(gui)
+            painel = DocumentTreePanel(
+                gui,
+                catalog=DocumentCatalog(cache_dir=tmp_path),
+                llm_available=lambda: True,
+            )
+            caminho = tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf"
+            caminho.parent.mkdir(parents=True, exist_ok=True)
+            caminho.write_bytes(b"x")
+            painel.update("ALZR11")
+            gui._documents_panel = painel
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+
+            gui.disable_all_buttons()
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+
+            gui.restore_all_buttons()
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+        finally:
+            gui.destroy()
+
 
 class _FundamentalCursorHost(tk.Tk, StatusMixin):
     def disable_all_buttons(self) -> None:

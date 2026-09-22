@@ -14,6 +14,7 @@ from flowscope.infrastructure.document_catalog import (
     DocumentoArquivo,
 )
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
+from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 
 
 class DocumentTreeView:
@@ -23,12 +24,13 @@ class DocumentTreeView:
         """Constrói o ``Treeview`` com rolagem e inicializa os mapas."""
         self.frame = tk.Frame(parent)
         self.tree = ttk.Treeview(self.frame, show="tree")
-        rolagem = ttk.Scrollbar(
+        self.rolagem = ttk.Scrollbar(
             self.frame, orient=tk.VERTICAL, command=self.tree.yview
         )
-        self.tree.configure(yscrollcommand=rolagem.set)
+        self.tree.configure(yscrollcommand=self.rolagem.set)
+        self.rolagem.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        rolagem.pack(side=tk.RIGHT, fill=tk.Y)
+        vincular_roda(self.tree, self.tree)
         self.itens: dict[str, DocumentoArquivo] = {}
         self.grupos: dict[str, Agrupamento] = {}
         self.por_caminho: dict[Path, DocumentoArquivo] = {}

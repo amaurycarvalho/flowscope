@@ -75,8 +75,12 @@ class ActionsMixin:
         self._controller.on_atualizar_fundamentos()
 
     def _abrir_config_llm(self: "ActionsMixin") -> None:
-        """Abre o diálogo de configuração de LLM."""
-        LLMConfigDialog(self)
+        """Abre o diálogo de configuração de LLM, reavaliando o botão ao salvar."""
+        painel = getattr(self, "_documents_panel", None)
+        on_saved = (
+            painel.refresh_resumir_button if painel is not None else None
+        )
+        LLMConfigDialog(self, on_saved=on_saved)
 
     def _get_selected_ticker(self: "ActionsMixin") -> str | None:
         selected = self._ticker_list.get_tickers()

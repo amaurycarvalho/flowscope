@@ -20,6 +20,10 @@ A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de con
 - **WHEN** todos os documentos do ticker apresentado já têm `long_summary`
 - **THEN** o botão "Resumir pendentes" DEVE estar desabilitado
 
+#### Scenario: Reavaliação quando o catálogo muda
+- **WHEN** o último documento pendente passa a ter `long_summary` por um resumo individual (sem troca de aba)
+- **THEN** o botão "Resumir pendentes" DEVE ser reavaliado e ficar desabilitado
+
 #### Scenario: Reavaliação após salvar a configuração
 - **WHEN** o usuário salva uma configuração de LLM válida no diálogo de I.A. e há documentos pendentes
 - **THEN** o botão "Resumir pendentes" DEVE passar a estar habilitado
@@ -38,7 +42,15 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 
 #### Scenario: Progresso em duas fases
 - **WHEN** o lote está em andamento
-- **THEN** a barra de status e a barra de progresso DEVEM exibir a fase corrente ("preparar texto" e, em seguida, "resumir") com o avanço de cada uma
+- **THEN** a barra de status e a barra de progresso DEVEM exibir a fase corrente ("preparar texto" e, em seguida, "resumir") com o avanço de cada uma, indicando quantos documentos foram concluídos e o total (ex.: `Preparando textos — 3/40`)
+
+#### Scenario: Avanço da fase é exibido durante o processamento
+- **WHEN** uma fase processa vários documentos e cada um leva tempo para concluir
+- **THEN** a barra de progresso e a barra de status DEVEM avançar a cada documento concluído, sem aguardar o término da fase
+
+#### Scenario: Fase instantânea continua visível
+- **WHEN** a preparação dos textos é instantânea (todos os textos já estão em cache) e o lote avança para a fase de resumo
+- **THEN** a fase "preparar texto" DEVE ter sido exibida na barra de status antes de "resumir", ainda que por tempo mínimo
 
 #### Scenario: Documento já resumido é pulado
 - **WHEN** um documento do ticker já tem `long_summary`
