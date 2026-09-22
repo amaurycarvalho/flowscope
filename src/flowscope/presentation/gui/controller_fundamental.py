@@ -59,8 +59,14 @@ class FundamentalMixin:
         self._presenter.on_fundamental_started()
         if job_anterior is not None:
             self._presenter.on_fundamental_finished()
-        self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
-        job.iniciar()
+        try:
+            self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
+            job.iniciar()
+        except Exception:
+            if self._fundamental_job is job:
+                self._fundamental_job = None
+            self._presenter.on_fundamental_finished()
+            raise
         self._drenar_fundamental(job)
 
     def on_atualizar_fundamentos(self: "FundamentalMixin") -> None:

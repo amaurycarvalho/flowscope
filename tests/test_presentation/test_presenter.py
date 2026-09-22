@@ -1,6 +1,7 @@
 from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
+import pytest
 import tkinter as tk
 
 from flowscope.application.logging_port import LogReference
@@ -13,15 +14,52 @@ class TestFlowScopePresenter:
         presenter = FlowScopePresenter(view)
         presenter.on_operation_started()
         view.disable_all_buttons.assert_called_once()
-        view.set_wait_cursor.assert_called_once()
+        view.enter_busy.assert_called_once()
 
     def test_on_operation_finished_restaura_botoes_cursor_e_progresso(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
         presenter.on_operation_finished()
         view.restore_all_buttons.assert_called_once()
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
         view.clear_progress.assert_called_once()
+
+    def test_transicao_0_1_1_0_dispara_efeitos_uma_unica_vez(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_operation_started()
+        view.disable_all_buttons.assert_called_once()
+        view.enter_busy.assert_called_once()
+
+        presenter.on_operation_finished()
+        view.restore_all_buttons.assert_not_called()
+        view.exit_busy.assert_not_called()
+
+        presenter.on_operation_finished()
+        view.restore_all_buttons.assert_called_once()
+        view.exit_busy.assert_called_once()
+        view.clear_progress.assert_called_once()
+
+    def test_busy_restaura_estado_mesmo_com_excecao(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        with pytest.raises(RuntimeError):
+            with presenter.busy():
+                raise RuntimeError("boom")
+
+        assert presenter._operacoes_ativas == 0
+        view.enter_busy.assert_called_once()
+        view.exit_busy.assert_called_once()
+
+    def test_exit_sem_operacao_ativa_e_idempotente(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_finished()
+        assert presenter._operacoes_ativas == 0
+        view.exit_busy.assert_not_called()
+        view.restore_all_buttons.assert_not_called()
 
     def test_on_progress_delega_para_view(self):
         view = MagicMock()
@@ -137,18 +175,18 @@ class TestFlowScopePresenter:
         presenter = FlowScopePresenter(view)
         presenter.on_operation_started()
         presenter.on_fundamental_started()
-        view.set_wait_cursor.assert_called()
+        view.enter_busy.assert_called()
         presenter.on_operation_finished()
-        view.clear_wait_cursor.assert_not_called()
+        view.exit_busy.assert_not_called()
         presenter.on_fundamental_finished()
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
 
     def test_on_fundamental_started_desabilita_controles(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
         presenter.on_fundamental_started()
         view.disable_all_buttons.assert_called_once()
-        view.set_wait_cursor.assert_called_once()
+        view.enter_busy.assert_called_once()
 
     def test_substituicao_de_job_mantem_contador_consistente(self):
         view = MagicMock()
@@ -158,10 +196,10 @@ class TestFlowScopePresenter:
         presenter.on_operation_finished()
         presenter.on_fundamental_started()
         presenter.on_fundamental_finished()
-        view.clear_wait_cursor.assert_not_called()
+        view.exit_busy.assert_not_called()
         assert presenter._operacoes_ativas == 1
         presenter.on_fundamental_finished()
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
         view.restore_all_buttons.assert_called_once()
         assert presenter._operacoes_ativas == 0
 

@@ -172,7 +172,7 @@ class TestDrenarResiliente:
 
         assert controller._fundamental_job is None
         assert presenter._operacoes_ativas == 0
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
 
     def test_erro_na_consumicao_da_fila_ainda_encerra_job(self):
         view = MagicMock()
@@ -196,7 +196,7 @@ class TestDrenarResiliente:
 
         assert controller._fundamental_job is None
         assert presenter._operacoes_ativas == 0
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
 
     def test_job_sem_progresso_e_encerrado_por_timeout(self):
         view = MagicMock()
@@ -218,7 +218,7 @@ class TestDrenarResiliente:
 
         assert controller._fundamental_job is None
         assert presenter._operacoes_ativas == 0
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
 
     def test_job_com_thread_morta_e_encerrado(self):
         view = MagicMock()

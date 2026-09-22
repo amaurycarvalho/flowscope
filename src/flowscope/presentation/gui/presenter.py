@@ -1,11 +1,21 @@
 """Apresentador da interface gráfica, conectando a view aos casos de uso."""
 
 import tkinter as tk
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
+from enum import Enum
 from typing import Protocol
 
 from flowscope.application.logging_port import LogReference
 from flowscope.domain.sampling import SamplingConfig
+
+
+class _BusyState(Enum):
+    """Estado ocupado da interface, alternando entre ocioso e ocupado."""
+
+    IDLE = "idle"
+    BUSY = "busy"
 
 
 class GUIView(Protocol):
@@ -19,11 +29,11 @@ class GUIView(Protocol):
         """Restaura o estado anterior de todos os botões."""
         ...
 
-    def set_wait_cursor(self: "GUIView") -> None:
+    def enter_busy(self: "GUIView") -> None:
         """Exibe o cursor de espera na janela."""
         ...
 
-    def clear_wait_cursor(self: "GUIView") -> None:
+    def exit_busy(self: "GUIView") -> None:
         """Restaura o cursor padrão da janela."""
         ...
 
@@ -95,13 +105,51 @@ class FlowScopePresenter:
         """Inicializa o apresentador com a view de referência."""
         self._view = view
         self._operacoes_ativas = 0
+        self._estado = _BusyState.IDLE
         self._dados_disponiveis = False
+
+    def enter(self: "FlowScopePresenter") -> None:
+        """Contabiliza o início de uma operação, entrando no estado ocupado.
+
+        Na transição de ocioso para ocupado (primeira operação ativa), desabilita
+        os controles e aplica o cursor de espera. Operações sobrepostas apenas
+        incrementam a contagem, sem repetir os efeitos colaterais.
+        """
+        self._operacoes_ativas += 1
+        if self._estado is _BusyState.IDLE:
+            self._estado = _BusyState.BUSY
+            self._view.disable_all_buttons()
+            self._view.enter_busy()
+
+    def exit(self: "FlowScopePresenter") -> None:
+        """Contabiliza o término de uma operação, restaurando ao chegar a zero.
+
+        Na transição de ocupado para ocioso (última operação ativa), restaura os
+        controles, o cursor e a barra de progresso. Chamadas sem operação ativa
+        são ignoradas, mantendo a transição idempotente.
+        """
+        if self._operacoes_ativas == 0:
+            return
+        self._operacoes_ativas -= 1
+        if self._operacoes_ativas == 0 and self._estado is _BusyState.BUSY:
+            self._estado = _BusyState.IDLE
+            self._view.restore_all_buttons()
+            self._view.exit_busy()
+            self._view.clear_progress()
+            self._sincronizar_copy_button()
+
+    @contextmanager
+    def busy(self: "FlowScopePresenter") -> Iterator[None]:
+        """Garante entrada/saída balanceadas do estado ocupado, mesmo em erro."""
+        self.enter()
+        try:
+            yield
+        finally:
+            self.exit()
 
     def on_operation_started(self: "FlowScopePresenter") -> None:
         """Notifica a view sobre o início de uma operação."""
-        self._operacoes_ativas += 1
-        self._view.disable_all_buttons()
-        self._view.set_wait_cursor()
+        self.enter()
 
     def on_operation_finished(self: "FlowScopePresenter") -> None:
         """Notifica a view sobre o fim de uma operação.
@@ -110,12 +158,7 @@ class FlowScopePresenter:
         análise fundamentalista) terminam, mantendo-os desabilitados durante a
         fase fundamental.
         """
-        self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
-        if self._operacoes_ativas == 0:
-            self._view.restore_all_buttons()
-            self._view.clear_wait_cursor()
-            self._view.clear_progress()
-            self._sincronizar_copy_button()
+        self.exit()
 
     def on_portfolio_loaded(self: "FlowScopePresenter", tickers: list[str]) -> None:
         """Exibe a carteira carregada na interface."""
@@ -184,18 +227,11 @@ class FlowScopePresenter:
 
     def on_fundamental_started(self: "FlowScopePresenter") -> None:
         """Sinaliza o início da análise fundamentalista em background."""
-        self._operacoes_ativas += 1
-        self._view.disable_all_buttons()
-        self._view.set_wait_cursor()
+        self.enter()
 
     def on_fundamental_finished(self: "FlowScopePresenter") -> None:
         """Sinaliza o fim da análise fundamentalista e libera os controles."""
-        self._operacoes_ativas = max(0, self._operacoes_ativas - 1)
-        if self._operacoes_ativas == 0:
-            self._view.restore_all_buttons()
-            self._view.clear_wait_cursor()
-            self._view.clear_progress()
-            self._sincronizar_copy_button()
+        self.exit()
 
     def on_fundamental_progress(
         self: "FlowScopePresenter",

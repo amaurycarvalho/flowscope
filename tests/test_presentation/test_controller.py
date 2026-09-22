@@ -299,8 +299,10 @@ class TestOnTickerEdit:
         controller = _make_controller(presenter=presenter)
         controller.on_ticker_edit()
 
-        view._set_wait_cursor.assert_called_once()
-        view._clear_wait_cursor.assert_called_once()
+        view.enter_busy.assert_called_once()
+        view.exit_busy.assert_called_once()
+        view.disable_all_buttons.assert_called_once()
+        view.restore_all_buttons.assert_called_once()
         view._flash_status.assert_called_once()
 
 
@@ -394,7 +396,7 @@ class TestSubstituicaoJobFundamental:
             presenter.on_fundamental_finished()
 
         assert presenter._operacoes_ativas == 0
-        view.clear_wait_cursor.assert_called_once()
+        view.exit_busy.assert_called_once()
         view.restore_all_buttons.assert_called_once()
 
     def test_callback_do_job_substituido_nao_altera_contagem(self):
@@ -437,7 +439,7 @@ class TestSubstituicaoJobFundamental:
             presenter.on_fundamental_finished()
 
         assert presenter._operacoes_ativas == 0
-        view.clear_wait_cursor.assert_called()
+        view.exit_busy.assert_called()
 
 
 class TestWiringHistorico:

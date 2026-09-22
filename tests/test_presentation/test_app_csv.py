@@ -1,6 +1,23 @@
 import sys
+from contextlib import contextmanager
 
 from flowscope.presentation.gui.app_csv import CsvMixin
+
+
+class _BusyPresenter:
+    """Registra as entradas e saídas do estado ocupado."""
+
+    def __init__(self):
+        self.entradas = 0
+        self.saidas = 0
+
+    @contextmanager
+    def busy(self):
+        self.entradas += 1
+        try:
+            yield
+        finally:
+            self.saidas += 1
 
 
 class _TickerList:
@@ -16,6 +33,7 @@ class _Host(CsvMixin):
         self._tabs = tabs
         self._ticker_list = _TickerList(tickers)
         self._fundamental_data = fundamental
+        self._presenter = _BusyPresenter()
         self.status: list[str] = []
         self.clipboard: list[str] = []
 
@@ -138,6 +156,17 @@ class TestCopyData:
         host._copy_data()
         assert copiado == []
         assert host.status == ["Nenhum ticker disponível para cópia."]
+
+    def test_copia_encerra_estado_ocupado_ao_final(self, monkeypatch):
+        copiado: list[str] = []
+        fake = type("pyxclip", (), {"copy": staticmethod(copiado.append)})
+        monkeypatch.setitem(sys.modules, "pyxclip", fake)
+
+        host = _host(tabs=("Análise Geral", "Fundamentos"))
+        host._copy_data()
+        assert copiado
+        assert host._presenter.entradas == 1
+        assert host._presenter.saidas == 1
 
 
 class TestCopyDocumentos:

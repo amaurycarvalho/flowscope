@@ -1,6 +1,8 @@
 """Ações de configuração e atualização de gráficos da interface gráfica."""
 
+import logging
 import queue
+import time
 import tkinter as tk
 from datetime import date, datetime, timezone
 
@@ -15,6 +17,11 @@ from flowscope.presentation.gui.documentos_job import (
     DocumentosJob,
 )
 from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
+
+logger = logging.getLogger("flowscope")
+
+#: Tempo máximo sem progresso antes de encerrar a aquisição de documentos.
+_LIMITE_INATIVIDADE_DOCUMENTOS_S = 120.0
 
 
 class ActionsMixin:
@@ -178,36 +185,100 @@ class ActionsMixin:
         job = DocumentosJob(aquisicao, ticker, self._data_referencia())
         self._documentos_job = job
         self._presenter.on_operation_started()
-        job.iniciar()
+        self._documentos_ultima_atividade = time.monotonic()
+        try:
+            job.iniciar()
+        except Exception:
+            logger.warning(
+                "Falha ao iniciar a aquisição de documentos de %s",
+                ticker,
+                exc_info=True,
+            )
+            if getattr(self, "_documentos_job", None) is job:
+                self._documentos_job = None
+            self._presenter.on_operation_finished()
+            return
         self._poll_documentos_job(job, ticker)
 
     def _poll_documentos_job(self: "ActionsMixin", job: DocumentosJob, ticker: str) -> None:
-        """Consome a fila do job na thread do Tk até a aquisição concluir."""
+        """Consome a fila do job na thread do Tk até a aquisição concluir.
+
+        Cada mensagem é tratada dentro de ``try/except``: um erro ao processar
+        o progresso é registrado no log e não interrompe o esvaziamento da fila,
+        de modo que a mensagem terminal ainda encerra o job e libera o cursor.
+        """
+        terminou = self._drenar_fila_documentos(job, ticker)
+        if not terminou and self._documentos_job_travado(job):
+            logger.warning(
+                "Aquisição de documentos de %s sem progresso; encerrando para "
+                "restaurar a interface.",
+                ticker,
+            )
+            terminou = True
+        if terminou:
+            self._finalizar_documentos_job(job, ticker)
+            return
+        self.after(50, lambda: self._poll_documentos_job(job, ticker))
+
+    def _drenar_fila_documentos(
+        self: "ActionsMixin", job: DocumentosJob, ticker: str
+    ) -> bool:
+        """Esvazia a fila do job e informa se ele foi concluído."""
         terminou = False
         try:
             while True:
                 mensagem = job.fila.get_nowait()
-                if (
-                    isinstance(mensagem, tuple)
-                    and mensagem
-                    and mensagem[0] == MENSAGEM_PROGRESSO
-                ):
-                    _tipo, current, total, label = mensagem
-                    self._presenter.on_progress(current, total, label)
+                if self._mensagem_de_progresso(mensagem):
+                    self._tratar_progresso_documentos(mensagem, ticker)
                 else:
                     terminou = True
         except queue.Empty:
             pass
-        if terminou:
-            if getattr(self, "_documentos_job", None) is job:
-                self._documentos_job = None
-            painel = getattr(self, "_documents_panel", None)
-            if painel is not None:
-                painel.update(ticker)
-            self._presenter.on_operation_finished()
-            self._flash_status("Documentos atualizados!")
-            return
-        self.after(50, lambda: self._poll_documentos_job(job, ticker))
+        return terminou
+
+    @staticmethod
+    def _mensagem_de_progresso(mensagem: object) -> bool:
+        """Indica se a mensagem é de progresso da aquisição de documentos."""
+        return (
+            isinstance(mensagem, tuple)
+            and bool(mensagem)
+            and mensagem[0] == MENSAGEM_PROGRESSO
+        )
+
+    def _tratar_progresso_documentos(
+        self: "ActionsMixin", mensagem: tuple, ticker: str
+    ) -> None:
+        """Repassa o progresso ao presenter, registrando falhas sem abortar."""
+        try:
+            _tipo, current, total, label = mensagem
+            self._documentos_ultima_atividade = time.monotonic()
+            self._presenter.on_progress(current, total, label)
+        except Exception:
+            logger.exception(
+                "Erro ao tratar progresso da aquisição de %s", ticker
+            )
+
+    def _finalizar_documentos_job(
+        self: "ActionsMixin", job: DocumentosJob, ticker: str
+    ) -> None:
+        """Encerra o job, remonta a árvore e libera o estado ocupado."""
+        if getattr(self, "_documentos_job", None) is job:
+            self._documentos_job = None
+        painel = getattr(self, "_documents_panel", None)
+        if painel is not None:
+            painel.update(ticker)
+        self._presenter.on_operation_finished()
+        self._flash_status("Documentos atualizados!")
+
+    def _documentos_job_travado(self: "ActionsMixin", job: DocumentosJob) -> bool:
+        """Indica se o job morreu ou ficou sem progresso por tempo demais."""
+        thread = getattr(job, "thread", None)
+        if thread is not None and not thread.is_alive() and job.fila.empty():
+            return True
+        ultima = getattr(self, "_documentos_ultima_atividade", None)
+        if ultima is None:
+            return False
+        return time.monotonic() - ultima > _LIMITE_INATIVIDADE_DOCUMENTOS_S
 
     def _data_referencia(self: "ActionsMixin") -> date:
         """Retorna a data de referência selecionada, ou a data corrente."""
@@ -237,11 +308,9 @@ class ActionsMixin:
             copy_image_to_clipboard,
         )
 
-        self._set_wait_cursor()
-        try:
-            copy_image_to_clipboard(figure)
-            self._flash_status("Gráfico copiado!")
-        except ClipboardError as e:
-            self._set_status(f"Erro: {e}", "⚠")
-        finally:
-            self._clear_wait_cursor()
+        with self._presenter.busy():
+            try:
+                copy_image_to_clipboard(figure)
+                self._flash_status("Gráfico copiado!")
+            except ClipboardError as e:
+                self._set_status(f"Erro: {e}", "⚠")

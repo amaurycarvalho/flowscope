@@ -100,8 +100,8 @@ if sys.platform == 'darwin':
         icon=icon_file,
         bundle_identifier='com.github.amaurycarvalho.flowscope',
         info_plist={
-            'CFBundleShortVersionString': '1.1.0',
-            'CFBundleVersion': '1.1.0',
+            'CFBundleShortVersionString': '1.2.0',
+            'CFBundleVersion': '1.2.0',
             'NSHighResolutionCapable': True,
         },
     )

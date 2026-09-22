@@ -78,13 +78,14 @@ class CsvMixin:
         texto = self._texto_para_copiar()
         if not texto:
             return
-        try:
-            import pyxclip
+        with self._presenter.busy():
+            try:
+                import pyxclip
 
-            pyxclip.copy(texto)
-            self._flash_status("Dados copiados!")
-        except (OSError, ImportError):
-            self._fallback_clipboard_text(texto)
+                pyxclip.copy(texto)
+                self._flash_status("Dados copiados!")
+            except (OSError, ImportError):
+                self._fallback_clipboard_text(texto)
 
     def _texto_para_copiar(self: "CsvMixin") -> str:
         """Seleciona o conteúdo conforme a sub-aba ativa.

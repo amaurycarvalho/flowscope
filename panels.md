@@ -5,18 +5,18 @@
 A interface é dividida em três grandes regiões:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  [Data] [Hoje] [Carregar] [Copiar Dados]                   │
-├──────────────────────────────┬──────────────────────────────┤
-│  Aba Principal               │  Filtro de Tickers           │
-│  ┌────────────────────────┐  │  (lista editável)            │
-│  │  Sub-abas              │  │                              │
-│  │                        │  │  Orientação                  │
-│  │                        │  │  (ajuda contextual)          │
-│  └────────────────────────┘  │                              │
-├──────────────────────────────┴──────────────────────────────┤
-│  Status: mensagens e indicadores                            │
-└─────────────────────────────��───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  [Data] [Hoje] [Carregar] [Período] [Amostragem] [Copiar Dados]           │
+├──────────────────────────────────┬───────────────────────────────────────┤
+│  Aba Principal                   │  Filtro de Tickers                    │
+│  ┌────────────────────────────┐  │  (lista editável)                     │
+│  │  Sub-abas                  │  │                                       │
+│  │                            │  │  Orientação                           │
+│  │                            │  │  (ajuda contextual)                   │
+│  └────────────────────────────┘  │                                       │
+├──────────────────────────────────┴───────────────────────────────────────┤
+│  Status: mensagens, progresso e indicadores                              │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -40,10 +40,28 @@ A interface é dividida em três grandes regiões:
 - **Descrição:** Dispara o carregamento dos dados da B3 para a data selecionada.
 - **Objetivo:** Obter os dados consolidados de negociação (TradeInformationConsolidated), processar todos os indicadores e popular a interface.
 
+### Seletor de Período
+
+- **Componente:** `ttk.Combobox` (somente leitura)
+- **Descrição:** Define a janela de tempo usada na análise. Opções: "Últimos 30 dias", "Últimos 60 dias (cache)" e "Últimos 90 dias (cache)".
+- **Objetivo:** Controlar quantos dias corridos entram no cálculo dos indicadores e nos painéis históricos. As opções de 60 e 90 dias usam apenas dados já em cache (sem download da B3); a de 30 dias baixa da B3 o que faltar.
+- **Uso:** Ao trocar a opção com dados já carregados, a análise é recalculada automaticamente.
+
+### Seletor de Amostragem
+
+- **Componente:** `ttk.Combobox` (somente leitura)
+- **Descrição:** Define o método de seleção das datas dentro do período. Opções: "Fibonacci", "Fibonacci reverso", "Fibonacci duplo", "Monte Carlo", "Monte Carlo duplo" e "Todos os dias".
+- **Objetivo:** Priorizar datas recentes, antigas, as margens do período ou o conjunto completo, dependendo do que se quer investigar.
+- **Uso:** Ao trocar a opção com dados já carregados, a análise é recalculada automaticamente. Um rótulo ao lado descreve o efeito da opção escolhida.
+
 ### Botão "Copiar Dados"
 
-- **Descrição:** Copia para a área de transferência uma tabela CSV contendo `Ticker;VWAP;MoneyFlowVolume` para todos os ativos carregados.
-- **Objetivo:** Exportação rápida dos principais indicadores agregados para análise externa (planilhas, relatórios).
+- **Descrição:** Copia para a área de transferência o conteúdo adequado ao contexto ativo:
+  - **Análise Geral → Fundamentos:** CSV da tabela de fundamentos dos tickers exibidos.
+  - **Análise do Ticker → Documentos:** o texto atual do campo de pré-visualização.
+  - **Demais sub-abas:** CSV bruto de negociação (`RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol`).
+- **Objetivo:** Exportação rápida para análise externa (planilhas, relatórios) ou cópia de um documento/resumo.
+- **Atalho:** `Ctrl+Shift+C`.
 
 ---
 
@@ -193,6 +211,32 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 - **Amostragem das datas:** As datas partem da observação mais recente e recuam com intervalos que crescem na sequência de Fibonacci (1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377 dias), aproximando cada alvo para a data de cache mais próxima. A data mais antiga e a mais recente aparecem sempre; o gráfico as exibe em ordem crescente (mais antiga → mais recente).
 - **Como interpretar:** Em cada painel, a linha vai da observação mais antiga (esquerda) para a mais recente (direita); o ponto vermelho destaca o valor mais recente. Linha subindo indica que o indicador cresceu no período; descendo, que recuou. Campos sem valor em uma observação deixam uma lacuna; campos sem nenhum valor no cache mostram "sem dado". Quando o ticker não tem histórico retido, o painel exibe um aviso de ausência.
 - **Interação:** Um duplo clique em uma linha da sub-aba "Fundamentos" (aba "Análise Geral") usa o ticker daquela linha e ativa esta sub-aba. O preenchimento é preguiçoso, ocorrendo apenas quando a sub-aba é selecionada.
+
+### Sub-aba: Documentos
+
+- **Objetivo:** Navegar e inspecionar os documentos já baixados e mantidos no cache local para o ticker selecionado, com resumo automático por I.A.
+- **Responde a pergunta:** _Quais documentos deste ativo eu já tenho em cache e o que há dentro deles?_
+- **Layout do painel:** Painel dividido horizontalmente (`PanedWindow`), com barra de controles no topo:
+  ```
+  ┌───────────────────────────────────────────────────────────────┐
+  │  [Atualizar] [Abrir documento] [I.A.]                         │
+  ├──────────────────────────────┬────────────────────────────────┤
+  │  Árvore de documentos        │  Pré-visualização              │
+  │  ticker → ano → mês →        │  (campo somente-leitura)       │
+  │  categoria → arquivos        │                                │
+  └──────────────────────────────┴────────────────────────────────┘
+  ```
+- **Barra de controles:**
+  - **"Atualizar":** re-varre o cache do ticker, aciona a aquisição de novos documentos quando aplicável e remonta a árvore.
+  - **"Abrir documento":** abre o arquivo selecionado no aplicativo padrão (PDF no leitor de PDFs, HTML no navegador). Permanece desabilitado enquanto nenhum arquivo (ou uma pasta) estiver selecionado.
+  - **"I.A.":** abre o diálogo de configuração do provedor de LLM (preset, chave de API, RPM e teste de conexão). Disponível mesmo sem documentos ou ticker selecionado.
+- **Árvore hierárquica:** o nome do ticker no topo e, abaixo, os níveis de ano, mês e categoria, e por fim os arquivos. Pastas expandem e recolhem com duplo clique; somente arquivos abrem. Categorias incluem Aviso aos Acionistas (PDFs de BDR), Informe Mensal (HTML) e, para documentos relevantes, a subpasta de categoria (Assembleia, Comunicado ao Mercado, Fato Relevante, Relatorio).
+- **Lista Markdown do agrupamento:** ao selecionar um agrupamento (ticker, ano, mês ou categoria), o campo de texto exibe uma lista em Markdown com os documentos contidos, usando o agrupamento como cabeçalho (`#`) e cada sub-agrupamento com um nível a mais (`##`, `###`, …). Cada documento aparece como item de lista seguido do seu resumo curto (`short_summary`).
+- **Pré-visualização do documento:** ao selecionar um arquivo, o texto é extraído sob demanda (HTML derivado do HTML, PDF via `pypdf`) e exibido ao lado da árvore. Com resumo longo (`long_summary`) preenchido, a caixa exibe o resumo, seguido de linha em branco, `---`, linha em branco e o texto integral. Sem resumo e com a LLM configurada, os resumos curto e longo são gerados (fórmula XYZ), persistidos e exibidos; sem LLM configurada/funcional, é exibida a mensagem de indisponibilidade. Arquivos sem texto extraível mostram mensagem informativa.
+- **Resumos com I.A.:** o resumo curto tem até 280 caracteres e o longo até 1.500. São persistidos em `~/.cache/flowscope/document-summaries/{TICKER}.json` (um JSON por ticker, escrita atômica) e reaproveitados nas próximas aberturas. A geração ocorre fora da thread da interface, com estado de carregamento ("Gerando resumo…"); resultados de seleções anteriores são descartados quando a seleção muda. Enquanto o provedor for `none`, nenhuma chamada de rede é realizada.
+- **Interação e cópia:** duplo clique, Enter ou o botão "Abrir documento" abrem o arquivo. O campo é somente-leitura, mas aceita `Ctrl+A`, `Ctrl+C`, `Shift+setas` e navegação, com cursor de foco. O botão "Copiar Dados" copia o conteúdo do campo de texto nesta sub-aba (habilitado mesmo sem dados da B3 carregados).
+- **Persistência da configuração de I.A.:** "Salvar" no diálogo grava o bloco `llm.chat` em `~/.flowscope/config.json` e fecha o diálogo; a configuração sobrevive ao fechamento da aplicação e reaparece preenchida na próxima abertura.
+- **Estado vazio:** ticker sem documentos em cache exibe mensagem informativa; nenhum ticker selecionado exibe "Selecione um ticker".
 
 ### Sub-aba: Participação Institucional 🔒
 

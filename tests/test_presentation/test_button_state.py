@@ -7,6 +7,7 @@ import pytest
 
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.presentation.gui.app_status import StatusMixin
+from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 
 
@@ -236,5 +237,133 @@ class TestWaitCursor:
             assert gui._cursor_states == primeiro
             gui._clear_wait_cursor()
             assert gui._cursor_states == {}
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_enter_e_exit_busy_aplicam_e_restauram_cursor(self):
+        gui = _CursorGUI()
+        try:
+            btn = tk.Button(gui, cursor="hand2")
+            btn.pack()
+            gui.enter_busy()
+            assert btn.cget("cursor") == "watch"
+            gui.exit_busy()
+            assert btn.cget("cursor") == "hand2"
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_baseline_ignora_cursor_transitorio_de_separador(self):
+        gui = _CursorGUI()
+        try:
+            tree = ttk.Treeview(gui, columns=("a",), show="headings")
+            tree.pack()
+            tree.config(cursor="sb_h_double_arrow")
+            gui._set_wait_cursor()
+            assert str(tree.cget("cursor")) == "watch"
+            gui._clear_wait_cursor()
+            assert str(tree.cget("cursor")) == ""
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_motion_sobre_separador_e_sash_mantem_watch(self):
+        gui = _CursorGUI()
+        try:
+            tree = ttk.Treeview(gui, columns=("a", "b"), show="headings")
+            tree.heading("a", text="A")
+            tree.heading("b", text="B")
+            tree.column("a", width=80)
+            tree.column("b", width=80)
+            tree.pack()
+
+            pw = tk.PanedWindow(gui, orient=tk.HORIZONTAL)
+            pw.pack(fill=tk.BOTH, expand=True)
+            pw.add(tk.Frame(pw, width=50))
+            pw.add(tk.Frame(pw, width=50))
+            gui.update()
+
+            gui._set_wait_cursor()
+
+            sep_x = next(
+                x for x in range(tree.winfo_width())
+                if tree.identify_region(x, 5) == "separator"
+            )
+            tree.event_generate("<Motion>", x=sep_x, y=5)
+            gui.update()
+            assert str(tree.cget("cursor")) == "watch"
+
+            sx, sy = pw.sash_coord(0)
+            pw.event_generate("<Motion>", x=sx + 1, y=sy)
+            gui.update()
+            assert str(pw.cget("cursor")) == "watch"
+
+            gui._clear_wait_cursor()
+        finally:
+            gui.destroy()
+
+    @needs_display
+    def test_exit_busy_repetido_nao_deixa_residuo(self):
+        gui = _CursorGUI()
+        try:
+            btn = tk.Button(gui, cursor="hand2")
+            btn.pack()
+            gui.enter_busy()
+            gui.exit_busy()
+            assert btn.cget("cursor") == "hand2"
+            gui.exit_busy()
+            assert btn.cget("cursor") == "hand2"
+            assert gui._cursor_states == {}
+            assert getattr(gui, "_busy_motion_id", None) is None
+        finally:
+            gui.destroy()
+
+
+class _TabsCursorHost(tk.Tk, StatusMixin, TabsLayoutMixin):
+    """Constrói as abas reais para verificar a cobertura do estado ocupado."""
+
+    def _copy_chart(self, figure: object) -> None:
+        pass
+
+    def _on_quadrant_summary(self, *args: object) -> None:
+        pass
+
+    def _on_flow_summary(self, *args: object) -> None:
+        pass
+
+
+class TestCoberturaEstadoOcupado:
+    @needs_display
+    def test_snapshot_cobre_paineis_de_todas_as_abas(self):
+        gui = _TabsCursorHost()
+        try:
+            gui._general_notebook = ttk.Notebook(gui)
+            gui._main_notebook = ttk.Notebook(gui)
+            gui._general_notebook.pack()
+            gui._main_notebook.pack()
+            gui._build_general_tabs()
+            gui._build_ticker_tabs()
+            gui._GENERAL = {
+                "VWAP": gui._vwap_chart,
+                "Quadrantes": gui._quadrant_chart,
+                "Dominância do Pregão": gui._dominance_ranking,
+                "Fundamentos": gui._fundamental_table,
+            }
+            gui._TICKER = {
+                "Evolução da Dominância": gui._dominance_timeline,
+                "Amplitude de Preço": gui._price_range_panel,
+                "Fluxo Financeiro": gui._financial_flow_panel,
+                "Evolução dos Fundamentos": gui._fundamental_evolution_panel,
+                "Documentos": gui._documents_panel,
+            }
+            gui.update()
+
+            gui._set_wait_cursor()
+            cobertos = set(gui._cursor_states)
+            assert len(cobertos) > 0
+            for painel in [*gui._GENERAL.values(), *gui._TICKER.values()]:
+                assert painel.frame in cobertos
+            gui._clear_wait_cursor()
         finally:
             gui.destroy()

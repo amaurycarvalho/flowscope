@@ -25,6 +25,15 @@ class StatusMixin:
         "Todos os dias": "Amostra contendo todos os dias.",
     }
 
+    #: Cursores transitórios geridos pelo Tk durante ``<Motion>`` sobre
+    #: separadores de coluna de tabelas e sashes de painéis divididos. Não são
+    #: cursores de repouso e não DEVEM ser usados como baseline do snapshot.
+    _CURSORES_TRANSITORIOS: ClassVar[frozenset[str]] = frozenset({
+        "hresize",
+        "sb_h_double_arrow",
+        "sb_v_double_arrow",
+    })
+
     def _set_status(self: "StatusMixin", msg: str, icon: str = "") -> None:
         text = f"{icon} {msg}" if icon else msg
         self._status_var.set(text)
@@ -48,23 +57,69 @@ class StatusMixin:
             estados: dict[tk.Widget, str] = {}
             for widget in self._iter_widgets():
                 try:
-                    estados[widget] = str(widget.cget("cursor"))
+                    atual = str(widget.cget("cursor"))
                 except tk.TclError:
                     continue
+                estados[widget] = (
+                    "" if atual in self._CURSORES_TRANSITORIOS else atual
+                )
                 try:
                     widget.config(cursor="watch")
                 except tk.TclError:
                     pass
             self._cursor_states = estados
+        self._instalar_hook_motion_busy()
         self.update_idletasks()
 
     def _clear_wait_cursor(self: "StatusMixin") -> None:
+        self._remover_hook_motion_busy()
         for widget, cursor in getattr(self, "_cursor_states", {}).items():
             try:
                 widget.config(cursor=cursor)
             except tk.TclError:
                 pass
         self._cursor_states = {}
+
+    def _instalar_hook_motion_busy(self: "StatusMixin") -> None:
+        """Reafirma o cursor de espera em ``<Motion>`` enquanto ocupado.
+
+        O hook global roda depois dos bindings de classe do Tk (widget ->
+        classe -> toplevel -> all), sobrepondo cursores transitórios como o
+        ``hresize`` de separadores de coluna e o ``sb_*`` de sashes.
+        """
+        if getattr(self, "_busy_motion_id", None) is not None:
+            return
+        try:
+            self._busy_motion_id = self.bind_all(
+                "<Motion>", self._on_busy_motion, add="+"
+            )
+        except tk.TclError:
+            self._busy_motion_id = None
+
+    def _remover_hook_motion_busy(self: "StatusMixin") -> None:
+        funcid = getattr(self, "_busy_motion_id", None)
+        if funcid is None:
+            return
+        try:
+            self.unbind_all("<Motion>")
+        except tk.TclError:
+            pass
+        try:
+            self.deletecommand(funcid)
+        except tk.TclError:
+            pass
+        self._busy_motion_id = None
+
+    def _on_busy_motion(self: "StatusMixin", event: tk.Event) -> None:
+        """Reaplica o cursor de espera ao widget sob o ponteiro."""
+        widget = getattr(event, "widget", None)
+        if widget is None:
+            return
+        try:
+            if str(widget.cget("cursor")) != "watch":
+                widget.config(cursor="watch")
+        except (tk.TclError, AttributeError):
+            pass
 
     def _iter_widgets(self: "StatusMixin") -> list[tk.Widget]:
         """Percorre a árvore de widgets a partir da janela, em profundidade."""
@@ -132,11 +187,11 @@ class StatusMixin:
         """Restaura o estado anterior de todos os botões."""
         self._restore_all_buttons()
 
-    def set_wait_cursor(self: "StatusMixin") -> None:
+    def enter_busy(self: "StatusMixin") -> None:
         """Exibe o cursor de espera na janela."""
         self._set_wait_cursor()
 
-    def clear_wait_cursor(self: "StatusMixin") -> None:
+    def exit_busy(self: "StatusMixin") -> None:
         """Restaura o cursor padrão da janela."""
         self._clear_wait_cursor()
 

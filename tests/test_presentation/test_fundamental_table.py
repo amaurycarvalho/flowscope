@@ -28,6 +28,7 @@ from flowscope.domain.fii import (
     classificar_ticker,
 )
 from flowscope.domain.structured import ISIN, Provento, ValorProvento
+from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.charts.fundamental_table import (
@@ -1136,5 +1137,57 @@ class TestWiringSubAba:
             assert "Fundamentos" in abas
             assert abas[0] == "Fundamentos"
             assert hasattr(host, "_fundamental_table")
+        finally:
+            root.destroy()
+
+
+class _BusyCursorHost(tk.Tk, StatusMixin):
+    """Host mínimo que expõe o mecanismo de cursor do estado ocupado."""
+
+    def disable_all_buttons(self) -> None:
+        pass
+
+    def restore_all_buttons(self) -> None:
+        pass
+
+    def clear_progress(self) -> None:
+        pass
+
+    def config_copy_button_state(self, state: str) -> None:
+        pass
+
+
+class TestFundamentalTableCursorSync:
+    @needs_display
+    def test_dois_grids_sincronizados_durante_e_apos_operacao(self):
+        from flowscope.presentation.gui.presenter import FlowScopePresenter
+
+        root = _BusyCursorHost()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            fixo = painel._tree_fixo
+            rolavel = painel._tree_rolavel
+            fixo.config(cursor="hand2")
+            rolavel.config(cursor="xterm")
+            root.update()
+
+            presenter = FlowScopePresenter(root)
+            presenter.on_operation_started()
+            assert str(fixo.cget("cursor")) == "watch"
+            assert str(rolavel.cget("cursor")) == "watch"
+
+            sep_x = next(
+                x for x in range(fixo.winfo_width())
+                if fixo.identify_region(x, 5) == "separator"
+            )
+            fixo.event_generate("<Motion>", x=sep_x, y=5)
+            root.update()
+            assert str(fixo.cget("cursor")) == "watch"
+            assert str(rolavel.cget("cursor")) == "watch"
+
+            presenter.on_operation_finished()
+            assert str(fixo.cget("cursor")) == "hand2"
+            assert str(rolavel.cget("cursor")) == "xterm"
         finally:
             root.destroy()

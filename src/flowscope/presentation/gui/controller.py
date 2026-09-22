@@ -70,11 +70,8 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
                 return
             self._presenter.on_portfolio_loaded(tickers)
         self._presenter._gui._tickers = list(tickers)
-        self._presenter._gui._set_wait_cursor()
-        try:
+        with self._presenter.busy():
             current = self._presenter._gui._resolve_current_chart()
             if current and self._presenter._gui._deve_atualizar(current):
                 self._presenter._gui._do_update(current)
-        finally:
-            self._presenter._gui._clear_wait_cursor()
         self._presenter._gui._flash_status("Filtro aplicado!", "ℹ")

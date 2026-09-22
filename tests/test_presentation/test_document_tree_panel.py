@@ -1,5 +1,6 @@
 """Testes do painel de documentos, do preview e da abertura de arquivos."""
 
+import logging
 import os
 import queue
 import time
@@ -891,6 +892,69 @@ class TestAdquirirDocumentos:
 
         host._aquisicao_documentos.adquirir.assert_not_called()
         host._presenter.on_operation_started.assert_not_called()
+
+    def test_falha_ao_iniciar_job_libera_cursor(self, monkeypatch):
+        class _JobFalhaInicio:
+            def __init__(self, *args, **kwargs):
+                self.fila = queue.Queue()
+
+            def iniciar(self):
+                raise RuntimeError("thread boom")
+
+        host = _HostDocumentos()
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobFalhaInicio)
+        host._adquirir_documentos("EXXO34")
+
+        host._presenter.on_operation_finished.assert_called_once()
+        assert host._documentos_job is None
+
+
+class TestPollDocumentosResiliente:
+    def test_erro_ao_tratar_progresso_ainda_encerra_job(self):
+        host = _HostDocumentos()
+        host._presenter.on_progress.side_effect = RuntimeError("progress boom")
+        job = MagicMock()
+        job.fila = queue.Queue()
+        job.fila.put((MENSAGEM_PROGRESSO, 1, 2, "• Documentos"))
+        job.fila.put(True)
+        host._documentos_job = job
+
+        host._poll_documentos_job(job, "EXXO34")
+
+        host._presenter.on_operation_finished.assert_called_once()
+        assert host._documentos_job is None
+        host._documents_panel.update.assert_called_once_with("EXXO34")
+
+    def test_thread_morta_encerra_job_e_libera_cursor(self, caplog):
+        host = _HostDocumentos()
+        job = MagicMock()
+        job.fila.get_nowait.side_effect = queue.Empty
+        job.thread.is_alive.return_value = False
+        job.fila.empty.return_value = True
+        host._documentos_job = job
+        host._documentos_ultima_atividade = time.monotonic()
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host._poll_documentos_job(job, "EXXO34")
+
+        host._presenter.on_operation_finished.assert_called_once()
+        assert host._documentos_job is None
+        assert "sem progresso" in caplog.text
+
+    def test_inatividade_encerra_job_e_libera_cursor(self, caplog):
+        host = _HostDocumentos()
+        job = MagicMock()
+        job.fila.get_nowait.side_effect = queue.Empty
+        job.thread.is_alive.return_value = True
+        host._documentos_job = job
+        host._documentos_ultima_atividade = time.monotonic() - 1000.0
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host._poll_documentos_job(job, "EXXO34")
+
+        host._presenter.on_operation_finished.assert_called_once()
+        assert host._documentos_job is None
+        assert "sem progresso" in caplog.text
 
 
 class TestDocumentosJob:
