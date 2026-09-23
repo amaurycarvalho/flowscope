@@ -8,13 +8,14 @@ A RFC-014 consolida a análise de *short interest* com dados oficiais (B3 e FINR
 - **BREAKING (colunas)**: a ordem das colunas da tabela fundamentalista muda; o CSV copiado e a orientação da sub-aba passam a incluir as novas colunas.
 - `Shorts%` = `(Ações Alugadas ÷ Free Float) × 100`, numérico em percentual com uma casa decimal.
 - `Volume de Shorts` = classificação categórica do `Shorts%` em cinco rótulos (`Inexistente`, `Muito Baixo`, `Baixo`, `Alto`, `Muito Alto`).
-- `Fechamento Shorts` (SIR) = `Ações Alugadas ÷ Volume Médio Diário de Negociação`, numérico (razão com uma casa decimal).
-- `Risco Fechamento` = classificação categórica do SIR nos mesmos cinco rótulos.
+- `Fechamento Shorts` (SIR) = `Ações Alugadas ÷ Volume Médio Diário de Negociação`, numérico em dias (razão com uma casa decimal e sufixo `d`).
+- `Risco Fechamento` = classificação categórica do SIR nos mesmos cinco rótulos. `0`/`N/A` classificam como `Inexistente`.
 - **Free float** obtido do CVM FRE (`Quantidade_Total_Acoes_Circulacao`), reutilizando o CSV `fre_cia_aberta_distribuicao_capital` já baixado e parseado pelo `CvmAcionistasSource`. **Fallback**: quando o free float não existir para o ticker, o denominador do `Shorts%` passa a ser o total emitido (`Nro. Ações`/cotas).
-- **Ações alugadas** obtidas da B3, do arquivo público diário "Posições em Aberto de Empréstimo de Ativos". Um *spike* de aquisição fixa o mecanismo exato (formulário Lumis → `fileId` → `fileDownload.jsp`) antes do adapter.
+- **Ações alugadas** obtidas da B3, da tabela oficial de empréstimo de ativos (BTC) do BDI: capítulo "Empréstimos de ativos", `BTBLendingOpenPosition` ("Posições em aberto", retenção `D-21`), via `POST` JSON paginado.
 - **Volume médio diário** calculado em memória a partir do `fin_instr_qty` dos dias já carregados (mesmo `daily_data` injetado no caso de uso), sem fonte nova; média dos dias disponíveis e `N/A` quando não houver nenhum.
 - **Escopo por tipo**: `Papel` (ação) usa free float real; `FII` usa o total de cotas como denominador do `Shorts%`; `ETF`/`FIAGRO`/`BDR` exibem `N/A` quando não houver dado.
 - **Não-objetivo**: integração FINRA para BDRs (exigiria mapear BDR→símbolo US, free float da empresa americana e licenciamento) fica citada como oportunidade futura, fora desta change.
+- **Não-objetivo**: o conteúdo "Empréstimos de Ativos – Posição em aberto (BDI)" do boletim diário (variante em PDF) é registrado como alternativa de aquisição (contingência/uso manual), fora do escopo corrente.
 - Insumo ausente resulta em `N/A` na coluna correspondente, sem impedir as demais.
 - Bump da versão de schema do cache histórico de fundamentos para persistir os novos campos estruturados.
 

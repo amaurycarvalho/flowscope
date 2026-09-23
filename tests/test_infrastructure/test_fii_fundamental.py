@@ -13,7 +13,10 @@ from flowscope.domain.structured import (
     ValorProvento,
 )
 from flowscope.domain.value_objects import Price, Ticker, Volume
-from flowscope.infrastructure.fii.b3_price import B3MarketPricePort
+from flowscope.infrastructure.fii.b3_price import (
+    B3MarketPriceFromResult,
+    B3MarketPricePort,
+)
 from flowscope.infrastructure.fii.fundamental_repository import FundamentalRepository
 
 REFERENCIA = date(2026, 9, 4)
@@ -179,3 +182,35 @@ class TestB3MarketPricePort:
     def test_ticker_sem_dados_retorna_none(self):
         port = B3MarketPricePort([])
         assert port.preco_fechamento("PETR4", date(2026, 9, 4)) is None
+
+    def test_volume_medio_dos_dias_disponiveis(self):
+        port = B3MarketPricePort(
+            [
+                self._negociacao("HGBS11", date(2026, 9, 1), "18.00"),
+                self._negociacao("HGBS11", date(2026, 9, 3), "18.74"),
+                self._negociacao("HGBS11", date(2026, 9, 5), "19.00"),
+            ]
+        )
+        assert port.volume_medio("HGBS11", date(2026, 9, 4)) == Decimal(100)
+
+    def test_volume_medio_sem_dias_retorna_none(self):
+        port = B3MarketPricePort([])
+        assert port.volume_medio("PETR4", date(2026, 9, 4)) is None
+
+
+class TestB3MarketPriceFromResultVolume:
+    def test_volume_medio_dos_dias_em_memoria(self):
+        port = B3MarketPriceFromResult(
+            {
+                "HGBS11": [
+                    {"date": date(2026, 9, 1), "fin_instr_qty": 100},
+                    {"date": date(2026, 9, 3), "fin_instr_qty": 300},
+                    {"date": date(2026, 9, 5), "fin_instr_qty": 999},
+                ]
+            }
+        )
+        assert port.volume_medio("HGBS11", date(2026, 9, 4)) == Decimal(200)
+
+    def test_volume_medio_sem_dias_retorna_none(self):
+        port = B3MarketPriceFromResult({"HGBS11": []})
+        assert port.volume_medio("HGBS11", date(2026, 9, 4)) is None

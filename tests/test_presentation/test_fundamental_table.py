@@ -13,9 +13,12 @@ from flowscope.domain.fii import (
     AnaliseFundamental,
     ClasseCotistas,
     ClassePatrimonio,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     FfoObservacao,
     FiiSnapshot,
     MargensFii,
+    MetricasShort,
     MotivoMargem,
     PatrimonioFii,
     PrecoObservacao,
@@ -34,6 +37,7 @@ from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.charts.fundamental_table import (
     FundamentalTablePanel,
     formatar_data,
+    formatar_dias,
     formatar_inteiro,
     formatar_margem,
     formatar_patrimonio,
@@ -43,6 +47,7 @@ from flowscope.presentation.gui.charts.fundamental_table import (
     formatar_valor,
     montar_csv,
     montar_linhas,
+    rotulo_classificacao_short,
     rotulo_classe_cotistas,
     rotulo_classe_patrimonio,
     rotulo_tendencia,
@@ -123,6 +128,18 @@ def _analise_acao() -> AnaliseFundamental:
     )
 
 
+def _analise_com_short() -> AnaliseFundamental:
+    return replace(
+        _analise_hgbs11(),
+        short=MetricasShort(
+            shorts_pct=Decimal("0.1"),
+            volume_shorts=ClasseShorts.BAIXO,
+            sir=Decimal("5"),
+            risco_fechamento=ClasseRiscoFechamento.ALTO,
+        ),
+    )
+
+
 class TestFormatadores:
     def test_formatar_valor_na(self):
         assert formatar_valor(None) == NA
@@ -167,6 +184,11 @@ class TestFormatadores:
         assert formatar_ratio(Decimal("12.25")) == "12,25x"
         assert formatar_ratio(None) == NA
 
+    def test_formatar_dias(self):
+        assert formatar_dias(Decimal("5")) == "5,0d"
+        assert formatar_dias(Decimal("13.27")) == "13,3d"
+        assert formatar_dias(None) == NA
+
     def test_formatar_inteiro(self):
         assert formatar_inteiro(100000) == "100.000"
         assert formatar_inteiro(None) == NA
@@ -194,6 +216,17 @@ class TestFormatadores:
         )
 
         assert "p_l" in _COLUNAS_DIREITA
+        assert "shorts_pct" in _COLUNAS_DIREITA
+        assert "sir" in _COLUNAS_DIREITA
+
+    def test_rotulo_classificacao_short(self):
+        assert rotulo_classificacao_short(ClasseShorts.INEXISTENTE) == "Inexistente"
+        assert rotulo_classificacao_short(ClasseShorts.MUITO_BAIXO) == "Muito Baixo"
+        assert rotulo_classificacao_short(ClasseShorts.BAIXO) == "Baixo"
+        assert rotulo_classificacao_short(ClasseShorts.ALTO) == "Alto"
+        assert rotulo_classificacao_short(ClasseShorts.MUITO_ALTO) == "Muito Alto"
+        assert rotulo_classificacao_short(None) == "Inexistente"
+        assert rotulo_classificacao_short(ClasseRiscoFechamento.ALTO) == "Alto"
 
 
 class TestRotuloTendencia:
@@ -294,14 +327,50 @@ class TestMontarLinhas:
         assert colunas[12] == "0,55"
         assert colunas[13] == "0,50"
         assert colunas[14] == "Forte Alta"
-        assert colunas[15] == "87,3%"
-        assert colunas[16] == "85,5%"
-        assert colunas[17] == "Estável"
-        assert colunas[18] == "115,7%"
-        assert colunas[19] == "76,8%"
-        assert colunas[20] == "132,6%"
-        assert colunas[21] == "89,9%"
-        assert colunas[22] == "144.355.726"
+        assert colunas[15] == NA
+        assert colunas[16] == "Inexistente"
+        assert colunas[17] == NA
+        assert colunas[18] == "Inexistente"
+        assert colunas[19] == "87,3%"
+        assert colunas[20] == "85,5%"
+        assert colunas[21] == "Estável"
+        assert colunas[22] == "115,7%"
+        assert colunas[23] == "76,8%"
+        assert colunas[24] == "132,6%"
+        assert colunas[25] == "89,9%"
+        assert colunas[26] == "144.355.726"
+
+    def test_colunas_short_interest_preenchidas(self):
+        colunas = montar_linhas({"HGBS11": _analise_com_short()})[0]
+        assert colunas[15] == "10,0%"
+        assert colunas[16] == "Baixo"
+        assert colunas[17] == "5,0d"
+        assert colunas[18] == "Alto"
+
+    def test_colunas_short_interest_vazias_classificam_inexistente(self):
+        colunas = montar_linhas({"HGBS11": _analise_hgbs11()})[0]
+        assert colunas[15:19] == (NA, "Inexistente", NA, "Inexistente")
+
+    def test_colunas_short_posicionadas_apos_tendencia_do_dividendo(self):
+        from flowscope.presentation.gui.charts.fundamental_rows import _COLUNAS
+
+        ids = [coluna_id for coluna_id, _ in _COLUNAS]
+        assert ids.index("shorts_pct") == ids.index("tendencia_dividendo") + 1
+        assert ids.index("risco_fechamento") == ids.index("ffo_receita_12m") - 1
+
+    def test_colunas_short_sao_rolantes_com_largura_padrao(self):
+        from flowscope.presentation.gui.charts.fundamental_rows import (
+            _COLUNAS_DIREITA,
+            _COLUNAS_ROLANTES,
+            _largura_coluna,
+        )
+
+        ids = [coluna_id for coluna_id, _ in _COLUNAS_ROLANTES]
+        for coluna in ("shorts_pct", "volume_shorts", "sir", "risco_fechamento"):
+            assert coluna in ids
+            assert _largura_coluna(None, coluna) == 140
+        assert "volume_shorts" not in _COLUNAS_DIREITA
+        assert "risco_fechamento" not in _COLUNAS_DIREITA
 
     def test_coluna_p_l_renderiza_apos_p_vp(self):
         analise = replace(_analise_hgbs11(), p_l=Decimal("2.84"))
@@ -326,7 +395,11 @@ class TestMontarLinhas:
         colunas = linhas[0]
         assert colunas[2] == "Papel"
         assert colunas[3] == "Preferencial"
-        assert all(coluna == NA for coluna in colunas[4:])
+        assert all(coluna == NA for coluna in colunas[4:16])
+        assert colunas[16] == "Inexistente"
+        assert colunas[17] == NA
+        assert colunas[18] == "Inexistente"
+        assert all(coluna == NA for coluna in colunas[19:])
 
     def test_ordem_das_linhas_preserva_ordem_da_watchlist(self):
         linhas = montar_linhas(
@@ -394,11 +467,11 @@ def _analise_bdr() -> AnaliseFundamental:
 class TestInformacoesAdicionais:
     def test_papel_com_indicadores(self):
         colunas = montar_linhas({"PETR4": _acao_com_indicadores()})[0]
-        assert colunas[28] == "LPA 1,23 | ROE 15,40% | ROIC 12,00%"
+        assert colunas[32] == "LPA 1,23 | ROE 15,40% | ROIC 12,00%"
 
     def test_fii_de_tijolo_com_imoveis_e_indexadores(self):
         colunas = montar_linhas({"HGBS11": _fii_de_tijolo()})[0]
-        assert colunas[28] == (
+        assert colunas[32] == (
             "Qtd Imóveis 16 | Cap Rate 6,50% | Vacância Média 3,20% | "
             "IPCA 22,00% | INCC 5,00%"
         )
@@ -411,10 +484,10 @@ class TestInformacoesAdicionais:
             vacancia_media=Decimal("0.032"),
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert "Qtd Imóveis" not in colunas[28]
-        assert "Cap Rate" not in colunas[28]
-        assert "Vacância Média" not in colunas[28]
-        assert colunas[28] == "IPCA 22,00% | INCC 5,00%"
+        assert "Qtd Imóveis" not in colunas[32]
+        assert "Cap Rate" not in colunas[32]
+        assert "Vacância Média" not in colunas[32]
+        assert colunas[32] == "IPCA 22,00% | INCC 5,00%"
 
     def test_fii_sem_fundamentus_omite_imoveis(self):
         analise = replace(
@@ -424,9 +497,9 @@ class TestInformacoesAdicionais:
             vacancia_media=None,
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert "Qtd Imóveis" not in colunas[28]
-        assert "Cap Rate" not in colunas[28]
-        assert "Vacância Média" not in colunas[28]
+        assert "Qtd Imóveis" not in colunas[32]
+        assert "Cap Rate" not in colunas[32]
+        assert "Vacância Média" not in colunas[32]
 
     def test_itens_ausentes_omitidos_sem_impedir_os_demais(self):
         analise = replace(
@@ -435,15 +508,15 @@ class TestInformacoesAdicionais:
             pct_preco_tipico=None,
         )
         colunas = montar_linhas({"PETR4": analise})[0]
-        assert colunas[28] == "LPA 1,23 | ROIC 12,00%"
+        assert colunas[32] == "LPA 1,23 | ROIC 12,00%"
 
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
-        assert colunas[28] == NA
+        assert colunas[32] == NA
 
     def test_bdr_exibe_nivel_e_observacao_fiscal(self):
         colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
-        assert colunas[28] == (
+        assert colunas[32] == (
             "Nível I Não Patrocinado | Obs.: O valor informado já está "
             "deduzido de IR, IOF e tarifa"
         )
@@ -451,7 +524,7 @@ class TestInformacoesAdicionais:
     def test_bdr_sem_nivel_e_observacao_exibe_na(self):
         analise = replace(_analise_bdr(), bdr_nivel=None, bdr_observacao=None)
         colunas = montar_linhas({"EXXO34": analise})[0]
-        assert colunas[28] == NA
+        assert colunas[32] == NA
 
     def test_bdr_exibe_tipo_papel_e_sub_tipo_bdr(self):
         colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
@@ -470,7 +543,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "CNPJ 12.345.678/0001-90 | "
             "Administrador BANCO GENIAL S.A. (98.765.432/0001-10) | "
             "Gestor CY.CAPITAL GESTORA (11.222.333/0001-44)"
@@ -484,7 +557,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
             "Gestor (11.222.333/0001-44)"
         )
@@ -496,7 +569,7 @@ class TestDadosFiscais:
             cnpj_gestor="11222333000144",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
         )
 
@@ -508,7 +581,7 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"PETR4": analise})[0]
-        assert colunas[29] == "CNPJ 33.000.167/0001-01"
+        assert colunas[33] == "CNPJ 33.000.167/0001-01"
 
     def test_item_ausente_omitido(self):
         analise = replace(
@@ -518,17 +591,17 @@ class TestDadosFiscais:
             cnpj_gestor="11.222.333/0001-44",
         )
         colunas = montar_linhas({"HGBS11": analise})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
         )
 
     def test_coluna_sem_itens_exibe_na(self):
         colunas = montar_linhas({"PETR4": _analise_acao()})[0]
-        assert colunas[29] == NA
+        assert colunas[33] == NA
 
     def test_bdr_exibe_depositario_empresa_e_isin(self):
         colunas = montar_linhas({"EXXO34": _analise_bdr()})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "Depositário Banco B3 S.A. | Empresa Exxon Mobil Corporation | "
             "ISIN BREXXOBDR006"
         )
@@ -536,14 +609,14 @@ class TestDadosFiscais:
     def test_bdr_item_indisponivel_omitido(self):
         analise = replace(_analise_bdr(), isin=None)
         colunas = montar_linhas({"EXXO34": analise})[0]
-        assert colunas[29] == (
+        assert colunas[33] == (
             "Depositário Banco B3 S.A. | Empresa Exxon Mobil Corporation"
         )
 
     def test_bdr_com_cnpj_nao_usa_identidade_dos_avisos(self):
         analise = replace(_analise_bdr(), cnpj="12.345.678/0001-90")
         colunas = montar_linhas({"EXXO34": analise})[0]
-        assert colunas[29] == "CNPJ 12.345.678/0001-90"
+        assert colunas[33] == "CNPJ 12.345.678/0001-90"
 
 
 class TestMontarCsv:
@@ -553,7 +626,8 @@ class TestMontarCsv:
             "Ticker;Nome;Tipo;Sub-tipo;P (Cotação);Preço Típico;P / PT;"
             "VP (VP/Cota);P/VP;P/L;"
             "Dividend Yield;Última data-com;Último dividendo;Dividendo anterior;"
-            "Tendência do dividendo;FFO/Receita (12m);FFO/Receita (3m);FFO Trend;"
+            "Tendência do dividendo;Shorts%;Volume de Shorts;Fechamento Shorts;"
+            "Risco Fechamento;FFO/Receita (12m);FFO/Receita (3m);FFO Trend;"
             "Dividendos/Receita (12m);Dividendos/Receita (3m);"
             "Dividendos/FFO (12m);Dividendos/FFO (3m);Nº de cotas;Nº de cotistas;"
             "Classe de cotistas;Patrimônio;Classe de patrimônio;Data de referência;"
@@ -567,7 +641,8 @@ class TestMontarCsv:
         linhas = csv.split("\n")
         assert linhas[1].startswith(
             "HGBS11;CSHG Renda Urbana;FII;Tijolo;N/A;N/A;N/A;N/A;0,92x;N/A;"
-            "7,9%;10/07/2026;0,55;0,50;Forte Alta;87,3%"
+            "7,9%;10/07/2026;0,55;0,50;Forte Alta;N/A;Inexistente;N/A;"
+            "Inexistente;87,3%"
         )
         assert linhas[2].startswith("PETR4;Petrobras PN;Papel;Preferencial;")
 
@@ -576,8 +651,8 @@ class TestMontarCsv:
         campos = csv.split("\n")[1].split(";")
         assert campos[12] == "0,55"
         assert campos[13] == "0,50"
-        assert campos[16] == "85,5%"
-        assert campos[22] == "144.355.726"
+        assert campos[20] == "85,5%"
+        assert campos[26] == "144.355.726"
 
     def test_csv_inclui_colunas_novas_com_os_mesmos_textos(self):
         analise = replace(
@@ -588,9 +663,9 @@ class TestMontarCsv:
         )
         linha = montar_linhas({"HGBS11": analise})[0]
         campos = montar_csv({"HGBS11": analise}).split("\n")[1].split(";")
-        assert campos[28] == linha[28]
-        assert campos[29] == linha[29]
-        assert campos[29] == (
+        assert campos[32] == linha[32]
+        assert campos[33] == linha[33]
+        assert campos[33] == (
             "CNPJ 12.345.678/0001-90 | Administrador (98.765.432/0001-10) | "
             "Gestor (11.222.333/0001-44)"
         )
@@ -618,7 +693,7 @@ class TestFundamentalTablePanel:
         try:
             painel = FundamentalTablePanel(root)
             assert tuple(painel._tree_fixo.cget("columns")) == ("ticker", "nome")
-            assert len(painel._tree_rolavel.cget("columns")) == 28
+            assert len(painel._tree_rolavel.cget("columns")) == 32
         finally:
             root.destroy()
 
@@ -635,7 +710,7 @@ class TestFundamentalTablePanel:
             assert valores[0] == "HGBS11"
             assert valores[1] == "CSHG Renda Urbana"
             rolavel = painel._tree_rolavel.item(fixos[0], "values")
-            assert rolavel[13] == "87,3%"
+            assert rolavel[17] == "87,3%"
         finally:
             root.destroy()
 
@@ -649,8 +724,8 @@ class TestFundamentalTablePanel:
             congelados = tuple(painel._tree_fixo.item(iid, "values"))
             rolantes = tuple(painel._tree_rolavel.item(iid, "values"))
             assert len(congelados) == 2
-            assert len(rolantes) == 28
-            assert len(congelados + rolantes) == 30
+            assert len(rolantes) == 32
+            assert len(congelados + rolantes) == 34
         finally:
             root.destroy()
 
@@ -704,7 +779,7 @@ class TestFundamentalTablePanel:
             painel = FundamentalTablePanel(root)
             larguras = painel.get_column_widths()
             assert set(larguras) == set(painel._columns)
-            assert len(larguras) == 30
+            assert len(larguras) == 34
         finally:
             root.destroy()
 
@@ -932,6 +1007,8 @@ class TestFundamentalTablePanel:
                 "ultimo_dividendo",
                 "dividendo_anterior",
                 "dividend_yield",
+                "shorts_pct",
+                "sir",
                 "ffo_receita_12m",
                 "ffo_receita_3m",
                 "dividendos_receita_12m",
@@ -1033,13 +1110,21 @@ class TestIntegracaoWatchlist:
 
         petr = por_ticker["PETR4"]
         assert petr[2] == "Papel"
-        assert all(coluna == NA for coluna in petr[4:])
+        assert all(coluna == NA for coluna in petr[4:16])
+        assert petr[16] == "Inexistente"
+        assert petr[17] == NA
+        assert petr[18] == "Inexistente"
+        assert all(coluna == NA for coluna in petr[19:])
 
         hcri = por_ticker["HCRI11"]
         assert hcri[2] == "FII"
         assert hcri[3] == "Papel"
         assert hcri[12] == "1,00"
-        assert all(coluna == NA for coluna in hcri[15:])
+        assert hcri[15] == NA
+        assert hcri[16] == "Inexistente"
+        assert hcri[17] == NA
+        assert hcri[18] == "Inexistente"
+        assert all(coluna == NA for coluna in hcri[19:])
 
         hgbs = por_ticker["HGBS11"]
         assert hgbs[2] == "FII"
@@ -1050,12 +1135,16 @@ class TestIntegracaoWatchlist:
         assert hgbs[12] == "0,55"
         assert hgbs[13] == "0,50"
         assert hgbs[14] == "Forte Alta"
-        assert all(coluna == NA for coluna in hgbs[15:22])
-        assert hgbs[22] == "144.355.726"
-        assert hgbs[23] == "100.000"
-        assert hgbs[24] == "Muito grande"
-        assert hgbs[25] == "R$ 2,94 bi"
-        assert hgbs[26] == "Gigante"
+        assert hgbs[15] == NA
+        assert hgbs[16] == "Inexistente"
+        assert hgbs[17] == NA
+        assert hgbs[18] == "Inexistente"
+        assert all(coluna == NA for coluna in hgbs[19:26])
+        assert hgbs[26] == "144.355.726"
+        assert hgbs[27] == "100.000"
+        assert hgbs[28] == "Muito grande"
+        assert hgbs[29] == "R$ 2,94 bi"
+        assert hgbs[30] == "Gigante"
 
 
 class TestWiringSubAba:
@@ -1079,6 +1168,15 @@ class TestWiringSubAba:
         assert "Dividendos/FFO" in texto
         assert "Informações adicionais" in texto
         assert "Dados fiscais" in texto
+
+    def test_orientation_panel_descreve_colunas_short_interest(self):
+        _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]
+        texto = " ".join(parte for parte, _estilo in corpo)
+        assert "Shorts%" in texto
+        assert "Volume de Shorts" in texto
+        assert "Fechamento Shorts" in texto
+        assert "Risco Fechamento" in texto
+        assert "acima de 5" in texto
 
     def test_orientation_panel_orienta_quantidade_de_cotas(self):
         _titulo, corpo = TAB_CONTENT[("Análise Geral", "Fundamentos")]

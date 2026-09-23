@@ -13,11 +13,14 @@ from flowscope.domain.fii import (
     AnaliseFundamental,
     ClasseCotistas,
     ClassePatrimonio,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     ClassificacaoAtivo,
     ClassificacaoExibicao,
     FonteClassificacao,
     MargensFii,
     MetricasFii,
+    MetricasShort,
     MetricEvidence,
     MotivoMargem,
     Quality,
@@ -305,6 +308,32 @@ def _margens_de_dict(dados: object) -> MargensFii | None:
     )
 
 
+def _short_para_dict(short: MetricasShort | None) -> dict | None:
+    """Serializa as métricas de *short interest*."""
+    if short is None:
+        return None
+    return {
+        "shorts_pct": _decimal(short.shorts_pct),
+        "volume_shorts": _enum(short.volume_shorts),
+        "sir": _decimal(short.sir),
+        "risco_fechamento": _enum(short.risco_fechamento),
+    }
+
+
+def _short_de_dict(dados: object) -> MetricasShort | None:
+    """Reconstrói as métricas de *short interest*."""
+    if not isinstance(dados, Mapping):
+        return None
+    return MetricasShort(
+        shorts_pct=_decimal_de(dados.get("shorts_pct")),
+        volume_shorts=_enum_de(ClasseShorts, dados.get("volume_shorts")),
+        sir=_decimal_de(dados.get("sir")),
+        risco_fechamento=_enum_de(
+            ClasseRiscoFechamento, dados.get("risco_fechamento")
+        ),
+    )
+
+
 def analise_para_dict(analise: AnaliseFundamental) -> dict:
     """Serializa uma ``AnaliseFundamental`` em um dicionário estruturado."""
     return {
@@ -315,6 +344,7 @@ def analise_para_dict(analise: AnaliseFundamental) -> dict:
         "dividendos_12m_por_cota": _decimal(analise.dividendos_12m_por_cota),
         "metricas": _metricas_para_dict(analise.metricas),
         "margens": _margens_para_dict(analise.margens),
+        "short": _short_para_dict(analise.short),
         "cotacao": _decimal(analise.cotacao),
         "vp_cota": _decimal(analise.vp_cota),
         "p_l": _decimal(analise.p_l),
@@ -359,6 +389,7 @@ def analise_de_dict(dados: Mapping) -> AnaliseFundamental:
         dividendos_12m_por_cota=_decimal_de(dados.get("dividendos_12m_por_cota")),
         metricas=_metricas_de_dict(dados.get("metricas")),
         margens=_margens_de_dict(dados.get("margens")),
+        short=_short_de_dict(dados.get("short")),
         cotacao=_decimal_de(dados.get("cotacao")),
         vp_cota=_decimal_de(dados.get("vp_cota")),
         p_l=_decimal_de(dados.get("p_l")),

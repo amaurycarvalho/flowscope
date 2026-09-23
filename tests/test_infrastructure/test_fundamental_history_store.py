@@ -13,11 +13,14 @@ from flowscope.domain.fii import (
     AnaliseFundamental,
     ClasseCotistas,
     ClassePatrimonio,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     ClassificacaoAtivo,
     ClassificacaoExibicao,
     FonteClassificacao,
     MargensFii,
     MetricasFii,
+    MetricasShort,
     MetricEvidence,
     MotivoMargem,
     Quality,
@@ -104,6 +107,12 @@ def _analise_completa() -> AnaliseFundamental:
         dividendos_12m_por_cota=Decimal("1.05"),
         metricas=_metricas(),
         margens=_margens(),
+        short=MetricasShort(
+            shorts_pct=Decimal("0.1"),
+            volume_shorts=ClasseShorts.BAIXO,
+            sir=Decimal("5"),
+            risco_fechamento=ClasseRiscoFechamento.ALTO,
+        ),
         cotacao=Decimal("104.13"),
         vp_cota=Decimal("115.82"),
         p_l=Decimal("2.84"),
@@ -181,6 +190,22 @@ class TestCodec:
     def test_dict_inclui_data_referencia(self):
         dados = analise_para_dict(_analise_completa())
         assert dados["data_referencia"] == "2026-09-04"
+
+    def test_dict_inclui_short_interest(self):
+        dados = analise_para_dict(_analise_completa())
+        assert dados["short"] == {
+            "shorts_pct": "0.1",
+            "volume_shorts": "BAIXO",
+            "sir": "5",
+            "risco_fechamento": "ALTO",
+        }
+
+    def test_round_trip_preserva_short_interest(self):
+        restaurada = analise_de_dict(analise_para_dict(_analise_completa()))
+        assert restaurada.short == _analise_completa().short
+        assert isinstance(restaurada.short.shorts_pct, Decimal)
+        assert isinstance(restaurada.short.volume_shorts, ClasseShorts)
+        assert isinstance(restaurada.short.risco_fechamento, ClasseRiscoFechamento)
 
     def test_round_trip_preserva_campos_de_bdr(self):
         analise = replace(

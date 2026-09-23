@@ -14,6 +14,7 @@ import io
 import logging
 from collections.abc import Callable
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.cvm import normalizar_cnpj
 from flowscope.infrastructure.cache import CacheManager
@@ -29,7 +30,7 @@ FRE_BASE_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS"
 FCA_BASE_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FCA/DADOS"
 
 #: Versão do parser, usada para invalidar o cache normalizado.
-PARSER_VERSION = "cvm-acionistas-v1"
+PARSER_VERSION = "cvm-acionistas-v2"
 
 #: Prefixo do CSV de distribuição de capital no ZIP do FRE.
 _ARQUIVO_FRE = "fre_cia_aberta_distribuicao_capital"
@@ -81,6 +82,28 @@ def parse_distribuicao_capital(conteudo: bytes) -> dict[str, int]:
     return {cnpj: total for cnpj, (_, total) in registros.items()}
 
 
+def parse_acoes_circulacao(conteudo: bytes) -> dict[str, Decimal]:
+    """Mapeia CNPJ normalizado para o total de ações em circulação (*free float*).
+
+    Lê ``Quantidade_Total_Acoes_Circulacao`` do mesmo CSV de distribuição de
+    capital, selecionando o registro de maior ``Versao`` por CNPJ. Linhas com a
+    quantidade ausente ou inválida são ignoradas.
+    """
+    registros: dict[str, tuple[int, Decimal]] = {}
+    for linha in _ler_csv(conteudo):
+        cnpj = normalizar_cnpj(linha.get("CNPJ_Companhia"))
+        if not cnpj:
+            continue
+        quantidade = _decimal(linha.get("Quantidade_Total_Acoes_Circulacao"))
+        if quantidade is None:
+            continue
+        versao = _inteiro(linha.get("Versao"))
+        atual = registros.get(cnpj)
+        if atual is None or versao >= atual[0]:
+            registros[cnpj] = (versao, quantidade)
+    return {cnpj: quantidade for cnpj, (_, quantidade) in registros.items()}
+
+
 def _somar_acionistas(linha: dict[str, str]) -> int:
     """Soma as quantidades de acionistas PF, PJ e institucionais."""
     return (
@@ -113,6 +136,17 @@ def _inteiro(valor: object) -> int:
         return int(str(valor).strip())
     except (TypeError, ValueError):
         return 0
+
+
+def _decimal(valor: object) -> Decimal | None:
+    """Interpreta um valor como ``Decimal``, ou ``None`` quando vazio/inválido."""
+    texto = _texto(valor)
+    if texto is None:
+        return None
+    try:
+        return Decimal(texto)
+    except (InvalidOperation, ValueError):
+        return None
 
 
 class CvmAcionistasSource:
@@ -156,6 +190,21 @@ class CvmAcionistasSource:
             logger.warning("Falha ao resolver CNPJ de %s", ticker, exc_info=True)
             return None
 
+    def obter_free_float(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna o total de ações em circulação (free float), ou ``None``."""
+        try:
+            cnpj = self._resolver_cnpj(ticker, reference_date)
+            if cnpj is None:
+                return None
+            return self._free_float(cnpj, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter free float de %s", ticker, exc_info=True
+            )
+            return None
+
     def _resolver_cnpj(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
     ) -> str | None:
@@ -184,6 +233,27 @@ class CvmAcionistasSource:
             )
             if cnpj in mapa:
                 return mapa[cnpj]
+        return None
+
+    def _free_float(
+        self: "CvmAcionistasSource", cnpj: str, reference_date: date
+    ) -> Decimal | None:
+        """Busca o total de ações em circulação do CNPJ no FRE.
+
+        O mapa normalizado é persistido em JSON (que serializa ``Decimal`` como
+        texto); por isso o valor é reconvertido para ``Decimal`` na leitura.
+        """
+        for ano in self._anos(reference_date):
+            mapa = self._mapa(
+                self._downloader_fre,
+                _ARQUIVO_FRE,
+                "fre_float",
+                ano,
+                parse_acoes_circulacao,
+            )
+            valor = _decimal(mapa.get(cnpj))
+            if valor is not None:
+                return valor
         return None
 
     def _anos(self: "CvmAcionistasSource", reference_date: date) -> list[int]:

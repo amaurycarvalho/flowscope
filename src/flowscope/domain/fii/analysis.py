@@ -16,6 +16,8 @@ from flowscope.domain.fii.classification import (
 from flowscope.domain.fii.classification_faixas import (
     ClasseCotistas,
     ClassePatrimonio,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     TendenciaFfo,
 )
 from flowscope.domain.fii.dividends import UltimoDividendo
@@ -68,6 +70,22 @@ class MargensFii:
 
 
 @dataclass(frozen=True)
+class MetricasShort:
+    """Métricas de *short interest* exibidas na tabela de Fundamentos.
+
+    Reúne a magnitude relativa (``shorts_pct``), a classificação do volume de
+    shorts, o Short Interest Ratio (``sir``) e a classificação do risco de
+    fechamento. Cada campo é independente: a ausência de um insumo não impede
+    os demais.
+    """
+
+    shorts_pct: Decimal | None = None
+    volume_shorts: ClasseShorts | None = None
+    sir: Decimal | None = None
+    risco_fechamento: ClasseRiscoFechamento | None = None
+
+
+@dataclass(frozen=True)
 class AnaliseFundamental:
     """Resultado da análise fundamentalista de um ticker da watchlist."""
 
@@ -78,6 +96,7 @@ class AnaliseFundamental:
     dividendos_12m_por_cota: Decimal | None
     metricas: MetricasFii | None
     margens: MargensFii | None = None
+    short: MetricasShort | None = None
     cotacao: Decimal | None = None
     vp_cota: Decimal | None = None
     p_l: Decimal | None = None

@@ -16,6 +16,7 @@ from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
+from flowscope.infrastructure.b3.emprestimos import B3ShortInterestSource
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
@@ -70,6 +71,7 @@ class WiringMixin:
         )
         fundamental_bdr_provider = BdrDividendProvider(cache=cache)
         fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
+        fundamental_short_interest_provider = B3ShortInterestSource(cache=cache)
         fundamental_provider = CompositeFundamentalProvider(
             [
                 FundamentusFundamentalDataProvider(
@@ -109,6 +111,7 @@ class WiringMixin:
             ),
             fundamental_bdr_provider=fundamental_bdr_provider,
             fundamental_guidance_store=self._guidance_store,
+            fundamental_short_interest_provider=fundamental_short_interest_provider,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

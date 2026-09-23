@@ -147,6 +147,28 @@ class AcionistasProvider(Protocol):
 
 
 @runtime_checkable
+class FreeFloatProvider(Protocol):
+    """Contrato de obtenção do *free float* (ações em circulação) de um ativo."""
+
+    def obter_free_float(
+        self: "FreeFloatProvider", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna o total de ações em circulação, ou ``None`` quando indisponível."""
+        ...
+
+
+@runtime_checkable
+class ShortInterestProvider(Protocol):
+    """Contrato de obtenção das ações alugadas (estoque de empréstimos)."""
+
+    def obter_acoes_alugadas(
+        self: "ShortInterestProvider", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna as ações alugadas, ou ``None`` quando indisponível."""
+        ...
+
+
+@runtime_checkable
 class IndexadoresProvider(Protocol):
     """Contrato de obtenção dos percentuais de patrimônio por indexador."""
 
@@ -231,9 +253,15 @@ class MarketPricePort(Protocol):
         """Retorna ``(mínimo, máximo)`` da janela, ou ``None`` quando vazia."""
         ...
 
+    def volume_medio(
+        self: "MarketPricePort", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna o volume médio diário negociado, ou ``None`` sem dias."""
+        ...
+
 
 #: Versão do schema do resultado da análise persistido no histórico.
-SCHEMA_VERSION_FUNDAMENTOS = 1
+SCHEMA_VERSION_FUNDAMENTOS = 2
 
 
 @dataclass(frozen=True)

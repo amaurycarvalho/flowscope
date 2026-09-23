@@ -258,7 +258,7 @@ class TestLinhaDaTabela:
         assert linha[4] != NA
         assert linha[7] != NA
         assert linha[9] != NA
-        assert linha[15] == NA
-        assert linha[17] == NA
-        assert linha[18] == NA
-        assert linha[23] != NA
+        assert linha[19] == NA
+        assert linha[21] == NA
+        assert linha[22] == NA
+        assert linha[27] != NA

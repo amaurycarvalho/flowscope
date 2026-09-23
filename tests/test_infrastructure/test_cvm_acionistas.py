@@ -1,6 +1,7 @@
 import io
 import zipfile
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm import acionistas as mod
 from flowscope.infrastructure.cvm.acionistas import (
     CvmAcionistasSource,
+    parse_acoes_circulacao,
     parse_distribuicao_capital,
     parse_valor_mobiliario,
 )
@@ -91,6 +93,22 @@ class TestParsers:
         assert parse_distribuicao_capital(b"") == {}
         assert parse_valor_mobiliario(b"") == {}
 
+    def test_parse_acoes_circulacao_maior_versao(self):
+        mapa = parse_acoes_circulacao(
+            _fixture("fre_cia_aberta_distribuicao_capital_2026.csv")
+        )
+        assert mapa[CNPJ_PETR] == Decimal("6000000000")
+        assert mapa[CNPJ_AXIA] == Decimal("500000000")
+
+    def test_parse_acoes_circulacao_ignora_ausente(self):
+        mapa = parse_acoes_circulacao(
+            _fixture("fre_cia_aberta_distribuicao_capital_2026.csv")
+        )
+        assert "00000000000191" not in mapa
+
+    def test_parse_acoes_circulacao_vazio(self):
+        assert parse_acoes_circulacao(b"") == {}
+
 
 class TestSource:
     def test_ticker_presente_resolve_quantidade(self, tmp_path):
@@ -105,6 +123,19 @@ class TestSource:
         source = _source(tmp_path)
         assert source.obter_cnpj("PETR4", REFERENCIA) == CNPJ_PETR
         assert source.obter_cnpj("XPTO3", REFERENCIA) is None
+
+    def test_obter_free_float(self, tmp_path):
+        source = _source(tmp_path)
+        assert source.obter_free_float("PETR4", REFERENCIA) == Decimal("6000000000")
+        assert source.obter_free_float("XPTO3", REFERENCIA) is None
+
+    def test_obter_free_float_retorna_decimal_apos_cache(self, tmp_path):
+        source = _source(tmp_path)
+        assert source.obter_free_float("PETR4", REFERENCIA) == Decimal("6000000000")
+        # A segunda leitura vem do cache normalizado (JSON serializa Decimal como texto).
+        valor = source.obter_free_float("PETR4", REFERENCIA)
+        assert isinstance(valor, Decimal)
+        assert valor == Decimal("6000000000")
 
     def test_falha_de_rede_retorna_none(self, tmp_path):
         def fetch(_ano: int) -> bytes:

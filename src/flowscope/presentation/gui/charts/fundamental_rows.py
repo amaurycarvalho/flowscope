@@ -13,6 +13,7 @@ from flowscope.domain.fii import (
     AnaliseFundamental,
     ClassificacaoExibicao,
     MargensFii,
+    MetricasShort,
     classificar_exibicao,
     classificar_ticker,
 )
@@ -20,6 +21,7 @@ from flowscope.presentation.gui.charts.fundamental_formatters import (
     NA,
     formatar_cnpj,
     formatar_data,
+    formatar_dias,
     formatar_inteiro,
     formatar_margem,
     formatar_patrimonio,
@@ -30,6 +32,7 @@ from flowscope.presentation.gui.charts.fundamental_formatters import (
     formatar_valor,
     rotulo_classe_cotistas,
     rotulo_classe_patrimonio,
+    rotulo_classificacao_short,
     rotulo_tendencia,
 )
 
@@ -65,6 +68,10 @@ _COLUNAS = (
     ("ultimo_dividendo", "Último dividendo"),
     ("dividendo_anterior", "Dividendo anterior"),
     ("tendencia_dividendo", "Tendência do dividendo"),
+    ("shorts_pct", "Shorts%"),
+    ("volume_shorts", "Volume de Shorts"),
+    ("sir", "Fechamento Shorts"),
+    ("risco_fechamento", "Risco Fechamento"),
     ("ffo_receita_12m", "FFO/Receita (12m)"),
     ("ffo_receita_3m", "FFO/Receita (3m)"),
     ("ffo_trend", "FFO Trend"),
@@ -94,6 +101,8 @@ _COLUNAS_DIREITA = frozenset(
         "ultimo_dividendo",
         "dividendo_anterior",
         "dividend_yield",
+        "shorts_pct",
+        "sir",
         "ffo_receita_12m",
         "ffo_receita_3m",
         "dividendos_receita_12m",
@@ -284,6 +293,26 @@ def _tendencia_ffo_ou_na(margens: MargensFii | None) -> str:
     return rotulo_tendencia(margens.ffo_trend if margens else None)
 
 
+def _shorts_pct_ou_na(short: MetricasShort | None) -> str:
+    """Formata o Shorts% com uma casa decimal, ou ``N/A`` quando ausente."""
+    return formatar_percentual(short.shorts_pct if short else None, 1)
+
+
+def _volume_shorts_ou_na(short: MetricasShort | None) -> str:
+    """Retorna o rótulo de volume de shorts (``Inexistente`` quando ausente)."""
+    return rotulo_classificacao_short(short.volume_shorts if short else None)
+
+
+def _sir_ou_na(short: MetricasShort | None) -> str:
+    """Formata o Short Interest Ratio em dias com uma casa decimal, ou ``N/A``."""
+    return formatar_dias(short.sir if short else None, 1)
+
+
+def _risco_fechamento_ou_na(short: MetricasShort | None) -> str:
+    """Retorna o rótulo de risco de fechamento (``Inexistente`` quando ausente)."""
+    return rotulo_classificacao_short(short.risco_fechamento if short else None)
+
+
 def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
     """Monta a linha de uma análise fundamentalista completa."""
     classificacao = analise.classificacao
@@ -313,6 +342,10 @@ def _linha_analise(ticker: str, analise: AnaliseFundamental) -> tuple[str, ...]:
         formatar_valor(dividendo.valor),
         formatar_valor(dividendo.valor_anterior),
         rotulo_tendencia(dividendo.tendencia),
+        _shorts_pct_ou_na(analise.short),
+        _volume_shorts_ou_na(analise.short),
+        _sir_ou_na(analise.short),
+        _risco_fechamento_ou_na(analise.short),
         _margem_ou_na(margens, "ffo_receita_12m"),
         _margem_ou_na(margens, "ffo_receita_3m"),
         _tendencia_ffo_ou_na(margens),

@@ -55,10 +55,12 @@ from flowscope.application.fundamental_ports import (
     DividendHistoryProvider,
     FfoProvider,
     FiiFundamentalRepository,
+    FreeFloatProvider,
     FundamentalDataProvider,
     FundamentalHistoryStore,
     IndexadoresProvider,
     MarketPricePort,
+    ShortInterestProvider,
     observacao_completa,
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
@@ -73,6 +75,7 @@ from flowscope.domain.fii import (
     Guidance,
     MargensFii,
     MetricasFii,
+    MetricasShort,
     PatrimonioFii,
     PrecoObservacao,
     Quality,
@@ -83,7 +86,9 @@ from flowscope.domain.fii import (
     classe_fii_elegivel_ffo,
     classificar_cotistas,
     classificar_patrimonio,
+    classificar_risco_fechamento,
     classificar_ticker,
+    classificar_volume_shorts,
     dividendos_12m,
     dividendos_ffo,
     dividendos_receita,
@@ -92,6 +97,8 @@ from flowscope.domain.fii import (
     p_l_bdr,
     percentual_preco_tipico,
     preco_tipico,
+    short_interest_ratio,
+    shorts_percent,
     tendencia_margem_ffo,
 )
 
@@ -118,6 +125,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         resolver_fiagro: ResolverFiagro | None = None,
         bdr_provider: object | None = None,
         guidance_store: GuidanceStore | None = None,
+        free_float_provider: FreeFloatProvider | None = None,
+        short_interest_provider: ShortInterestProvider | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -132,6 +141,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         self._resolver_fiagro = resolver_fiagro
         self._bdr_provider = bdr_provider
         self._guidance_store = guidance_store
+        self._free_float_provider = free_float_provider
+        self._short_interest_provider = short_interest_provider
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
 
@@ -196,13 +207,22 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
 
         O acerto do dia exige uma observação completa e na versão de schema
         atual; observações parciais são recomputadas para poderem ser
-        substituídas por uma melhor no mesmo dia.
+        substituídas por uma melhor no mesmo dia. Se a recomputação (inclusive
+        a forçada) falhar e houver observação completa retida, ela é servida no
+        lugar da linha de erro, preservando o preenchimento anterior.
         """
         if self._historico_store is not None and not force_refresh:
             observacao = self._historico_store.obter(ticker, reference_date)
             if observacao is not None and observacao_completa(observacao):
                 return self._com_guidance(observacao), True
-        resultado, de_cache = self._analisar_ticker(ticker, reference_date)
+        try:
+            resultado, de_cache = self._analisar_ticker(ticker, reference_date)
+        except Exception:
+            if self._historico_store is not None:
+                observacao = self._historico_store.obter(ticker, reference_date)
+                if observacao is not None and observacao_completa(observacao):
+                    return self._com_guidance(observacao), True
+            raise
         self._registrar_observacao(ticker, reference_date, resultado, force_refresh)
         return resultado, de_cache
 
@@ -252,6 +272,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             ticker, reference_date, dados, classificacao, patrimonio_repo
         )
         cotas = self._resolver_cotas(dados, classificacao, patrimonio_repo)
+        short = self._montar_short(ticker, reference_date, cotas, classificacao)
         preco = self._obter_preco(ticker, reference_date)
         metricas = self._resolver_metricas(
             ticker,
@@ -284,6 +305,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             dividendos_12m_por_cota=total_por_cota,
             metricas=metricas,
             margens=margens,
+            short=short,
             cotacao=cotacao,
             vp_cota=_decimal_campo(dados, CAMPO_VP_COTA),
             p_l=_resolver_p_l(
@@ -379,6 +401,35 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         if self._mercado is None:
             return None
         return self._mercado.preco_fechamento(ticker, reference_date)
+
+    def _montar_short(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        reference_date: date,
+        cotas: Decimal | None,
+        classificacao: ClassificacaoAtivo,
+    ) -> MetricasShort:
+        """Calcula as métricas de *short interest* do ativo.
+
+        O Shorts% usa o *free float* real para ``Papel`` e o total de cotas para
+        os demais tipos, com fallback para o total emitido quando o *free float*
+        não existe. Cada métrica é independente; sem insumo numérico, os campos
+        numéricos ficam ``N/A`` e as classificações ficam ``Inexistente``.
+        """
+        acoes_alugadas = self._obter_acoes_alugadas(ticker, reference_date)
+        free_float = None
+        if classificacao.tipo is TipoAtivo.ACAO:
+            free_float = self._obter_free_float(ticker, reference_date)
+        denominador = free_float if free_float is not None else cotas
+        shorts_pct = shorts_percent(acoes_alugadas, denominador)
+        volume_medio = self._obter_volume_medio(ticker, reference_date)
+        sir = short_interest_ratio(acoes_alugadas, volume_medio)
+        return MetricasShort(
+            shorts_pct=shorts_pct,
+            volume_shorts=classificar_volume_shorts(shorts_pct),
+            sir=sir,
+            risco_fechamento=classificar_risco_fechamento(sir),
+        )
 
 
 def _elegivel_ffo(

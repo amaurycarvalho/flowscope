@@ -15,7 +15,7 @@ from flowscope.presentation.gui.charts.fundamental_table import (
     montar_linhas,
 )
 
-_INDICE_INFO = 28
+_INDICE_INFO = 32
 
 
 def _analise(ticker: str, guidance: Guidance | None) -> AnaliseFundamental:

@@ -1,0 +1,28 @@
+{
+  "table": {
+    "name": "BTBLendingOpenPosition",
+    "friendlyNamePt": "Posições em aberto",
+    "pageCount": 1,
+    "columns": [
+      {"name": "RptDt"},
+      {"name": "DtRef"},
+      {"name": "TckrSymb"},
+      {"name": "ISIN"},
+      {"name": "Company"},
+      {"name": "Type"},
+      {"name": "Market"},
+      {"name": "StockBalance"},
+      {"name": "AvgPric"},
+      {"name": "Balance"}
+    ],
+    "values": [
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "PETR4", "BRPETRACNPR6", "PETROLEO BRASILEIRO S.A. PETROBRAS", "PN      N2", "Neg. Eletrônica D+1", 53184474, 30.0, 1595534220.0],
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "PETR4", "BRPETRACNPR6", "PETROLEO BRASILEIRO S.A. PETROBRAS", "PN      N2", "Registro", 141016179, 30.0, 4230485370.0],
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "PETR4", "BRPETRACNPR6", "PETROLEO BRASILEIRO S.A. PETROBRAS", "PN      N2", "Total", 194503553, null, null],
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "VALE3", "BRVALEACNOR0", "VALE S.A.", "ON      NM", "Neg. Eletrônica D+1", 39675662, 60.0, 2380539720.0],
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "VALE3", "BRVALEACNOR0", "VALE S.A.", "ON      NM", "Total", 101819420, null, null],
+      ["2026-09-22T00:00:00", "2026-09-22T00:00:00", "HGBS11", "BRHGBSCTF001", "HEDGE BRASIL SHOPPING FII", "CI", "Registro", 229546, 18.5, 4246601.0]
+    ]
+  },
+  "status": 5
+}

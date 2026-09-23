@@ -59,18 +59,18 @@ A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tip
 #### Scenario: Colunas de short interest posicionadas após Tendência do dividendo
 - **WHEN** a tabela é renderizada
 - **THEN** as colunas `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento` DEVEM ser exibidas imediatamente após `Tendência do dividendo` e imediatamente antes de `FFO/Receita (12m)`
-
 #### Scenario: Shorts% e Fechamento Shorts exibidos como numéricos
+
 - **WHEN** o `Shorts%` e o `SIR` de um ticker estão disponíveis
-- **THEN** `Shorts%` DEVE ser exibido em notação percentual com uma casa decimal e `Fechamento Shorts` como razão com uma casa decimal
+- **THEN** `Shorts%` DEVE ser exibido em notação percentual com uma casa decimal e `Fechamento Shorts` em dias, como razão com uma casa decimal e sufixo `d`
 
 #### Scenario: Volume de Shorts e Risco Fechamento exibem rótulos
 - **WHEN** o `Shorts%` e o `SIR` de um ticker estão disponíveis
 - **THEN** `Volume de Shorts` e `Risco Fechamento` DEVEM exibir um dos rótulos `Inexistente`, `Muito Baixo`, `Baixo`, `Alto` ou `Muito Alto`
-
 #### Scenario: Colunas de short interest vazias sem dado
+
 - **WHEN** o ticker não possui estoque de empréstimos ou denominador aplicável
-- **THEN** as colunas `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento` DEVEM exibir `N/A`, sem impedir a exibição das demais colunas
+- **THEN** `Shorts%` e `Fechamento Shorts` DEVEM exibir `N/A` e `Volume de Shorts` e `Risco Fechamento` DEVEM exibir `Inexistente`, sem impedir a exibição das demais colunas
 
 ### Requirement: Alinhamento das colunas numéricas
 

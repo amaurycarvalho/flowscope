@@ -30,6 +30,15 @@ _ROTULOS_TENDENCIA = {
     "FORTE_QUEDA": "Forte Queda",
 }
 
+#: Rótulos das classificações de volume de shorts e risco de fechamento.
+_ROTULOS_SHORT = {
+    "INEXISTENTE": "Inexistente",
+    "MUITO_BAIXO": "Muito Baixo",
+    "BAIXO": "Baixo",
+    "ALTO": "Alto",
+    "MUITO_ALTO": "Muito Alto",
+}
+
 #: Textos exibidos quando um insumo da razão é negativo.
 _MOTIVOS_MARGEM = {
     MotivoMargem.RECEITA_NEGATIVA: "Receita negativa",
@@ -152,6 +161,13 @@ def formatar_ratio(valor: Decimal | None, casas: int = 2) -> str:
     return f"{_com_virgula(valor, casas)}x"
 
 
+def formatar_dias(valor: Decimal | None, casas: int = 1) -> str:
+    """Formata um prazo em dias como ``5,0d``, ou ``N/A``."""
+    if valor is None:
+        return NA
+    return f"{_com_virgula(valor, casas)}d"
+
+
 def formatar_inteiro(valor: int | None) -> str:
     """Formata um inteiro com separador de milhar brasileiro, ou ``N/A``."""
     if valor is None:
@@ -216,3 +232,13 @@ def rotulo_tendencia(tendencia: Enum | None) -> str:
     if tendencia is None:
         return NA
     return _ROTULOS_TENDENCIA.get(tendencia.value, tendencia.value)
+
+
+def rotulo_classificacao_short(classe: Enum | None) -> str:
+    """Retorna o rótulo de uma classificação de short interest.
+
+    ``N/A`` (``None``) é classificado como ``Inexistente``, conforme a RFC-014.
+    """
+    if classe is None:
+        return _ROTULOS_SHORT["INEXISTENTE"]
+    return _ROTULOS_SHORT.get(classe.value, classe.value)

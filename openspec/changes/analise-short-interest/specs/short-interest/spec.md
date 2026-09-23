@@ -30,7 +30,7 @@ O sistema DEVE calcular `Shorts% = (Ações Alugadas ÷ Free Float) × 100` como
 
 ### Requirement: Classificação do volume de shorts
 
-O sistema DEVE classificar o `Shorts%` em cinco rótulos determinísticos: `Inexistente` (igual a 0%), `Muito Baixo` (maior que 0% e menor que 5%), `Baixo` (maior ou igual a 5% e menor que 10%), `Alto` (maior ou igual a 10% e menor ou igual a 20%) e `Muito Alto` (maior que 20%). Quando o `Shorts%` for `N/A`, a classificação DEVE ser `N/A`.
+O sistema DEVE classificar o `Shorts%` em cinco rótulos determinísticos: `Inexistente` (igual a 0% ou `N/A`), `Muito Baixo` (maior que 0% e menor que 1%), `Baixo` (maior ou igual a 1% e menor que 3%), `Alto` (maior ou igual a 3% e menor ou igual a 10%) e `Muito Alto` (maior que 10%). Quando o `Shorts%` for `N/A`, a classificação DEVE ser `Inexistente`.
 
 #### Scenario: Classificação muito alta
 
@@ -39,7 +39,7 @@ O sistema DEVE classificar o `Shorts%` em cinco rótulos determinísticos: `Inex
 
 #### Scenario: Classificação alta no limite
 
-- **WHEN** o `Shorts%` é `20%`
+- **WHEN** o `Shorts%` é `10%`
 - **THEN** o volume de shorts DEVE ser `Alto`
 
 #### Scenario: Classificação inexistente
@@ -50,16 +50,16 @@ O sistema DEVE classificar o `Shorts%` em cinco rótulos determinísticos: `Inex
 #### Scenario: Shorts% indisponível
 
 - **WHEN** o `Shorts%` é `N/A`
-- **THEN** a classificação DEVE ser `N/A`
+- **THEN** a classificação DEVE ser `Inexistente`
 
 ### Requirement: Short Interest Ratio (Fechamento Shorts)
 
-O sistema DEVE calcular `SIR = Ações Alugadas ÷ Volume Médio Diário de Negociação`, usando como volume médio a média diária da quantidade negociada dos dias disponíveis em memória para o ticker. O valor DEVE ser armazenado em `Decimal` e apresentado como razão com uma casa decimal. Quando não houver nenhum dia de negociação disponível, o volume médio for zero, ou as ações alugadas estiverem ausentes, o `SIR` DEVE ser `N/A`.
+O sistema DEVE calcular `SIR = Ações Alugadas ÷ Volume Médio Diário de Negociação`, usando como volume médio a média diária da quantidade negociada dos dias disponíveis em memória para o ticker. O valor DEVE ser armazenado em `Decimal` e apresentado em dias, como razão com uma casa decimal e sufixo `d`. Quando não houver nenhum dia de negociação disponível, o volume médio for zero, ou as ações alugadas estiverem ausentes, o `SIR` DEVE ser `N/A`.
 
 #### Scenario: SIR calculado
 
 - **WHEN** um ativo possui `10.000.000` ações alugadas e volume médio diário de `2.000.000`
-- **THEN** o `Fechamento Shorts` DEVE ser `5,0`
+- **THEN** o `Fechamento Shorts` DEVE ser `5,0d`
 
 #### Scenario: Sem volume em memória
 
@@ -73,7 +73,7 @@ O sistema DEVE calcular `SIR = Ações Alugadas ÷ Volume Médio Diário de Nego
 
 ### Requirement: Classificação do risco de fechamento
 
-O sistema DEVE classificar o `SIR` em cinco rótulos determinísticos: `Inexistente` (igual a 0), `Muito Baixo` (maior que 0 e menor que 2), `Baixo` (maior ou igual a 2 e menor que 4), `Alto` (maior ou igual a 4 e menor ou igual a 5) e `Muito Alto` (maior que 5). Quando o `SIR` for `N/A`, a classificação DEVE ser `N/A`.
+O sistema DEVE classificar o `SIR` em cinco rótulos determinísticos: `Inexistente` (igual a 0 ou `N/A`), `Muito Baixo` (maior que 0 e menor que 2), `Baixo` (maior ou igual a 2 e menor que 4), `Alto` (maior ou igual a 4 e menor ou igual a 5) e `Muito Alto` (maior que 5). Quando o `SIR` for `N/A`, a classificação DEVE ser `Inexistente`.
 
 #### Scenario: Risco muito alto
 
@@ -93,11 +93,11 @@ O sistema DEVE classificar o `SIR` em cinco rótulos determinísticos: `Inexiste
 #### Scenario: SIR indisponível
 
 - **WHEN** o `SIR` é `N/A`
-- **THEN** a classificação DEVE ser `N/A`
+- **THEN** a classificação DEVE ser `Inexistente`
 
 ### Requirement: Escopo por tipo de ativo e independência das colunas
 
-O sistema DEVE calcular as métricas de *short interest* para ativos do tipo `Papel` (ação), usando o *free float* real, e para ativos do tipo `FII`, usando o total de cotas como denominador do `Shorts%`. Ativos sem estoque de empréstimos ou sem denominador aplicável DEVEM exibir `N/A` nas colunas correspondentes. A ausência de um insumo DEVE afetar apenas a coluna que depende dele, sem impedir as demais métricas da linha.
+O sistema DEVE calcular as métricas de *short interest* para ativos do tipo `Papel` (ação), usando o *free float* real, e para ativos do tipo `FII`, usando o total de cotas como denominador do `Shorts%`. Ativos sem estoque de empréstimos ou sem denominador aplicável DEVEM exibir `N/A` nas colunas numéricas (`Shorts%` e `Fechamento Shorts`) e `Inexistente` nas colunas de classificação (`Volume de Shorts` e `Risco Fechamento`). A ausência de um insumo DEVE afetar apenas a coluna que depende dele, sem impedir as demais métricas da linha.
 
 #### Scenario: FII usa o total de cotas
 
@@ -107,9 +107,9 @@ O sistema DEVE calcular as métricas de *short interest* para ativos do tipo `Pa
 #### Scenario: Ativo sem dados de short interest
 
 - **WHEN** um ativo não possui estoque de empréstimos disponível
-- **THEN** as quatro colunas de *short interest* DEVEM exibir `N/A`, sem afetar as demais colunas da linha
+- **THEN** `Shorts%` e `Fechamento Shorts` DEVEM exibir `N/A` e `Volume de Shorts` e `Risco Fechamento` DEVEM exibir `Inexistente`, sem afetar as demais colunas da linha
 
 #### Scenario: Ações alugadas ausentes
 
 - **WHEN** as ações alugadas estão ausentes, mas o denominador e o volume estão disponíveis
-- **THEN** `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento` DEVEM ser `N/A`
+- **THEN** `Shorts%` e `Fechamento Shorts` DEVEM ser `N/A` e `Volume de Shorts` e `Risco Fechamento` DEVEM ser `Inexistente`

@@ -80,6 +80,73 @@ class ClassePatrimonio(Enum):
     GIGANTE = "GIGANTE"
 
 
+class ClasseShorts(Enum):
+    """Classificação do volume de *shorts* (Shorts% sobre o free float)."""
+
+    INEXISTENTE = "INEXISTENTE"
+    MUITO_BAIXO = "MUITO_BAIXO"
+    BAIXO = "BAIXO"
+    ALTO = "ALTO"
+    MUITO_ALTO = "MUITO_ALTO"
+
+
+class ClasseRiscoFechamento(Enum):
+    """Classificação do risco de fechamento (Short Interest Ratio)."""
+
+    INEXISTENTE = "INEXISTENTE"
+    MUITO_BAIXO = "MUITO_BAIXO"
+    BAIXO = "BAIXO"
+    ALTO = "ALTO"
+    MUITO_ALTO = "MUITO_ALTO"
+
+
+#: Limiares da classificação de Shorts% como fração decimal.
+_LIMITE_SHORTS_MUITO_BAIXO = Decimal("0.01")
+_LIMITE_SHORTS_BAIXO = Decimal("0.03")
+_LIMITE_SHORTS_ALTO = Decimal("0.10")
+
+#: Limiares da classificação do Short Interest Ratio.
+_LIMITE_SIR_MUITO_BAIXO = Decimal(2)
+_LIMITE_SIR_BAIXO = Decimal(4)
+_LIMITE_SIR_ALTO = Decimal(5)
+
+
+def classificar_volume_shorts(shorts_pct: Decimal | None) -> ClasseShorts:
+    """Classifica o Shorts% (fração) em cinco rótulos determinísticos.
+
+    ``0%`` e ``N/A`` (``None``) resultam em ``Inexistente``. A faixa ``Alto``
+    inclui o limite superior de 10%, conforme a RFC-014.
+    """
+    if shorts_pct is None or shorts_pct <= Decimal(0):
+        return ClasseShorts.INEXISTENTE
+    if shorts_pct < _LIMITE_SHORTS_MUITO_BAIXO:
+        return ClasseShorts.MUITO_BAIXO
+    if shorts_pct < _LIMITE_SHORTS_BAIXO:
+        return ClasseShorts.BAIXO
+    if shorts_pct <= _LIMITE_SHORTS_ALTO:
+        return ClasseShorts.ALTO
+    return ClasseShorts.MUITO_ALTO
+
+
+def classificar_risco_fechamento(
+    sir: Decimal | None,
+) -> ClasseRiscoFechamento:
+    """Classifica o Short Interest Ratio em cinco rótulos determinísticos.
+
+    ``0`` e ``N/A`` (``None``) resultam em ``Inexistente``. A faixa ``Alto``
+    inclui o limite superior de 5, conforme a RFC-014.
+    """
+    if sir is None or sir <= Decimal(0):
+        return ClasseRiscoFechamento.INEXISTENTE
+    if sir < _LIMITE_SIR_MUITO_BAIXO:
+        return ClasseRiscoFechamento.MUITO_BAIXO
+    if sir < _LIMITE_SIR_BAIXO:
+        return ClasseRiscoFechamento.BAIXO
+    if sir <= _LIMITE_SIR_ALTO:
+        return ClasseRiscoFechamento.ALTO
+    return ClasseRiscoFechamento.MUITO_ALTO
+
+
 def classificar_tendencia_ffo(
     mudanca: Decimal, faixas: ConfiguracaoMomentum | None = None
 ) -> TendenciaFfo:

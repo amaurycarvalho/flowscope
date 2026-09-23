@@ -75,9 +75,9 @@ class TestBuildFundamentalCsv:
         cabecalho = linhas[0].split(";")
         assert cabecalho[0] == "Ticker"
         assert cabecalho[1] == "Nome"
-        assert len(cabecalho) == 30
+        assert len(cabecalho) == 34
         for linha in linhas[1:]:
-            assert len(linha.split(";")) == 30
+            assert len(linha.split(";")) == 34
 
     def test_filtra_pelos_tickers_exibidos(self):
         host = _host(tickers=("PETR4",))

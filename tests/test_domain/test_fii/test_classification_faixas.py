@@ -3,10 +3,14 @@ from decimal import Decimal
 from flowscope.domain.fii import (
     ClasseCotistas,
     ClassePatrimonio,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     TendenciaFfo,
     classificar_cotistas,
     classificar_patrimonio,
+    classificar_risco_fechamento,
     classificar_tendencia_ffo,
+    classificar_volume_shorts,
 )
 
 
@@ -84,3 +88,81 @@ class TestClassificarPatrimonio:
 
     def test_gigante(self):
         assert classificar_patrimonio(Decimal("1000000001")) is ClassePatrimonio.GIGANTE
+
+
+class TestClassificarVolumeShorts:
+    def test_inexistente_em_zero(self):
+        assert classificar_volume_shorts(Decimal(0)) is ClasseShorts.INEXISTENTE
+
+    def test_muito_baixo_abaixo_de_1_porcento(self):
+        assert classificar_volume_shorts(Decimal("0.0001")) is ClasseShorts.MUITO_BAIXO
+        assert classificar_volume_shorts(Decimal("0.0099")) is ClasseShorts.MUITO_BAIXO
+
+    def test_baixo_entre_1_e_3_porcento(self):
+        assert classificar_volume_shorts(Decimal("0.01")) is ClasseShorts.BAIXO
+        assert classificar_volume_shorts(Decimal("0.0299")) is ClasseShorts.BAIXO
+
+    def test_alto_entre_3_e_10_porcento(self):
+        assert classificar_volume_shorts(Decimal("0.03")) is ClasseShorts.ALTO
+        assert classificar_volume_shorts(Decimal("0.10")) is ClasseShorts.ALTO
+
+    def test_muito_alto_acima_de_10_porcento(self):
+        assert classificar_volume_shorts(Decimal("0.1001")) is ClasseShorts.MUITO_ALTO
+        assert classificar_volume_shorts(Decimal("0.25")) is ClasseShorts.MUITO_ALTO
+
+    def test_indisponivel_classifica_como_inexistente(self):
+        assert classificar_volume_shorts(None) is ClasseShorts.INEXISTENTE
+
+
+class TestClassificarRiscoFechamento:
+    def test_inexistente_em_zero(self):
+        assert (
+            classificar_risco_fechamento(Decimal(0))
+            is ClasseRiscoFechamento.INEXISTENTE
+        )
+
+    def test_muito_baixo_abaixo_de_2(self):
+        assert (
+            classificar_risco_fechamento(Decimal("0.1"))
+            is ClasseRiscoFechamento.MUITO_BAIXO
+        )
+        assert (
+            classificar_risco_fechamento(Decimal("1.999"))
+            is ClasseRiscoFechamento.MUITO_BAIXO
+        )
+
+    def test_baixo_entre_2_e_4(self):
+        assert (
+            classificar_risco_fechamento(Decimal(2))
+            is ClasseRiscoFechamento.BAIXO
+        )
+        assert (
+            classificar_risco_fechamento(Decimal("3.999"))
+            is ClasseRiscoFechamento.BAIXO
+        )
+
+    def test_alto_entre_4_e_5(self):
+        assert (
+            classificar_risco_fechamento(Decimal(4))
+            is ClasseRiscoFechamento.ALTO
+        )
+        assert (
+            classificar_risco_fechamento(Decimal(5))
+            is ClasseRiscoFechamento.ALTO
+        )
+
+    def test_muito_alto_acima_de_5(self):
+        assert (
+            classificar_risco_fechamento(Decimal("5.001"))
+            is ClasseRiscoFechamento.MUITO_ALTO
+        )
+        assert (
+            classificar_risco_fechamento(Decimal(6))
+            is ClasseRiscoFechamento.MUITO_ALTO
+        )
+
+    def test_indisponivel_classifica_como_inexistente(self):
+        assert (
+            classificar_risco_fechamento(None)
+            is ClasseRiscoFechamento.INEXISTENTE
+        )

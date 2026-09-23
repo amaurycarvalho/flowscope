@@ -45,6 +45,8 @@ class FundamentalMixin:
             ffo_provider=self._fundamental_ffo_provider,
             historico_dividendos=self._fundamental_dividend_provider,
             acionistas_provider=self._fundamental_acionistas_provider,
+            free_float_provider=self._fundamental_acionistas_provider,
+            short_interest_provider=self._fundamental_short_interest_provider,
             indexadores_provider=self._fundamental_indexadores_provider,
             historico_store=self._fundamental_history_store,
             resolver_fiagro=self._fundamental_resolver_fiagro,

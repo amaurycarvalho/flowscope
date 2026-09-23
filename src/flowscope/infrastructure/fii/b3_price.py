@@ -15,6 +15,14 @@ from flowscope.domain.fii.analysis import PrecoObservacao
 FONTE_B3 = "B3"
 
 
+def _volume_medio(dias: list[tuple[date, Decimal]]) -> Decimal | None:
+    """Calcula a média diária da quantidade negociada, ou ``None`` sem dias."""
+    if not dias:
+        return None
+    total = sum((quantidade for _, quantidade in dias), Decimal(0))
+    return total / Decimal(len(dias))
+
+
 def _extremos(
     dias: list[tuple[date, Decimal, Decimal]],
     reference_date: date,
@@ -84,6 +92,18 @@ class B3MarketPricePort:
         ]
         return _extremos(dias, reference_date, janela)
 
+    def volume_medio(
+        self: "B3MarketPricePort", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna a média diária da quantidade negociada até a referência."""
+        normalizado = ticker.strip().upper()
+        dias = [
+            (negociacao.date, Decimal(negociacao.fin_instr_qty))
+            for negociacao in self._por_ticker.get(normalizado, [])
+            if negociacao.date <= reference_date
+        ]
+        return _volume_medio(dias)
+
 
 class B3MarketPriceFromResult:
     """Último fechamento por ticker a partir do resultado diário da análise.
@@ -141,3 +161,17 @@ class B3MarketPriceFromResult:
                 continue
             dias.append((data, Decimal(str(minimo)), Decimal(str(maximo))))
         return _extremos(dias, reference_date, janela)
+
+    def volume_medio(
+        self: "B3MarketPriceFromResult", ticker: str, reference_date: date
+    ) -> Decimal | None:
+        """Retorna a média diária da quantidade negociada até a referência."""
+        normalizado = ticker.strip().upper()
+        dias: list[tuple[date, Decimal]] = []
+        for dia in self._por_ticker.get(normalizado, []):
+            data = dia.get("date")
+            quantidade = dia.get("fin_instr_qty")
+            if data is None or quantidade is None or data > reference_date:
+                continue
+            dias.append((data, Decimal(str(quantidade))))
+        return _volume_medio(dias)

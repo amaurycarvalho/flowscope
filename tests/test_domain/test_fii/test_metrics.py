@@ -6,6 +6,8 @@ import pytest
 from flowscope.domain.fii import (
     CALCULATION_VERSION,
     FONTE_DERIVADA,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     FiiSnapshot,
     Inconsistencia,
     MetricEvidence,
@@ -27,6 +29,8 @@ from flowscope.domain.fii import (
     p_vp,
     percentual_preco_tipico,
     preco_tipico,
+    short_interest_ratio,
+    shorts_percent,
     tendencia_margem_ffo,
     verificar_consistencia,
 )
@@ -107,6 +111,26 @@ class TestFuncoesPurras:
         assert percentual_preco_tipico(None, Decimal("10")) is None
         assert percentual_preco_tipico(Decimal("9"), None) is None
         assert percentual_preco_tipico(Decimal("9"), Decimal(0)) is None
+
+    def test_shorts_percent(self):
+        assert shorts_percent(Decimal("10000000"), Decimal("100000000")) == Decimal(
+            "0.1"
+        )
+
+    def test_shorts_percent_insumo_ausente_ou_zero(self):
+        assert shorts_percent(None, Decimal("100")) is None
+        assert shorts_percent(Decimal("100"), None) is None
+        assert shorts_percent(Decimal("100"), Decimal(0)) is None
+
+    def test_short_interest_ratio(self):
+        assert short_interest_ratio(Decimal("10000000"), Decimal("2000000")) == (
+            Decimal(5)
+        )
+
+    def test_short_interest_ratio_insumo_ausente_ou_zero(self):
+        assert short_interest_ratio(None, Decimal("100")) is None
+        assert short_interest_ratio(Decimal("100"), None) is None
+        assert short_interest_ratio(Decimal("100"), Decimal(0)) is None
 
 
 class TestAnaliseSnapshot:
@@ -289,6 +313,31 @@ class TestRazoesSobreReceita:
         assert ffo_receita(Decimal(100), Decimal(0)) == ResultadoMargem(None)
         assert dividendos_receita(Decimal(100), Decimal(0)) == ResultadoMargem(None)
         assert dividendos_ffo(Decimal(100), Decimal(0)) == ResultadoMargem(None)
+
+
+class TestMetricasShort:
+    def test_importacao_publica(self):
+        from flowscope.domain.fii import MetricasShort
+
+        metricas = MetricasShort(
+            shorts_pct=Decimal("0.1"),
+            volume_shorts=ClasseShorts.BAIXO,
+            sir=Decimal(5),
+            risco_fechamento=ClasseRiscoFechamento.ALTO,
+        )
+        assert metricas.shorts_pct == Decimal("0.1")
+        assert metricas.volume_shorts is ClasseShorts.BAIXO
+        assert metricas.sir == Decimal(5)
+        assert metricas.risco_fechamento is ClasseRiscoFechamento.ALTO
+
+    def test_campos_ausentes_por_padrao(self):
+        from flowscope.domain.fii import MetricasShort
+
+        metricas = MetricasShort()
+        assert metricas.shorts_pct is None
+        assert metricas.volume_shorts is None
+        assert metricas.sir is None
+        assert metricas.risco_fechamento is None
 
 
 class TestTendenciaMargemFfo:

@@ -142,6 +142,63 @@ class FundamentalDataMixin:
             )
             return None
 
+    def _obter_free_float(
+        self: "FundamentalDataMixin",
+        ticker: str,
+        reference_date: date,
+    ) -> Decimal | None:
+        """Obtém o *free float* do ativo, tolerando indisponibilidade."""
+        if self._free_float_provider is None:
+            return None
+        obter = getattr(self._free_float_provider, "obter_free_float", None)
+        if not callable(obter):
+            return None
+        try:
+            return obter(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter free float de %s", ticker, exc_info=True
+            )
+            return None
+
+    def _obter_acoes_alugadas(
+        self: "FundamentalDataMixin",
+        ticker: str,
+        reference_date: date,
+    ) -> Decimal | None:
+        """Obtém as ações alugadas do ativo, tolerando indisponibilidade."""
+        if self._short_interest_provider is None:
+            return None
+        obter = getattr(self._short_interest_provider, "obter_acoes_alugadas", None)
+        if not callable(obter):
+            return None
+        try:
+            return obter(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter ações alugadas de %s", ticker, exc_info=True
+            )
+            return None
+
+    def _obter_volume_medio(
+        self: "FundamentalDataMixin",
+        ticker: str,
+        reference_date: date,
+    ) -> Decimal | None:
+        """Obtém o volume médio diário das negociações em memória."""
+        if self._mercado is None:
+            return None
+        obter = getattr(self._mercado, "volume_medio", None)
+        if not callable(obter):
+            return None
+        try:
+            return obter(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao obter volume médio de %s", ticker, exc_info=True
+            )
+            return None
+
     def _obter_indexadores(
         self: "FundamentalDataMixin",
         ticker: str,

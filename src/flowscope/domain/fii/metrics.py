@@ -259,6 +259,32 @@ def percentual_preco_tipico(
     return (cotacao - preco_tipico) / preco_tipico
 
 
+def shorts_percent(
+    acoes_alugadas: Decimal | None, denominador: Decimal | None
+) -> Decimal | None:
+    """Calcula o Shorts% como ``ações alugadas / denominador`` (fração).
+
+    O denominador é o *free float* quando disponível e, na sua ausência, o total
+    emitido (fallback). Insumo ausente ou denominador zero resultam em ``None``
+    (``N/A``), sem arredondamento intermediário.
+    """
+    if acoes_alugadas is None or denominador is None or denominador == Decimal(0):
+        return None
+    return acoes_alugadas / denominador
+
+
+def short_interest_ratio(
+    acoes_alugadas: Decimal | None, volume_medio: Decimal | None
+) -> Decimal | None:
+    """Calcula o Short Interest Ratio como ``ações alugadas / volume médio``.
+
+    Insumo ausente ou volume médio zero resultam em ``None`` (``N/A``).
+    """
+    if acoes_alugadas is None or volume_medio is None or volume_medio == Decimal(0):
+        return None
+    return acoes_alugadas / volume_medio
+
+
 def verificar_consistencia(
     p_ffo: Decimal | None,
     ffo_yield: Decimal | None,

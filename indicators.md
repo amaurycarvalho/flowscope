@@ -241,6 +241,30 @@ Métricas usadas na tabela de Fundamentos (aba "Análise Geral") e na Evolução
 - **Descrição:** Variação do FFO recente anualizado frente ao FFO de 12 meses.
 - **Fórmula:** `(FFO (3m) × 4) / FFO (12m) − 1`
 
+### Shorts% (Short Interest sobre o free float)
+- **ID:** `shorts_pct`
+- **Descrição:** Fração do *free float* (ações em circulação) que está alugada e ainda não foi devolvida; mede a magnitude relativa da aposta baixista.
+- **Fórmula:** `Ações Alugadas / Free Float`
+- **Aplicabilidade:** O *free float* vem do CVM FRE (`Quantidade_Total_Acoes_Circulacao`); na sua ausência, o denominador é o total emitido (ações/cotas) e, para FIIs, o total de cotas. Insumo ausente ou denominador zero exibem `N/A`; apresentado em percentual com uma casa decimal.
+
+### Volume de Shorts
+- **ID:** `volume_shorts`
+- **Descrição:** Classificação qualitativa da magnitude do Shorts%.
+- **Fórmula:** Classificação categórica do `Shorts%` (ver tabela em Classificações Qualitativas).
+- **Aplicabilidade:** `Inexistente` para `0%` ou `N/A`; `Muito Baixo` (< 1%); `Baixo` (< 3%); `Alto` (≤ 10%); `Muito Alto` (> 10%).
+
+### Fechamento Shorts (SIR — Short Interest Ratio)
+- **ID:** `sir`
+- **Descrição:** Número de dias necessários para que os vendedores a descoberto recomprem as ações alugadas ao volume médio diário de negociação; mede a dificuldade operacional de fechamento.
+- **Fórmula:** `Ações Alugadas / Volume Médio Diário de Negociação`
+- **Aplicabilidade:** O volume médio é a média do `fin_instr_qty` dos dias disponíveis em memória. Sem dias, volume médio zero ou ações alugadas ausentes exibem `N/A`; apresentado em dias, com uma casa decimal e sufixo `d` (ex.: `5,0d`).
+
+### Risco Fechamento
+- **ID:** `risco_fechamento`
+- **Descrição:** Classificação qualitativa da dificuldade de fechamento (risco de *short squeeze*).
+- **Fórmula:** Classificação categórica do `SIR` (ver tabela em Classificações Qualitativas).
+- **Aplicabilidade:** `Inexistente` para `0` ou `N/A`; `Muito Baixo` (< 2); `Baixo` (< 4); `Alto` (≤ 5); `Muito Alto` (> 5).
+
 ### Classes de Cotistas e de Patrimônio
 - **ID:** `classe_cotistas`, `classe_patrimonio`
 - **Descrição:** Classificação determinística do nº de cotistas/acionistas e do tamanho do patrimônio.
@@ -284,6 +308,24 @@ Rótulos derivados dos indicadores para uso nos painéis e no card de classifica
 | +0,03 a +0,08 | Fluxo Moderado (Comprador) |
 | +0,08 a +0,15 | Fluxo Forte (Comprador) |
 | ≥ +0,15 | Fluxo Muito Forte (Comprador) |
+
+### Volume de Shorts (por Shorts%)
+| Faixa de Shorts% | Classificação |
+|---|---|
+| 0% ou N/A | Inexistente |
+| > 0% e < 1% | Muito Baixo |
+| ≥ 1% e < 3% | Baixo |
+| ≥ 3% e ≤ 10% | Alto |
+| > 10% | Muito Alto |
+
+### Risco Fechamento (por SIR)
+| Faixa de SIR | Classificação |
+|---|---|
+| 0 ou N/A | Inexistente |
+| > 0 e < 2 | Muito Baixo |
+| ≥ 2 e < 4 | Baixo |
+| ≥ 4 e ≤ 5 | Alto |
+| > 5 | Muito Alto |
 
 ---
 

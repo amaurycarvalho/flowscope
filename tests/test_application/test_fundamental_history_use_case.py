@@ -142,6 +142,15 @@ class TestBypass:
         assert fonte.chamadas == 1
         assert store.obter("HGBS11", REF).cotacao == Decimal("10")
 
+    def test_force_refresh_com_erro_serve_observacao_completa(self, tmp_path):
+        store = _store(tmp_path)
+        store.registrar("HGBS11", REF, _analise("HGBS11", cotacao=Decimal("999")))
+        caso = _caso(store, SpyFonte(), repo=FakeRepo(falhar_proventos=True))
+        resultado = caso.execute(["HGBS11"], REF, force_refresh=True)
+        assert resultado[0].erro is None
+        assert resultado[0].cotacao == Decimal("999")
+        assert store.obter("HGBS11", REF).cotacao == Decimal("999")
+
 
 class TestTrocaDeData:
     def test_nao_vaza_entre_datas(self, tmp_path):

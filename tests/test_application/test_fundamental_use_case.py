@@ -23,6 +23,8 @@ from flowscope.application.fundamental_ports import (
 from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii import (
     ClasseCotistas,
+    ClasseRiscoFechamento,
+    ClasseShorts,
     DividendoConsolidado,
     FfoObservacao,
     PatrimonioFii,
@@ -114,11 +116,15 @@ class FakeFundamentusFonte:
 
 
 class FakeMarket:
-    def __init__(self, preco_por_ticker=None):
+    def __init__(self, preco_por_ticker=None, volume_por_ticker=None):
         self.preco_por_ticker = preco_por_ticker or {}
+        self.volume_por_ticker = volume_por_ticker or {}
 
     def preco_fechamento(self, ticker: str, reference_date: date):
         return self.preco_por_ticker.get(ticker)
+
+    def volume_medio(self, ticker: str, reference_date: date):
+        return self.volume_por_ticker.get(ticker)
 
 
 class FakeAcionistas:
@@ -126,6 +132,28 @@ class FakeAcionistas:
         self.por_ticker = por_ticker or {}
 
     def obter_acionistas(self, ticker: str, reference_date: date):
+        return self.por_ticker.get(ticker)
+
+
+class FakeFreeFloat:
+    def __init__(self, por_ticker=None, falhar=False):
+        self.por_ticker = por_ticker or {}
+        self.falhar = falhar
+
+    def obter_free_float(self, ticker: str, reference_date: date):
+        if self.falhar:
+            raise RuntimeError("fonte de free float indisponível")
+        return self.por_ticker.get(ticker)
+
+
+class FakeShortInterest:
+    def __init__(self, por_ticker=None, falhar=False):
+        self.por_ticker = por_ticker or {}
+        self.falhar = falhar
+
+    def obter_acoes_alugadas(self, ticker: str, reference_date: date):
+        if self.falhar:
+            raise RuntimeError("fonte de short interest indisponível")
         return self.por_ticker.get(ticker)
 
 
@@ -456,6 +484,131 @@ class TestResolucaoCotas:
         caso = FundamentalAnalysisUseCase(repo)
         resultado = caso.execute(["PETR4"], REFERENCIA)[0]
         assert resultado.cotas is None
+
+
+class TestShortInterest:
+    def test_papel_com_free_float_calcula_shorts(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(200000000))}
+        )
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=fonte,
+            free_float_provider=FakeFreeFloat({"PETR4": Decimal(100000000)}),
+            short_interest_provider=FakeShortInterest(
+                {"PETR4": Decimal(10000000)}
+            ),
+            mercado=FakeMarket(volume_por_ticker={"PETR4": Decimal(2000000)}),
+        )
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.short.shorts_pct == Decimal("0.1")
+        assert resultado.short.volume_shorts is ClasseShorts.ALTO
+        assert resultado.short.sir == Decimal("5")
+        assert resultado.short.risco_fechamento is ClasseRiscoFechamento.ALTO
+
+    def test_papel_sem_free_float_usa_total_emitido(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(200000000))}
+        )
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=fonte,
+            free_float_provider=FakeFreeFloat(),
+            short_interest_provider=FakeShortInterest(
+                {"PETR4": Decimal(10000000)}
+            ),
+        )
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.short.shorts_pct == Decimal("0.05")
+        assert resultado.short.volume_shorts is ClasseShorts.ALTO
+
+    def test_fii_usa_total_de_cotas_e_ignora_free_float(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            free_float_provider=FakeFreeFloat({"HGBS11": Decimal(1000000)}),
+            short_interest_provider=FakeShortInterest(
+                {"HGBS11": Decimal(1000000)}
+            ),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        esperado = Decimal(1000000) / Decimal(144355726)
+        assert resultado.short.shorts_pct == esperado
+        assert resultado.short.volume_shorts is ClasseShorts.MUITO_BAIXO
+
+    def test_sem_acoes_alugadas_classifica_inexistente(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            short_interest_provider=FakeShortInterest(),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.erro is None
+        assert resultado.short.shorts_pct is None
+        assert resultado.short.volume_shorts is ClasseShorts.INEXISTENTE
+        assert resultado.short.sir is None
+        assert resultado.short.risco_fechamento is ClasseRiscoFechamento.INEXISTENTE
+
+    def test_sem_provider_classifica_inexistente(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.short.volume_shorts is ClasseShorts.INEXISTENTE
+        assert resultado.short.risco_fechamento is ClasseRiscoFechamento.INEXISTENTE
+
+    def test_volume_ausente_resulta_sir_na(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            short_interest_provider=FakeShortInterest(
+                {"HGBS11": Decimal(1000000)}
+            ),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.short.sir is None
+        assert resultado.short.risco_fechamento is ClasseRiscoFechamento.INEXISTENTE
+
+    def test_volume_zero_resulta_sir_na(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            short_interest_provider=FakeShortInterest(
+                {"HGBS11": Decimal(1000000)}
+            ),
+            mercado=FakeMarket(volume_por_ticker={"HGBS11": Decimal(0)}),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.short.sir is None
+
+    def test_falha_da_fonte_de_acoes_alugadas_nao_quebra(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            short_interest_provider=FakeShortInterest(falhar=True),
+        )
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+        assert resultado.erro is None
+        assert resultado.short.volume_shorts is ClasseShorts.INEXISTENTE
+
+    def test_falha_da_fonte_de_free_float_usa_fallback(self):
+        repo = _repo_hgbs11()
+        fonte = FakeFundamentusFonte(
+            {CAMPO_COTAS_EMITIDAS: CampoFundamental(Decimal(200000000))}
+        )
+        caso = FundamentalAnalysisUseCase(
+            repo,
+            fundamental_provider=fonte,
+            free_float_provider=FakeFreeFloat(falhar=True),
+            short_interest_provider=FakeShortInterest(
+                {"PETR4": Decimal(10000000)}
+            ),
+        )
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.short.shorts_pct == Decimal("0.05")
+        assert resultado.short.volume_shorts is ClasseShorts.ALTO
+        assert resultado.erro is None
 
 
 class TestPrecoTipicoEIndexadores:

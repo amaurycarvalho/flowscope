@@ -5,8 +5,9 @@ A análise fundamentalista já orquestra, por ticker, identidade → dividendos 
 Spikes já realizados (read-only):
 
 - O CSV `fre_cia_aberta_distribuicao_capital` do CVM FRE — já baixado e parseado pelo `CvmAcionistasSource` — contém `Quantidade_Total_Acoes_Circulacao` e `Percentual_Total_Acoes_Circulacao` (free float).
-- A B3 publica o estoque diário de empréstimos como "Posições em Aberto de Empréstimo de Ativos" (Canal Regulatório, janela móvel de ~3 meses), servido por um POST de formulário Lumis → `fileId` → `fileDownload.jsp`, e **não** pelo endpoint `requestname` usado para `TradeInformationConsolidated` (`ConsolidatedLending` retorna 400).
-- O endpoint `requestname` continua funcional para as negociações, então o pipeline atual de preço/volume não é afetado.
+- A B3 publica o estoque diário de **empréstimo de ativos (BTC)** no **BDI**: capítulo "Empréstimos de ativos", tabela `BTBLendingOpenPosition` ("Posições em aberto", retenção `D-21`), servida por `POST` JSON em `/bdi/table/BTBLendingOpenPosition/{data}/{data}/{página}/{take}`. Cada linha traz `TckrSymb`, `Market` e `StockBalance` (saldo em quantidade do ativo), com uma linha `Total` por ticker.
+- A página "Posições em Aberto" do mercado **Termo** (`.../mercado-a-vista/termo/posicoes-em-aberto/`) foi um falso positivo do spike inicial: os códigos terminam em `T` e o dado é de contratos a termo, não de empréstimos. Foi descartada.
+- O endpoint `requestname` usado para `TradeInformationConsolidated` **não** serve empréstimos (`ConsolidatedLending` retorna 400); o portal de arquivos (`arquivos.b3.com.br/api`) não tem canal de empréstimos. O endpoint `requestname` continua funcional para as negociações, então o pipeline atual de preço/volume não é afetado.
 
 ## Goals / Non-Goals
 
@@ -40,7 +41,11 @@ Quando o ticker não tem *free float* no FRE, o denominador é `cotas_emitidas` 
 
 ### Ações alugadas via adapter B3 dedicado, com spike de aquisição
 
-Um novo adapter encapsula o POST Lumis + `fileId` + `fileDownload.jsp`, com sessão HTTP, cache diário e tolerância a falha (retorna `None` → `N/A`). O mecanismo exato (campos ocultos e cookies) é fixado por um spike antes da implementação. Alternativa descartada: usar o canal pago UP2DATA (tick a tick, desnecessário e oneroso).
+Um novo adapter encapsula a aquisição da tabela **`BTBLendingOpenPosition`** do BDI (`POST` JSON paginado, `take` de 1000), com sessão HTTP, agregação por ticker (linha `Total`), cache diário e tolerância a falha (retorna `None` → `N/A`). O ticker é o próprio `TckrSymb`; o saldo é o `StockBalance`.
+
+A página de "Posições em Aberto" do mercado Termo, cogitada na primeira versão da change, foi descartada por não ser empréstimo de ativos; seus valores (muito menores) não representam o estoque de empréstimos. Alternativa descartada: usar o canal pago UP2DATA.
+
+Como a B3 publica a posição do **pregão anterior**, uma data ainda não publicada (tipicamente a data corrente) recua até a data disponível mais recente dentro de uma janela de 7 dias, evitando `N/A` quando há estoque publicado recentemente. Além da janela, o resultado é `N/A`, conforme o spec.
 
 ### Volume médio diário a partir do `daily_data` em memória
 
@@ -48,7 +53,12 @@ Reutilizar `TradeDay.fin_instr_qty` do mesmo `daily_data` já injetado, sem nova
 
 ### Classificações determinísticas reutilizando o padrão existente
 
-Novos enums `ClasseShorts` e `ClasseRiscoFechamento` e funções `classificar_*` em `classification_faixas.py`, com os cinco rótulos da RFC. Alternativa descartada: reutilizar `TendenciaFfo` (semântica incompatível).
+Novos enums `ClasseShorts` e `ClasseRiscoFechamento` e funções `classificar_*` em `classification_faixas.py`, com os cinco rótulos e faixas da RFC-014:
+
+- `Volume de Shorts` (Shorts%): `Inexistente` (0% ou `N/A`), `Muito Baixo` (>0% e <1%), `Baixo` (≥1% e <3%), `Alto` (≥3% e ≤10%), `Muito Alto` (>10%).
+- `Risco Fechamento` (SIR): `Inexistente` (0 ou `N/A`), `Muito Baixo` (<2), `Baixo` (<4), `Alto` (≤5), `Muito Alto` (>5).
+
+`0` e `N/A` classificam como `Inexistente` (as colunas numéricas `Shorts%`/`Fechamento Shorts` seguem `N/A`). `Fechamento Shorts` é exibido em dias, com uma casa decimal e sufixo `d`. Alternativa descartada: reutilizar `TendenciaFfo` (semântica incompatível).
 
 ### Persistência no cache histórico com bump de schema
 
@@ -60,12 +70,13 @@ Inserir as quatro colunas em `_COLUNAS` imediatamente após `tendencia_dividendo
 
 ## Risks / Trade-offs
 
-- **Fragilidade do retrieval da B3** (formulário Lumis, sessão/cookies) → isolar em adapter com spike prévio, cache diário e falha tolerada (`N/A`); nunca bloquear a análise.
+- **Disponibilidade do endpoint BDI da B3** (`POST /bdi/table/BTBLendingOpenPosition/...`) → adapter com cache diário e falha tolerada (`N/A`); nunca bloquear a análise.
+- **Retenção `D-21` e publicação do pregão anterior** → a data corrente recua para a data publicada mais recente dentro de uma janela de 7 dias; além da janela, `N/A`.
 - **Defasagem do free float do FRE** (periódico, por versão) → documentar; usar a quantidade em ações e o fallback de total emitido.
 - **Janela de volume variável** (depende do range carregado, não garante 20–30 dias) → média dos dias disponíveis e `N/A` sem dias; registrar a limitação na orientação.
 - **Denominador de FII = total de cotas** (não é free float) → o spec explicita que FIIs usam o total de cotas; leitura deve ser interpretada como piso conservador.
 - **Largura da tabela** (30 → 34 colunas, 28 → 32 roláveis) → conferir largura mínima e rolagem horizontal; sem mudança estrutural no congelamento.
-- **Retenção de ~3 meses da B3** → observações históricas além disso não são reprodutíveis; não afeta a data corrente.
+- **Alternativa fora do escopo**: o BDI também publica o conteúdo "Empréstimos de Ativos – Posição em aberto (BDI)" (com variante em PDF no boletim diário); registrado como contingência/uso manual, não implementado.
 
 ## Migration Plan
 
@@ -78,5 +89,5 @@ Rollback: reverter a versão de schema e a ordem das colunas é suficiente; não
 
 ## Open Questions
 
-- Nomes/campos exatos do POST Lumis e cookies de sessão da B3 (resolvido no spike da Fase 3; não altera specs, abordagem nem tarefas).
+- Mecanismo exato de aquisição do empréstimo de ativos — **resolvido no spike da Fase 3**: a fonte é a tabela `BTBLendingOpenPosition` do BDI (`POST /bdi/table/BTBLendingOpenPosition/{data}/{data}/{página}/{take}`), com agregação pela linha `Total`. A página do mercado Termo foi descartada por não representar o estoque de empréstimos.
 - Cobertura de empréstimos para `ETF`/`FIAGRO` (se ausente, cai em `N/A`, já previsto).
