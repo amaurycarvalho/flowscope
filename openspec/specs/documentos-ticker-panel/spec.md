@@ -312,8 +312,28 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 
 #### Scenario: Interrupção por erro
 - **WHEN** ocorre um erro em qualquer documento durante o lote
-- **THEN** o lote DEVE ser interrompido, a barra de status DEVE reportar o documento e o motivo da falha e os controles DEVEM ser liberados
+- **THEN** o lote DEVE ser interrompido, a barra de status DEVE reportar o documento e um motivo de falha amigável, e os controles DEVEM ser liberados
 
 #### Scenario: Resultado do lote é descartado ao trocar de ticker
 - **WHEN** o ticker apresentado muda enquanto o lote está em andamento
 - **THEN** os resultados do lote anterior NÃO DEVEM ser aplicados ao novo ticker
+
+### Requirement: Estado derivado do botão "Resumir pendentes" durante o lote
+
+Enquanto um resumo em lote estiver em andamento, o estado derivado do botão "Resumir pendentes" DEVE permanecer desabilitado, ainda que o catálogo mude (documentos passando a ter `long_summary`) ou que a reavaliação de estado seja disparada no meio do processamento. Ao término do lote — conclusão ou interrupção — o estado DEVE ser reavaliado considerando a disponibilidade remanescente: habilitado se a LLM estiver configurada e ainda houver documentos sem `long_summary`; desabilitado caso contrário.
+
+#### Scenario: Reavaliação por documento resumido não reabilita durante o lote
+- **WHEN** o lote está em andamento e documentos do ticker passam a ter `long_summary` a cada resultado aplicado
+- **THEN** o botão "Resumir pendentes" DEVE permanecer desabilitado durante todo o processamento, até o término
+
+#### Scenario: Reavaliação intermediária por resumo individual não reabilita durante o lote
+- **WHEN** o lote está em andamento e uma reavaliação do catálogo é disparada (por resumo individual concorrente ou recarregamento do painel)
+- **THEN** o botão "Resumir pendentes" DEVE permanecer desabilitado
+
+#### Scenario: Reabilitação ao término com pendentes restantes
+- **WHEN** o lote é interrompido por erro e ainda há documentos do ticker sem `long_summary`
+- **THEN** o botão "Resumir pendentes" DEVE voltar a ficar habilitado
+
+#### Scenario: Desabilitado ao término sem pendentes restantes
+- **WHEN** o lote conclui e todos os documentos do ticker já têm `long_summary`
+- **THEN** o botão "Resumir pendentes" DEVE permanecer desabilitado

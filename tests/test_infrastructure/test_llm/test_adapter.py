@@ -10,6 +10,7 @@ from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 from flowscope.infrastructure.llm import adapter as adapter_module
@@ -43,6 +44,14 @@ class _APIError(Exception):
     pass
 
 
+class _ServiceUnavailableError(Exception):
+    pass
+
+
+class _InternalServerError(Exception):
+    pass
+
+
 def _resposta(conteudo: str) -> SimpleNamespace:
     return SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content=conteudo))]
@@ -57,6 +66,8 @@ def _litellm_falso(conteudo: str = "ok") -> SimpleNamespace:
         AuthenticationError=_AuthenticationError,
         BadRequestError=_BadRequestError,
         APIError=_APIError,
+        ServiceUnavailableError=_ServiceUnavailableError,
+        InternalServerError=_InternalServerError,
         completion=MagicMock(return_value=_resposta(conteudo)),
     )
 
@@ -134,6 +145,8 @@ class TestMapeamentoExcecoes:
             (_AuthenticationError("auth"), LLMProviderError),
             (_BadRequestError("bad"), LLMProviderError),
             (_APIError("api"), LLMProviderError),
+            (_ServiceUnavailableError("503"), LLMServiceUnavailableError),
+            (_InternalServerError("500"), LLMServiceUnavailableError),
             (RuntimeError("desconhecido"), LLMProviderError),
         ],
     )
@@ -150,6 +163,29 @@ class TestMapeamentoExcecoes:
         adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
         with pytest.raises(LLMUnavailableError):
             adapter.complete([{"role": "user", "content": "oi"}])
+
+
+class TestSilenciarDebugLiteLLM:
+    def test_import_liga_suppress_debug_info(self):
+        litellm = adapter_module._import_litellm()
+        assert litellm.suppress_debug_info is True
+
+    def test_mapeamento_nao_imprime_banner(self, capsys):
+        adapter_module._import_litellm()
+        from litellm.litellm_core_utils import exception_mapping_utils as emu
+
+        try:
+            emu.exception_type(
+                model="gpt-4o-mini",
+                original_exception=RuntimeError("boom"),
+                custom_llm_provider="openai",
+            )
+        except Exception:
+            pass
+
+        capturado = capsys.readouterr()
+        assert "Give Feedback" not in capturado.out
+        assert "LiteLLM.Info" not in capturado.out
 
 
 class TestRateLimitIntegrado:

@@ -13,6 +13,7 @@ from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMConfigurationError,
     LLMProviderError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 from flowscope.presentation.gui.llm import config_dialog
@@ -177,15 +178,22 @@ class TestTestarConexao:
 
     @needs_display
     @pytest.mark.parametrize(
-        "erro",
+        ("erro", "esperado"),
         [
-            LLMUnavailableError("LLM indisponível"),
-            LLMCommunicationError("falha de rede"),
-            LLMProviderError("não autorizado"),
-            LLMConfigurationError("configuração incompleta"),
+            (LLMUnavailableError("LLM indisponível"), "LLM indisponível"),
+            (
+                LLMServiceUnavailableError("Error code: 503"),
+                "temporariamente indisponível",
+            ),
+            (LLMCommunicationError("falha de rede"), "conectar ao serviço de I.A."),
+            (LLMProviderError("não autorizado"), "provedor de I.A. retornou um erro"),
+            (
+                LLMConfigurationError("configuração incompleta"),
+                "Configuração de I.A. inválida",
+            ),
         ],
     )
-    def test_falhas_exibem_motivo(self, tmp_path, monkeypatch, erro):
+    def test_falhas_exibem_motivo(self, tmp_path, monkeypatch, erro, esperado):
         def _falha(_config):
             raise erro
 
@@ -194,7 +202,8 @@ class TestTestarConexao:
         try:
             dialog._on_testar()
             _aguardar(root, dialog)
-            assert str(erro) in dialog._status_var.get()
+            assert esperado in dialog._status_var.get()
+            assert str(erro) not in dialog._status_var.get() or esperado == str(erro)
         finally:
             root.destroy()
 

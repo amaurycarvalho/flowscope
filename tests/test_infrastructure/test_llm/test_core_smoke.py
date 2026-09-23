@@ -12,6 +12,7 @@ from flowscope.domain.llm import (
     LLMPort,
     LLMProviderError,
     LLMRateLimitError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 from flowscope.infrastructure.llm.config import check_llm_deps
@@ -31,5 +32,6 @@ def test_excecoes_tipadas_herdam_de_llm_error():
         LLMCommunicationError,
         LLMProviderError,
         LLMRateLimitError,
+        LLMServiceUnavailableError,
     ):
         assert issubclass(excecao, LLMError)

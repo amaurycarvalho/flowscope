@@ -1089,6 +1089,71 @@ class TestRefreshResumirButton:
         finally:
             root.destroy()
 
+    @needs_display
+    def test_callback_de_lote_padrao_none(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path, disponivel=True)
+            assert painel._resumir_ativo_callback is None
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_desabilitado_com_lote_ativo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                llm_available=lambda: True,
+                resumir_ativo_callback=lambda: True, debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+
+class TestBotaoResumirDuranteLote:
+    def _painel(self, root, tmp_path, ativo=lambda: True):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "20.pdf")
+        painel = DocumentTreePanel(
+            root, catalog=catalogo, summary_store=store,
+            llm_available=lambda: True,
+            resumir_ativo_callback=ativo, debounce_ms=0,
+        )
+        painel.update("ALZR11")
+        return painel
+
+    @needs_display
+    def test_aplicar_resumo_com_pendente_nao_reabilita(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path)
+            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+            painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
+            assert painel.documentos_sem_resumo()
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_update_mantem_desabilitado_com_pendentes(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = self._painel(root, tmp_path)
+            painel.update("ALZR11")
+            assert painel.documentos_sem_resumo()
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
 
 class _Host(TabActionsMixin, TabsLayoutMixin):
     """Combina os mixins usados na construção e navegação das abas."""
@@ -1163,6 +1228,23 @@ class TestWiringSubAba:
             host._documents_panel._resumir_btn.config(state=tk.NORMAL)
             host._documents_panel._resumir_btn.invoke()
             assert host.chamadas == [True]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_resumir_ativo_callback_injetado_no_painel(self):
+        root = tk.Tk()
+        try:
+            class _HostAtivo(_Host):
+                def _resumos_em_andamento(self):
+                    return True
+
+            host = _HostAtivo()
+            host._main_notebook = ttk.Notebook(root)
+            host._copy_chart = lambda _figure: None
+            host._build_ticker_tabs()
+            assert host._documents_panel._resumir_ativo_callback is not None
+            assert host._documents_panel._resumir_ativo_callback() is True
         finally:
             root.destroy()
 
@@ -1590,6 +1672,17 @@ def _preparar_poll(host):
     host._resumos_interrompido = False
 
 
+class TestResumosEmAndamento:
+    def test_falso_sem_job(self):
+        host = _HostResumos(MagicMock())
+        assert host._resumos_em_andamento() is False
+
+    def test_verdadeiro_com_job(self):
+        host = _HostResumos(MagicMock())
+        host._resumos_job = object()
+        assert host._resumos_em_andamento() is True
+
+
 class TestOrquestrarResumos:
     def test_reentrancia_ignora_segundo_acionamento(self):
         painel = MagicMock()
@@ -1683,9 +1776,10 @@ class TestOrquestrarResumos:
 
         assert painel.aplicados == ["10.pdf"]
         assert any(
-            "20.pdf" in msg and "timeout" in msg
+            msg.startswith("20.pdf: ") and "conectar ao serviço de I.A." in msg
             for msg, _icon in host.status
         )
+        assert all("timeout" not in msg for msg, _icon in host.status)
         host._presenter.exit.assert_called_once()
 
     def test_descarta_resultado_ao_trocar_ticker(self, tmp_path):
@@ -1701,6 +1795,55 @@ class TestOrquestrarResumos:
         host._poll_resumos_job(job, "ALZR11")
 
         assert painel.aplicados == []
+
+    @needs_display
+    def test_lote_ativo_mantem_botao_desabilitado_e_reabilita(self, tmp_path):
+        root = tk.Tk()
+        try:
+            host = _HostResumos(MagicMock())
+            host._resumos_job = object()
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                llm_available=lambda: True,
+                resumir_ativo_callback=host._resumos_em_andamento,
+                debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+
+            host._resumos_job = None
+            painel.refresh_resumir_button()
+            assert str(painel._resumir_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_lote_termina_sem_pendentes_permanece_desabilitado(self, tmp_path):
+        root = tk.Tk()
+        try:
+            host = _HostResumos(MagicMock())
+            host._resumos_job = object()
+            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "c", "l")
+            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                llm_available=lambda: True,
+                resumir_ativo_callback=host._resumos_em_andamento,
+                debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+
+            host._resumos_job = None
+            painel.refresh_resumir_button()
+            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
 
 
 class TestWidgetSomenteLeitura:

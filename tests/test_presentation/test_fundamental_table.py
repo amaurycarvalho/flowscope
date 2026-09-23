@@ -1191,3 +1191,34 @@ class TestFundamentalTableCursorSync:
             assert str(rolavel.cget("cursor")) == "xterm"
         finally:
             root.destroy()
+
+    @needs_display
+    def test_cursor_nao_vaza_com_ponteiro_sobre_separador_ao_iniciar(self):
+        from flowscope.presentation.gui.presenter import FlowScopePresenter
+
+        root = _BusyCursorHost()
+        try:
+            painel = FundamentalTablePanel(root)
+            painel.frame.pack(fill=tk.BOTH, expand=True)
+            fixo = painel._tree_fixo
+            rolavel = painel._tree_rolavel
+            fixo.config(cursor="hand2")
+            root.update()
+
+            sep_x = next(
+                x for x in range(rolavel.winfo_width())
+                if rolavel.identify_region(x, 5) == "separator"
+            )
+            rolavel.event_generate("<Motion>", x=sep_x, y=5, warp=True)
+            root.update()
+
+            presenter = FlowScopePresenter(root)
+            presenter.on_operation_started()
+            rolavel.event_generate("<Motion>", x=5, y=40, warp=True)
+            root.update()
+            presenter.on_operation_finished()
+
+            assert str(rolavel.cget("cursor")) != "watch"
+            assert str(fixo.cget("cursor")) == "hand2"
+        finally:
+            root.destroy()

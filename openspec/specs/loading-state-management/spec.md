@@ -48,6 +48,8 @@ O estado ocupado DEVE ter uma única autoridade, que contabiliza referências de
 
 O cursor padrão DEVE ser restaurado mesmo quando uma operação falha ao iniciar ou publicar seu job após já ter sido contabilizada, e quando a aquisição de documentos em background trava ou morre sem publicar o término, aplicando o mesmo watchdog de inatividade/liveness usado pela análise fundamentalista. O cursor exibido DEVE ser reafirmado enquanto a contagem estiver ativa, de modo que cursores transitórios geridos pelo toolkit (como o cursor de redimensionamento sobre separadores de coluna de tabelas e sobre sashes de painéis divididos) não sobreponham nem ressuscitem o cursor "watch" em um widget isolado. Os dois grids da tabela de Fundamentos (colunas congeladas e campos roláveis) DEVEM apresentar sempre o mesmo cursor entre si.
 
+Ao capturar o cursor de repouso de cada widget para o estado ocupado, o sistema DEVE ignorar os cursores transitórios geridos pelo toolkit para redimensionamento — o cursor de separador de coluna de tabelas e os cursores de sash de painéis divididos — mesmo quando o Tk os devolva como lista Tcl em vez de string; esses valores NUNCA DEVEM ser usados como baseline da restauração nem reaplicados ao final da operação. Se a restauração do cursor de repouso de um widget falhar, o sistema DEVE aplicar o cursor padrão, de modo que o widget não permaneça com o cursor de espera "watch".
+
 #### Scenario: Cursor watch ao clicar em índice
 
 - **WHEN** o usuário clica em "IBOV"
@@ -100,10 +102,25 @@ O cursor padrão DEVE ser restaurado mesmo quando uma operação falha ao inicia
 #### Scenario: Cursor de redimensionamento não sobrepõe o cursor watch
 - **WHEN** uma operação está em andamento e o ponteiro passa sobre o separador de coluna de uma tabela ou sobre o sash de um painel dividido
 - **THEN** o cursor exibido DEVE permanecer "watch"
-
 #### Scenario: Grids congelado e rolável da tabela de Fundamentos sincronizados
+
 - **WHEN** uma operação está em andamento ou termina com o ponteiro sobre a tabela da sub-aba "Fundamentos"
 - **THEN** os dois grids da tabela DEVEM exibir o mesmo cursor, voltando ambos ao cursor original ao final
+
+#### Scenario: Baseline do cursor ignora o separador de coluna ao iniciar a operação
+
+- **WHEN** uma operação entra no estado ocupado com o ponteiro sobre o separador de uma coluna do grid rolável da tabela de Fundamentos
+- **THEN** o baseline capturado para esse grid DEVE ser o cursor de repouso (não o cursor transitório de redimensionamento) e, ao final da operação, o cursor DEVE voltar ao cursor original, sem permanecer "watch"
+
+#### Scenario: Baseline em forma de lista do Tk
+
+- **WHEN** o Tk devolve o cursor de repouso de um widget como uma lista (por exemplo `('sb_h_double_arrow',)`)
+- **THEN** o sistema DEVE normalizá-la para o nome do cursor e tratar os cursores transitórios como repouso, nunca os usando como baseline
+
+#### Scenario: Falha ao restaurar o cursor de repouso
+
+- **WHEN** a restauração do baseline de um widget falha durante a saída do estado ocupado
+- **THEN** o widget DEVE voltar ao cursor padrão, não permanecendo com o cursor "watch"
 
 ### Requirement: Controles desabilitados durante a análise fundamentalista
 

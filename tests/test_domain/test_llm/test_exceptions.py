@@ -8,6 +8,7 @@ from flowscope.domain.llm import (
     LLMError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 
@@ -23,6 +24,7 @@ class TestHierarquia:
             LLMCommunicationError,
             LLMProviderError,
             LLMRateLimitError,
+            LLMServiceUnavailableError,
         ],
     )
     def test_subclasses_de_llm_error(self, excecao):

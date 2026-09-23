@@ -47,8 +47,13 @@ class DocumentFlowMixin:
 
     def refresh_resumir_button(self: "DocumentFlowMixin") -> None:
         """Reavalia o estado do botão "Resumir pendentes"."""
+        em_andamento = (
+            self._resumir_ativo_callback() if self._resumir_ativo_callback else False
+        )
         habilitado = (
-            self._summary.disponivel() and bool(self.documentos_sem_resumo())
+            not em_andamento
+            and self._summary.disponivel()
+            and bool(self.documentos_sem_resumo())
         )
         self._resumir_btn.config(
             state=tk.NORMAL if habilitado else tk.DISABLED

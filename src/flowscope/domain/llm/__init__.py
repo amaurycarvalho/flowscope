@@ -6,6 +6,7 @@ from flowscope.domain.llm.exceptions import (
     LLMError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 from flowscope.domain.llm.ports import LLMPort
@@ -17,5 +18,6 @@ __all__ = [
     "LLMPort",
     "LLMProviderError",
     "LLMRateLimitError",
+    "LLMServiceUnavailableError",
     "LLMUnavailableError",
 ]

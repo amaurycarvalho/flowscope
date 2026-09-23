@@ -52,17 +52,30 @@ class StatusMixin:
         self._set_status(msg, icon)
         self._flash_after_id = self.after(clear_ms, lambda: self._set_status("Pronto."))
 
+    @classmethod
+    def _cursor_de_repouso(cls: "StatusMixin", widget: tk.Widget) -> str:
+        """Retorna o cursor de repouso do widget, ignorando transitórios do Tk.
+
+        O ``cget("cursor")`` pode devolver uma lista Tcl — por exemplo
+        ``('sb_h_double_arrow',)`` quando o toolkit geriu o cursor via
+        ``<Motion>`` sobre um separador. Normalizamos para o nome do cursor e
+        tratamos os cursores transitórios de separador/sash como repouso (vazio),
+        de modo que nunca sejam usados como baseline da restauração.
+        """
+        try:
+            atual = widget.cget("cursor")
+        except tk.TclError:
+            return ""
+        if isinstance(atual, (tuple, list)):
+            atual = atual[0] if atual else ""
+        texto = str(atual)
+        return "" if texto in cls._CURSORES_TRANSITORIOS else texto
+
     def _set_wait_cursor(self: "StatusMixin") -> None:
         if not getattr(self, "_cursor_states", None):
             estados: dict[tk.Widget, str] = {}
             for widget in self._iter_widgets():
-                try:
-                    atual = str(widget.cget("cursor"))
-                except tk.TclError:
-                    continue
-                estados[widget] = (
-                    "" if atual in self._CURSORES_TRANSITORIOS else atual
-                )
+                estados[widget] = self._cursor_de_repouso(widget)
                 try:
                     widget.config(cursor="watch")
                 except tk.TclError:
@@ -77,7 +90,10 @@ class StatusMixin:
             try:
                 widget.config(cursor=cursor)
             except tk.TclError:
-                pass
+                try:
+                    widget.config(cursor="")
+                except tk.TclError:
+                    pass
         self._cursor_states = {}
 
     def _instalar_hook_motion_busy(self: "StatusMixin") -> None:
@@ -116,7 +132,7 @@ class StatusMixin:
         if widget is None:
             return
         try:
-            if str(widget.cget("cursor")) != "watch":
+            if self._cursor_de_repouso(widget) != "watch":
                 widget.config(cursor="watch")
         except (tk.TclError, AttributeError):
             pass

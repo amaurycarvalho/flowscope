@@ -59,6 +59,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         acquire_callback: Callable[[str], None] | None = None,
         ia_callback: Callable[[], None] | None = None,
         resumir_callback: Callable[[], None] | None = None,
+        resumir_ativo_callback: Callable[[], bool] | None = None,
         debounce_ms: int = 150,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles."""
@@ -81,6 +82,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._acquire_callback = acquire_callback
         self._ia_callback = ia_callback
         self._resumir_callback = resumir_callback
+        self._resumir_ativo_callback = resumir_ativo_callback
         self._debounce_ms = debounce_ms
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, Agrupamento] = {}

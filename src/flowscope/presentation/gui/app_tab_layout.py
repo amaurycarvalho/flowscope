@@ -104,6 +104,9 @@ class TabsLayoutMixin:
                     resumir_callback=getattr(
                         self, "_resumir_documentos_pendentes", None
                     ),
+                    resumir_ativo_callback=getattr(
+                        self, "_resumos_em_andamento", None
+                    ),
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
 

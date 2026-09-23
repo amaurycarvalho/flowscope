@@ -10,6 +10,7 @@ import logging
 import queue
 import time
 
+from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.progress import ProgressReporter
 from flowscope.presentation.gui.resumos_job import (
     MENSAGEM_ERRO,
@@ -26,6 +27,10 @@ _FASE_RESUMOS_MINIMA_S = 0.4
 
 class ResumosActionsMixin:
     """Conduz o resumo em lote dos documentos pendentes do ticker."""
+
+    def _resumos_em_andamento(self: "ResumosActionsMixin") -> bool:
+        """Indica se há um resumo em lote em andamento."""
+        return getattr(self, "_resumos_job", None) is not None
 
     def _resumir_documentos_pendentes(self: "ResumosActionsMixin") -> None:
         """Gera em lote os resumos dos documentos pendentes do ticker."""
@@ -165,7 +170,7 @@ class ResumosActionsMixin:
             exc,
             exc_info=exc,
         )
-        self._set_status(f"{arquivo.nome}: {exc}", "⚠")
+        self._set_status(f"{arquivo.nome}: {mensagem_erro_llm(exc)}", "⚠")
 
     def _finalizar_resumos_job(
         self: "ResumosActionsMixin", job: ResumosPendentesJob, ticker: str | None

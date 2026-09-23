@@ -21,6 +21,7 @@ from flowscope.infrastructure.llm.config import (
     save_llm_config,
 )
 from flowscope.infrastructure.llm.factory import create_llm_provider
+from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 
 logger = logging.getLogger("flowscope")
 
@@ -280,7 +281,9 @@ class LLMConfigDialog(tk.Toplevel):
         else:
             if exc is not None:
                 self._registrar_falha(config, exc)
-            self._status_var.set(mensagem)
+            self._status_var.set(
+                mensagem_erro_llm(exc) if exc is not None else mensagem
+            )
 
     def _atualizar_botao_teste(self: "LLMConfigDialog") -> None:
         """Habilita o botão "Testar" somente com deps presentes e ocioso."""

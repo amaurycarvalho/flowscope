@@ -10,6 +10,7 @@ from flowscope.domain.llm import (
     LLMError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMServiceUnavailableError,
     LLMUnavailableError,
 )
 from flowscope.infrastructure.llm.rate_limiter import DEFAULT_RPM, RateLimiter
@@ -27,16 +28,23 @@ _MAPEAMENTO_EXCECOES: tuple[tuple[str, type[LLMError]], ...] = (
     ("RateLimitError", LLMRateLimitError),
     ("AuthenticationError", LLMProviderError),
     ("BadRequestError", LLMProviderError),
+    ("ServiceUnavailableError", LLMServiceUnavailableError),
+    ("InternalServerError", LLMServiceUnavailableError),
     ("APIError", LLMProviderError),
 )
 
 
 def _import_litellm() -> object:
-    """Importa o liteLLM, convertendo a ausência em ``LLMUnavailableError``."""
+    """Importa o liteLLM, convertendo a ausência em ``LLMUnavailableError``.
+
+    Desabilita o banner de depuração do liteLLM, que de outro modo é impresso
+    na saída padrão sempre que uma exceção do provedor é mapeada.
+    """
     try:
         import litellm
     except ImportError as exc:
         raise LLMUnavailableError(MENSAGEM_DEPS_AUSENTES) from exc
+    litellm.suppress_debug_info = True
     return litellm
 
 

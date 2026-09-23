@@ -23,7 +23,11 @@ class LLMCommunicationError(LLMError):
 
 
 class LLMProviderError(LLMError):
-    """Erro retornado pelo provedor (autenticação, requisição inválida, interno)."""
+    """Erro retornado pelo provedor (autenticação, requisição inválida)."""
+
+
+class LLMServiceUnavailableError(LLMError):
+    """Provedor temporariamente indisponível (sobrecarga ou erro 5xx)."""
 
 
 class LLMRateLimitError(LLMError):
