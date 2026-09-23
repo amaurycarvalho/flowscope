@@ -19,6 +19,7 @@ from flowscope.domain.fii.classification_faixas import (
     TendenciaFfo,
 )
 from flowscope.domain.fii.dividends import UltimoDividendo
+from flowscope.domain.fii.guidance import Guidance
 from flowscope.domain.fii.metrics import MetricasFii, ResultadoMargem
 
 
@@ -106,5 +107,6 @@ class AnaliseFundamental:
     nome_depositario: str | None = None
     nome_empresa_bdr: str | None = None
     isin: str | None = None
+    guidance: Guidance | None = None
     avisos: tuple[str, ...] = ()
     erro: str | None = None

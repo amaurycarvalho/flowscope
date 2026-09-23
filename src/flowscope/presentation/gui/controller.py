@@ -33,6 +33,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         fundamental_history_store: object | None = None,
         fundamental_resolver_fiagro: object | None = None,
         fundamental_bdr_provider: object | None = None,
+        fundamental_guidance_store: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -49,6 +50,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         self._fundamental_history_store = fundamental_history_store
         self._fundamental_resolver_fiagro = fundamental_resolver_fiagro
         self._fundamental_bdr_provider = fundamental_bdr_provider
+        self._fundamental_guidance_store = fundamental_guidance_store
         self._fundamental_generation = 0
         self._fundamental_job = None
 

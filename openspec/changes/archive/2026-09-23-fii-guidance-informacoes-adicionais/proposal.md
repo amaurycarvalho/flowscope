@@ -7,8 +7,10 @@ Os Relatórios Gerenciais de FIIs publicam um *guidance* de distribuição de re
 - Cache de guidance **por FII** (`~/.cache/flowscope/guidance/<TICKER>.json`), com informação inicial vazia, escrita atômica e tolerância a ausência/corrupção.
 - A coluna `Informações adicionais` de FIIs lê o cache e exibe um item `Guidance ...` quando houver. **O guidance não é calculado na carga de dados nem na exibição da tabela**: cache vazio → item omitido.
 - Gatilho ao **ler um Relatório Gerencial na sub-aba "Documentos"** (categoria `Relatorio`): se o relatório for mais recente que o guidance em cache (ou o cache estiver vazio), o sistema avalia o **texto do relatório obtido do cache de texto do documento** (change `cache-texto-documentos`), sem reextrair o PDF. Documento sem texto extraível não dispara avaliação.
-  - Se o recurso de LLM estiver disponível e funcional, a LLM faz uma avaliação específica se há guidance no relatório; havendo, a nova informação substitui a anterior no cache.
-  - Se a LLM estiver indisponível ou não funcional, usa-se a extração determinística (`pypdf` + regex) já especificada; extraindo guidance, grava-se no cache; não extraindo, o cache permanece intacto.
+- O botão **"Resumir pendentes"** da sub-aba "Documentos" também avalia o guidance dos documentos da categoria `Relatorio` que já processa (pendentes de resumo), reaproveitando o texto preparado pelo lote e as mesmas condições do gatilho de leitura, sem interromper o lote em caso de falha. O lote **não** varre Relatórios já resumidos: nesses casos o guidance continua a ser atualizado apenas ao ler o RG.
+  - Se a análise de guidance via LLM estiver **habilitada** (flag na configuração da aplicação) e o recurso estiver disponível e funcional, a LLM faz uma avaliação específica se há guidance no relatório; havendo, a nova informação substitui a anterior no cache.
+  - Se o flag estiver desabilitado, ou a LLM estiver indisponível ou não funcional, usa-se a extração determinística (`pypdf` + regex) já especificada; extraindo guidance, grava-se no cache; não extraindo, o cache permanece intacto.
+- Flag de análise de guidance via LLM na configuração da aplicação (`llm.guidance.enabled` em `~/.flowscope/config.json`), **desabilitado por padrão**; desligado, o guidance roda apenas de forma determinística, independentemente do provedor de chat configurado.
 - Extração determinística do **valor** (único, faixa ou múltiplos valores por cota), do **período de validade** (`2S26`, `3T26`, `próximos N meses`, `restante do ano`, `até o fim do ano`, `jul/26 a dez/26`, `next N months`) e da **data do relatório** de origem.
 - Escopo restrito à palavra literal `guidance`; sinônimos (`previsão`, `projeção`, `estimativa`) ficam como não-objetivo.
 - Aplicável apenas a ativos do tipo `FII`.
@@ -29,7 +31,7 @@ Os Relatórios Gerenciais de FIIs publicam um *guidance* de distribuição de re
 
 - **Domínio**: novo value object `Guidance` e novo campo em `AnaliseFundamental` (`domain/fii/analysis.py`).
 - **Aplicação**: porta de cache de guidance, serviço de avaliação (`AvaliarGuidanceUseCase`) e leitura na análise fundamentalista (`application/fundamental_analysis.py`), aplicada somente a `TIPO_EXIBICAO_FII`.
-- **Infraestrutura**: store de guidance por FII (modelo de `document_summaries.py`), extração determinística (`pypdf` + regex) e avaliação via `LLMPort`.
-- **Apresentação**: gatilho no fluxo de leitura do RG (`charts/document_summary.py` / `document_tree_panel.py`), lendo o texto do cache de texto do documento e ignorando documento sem texto extraível, e item de guidance em `_informacoes_adicionais` (`charts/fundamental_rows.py`).
+- **Infraestrutura**: store de guidance por FII (modelo de `document_summaries.py`), extração determinística (`pypdf` + regex), avaliação via `LLMPort` e flag `llm.guidance.enabled` na configuração de LLM (padrão desabilitado).
+- **Apresentação**: gatilho no fluxo de leitura do RG (`charts/document_summary.py` / `document_tree_panel.py`), lendo o texto do cache de texto do documento e ignorando documento sem texto extraível; avaliação adicional no processamento em lote dos pendentes (`resumos_job.py` / `app_resumos_actions.py`), restrita aos documentos já processados; e item de guidance em `_informacoes_adicionais` (`charts/fundamental_rows.py`).
 - **Wiring**: `presentation/gui/app_wiring.py` e `controller_fundamental.py` injetam o store e o serviço.
 - **Testes**: unitários da extração (regex/casos reais), do store com cache, da avaliação LLM/fallback e da renderização da coluna.

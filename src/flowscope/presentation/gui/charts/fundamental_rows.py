@@ -6,6 +6,7 @@ em linhas prontas para o ``ttk.Treeview`` e para exportação CSV.
 """
 
 from collections.abc import Mapping
+from datetime import date
 
 from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
@@ -150,6 +151,38 @@ def _itens_indexadores(analise: AnaliseFundamental) -> list[str]:
     ]
 
 
+#: Abreviações dos meses usadas no mês/ano do relatório de origem.
+_MESES_ABREVIADOS = (
+    "jan", "fev", "mar", "abr", "mai", "jun",
+    "jul", "ago", "set", "out", "nov", "dez",
+)
+
+
+def _mes_ano(data: date) -> str:
+    """Formata a data como ``mmm/aa`` (ex.: ``ago/26``)."""
+    return f"{_MESES_ABREVIADOS[data.month - 1]}/{data.year % 100:02d}"
+
+
+def _itens_guidance(analise: AnaliseFundamental) -> list[str]:
+    """Monta o item de guidance lido do cache, ou lista vazia quando ausente."""
+    guidance = analise.guidance
+    if guidance is None:
+        return []
+    if guidance.valor_max == guidance.valor_min:
+        valor = formatar_valor(guidance.valor_min)
+    else:
+        valor = (
+            f"{formatar_valor(guidance.valor_min)} "
+            f"a R$ {formatar_valor(guidance.valor_max)}"
+        )
+    detalhes = [
+        parte
+        for parte in (guidance.periodo.strip(), _mes_ano(guidance.data_relatorio))
+        if parte
+    ]
+    return [f"Guidance R$ {valor}/cota ({', '.join(detalhes)})"]
+
+
 def _itens_bdr(analise: AnaliseFundamental) -> list[str]:
     """Monta o nível do programa e a observação fiscal de um BDR."""
     itens: list[str] = []
@@ -168,6 +201,7 @@ def _informacoes_adicionais(
     if exibicao.tipo == TIPO_EXIBICAO_FII:
         itens.extend(_itens_imoveis(analise))
         itens.extend(_itens_indexadores(analise))
+        itens.extend(_itens_guidance(analise))
     else:
         itens.extend(_itens_indicadores_acao(analise))
     return _SEPARADOR_ITENS.join(itens) if itens else NA

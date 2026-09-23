@@ -1,8 +1,10 @@
+# relatorio-gerencial-guidance Specification
+
 ## Purpose
 
 Manter, por FII, o guidance de distribuição de rendimentos — valor (ou faixa) por cota, período de validade e data do Relatório Gerencial que o apontou — em cache; avaliá-lo ao ler um Relatório Gerencial mais recente que o cache, preferindo a LLM e usando extração determinística quando ela não estiver disponível ou funcional; e alimentar a coluna `Informações adicionais` da análise fundamentalista a partir do cache, sem calcular guidance na carga de dados nem na exibição.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Cache de guidance por FII
 
@@ -64,20 +66,50 @@ Ao ler um documento da categoria `Relatorio` na sub-aba "Documentos", o sistema 
 - **WHEN** o usuário lê um Relatório Gerencial cujo cache de texto do documento registra ausência de texto extraível
 - **THEN** o sistema NÃO DEVE avaliar guidance nem alterar o cache, sem interromper a leitura nem a abertura do documento
 
+### Requirement: Avaliação de guidance no processamento em lote dos pendentes
+
+Ao processar documentos pendentes de resumo pelo botão "Resumir pendentes" da sub-aba "Documentos", o sistema DEVE avaliar o guidance dos documentos da categoria `Relatorio` que possuam texto extraível e cujo `(ano, mês)` seja posterior ao do guidance em cache, ou cujo cache esteja vazio, reutilizando o texto já preparado pelo lote a partir do cache de texto do documento, sem reextrair o arquivo. A avaliação NÃO DEVE interromper o processamento em lote nem alterar o cache quando não extrair guidance. O lote NÃO DEVE avaliar guidance de documentos que não estejam pendentes de resumo nem de documentos de outra categoria.
+
+#### Scenario: Relatório pendente de resumo dispara avaliação
+- **WHEN** o usuário aciona "Resumir pendentes" e um Relatório Gerencial pendente de resumo, mais recente que o cache, possui texto extraível
+- **THEN** o sistema DEVE avaliar o guidance desse relatório, reaproveitando o texto já preparado, sem reextrair o PDF
+
+#### Scenario: Documento não pendente é ignorado
+- **WHEN** um Relatório Gerencial já possui resumo e não está entre os pendentes
+- **THEN** o lote NÃO DEVE avaliar seu guidance
+
+#### Scenario: Documento de outra categoria é ignorado
+- **WHEN** um documento pendente de resumo não é da categoria `Relatorio`
+- **THEN** o lote NÃO DEVE avaliar guidance
+
+#### Scenario: Documento sem texto extraível é ignorado
+- **WHEN** um Relatório pendente de resumo não possui texto extraível
+- **THEN** o lote NÃO DEVE avaliar guidance nem alterar o cache
+
+#### Scenario: Falha na avaliação não interrompe o lote
+- **WHEN** a avaliação de guidance de um Relatório falha
+- **THEN** o processamento em lote DEVE continuar, sem propagar a exceção
+
 ### Requirement: Avaliação preferencial pela LLM
 
-Quando o recurso de LLM estiver disponível e funcional, o sistema DEVE submeter o texto do relatório a uma avaliação específica, via porta `LLMPort`, para determinar se ele contém guidance de distribuição. Havendo guidance, o resultado DEVE substituir a informação anterior no cache de guidance do FII. Não havendo guidance, o cache DEVE permanecer intacto.
+Quando a análise de guidance via LLM estiver habilitada e o recurso de LLM estiver disponível e funcional, o sistema DEVE submeter o texto do relatório a uma avaliação específica, via porta `LLMPort`, para determinar se ele contém guidance de distribuição. Havendo guidance, o resultado DEVE substituir a informação anterior no cache de guidance do FII. Não havendo guidance, o cache DEVE permanecer intacto.
+
+A análise de guidance via LLM DEVE ser controlada por um flag persistido na configuração da aplicação (bloco `llm.guidance.enabled` de `~/.flowscope/config.json`), com padrão desabilitado. Com o flag desabilitado, o sistema NÃO DEVE submeter o texto à LLM, usando apenas a extração determinística, independentemente do provedor de chat configurado.
+
+#### Scenario: Flag desabilitado usa apenas extração determinística
+- **WHEN** o flag `llm.guidance.enabled` está ausente ou falso, ainda que a LLM esteja configurada
+- **THEN** o sistema NÃO DEVE chamar a LLM e DEVE avaliar o guidance apenas pela extração determinística
 
 #### Scenario: LLM disponível encontra guidance
-- **WHEN** a LLM está configurada e funcional e o relatório contém guidance
+- **WHEN** o flag está habilitado, a LLM está configurada e funcional e o relatório contém guidance
 - **THEN** o guidance extraído pela LLM DEVE substituir o anterior no cache, com a data do relatório lido
 
 #### Scenario: LLM disponível não encontra guidance
-- **WHEN** a LLM está configurada e funcional e o relatório não contém guidance
+- **WHEN** o flag está habilitado, a LLM está configurada e funcional e o relatório não contém guidance
 - **THEN** o cache DEVE permanecer intacto
 
 #### Scenario: LLM funcional determina o caminho
-- **WHEN** a chamada à LLM conclui sem erro
+- **WHEN** o flag está habilitado e a chamada à LLM conclui sem erro
 - **THEN** o sistema DEVE considerar o recurso funcional e usar o resultado da LLM, sem recorrer à extração determinística
 
 ### Requirement: Extração determinística como fallback

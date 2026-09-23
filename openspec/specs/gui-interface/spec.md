@@ -626,7 +626,7 @@ A tabela fundamentalista DEVE exibir as colunas `Preço Típico` e `P / PT` logo
 
 A tabela DEVE exibir, ao final, as colunas `Informações adicionais` e `Dados fiscais`, cujos itens são concatenados separados por ` | ` e precedidos de labels curtos. Itens sem valor em nenhuma fonte DEVEM ser omitidos; quando a coluna não tiver nenhum item, DEVE exibir `N/A`.
 
-Para ativos do tipo Papel, `Informações adicionais` DEVE conter `LPA`, `ROE` e `ROIC`. Para FIIs, DEVE conter `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e os percentuais por indexador; quando `Qtd imóveis` for zero ou desconhecido, `Qtd Imóveis`, `Cap Rate` e `Vacância Média` DEVEM ser omitidos.
+Para ativos do tipo Papel, `Informações adicionais` DEVE conter `LPA`, `ROE` e `ROIC`. Para FIIs, DEVE conter `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e os percentuais por indexador; quando `Qtd imóveis` for zero ou desconhecido, `Qtd Imóveis`, `Cap Rate` e `Vacância Média` DEVEM ser omitidos. Para FIIs, `Informações adicionais` DEVE conter também, quando houver guidance no cache do FII, um item com label `Guidance`, o valor ou a faixa por cota e o período de validade, seguido do mês e ano do relatório que apontou o guidance, no formato `Guidance R$ 0,74 a R$ 0,78/cota (restante do ano de 2026, ago/26)`. A exibição DEVE ler apenas o cache de guidance: NÃO DEVE calcular nem disparar extração de guidance na carga de dados nem na renderização da tabela. Quando não houver guidance em cache, o item DEVE ser omitido, sem impedir os demais itens.
 
 Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`; Papel DEVE exibir apenas `CNPJ`. CNPJs DEVEM ser exibidos no formato `99.999.999/9999-99`.
 
@@ -649,6 +649,18 @@ Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e 
 #### Scenario: FII sem imóveis
 - **WHEN** um FII possui `Qtd imóveis` igual a zero ou desconhecido
 - **THEN** a coluna NÃO DEVE exibir `Qtd Imóveis`, `Cap Rate` nem `Vacância Média`, mantendo os demais itens disponíveis
+
+#### Scenario: Informações adicionais com guidance
+- **WHEN** o cache de um FII contém guidance
+- **THEN** a coluna DEVE exibir um item `Guidance` com o valor ou faixa por cota, o período de validade e o mês/ano do relatório, separado dos demais por ` | `
+
+#### Scenario: FII sem guidance
+- **WHEN** o cache de um FII não contém guidance
+- **THEN** o item de guidance NÃO DEVE aparecer, mantendo os demais itens da coluna
+
+#### Scenario: Exibição não calcula guidance
+- **WHEN** a tabela de Fundamentos é carregada ou renderizada
+- **THEN** a coluna NÃO DEVE disparar extração de guidance, exibindo apenas o que estiver no cache
 
 #### Scenario: Dados fiscais de FII
 - **WHEN** o FII possui CNPJ, administrador e gestor com seus nomes e CNPJs

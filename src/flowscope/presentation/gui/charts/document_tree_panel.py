@@ -23,12 +23,14 @@ from flowscope.infrastructure.document_catalog import (
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.infrastructure.guidance_store import JsonGuidanceStore
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
     DocumentFlowMixin,
 )
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
+from flowscope.presentation.gui.charts.document_guidance import GuidanceService
 from flowscope.presentation.gui.charts.document_summary import (
     DocumentSummaryService,
 )
@@ -52,6 +54,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         catalog: DocumentCatalog | None = None,
         summary_store: JsonDocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
+        guidance_service: GuidanceService | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[Path], None] | None = None,
@@ -76,6 +79,11 @@ class DocumentTreePanel(DocumentFlowMixin):
             text_store
             or getattr(self._catalog, "text_store", None)
             or JsonDocumentTextStore(cache_dir=self._catalog.base_dir)
+        )
+        self._guidance = guidance_service or GuidanceService(
+            JsonGuidanceStore(cache_dir=self._catalog.base_dir),
+            llm_factory=llm_factory,
+            llm_available=llm_available,
         )
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback

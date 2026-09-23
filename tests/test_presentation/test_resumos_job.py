@@ -1,15 +1,20 @@
 """Testes do job de resumo em lote dos documentos pendentes."""
 
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
+from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
 from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
 from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.domain.fii import Guidance
 from flowscope.infrastructure.document_catalog import DocumentoArquivo
+from flowscope.presentation.gui.charts.document_guidance import GuidanceService
 from flowscope.presentation.gui.resumos_job import (
     FASE_PREPARAR,
     FASE_RESUMIR,
@@ -17,6 +22,13 @@ from flowscope.presentation.gui.resumos_job import (
     MENSAGEM_PROGRESSO,
     MENSAGEM_RESULTADO,
     ResumosPendentesJob,
+)
+
+GUIDANCE = Guidance(
+    valor_min=Decimal("0.85"),
+    valor_max=Decimal("0.85"),
+    periodo="2S26",
+    data_relatorio=date(2026, 2, 1),
 )
 
 
@@ -33,12 +45,20 @@ def _arquivo(nome: str) -> DocumentoArquivo:
 
 
 class _PainelFake:
-    def __init__(self, textos, falha_preparar=None, falha_resumir=None):
+    def __init__(
+        self,
+        textos,
+        falha_preparar=None,
+        falha_resumir=None,
+        falha_guidance=None,
+    ):
         self._textos = textos
         self._falha_preparar = falha_preparar
         self._falha_resumir = falha_resumir
+        self._falha_guidance = falha_guidance
         self.preparados: list[str] = []
         self.gerados: list[str] = []
+        self.guidances: list[tuple[str, str]] = []
 
     def preparar_texto(self, arquivo):
         if self._falha_preparar == arquivo.nome:
@@ -51,6 +71,11 @@ class _PainelFake:
             raise RuntimeError("llm falhou")
         self.gerados.append(arquivo.nome)
         return ResumoDocumento("curto", "longo")
+
+    def avaliar_guidance(self, arquivo, texto):
+        if self._falha_guidance == arquivo.nome:
+            raise RuntimeError("guidance falhou")
+        self.guidances.append((arquivo.nome, texto))
 
 
 def _mensagens(job):
@@ -124,6 +149,117 @@ class TestResumosPendentesJob:
         assert [m[1].nome for m in erros] == ["20.pdf"]
         assert "30.pdf" not in painel.gerados
         assert mensagens[-1] is True
+
+
+class TestGuidanceNoLote:
+    def test_avalia_guidance_apos_preparar_texto(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        assert painel.guidances == [("10.pdf", "texto A"), ("20.pdf", "texto B")]
+
+    def test_sem_texto_nao_avalia_guidance(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelFake({"10.pdf": "texto", "20.pdf": ""})
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        assert painel.guidances == [("10.pdf", "texto")]
+
+    def test_falha_na_avaliacao_nao_interrompe_o_lote(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelFake(
+            {"10.pdf": "texto A", "20.pdf": "texto B"},
+            falha_guidance="20.pdf",
+        )
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        mensagens = _mensagens(job)
+        resultados = [
+            m
+            for m in mensagens
+            if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO
+        ]
+        assert [m[1].nome for m in resultados] == ["10.pdf", "20.pdf"]
+        assert painel.guidances == [("10.pdf", "texto A")]
+
+
+class _StoreFake:
+    def __init__(self):
+        self._dados = {}
+        self.salvos = []
+
+    def obter(self, ticker):
+        return self._dados.get(ticker)
+
+    def salvar(self, ticker, guidance):
+        self._dados[ticker] = guidance
+        self.salvos.append((ticker, guidance))
+
+
+class _ExtratorFake:
+    def __init__(self, resultado):
+        self.resultado = resultado
+        self.chamadas = []
+
+    def __call__(self, texto, data_relatorio, caminho_pdf):
+        self.chamadas.append((texto, data_relatorio, caminho_pdf))
+        return self.resultado
+
+
+class _PainelComGuidance(_PainelFake):
+    """Painel cuja avaliação de guidance usa o serviço real."""
+
+    def __init__(self, textos, store, extrator):
+        super().__init__(textos)
+        self.service = GuidanceService(
+            store, avaliador=AvaliarGuidanceUseCase(store, extrator)
+        )
+
+    def avaliar_guidance(self, arquivo, texto):
+        self.service.avaliar(arquivo, texto)
+
+
+def _arquivo_relatorio(nome: str) -> DocumentoArquivo:
+    return DocumentoArquivo(
+        ticker="ALZR11",
+        ano=2026,
+        mes=2,
+        categoria="Relatorio",
+        nome=nome,
+        tipo="pdf",
+        caminho=Path("/tmp") / nome,
+    )
+
+
+class TestGuidanceRealNoLote:
+    def test_relatorio_pendente_com_texto_grava(self):
+        arquivos = [_arquivo_relatorio("10.pdf")]
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        painel = _PainelComGuidance({"10.pdf": "texto"}, store, extrator)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        assert [ticker for ticker, _ in store.salvos] == ["ALZR11"]
+
+    def test_documento_sem_texto_nao_avalia(self):
+        arquivos = [_arquivo_relatorio("10.pdf")]
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        painel = _PainelComGuidance({"10.pdf": ""}, store, extrator)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        assert store.salvos == []
+        assert extrator.chamadas == []
+
+    def test_documento_de_outra_categoria_nao_grava(self):
+        arquivos = [_arquivo("10.pdf")]
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        painel = _PainelComGuidance({"10.pdf": "texto"}, store, extrator)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        assert store.salvos == []
 
 
 class _PainelQueCancela(_PainelFake):

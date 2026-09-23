@@ -43,6 +43,7 @@ from flowscope.infrastructure.fii.fundamentus.adapter import (
 from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
     FundamentusDividendHistoryProvider,
 )
+from flowscope.infrastructure.guidance_store import JsonGuidanceStore
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
@@ -89,6 +90,7 @@ class WiringMixin:
         )
         fundamental_indexadores_provider = CvmIndexadoresProvider()
         self._fundamental_history_store = JsonFundamentalHistoryStore()
+        self._guidance_store = JsonGuidanceStore()
         self._controller = FlowScopeController(
             guard=guard,
             load_portfolio=load_portfolio,
@@ -106,6 +108,7 @@ class WiringMixin:
                 lambda ticker: b3_fund_repository.tipo_fundo(ticker) == "FIAGRO"
             ),
             fundamental_bdr_provider=fundamental_bdr_provider,
+            fundamental_guidance_store=self._guidance_store,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

@@ -464,3 +464,27 @@ class TestWiringHistorico:
             )
 
         assert caso.call_args.kwargs["historico_store"] == "STORE"
+
+
+class TestWiringGuidance:
+    def test_store_de_guidance_injetado_no_caso_de_uso(self):
+        presenter = MagicMock()
+        controller = _make_controller(
+            presenter=presenter,
+            fundamental_repo=object(),
+            fundamental_guidance_store="GUIDANCE_STORE",
+        )
+
+        with patch.object(controller, "_drenar_fundamental"), \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental"
+                    ".FundamentalAnalysisUseCase"
+                ) as caso, \
+                patch(
+                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
+                ):
+            controller._iniciar_analise_fundamental(
+                ["HGBS11"], date(2026, 9, 4), {}
+            )
+
+        assert caso.call_args.kwargs["guidance_store"] == "GUIDANCE_STORE"

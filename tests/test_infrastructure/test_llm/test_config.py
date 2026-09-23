@@ -6,10 +6,13 @@ import pytest
 
 from flowscope.infrastructure.llm import config as config_module
 from flowscope.infrastructure.llm.config import (
+    DEFAULT_GUIDANCE_ENABLED,
     DEFAULT_LLM_CONFIG,
     check_llm_deps,
     get_presets,
+    load_guidance_llm_enabled,
     load_llm_config,
+    save_guidance_llm_enabled,
     save_llm_config,
 )
 from flowscope.infrastructure.llm.presets import PROVIDER_PRESETS
@@ -123,6 +126,49 @@ class TestSave:
         save_llm_config({"provider": "openai"}, caminho)
         dados = json.loads(caminho.read_text(encoding="utf-8"))
         assert dados["llm"]["chat"]["rpm"] == 5
+
+
+class TestGuidanceFlag:
+    def test_ausente_usa_default_desabilitado(self, tmp_path):
+        assert DEFAULT_GUIDANCE_ENABLED is False
+        assert load_guidance_llm_enabled(tmp_path / "config.json") is False
+
+    def test_roundtrip_habilitado(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_guidance_llm_enabled(True, caminho)
+        assert load_guidance_llm_enabled(caminho) is True
+
+    def test_gravacao_preserva_o_bloco_de_chat(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps({"llm": {"chat": {"provider": "deepseek"}}}),
+            encoding="utf-8",
+        )
+        save_guidance_llm_enabled(True, caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "deepseek"
+        assert dados["llm"]["guidance"]["enabled"] is True
+
+    def test_json_invalido_usa_default(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text("{invalido", encoding="utf-8")
+        assert load_guidance_llm_enabled(caminho) is False
+
+    def test_bloco_guidance_ausente_usa_default(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps({"llm": {"chat": {"provider": "none"}}}),
+            encoding="utf-8",
+        )
+        assert load_guidance_llm_enabled(caminho) is False
+
+    def test_valor_nao_booleano_e_coagido(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps({"llm": {"guidance": {"enabled": 1}}}),
+            encoding="utf-8",
+        )
+        assert load_guidance_llm_enabled(caminho) is True
 
 
 class TestDeps:

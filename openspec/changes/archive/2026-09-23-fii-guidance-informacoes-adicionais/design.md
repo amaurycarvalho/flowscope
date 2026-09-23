@@ -15,7 +15,8 @@ Ver `proposal.md` — Why para a motivação. O estado atual que molda o desenho
 
 **Goals:**
 - Manter o guidance por FII em cache, com informação inicial vazia, sem calcular na carga de dados nem na exibição da tabela.
-- Avaliar o guidance ao ler um Relatório Gerencial mais recente que o cache, preferindo a LLM (quando disponível e funcional) e caindo para extração determinística quando ela não estiver disponível/funcional.
+- Avaliar o guidance ao ler um Relatório Gerencial mais recente que o cache, preferindo a LLM (quando habilitada na configuração e disponível/funcional) e caindo para extração determinística quando ela estiver desabilitada, indisponível ou não funcional.
+- Disparar a mesma avaliação no processamento em lote dos documentos pendentes de resumo, reaproveitando o texto já preparado pelo lote.
 - Exibir o guidance em `Informações adicionais` apenas para FIIs, lendo do cache.
 
 **Non-Goals:**
@@ -24,6 +25,7 @@ Ver `proposal.md` — Why para a motivação. O estado atual que molda o desenho
 - Normalizar o período de validade em uma data final canônica; preserva-se o texto reconhecido.
 - Baixar documentos novos: a avaliação opera apenas sobre o PDF que está sendo lido.
 - Retroceder em relatórios anteriores: o cache guarda o guidance do relatório mais recente que o apontou.
+- Varrer Relatórios já resumidos no lote: o botão "Resumir pendentes" só avalia guidance dos documentos que já processa (pendentes de resumo); os demais são cobertos pelo gatilho de leitura.
 
 ## Decisions
 
@@ -43,7 +45,7 @@ A avaliação ocorre no fluxo de leitura do documento na sub-aba "Documentos", q
 
 ### 3. Avaliação preferencial pela LLM
 
-Um `AvaliarGuidanceUseCase` recebe o texto do relatório e, via `LLMPort`, faz uma pergunta específica (se o relatório contém guidance de distribuição, com valor/faixa e período) e interpreta a resposta de forma estruturada/tolerante. "Disponível e funcional" = `create_llm_provider` não lança `LLMUnavailableError`/`LLMConfigurationError` e a chamada conclui sem `LLMError`. Se a LLM responde que **há** guidance, o resultado substitui o cache; se responde que **não há**, o cache permanece intacto.
+Um `AvaliarGuidanceUseCase` recebe o texto do relatório e, via `LLMPort`, faz uma pergunta específica (se o relatório contém guidance de distribuição, com valor/faixa e período) e interpreta a resposta de forma estruturada/tolerante. "Disponível e funcional" = `create_llm_provider` não lança `LLMUnavailableError`/`LLMConfigurationError` e a chamada conclui sem `LLMError`. Se a LLM responde que **há** guidance, o resultado substitui o cache; se responde que **não há**, o cache permanece intacto. Este caminho é ainda condicionado ao flag da Decisão 8, desabilitado por padrão; com o flag desligado, a avaliação usa apenas a extração determinística.
 
 - **Por quê:** a LLM cobre casos que a regex não extrai (redação variada, faixas, gráficos com texto), sem custo na carga; a chamada bem-sucedida é o teste de funcionalidade.
 - **Alternativas:** usar a LLM apenas para confirmar candidatos da regex (rejeitado: perde cobertura); validar funcionalidade com chamada de teste separada (rejeitado: dobra o custo).
@@ -76,6 +78,21 @@ Adicionar `_itens_guidance` em `fundamental_rows.py`, no ramo `TIPO_EXIBICAO_FII
 
 - **Por quê:** segue o formato de itens concatenados por ` | ` já existente e não faz IO nem cálculo na renderização.
 
+### 7. Avaliação de guidance no lote de resumos pendentes
+
+O botão "Resumir pendentes" da sub-aba "Documentos" passa a disparar, além do resumo, a avaliação de guidance dos documentos que já processa. O lote prepara o texto de cada pendente (cache de texto do documento) e, logo após, aplica o mesmo gatilho de guidance da leitura (categoria `Relatorio`, `(ano, mês)` posterior ao cache ou cache vazio, texto extraível), de forma tolerante: falhas não interrompem o lote e a ausência de extração preserva o cache. Não há novo botão nem varredura de Relatórios já resumidos.
+
+- **Por quê:** reaproveita o texto já preparado e a infraestrutura de thread, progresso e cancelamento do lote, permitindo popular o guidance de um FII sem abrir cada RG; mantém uma única fonte de texto e não onera a carga de dados nem a exibição.
+- **Escopo:** restrito aos documentos pendentes de resumo (`documentos_sem_resumo`). Depois que todos os documentos do ticker estiverem resumidos, o botão fica indisponível e o guidance volta a ser atualizado apenas ao ler o RG — limitação aceita.
+- **Alternativas:** botão dedicado "Avaliar guidance" (rejeitado: mais superfície de UI e de estado para o mesmo caso de uso); varrer todos os Relatórios do ticker, mesmo resumidos (rejeitado nesta iteração: muda a semântica de "pendentes" e as contagens de progresso do lote); avaliar na fase de geração do resumo (rejeitado: um erro do resumo interromperia a avaliação de guidance, que deve ser tolerante).
+
+### 8. Flag de análise de guidance via LLM
+
+A avaliação de guidance pela LLM é controlada por um flag persistido na configuração da aplicação, no bloco `llm.guidance.enabled` de `~/.flowscope/config.json`, com **padrão desabilitado**. Com o flag desligado, o sistema não chama a LLM para guidance e roda apenas a extração determinística, mesmo que o provedor de chat esteja configurado. O flag é lido por `load_guidance_llm_enabled()` e gravado por `save_guidance_llm_enabled()` (`infrastructure/llm/config.py`), preservando `llm.chat` e as demais chaves; "habilitado e funcional" passa a ser `flag ativo E provedor de chat disponível E chamada sem erro`.
+
+- **Por quê:** separa o custo/risco da avaliação de guidance por LLM do restante do uso de LLM (resumos), permitindo ligá-la conscientemente; desabilitada por padrão, mantém o comportamento determinístico previsível e sem custo de tokens.
+- **Alternativas:** reutilizar `llm.chat` sem flag (rejeitado: acoplaria guidance e resumos, sem controle independente); habilitar por padrão (rejeitado: mudaria comportamento e custo sem ação do usuário); expor um checkbox na janela de configuração de I.A. (rejeitado nesta iteração: o pedido restringe o flag ao arquivo de configuração; a exposição em UI fica para iteração futura).
+
 ## Risks / Trade-offs
 
 - **[Guidance só aparece após a leitura do RG]** → a coluna fica vazia até o usuário abrir um Relatório Gerencial; é o comportamento pedido.
@@ -85,6 +102,9 @@ Adicionar `_itens_guidance` em `fundamental_rows.py`, no ramo `TIPO_EXIBICAO_FII
 - **[Custo/latência da LLM na leitura]** → roda fora da thread do Tk, com estado de carregamento e descarte de resultado obsoleto, como os resumos.
 - **[Texto com caracteres espaçados]** → HSML11 extrai com espaços entre letras; mitigação: heurística de normalização; se falhar, cai para ausência.
 - **[Dependência de `cache-texto-documentos`]** → o gatilho pressupõe o cache de texto implementado; implementar esta change depois daquela e ler o texto do cache, nunca reextraindo.
+- **[Guidance não atualizado após o primeiro lote]** → o botão "Resumir pendentes" só processa documentos sem resumo; quando não há pendentes, fica indisponível e o guidance só é atualizado ao ler o RG. Limitação aceita e documentada.
+- **[Custo extra da LLM no lote]** → uma chamada de avaliação de guidance por Relatório pendente, somada à chamada de resumo; mitigação: restringir a categoria `Relatorio`, reaproveitar o texto preparado e manter o flag de guidance desabilitado por padrão.
+- **[Guidance via LLM desabilitado por padrão]** → quem espera a avaliação por LLM precisa habilitar `llm.guidance.enabled` no `config.json`; mitigação: a extração determinística cobre a maioria dos casos e o flag é explicitamente registrado aqui.
 
 ## Migration Plan
 

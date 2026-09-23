@@ -126,7 +126,11 @@ class DocumentFlowMixin:
         self._after_id = None
         req = self._req_id
         texto = self._texto_cacheado(arquivo)
-        if texto is not None and not self._summary.precisa_resumo(arquivo, texto):
+        if (
+            texto is not None
+            and not self._summary.precisa_resumo(arquivo, texto)
+            and not self._precisa_guidance(arquivo)
+        ):
             self._mostrar_documento(
                 texto, self._summary.resumo_para_exibir(arquivo, texto)
             )
@@ -148,14 +152,49 @@ class DocumentFlowMixin:
         fila: queue.Queue,
         texto_conhecido: str | None,
     ) -> None:
-        """Extrai o texto e, se preciso, gera o resumo, publicando na fila."""
+        """Extrai o texto, avalia o guidance e, se preciso, gera o resumo."""
         texto = (
             texto_conhecido
             if texto_conhecido is not None
             else self.preparar_texto(arquivo)
         )
+        self.avaliar_guidance(arquivo, texto)
         resumo = self._summary.gerar(arquivo, texto)
         fila.put((texto, resumo))
+
+    def _precisa_guidance(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> bool:
+        """Indica se um documento deve disparar avaliação de guidance."""
+        servico = getattr(self, "_guidance", None)
+        if servico is None:
+            return False
+        try:
+            return servico.precisa(arquivo)
+        except Exception:  # cache ilegível não deve bloquear a pré-visualização
+            logger.warning(
+                "Falha ao consultar guidance de %s", arquivo.caminho, exc_info=True
+            )
+            return False
+
+    def avaliar_guidance(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo, texto: str | None
+    ) -> None:
+        """Avalia o guidance do documento, tolerando falhas.
+
+        Aplica o gatilho de categoria, data e texto extraível por meio do
+        serviço de guidance; é seguro chamar fora da thread do Tk e a partir do
+        processamento em lote.
+        """
+        servico = getattr(self, "_guidance", None)
+        if servico is None:
+            return
+        try:
+            servico.avaliar(arquivo, texto)
+        except Exception:  # falha de avaliação não deve derrubar a thread
+            logger.warning(
+                "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
+            )
 
     def _agendar_poll(
         self: "DocumentFlowMixin",

@@ -46,6 +46,12 @@ class _PainelDocumentos(Protocol):
         """Gera o resumo propagando falhas."""
         ...
 
+    def avaliar_guidance(
+        self: "_PainelDocumentos", arquivo: DocumentoArquivo, texto: str
+    ) -> None:
+        """Avalia o guidance do documento, tolerando falhas."""
+        ...
+
 
 class ResumosPendentesJob:
     """Prepara textos e gera resumos em lote, publicando o andamento."""
@@ -103,11 +109,24 @@ class ResumosPendentesJob:
             except Exception as exc:
                 self.fila.put((MENSAGEM_ERRO, arquivo, exc))
                 return None
+            if tem_texto(texto):
+                self._avaliar_guidance(arquivo, texto)
             preparados.append((arquivo, texto))
             self._progresso(1, indice, total, FASE_PREPARAR)
         com_texto = [(a, t) for a, t in preparados if tem_texto(t)]
         self.sem_texto = total - len(com_texto)
         return com_texto
+
+    def _avaliar_guidance(
+        self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
+    ) -> None:
+        """Avalia o guidance sem interromper o lote em caso de falha."""
+        try:
+            self._painel.avaliar_guidance(arquivo, texto)
+        except Exception:  # falha isolada não deve abortar o lote
+            logger.warning(
+                "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
+            )
 
     def _resumir(
         self: "ResumosPendentesJob",

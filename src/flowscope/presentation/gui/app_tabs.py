@@ -88,7 +88,7 @@ TAB_CONTENT = {
              "• Dividendos: Dividend Yield, última data-com, último dividendo (Rendimento), dividendo anterior e tendência do dividendo (último vs. anterior em cinco faixas);\n"
              "• Métricas FFO (apenas FII): FFO/Receita (12m e 3m), FFO Trend, Dividendos/Receita (12m e 3m) e Dividendos/FFO (12m e 3m), em percentual com uma casa decimal;\n"
              "• Cotas e cotistas: quantidade de cotas/ações emitidas, número de cotistas do FII ou quantidade de acionistas da companhia (CVM), suas classificações, patrimônio e data de referência;\n"
-             "• Informações adicionais: LPA, ROE e ROIC (ação); Qtd Imóveis, Cap Rate, Vacância Média e percentuais por indexador (FII);\n"
+             "• Informações adicionais: LPA, ROE e ROIC (ação); Qtd Imóveis, Cap Rate, Vacância Média e percentuais por indexador (FII); Guidance (valor ou faixa por cota e período de validade) quando presente no cache do FII;\n"
              "• Dados fiscais: CNPJ e, para FIIs, administrador e gestor.\n\n"), ""),
             ("Como interpretar: ", "bold"),
             (("O P/L de um FII anualiza o último dividendo mensal (preço ÷ (último dividendo × 12)) para expressar a quantidade de anos, enquanto o P/L de uma ação é o lucro reportado pela fonte; "
@@ -99,7 +99,7 @@ TAB_CONTENT = {
              "O FFO Trend compara FFO/Receita (3m) com FFO/Receita (12m) em pontos percentuais, com os rótulos Forte Alta (≥ +20 p.p.), Leve Alta (≥ +5 p.p.), Estável, Leve Queda (≥ −20 p.p.) e Forte Queda (< −20 p.p.); a tendência do dividendo usa os rótulos Forte Alta (≥ +5%), Leve Alta, Estável, Leve Queda e Forte Queda (≤ −5%). "
              "Ativos do tipo Papel exibem N/A nas colunas de razões sobre a receita. O P/VP compara o valor de mercado "
              "com o patrimônio líquido; valores de P/VP abaixo de 1 indicam cota negociando abaixo do patrimônio. "
-             "Informações adicionais reúnem indicadores do ativo (LPA, ROE e ROIC em ações; imóveis, Cap Rate, Vacância Média e percentuais por indexador em FIIs) e "
+             "Informações adicionais reúnem indicadores do ativo (LPA, ROE e ROIC em ações; imóveis, Cap Rate, Vacância Média, percentuais por indexador e o guidance de distribuição quando disponível no cache em FIIs) e "
              "Dados fiscais reúnem o CNPJ e, para FIIs, o administrador e o gestor; itens sem dado em nenhuma fonte são omitidos. "
              "Os valores são calculados com precisão decimal completa e arredondados somente na apresentação."), ""),
         ]

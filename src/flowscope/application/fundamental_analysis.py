@@ -62,6 +62,7 @@ from flowscope.application.fundamental_ports import (
     observacao_completa,
 )
 from flowscope.application.fundamental_providers import FundamentalDataMixin
+from flowscope.application.guidance_port import GuidanceStore
 from flowscope.domain.bdr import DadosBdr
 from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
@@ -69,6 +70,7 @@ from flowscope.domain.fii import (
     ClassificacaoAtivo,
     ClassificacaoExibicao,
     DividendoConsolidado,
+    Guidance,
     MargensFii,
     MetricasFii,
     PatrimonioFii,
@@ -115,6 +117,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         historico_store: FundamentalHistoryStore | None = None,
         resolver_fiagro: ResolverFiagro | None = None,
         bdr_provider: object | None = None,
+        guidance_store: GuidanceStore | None = None,
     ) -> None:
         """Inicializa o caso de uso com as portas de dados."""
         self._repository = repository
@@ -128,6 +131,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         self._historico_store = historico_store
         self._resolver_fiagro = resolver_fiagro
         self._bdr_provider = bdr_provider
+        self._guidance_store = guidance_store
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
 
@@ -197,7 +201,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         if self._historico_store is not None and not force_refresh:
             observacao = self._historico_store.obter(ticker, reference_date)
             if observacao is not None and observacao_completa(observacao):
-                return observacao, True
+                return self._com_guidance(observacao), True
         resultado, de_cache = self._analisar_ticker(ticker, reference_date)
         self._registrar_observacao(ticker, reference_date, resultado, force_refresh)
         return resultado, de_cache
@@ -315,8 +319,34 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             nome_depositario=_campo_bdr(dados_bdr, "nome_depositario"),
             nome_empresa_bdr=_campo_bdr(dados_bdr, "nome_empresa"),
             isin=_campo_bdr(dados_bdr, "isin"),
+            guidance=self._obter_guidance(ticker, exibicao),
             avisos=avisos,
         ), de_cache
+
+    def _obter_guidance(
+        self: "FundamentalAnalysisUseCase",
+        ticker: str,
+        exibicao: ClassificacaoExibicao | None,
+    ) -> Guidance | None:
+        """Lê o guidance do cache apenas para FIIs, sem calcular."""
+        if self._guidance_store is None or exibicao is None:
+            return None
+        if exibicao.tipo != TIPO_EXIBICAO_FII:
+            return None
+        return self._guidance_store.obter(ticker)
+
+    def _com_guidance(
+        self: "FundamentalAnalysisUseCase", analise: AnaliseFundamental
+    ) -> AnaliseFundamental:
+        """Reaplica a leitura do cache de guidance a uma observação do histórico."""
+        if self._guidance_store is None:
+            return analise
+        guidance = self._obter_guidance(
+            analise.ticker, analise.classificacao_exibicao
+        )
+        if guidance is analise.guidance:
+            return analise
+        return replace(analise, guidance=guidance)
 
     def _resolver_metricas(
         self: "FundamentalAnalysisUseCase",

@@ -57,6 +57,7 @@ from flowscope.domain.fii.fundamentus import (
     TIPO_FII,
     AtivoFundamental,
 )
+from flowscope.domain.fii.guidance import Guidance
 from flowscope.domain.fii.metrics import (
     CALCULATION_VERSION,
     FONTE_DERIVADA,
@@ -113,6 +114,7 @@ __all__ = [
     "FfoObservacao",
     "FiiSnapshot",
     "FonteClassificacao",
+    "Guidance",
     "Inconsistencia",
     "MargensFii",
     "MetricEvidence",
