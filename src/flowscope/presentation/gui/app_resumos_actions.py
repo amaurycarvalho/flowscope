@@ -44,7 +44,9 @@ class ResumosActionsMixin:
             painel.refresh_resumir_button()
             return
         ticker = self._ticker_apresentado()
-        job = ResumosPendentesJob(painel, pendentes)
+        job = ResumosPendentesJob(
+            painel, pendentes, cancel_token=self._presenter.cancel_token
+        )
         self._resumos_job = job
         self._resumos_ticker = ticker
         self._resumos_resumidos = 0
@@ -56,6 +58,7 @@ class ResumosActionsMixin:
             on_update=self._presenter.on_progress
         )
         self._presenter.enter()
+        self._presenter.job_cancelavel_iniciado()
         self._set_status(f"Resumindo {len(pendentes)} documento(s)…")
         try:
             job.iniciar()
@@ -63,6 +66,7 @@ class ResumosActionsMixin:
             logger.exception("Falha ao iniciar o lote de resumos")
             if getattr(self, "_resumos_job", None) is job:
                 self._resumos_job = None
+            self._presenter.job_cancelavel_finalizado()
             self._presenter.exit()
             return
         self._poll_resumos_job(job, ticker)
@@ -72,7 +76,7 @@ class ResumosActionsMixin:
     ) -> None:
         """Consome o lote uma mensagem por vez, dando tempo ao Tk de repintar."""
         estado = self._processar_mensagem_resumo(job, ticker)
-        if estado == "terminou":
+        if estado == "terminou" or self._cancelamento_solicitado():
             self._finalizar_resumos_job(job, ticker)
             return
         atraso = self._atraso_poll_resumos(estado)
@@ -178,6 +182,9 @@ class ResumosActionsMixin:
         """Encerra o lote, libera o estado ocupado e exibe o desfecho."""
         if getattr(self, "_resumos_job", None) is job:
             self._resumos_job = None
+        if self._cancelamento_solicitado():
+            self._resumos_interrompido = True
+        self._presenter.job_cancelavel_finalizado()
         self._presenter.exit()
         painel = getattr(self, "_documents_panel", None)
         if painel is not None:

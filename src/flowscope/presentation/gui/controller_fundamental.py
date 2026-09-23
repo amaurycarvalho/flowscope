@@ -53,18 +53,22 @@ class FundamentalMixin:
         job = FundamentalJob(
             caso, tickers, ref_date, self._fundamental_generation,
             force_refresh=force,
+            cancel_token=self._presenter.cancel_token,
         )
         self._fundamental_job = job
         self._fundamental_ultima_atividade = time.monotonic()
         self._presenter.on_fundamental_started()
         if job_anterior is not None:
+            self._presenter.job_cancelavel_finalizado()
             self._presenter.on_fundamental_finished()
+        self._presenter.job_cancelavel_iniciado()
         try:
             self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
             job.iniciar()
         except Exception:
             if self._fundamental_job is job:
                 self._fundamental_job = None
+            self._presenter.job_cancelavel_finalizado()
             self._presenter.on_fundamental_finished()
             raise
         self._drenar_fundamental(job)
@@ -89,8 +93,35 @@ class FundamentalMixin:
         job = job or self._fundamental_job
         if job is None or job is not self._fundamental_job:
             return
+        if self._job_cancelado(job):
+            self._encerrar_fundamental(job)
+            return
+        terminou = self._consumir_fila_seguro(job)
+        if not terminou and self._job_travado(job):
+            self._registrar_travamento(job)
+            terminou = True
+        if terminou:
+            self._encerrar_fundamental(job)
+            return
+        self._presenter.agendar(100, lambda: self._drenar_fundamental(job))
+
+    @staticmethod
+    def _job_cancelado(job: FundamentalJob) -> bool:
+        """Indica se o usuário solicitou o cancelamento do job."""
+        token = getattr(job, "cancel_token", None)
+        return token is not None and token.is_set
+
+    def _encerrar_fundamental(self: "FundamentalMixin", job: FundamentalJob) -> None:
+        """Encerra o job, libera o botão de interromper e restaura a interface."""
+        if job is self._fundamental_job:
+            self._fundamental_job = None
+        self._presenter.job_cancelavel_finalizado()
+        self._presenter.on_fundamental_finished()
+
+    def _consumir_fila_seguro(self: "FundamentalMixin", job: FundamentalJob) -> bool:
+        """Esvazia a fila do job tratando falhas de renderização sem abortar."""
         try:
-            terminou = self._consumir_fila(job)
+            return self._consumir_fila(job)
         except Exception as e:
             self._logger.error(LogEntry(
                 message=str(e),
@@ -98,24 +129,19 @@ class FundamentalMixin:
                 component="Controller._drenar_fundamental",
                 exception=e,
             ))
-            terminou = True
-        if not terminou and self._job_travado(job):
-            self._logger.warning(LogEntry(
-                message=(
-                    "Análise fundamentalista sem progresso; encerrando para "
-                    "restaurar a interface."
-                ),
-                level="WARNING",
-                component="Controller._drenar_fundamental",
-                context={"generation": getattr(job, "generation", "")},
-            ))
-            terminou = True
-        if terminou:
-            if job is self._fundamental_job:
-                self._fundamental_job = None
-            self._presenter.on_fundamental_finished()
-            return
-        self._presenter.agendar(100, lambda: self._drenar_fundamental(job))
+            return True
+
+    def _registrar_travamento(self: "FundamentalMixin", job: FundamentalJob) -> None:
+        """Registra no log o encerramento de um job travado por inatividade."""
+        self._logger.warning(LogEntry(
+            message=(
+                "Análise fundamentalista sem progresso; encerrando para "
+                "restaurar a interface."
+            ),
+            level="WARNING",
+            component="Controller._drenar_fundamental",
+            context={"generation": getattr(job, "generation", "")},
+        ))
 
     def _job_travado(self: "FundamentalMixin", job: FundamentalJob) -> bool:
         """Indica se o job morreu ou ficou sem progresso por tempo demais."""

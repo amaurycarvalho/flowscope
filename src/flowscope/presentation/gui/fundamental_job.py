@@ -9,6 +9,11 @@ import queue
 import threading
 from datetime import date
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
+
 logger = logging.getLogger("flowscope")
 
 MENSAGEM_PROGRESSO = "progresso"
@@ -26,6 +31,7 @@ class FundamentalJob:
         reference_date: date,
         generation: int,
         force_refresh: bool = False,
+        cancel_token: CancellationToken | None = None,
     ) -> None:
         """Inicializa o job com o caso de uso, os tickers e a geração."""
         self._caso = caso
@@ -33,8 +39,14 @@ class FundamentalJob:
         self._reference_date = reference_date
         self.generation = generation
         self._force_refresh = force_refresh
+        self._cancel_token = cancel_token
         self.fila: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
+
+    @property
+    def cancel_token(self: "FundamentalJob") -> CancellationToken | None:
+        """Retorna o token de cancelamento observado pelo job."""
+        return self._cancel_token
 
     def iniciar(self: "FundamentalJob") -> threading.Thread:
         """Inicia a thread de trabalho e a retorna."""
@@ -63,12 +75,15 @@ class FundamentalJob:
                 self._reference_date,
                 progress_callback=_progresso,
                 force_refresh=self._force_refresh,
+                cancel_token=self._cancel_token,
             )
             dados = {resultado.ticker: resultado for resultado in resultados}
             houve_falha = bool(
                 getattr(self._caso, "houve_falha_recuperavel", False)
             )
             self.fila.put((MENSAGEM_RESULTADO, dados, houve_falha))
+        except OperacaoCancelada:
+            logger.debug("Análise fundamentalista interrompida pelo usuário")
         except Exception as exc:  # falha inesperada do job
             logger.warning("Falha na análise fundamentalista", exc_info=True)
             self.fila.put((MENSAGEM_ERRO, str(exc)))

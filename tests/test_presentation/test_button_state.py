@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from flowscope.infrastructure.document_catalog import DocumentCatalog
+from flowscope.presentation.gui.app_layout import LayoutMixin
 from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
@@ -216,6 +217,9 @@ class _FundamentalCursorHost(tk.Tk, StatusMixin):
     def clear_progress(self) -> None:
         pass
 
+    def set_cancellable(self, cancellable: bool) -> None:
+        pass
+
     def config_copy_button_state(self, state: str) -> None:
         pass
 
@@ -352,6 +356,88 @@ class TestWaitCursor:
             assert getattr(gui, "_busy_motion_id", None) is None
         finally:
             gui.destroy()
+
+
+class _StatusBarHost(tk.Tk, LayoutMixin, StatusMixin):
+    """Host mínimo que constrói a barra de status real sem ícones reais."""
+
+    def _load_icon(self, filename: str, size: tuple = (20, 20)) -> object:
+        return None
+
+
+class TestBotaoInterromper:
+    @needs_display
+    def test_botao_criado_oculto(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            assert host._stop_button.winfo_manager() == ""
+            assert host._stop_button_visivel is False
+        finally:
+            host.destroy()
+
+    @needs_display
+    def test_cancellable_mostra_e_oculta_botao(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            host.set_cancellable(True)
+            assert host._stop_button.winfo_manager() != ""
+            host.set_cancellable(False)
+            assert host._stop_button.winfo_manager() == ""
+        finally:
+            host.destroy()
+
+    @needs_display
+    def test_carga_sincrona_nao_exibe_botao(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            host._set_progress(1, 2, "Baixando dados históricos")
+            assert host._progress_bar.winfo_manager() != ""
+            assert host._stop_button.winfo_manager() == ""
+        finally:
+            host.destroy()
+
+    @needs_display
+    def test_progresso_de_job_cancelavel_exibe_botao(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            host.set_cancellable(True)
+            host._set_progress(1, 2, "Fundamentos")
+            assert host._progress_bar.winfo_manager() != ""
+            assert host._stop_button.winfo_manager() != ""
+        finally:
+            host.destroy()
+
+    @needs_display
+    def test_status_e_clear_ocultam_botao(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            host.set_cancellable(True)
+            host._set_progress(1, 2, "Fundamentos")
+            host._set_status("Pronto.")
+            assert host._progress_bar.winfo_manager() == ""
+            assert host._stop_button.winfo_manager() == ""
+            host.set_cancellable(True)
+            host._set_progress(1, 2, "Fundamentos")
+            host.clear_progress()
+            assert host._stop_button.winfo_manager() == ""
+        finally:
+            host.destroy()
+
+    @needs_display
+    def test_clique_solicita_cancelamento_ao_presenter(self):
+        host = _StatusBarHost()
+        try:
+            host._build_statusbar()
+            host._presenter = MagicMock()
+            host._on_stop_clicked()
+            host._presenter.request_cancel.assert_called_once()
+        finally:
+            host.destroy()
 
 
 class _TabsCursorHost(tk.Tk, StatusMixin, TabsLayoutMixin):

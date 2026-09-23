@@ -186,9 +186,15 @@ class ActionsMixin:
         if getattr(self, "_documentos_job", None) is not None:
             return
         painel.mostrar_carregando(ticker)
-        job = DocumentosJob(aquisicao, ticker, self._data_referencia())
+        job = DocumentosJob(
+            aquisicao,
+            ticker,
+            self._data_referencia(),
+            cancel_token=self._presenter.cancel_token,
+        )
         self._documentos_job = job
         self._presenter.on_operation_started()
+        self._presenter.job_cancelavel_iniciado()
         self._documentos_ultima_atividade = time.monotonic()
         try:
             job.iniciar()
@@ -200,9 +206,15 @@ class ActionsMixin:
             )
             if getattr(self, "_documentos_job", None) is job:
                 self._documentos_job = None
+            self._presenter.job_cancelavel_finalizado()
             self._presenter.on_operation_finished()
             return
         self._poll_documentos_job(job, ticker)
+
+    def _cancelamento_solicitado(self: "ActionsMixin") -> bool:
+        """Indica se o usuário solicitou a interrupção do processamento."""
+        token = getattr(self._presenter, "cancel_token", None)
+        return token is not None and token.is_set is True
 
     def _poll_documentos_job(self: "ActionsMixin", job: DocumentosJob, ticker: str) -> None:
         """Consome a fila do job na thread do Tk até a aquisição concluir.
@@ -212,6 +224,8 @@ class ActionsMixin:
         de modo que a mensagem terminal ainda encerra o job e libera o cursor.
         """
         terminou = self._drenar_fila_documentos(job, ticker)
+        if not terminou and self._cancelamento_solicitado():
+            terminou = True
         if not terminou and self._documentos_job_travado(job):
             logger.warning(
                 "Aquisição de documentos de %s sem progresso; encerrando para "
@@ -271,8 +285,10 @@ class ActionsMixin:
         painel = getattr(self, "_documents_panel", None)
         if painel is not None:
             painel.update(ticker)
+        self._presenter.job_cancelavel_finalizado()
         self._presenter.on_operation_finished()
-        self._flash_status("Documentos atualizados!")
+        if not self._cancelamento_solicitado():
+            self._flash_status("Documentos atualizados!")
 
     def _documentos_job_travado(self: "ActionsMixin", job: DocumentosJob) -> bool:
         """Indica se o job morreu ou ficou sem progresso por tempo demais."""

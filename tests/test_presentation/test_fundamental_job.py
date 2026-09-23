@@ -1,7 +1,12 @@
+import logging
 import time
 from datetime import date
 from unittest.mock import MagicMock
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.fundamental_job import (
     MENSAGEM_PROGRESSO,
@@ -21,10 +26,12 @@ class _Analise:
 class _CasoFake:
     def __init__(self):
         self.force_refresh = None
+        self.cancel_token = None
 
     def execute(self, tickers, reference_date, progress_callback=None,
-                force_refresh=False):
+                force_refresh=False, cancel_token=None):
         self.force_refresh = force_refresh
+        self.cancel_token = cancel_token
         for ticker in tickers:
             if progress_callback is not None:
                 progress_callback(f"Analisando {ticker}", False)
@@ -46,6 +53,33 @@ class TestFundamentalJob:
 
         resultado = [m for m in mensagens if m[0] == MENSAGEM_RESULTADO][0]
         assert set(resultado[1].keys()) == {"HGBS11", "HGLG11"}
+
+    def test_token_e_repassado_ao_caso_de_uso(self):
+        caso = _CasoFake()
+        token = CancellationToken()
+        job = FundamentalJob(
+            caso, ["HGBS11"], REFERENCIA, 1, cancel_token=token
+        )
+        job.iniciar().join(timeout=2)
+        assert caso.cancel_token is token
+
+    def test_cancelamento_nao_publica_erro(self, caplog):
+        class _CasoCancelado:
+            houve_falha_recuperavel = False
+
+            def execute(self, *args, **kwargs):
+                raise OperacaoCancelada()
+
+        token = CancellationToken()
+        token.request()
+        job = FundamentalJob(
+            _CasoCancelado(), ["HGBS11"], REFERENCIA, 1, cancel_token=token
+        )
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            job.iniciar().join(timeout=2)
+
+        assert job.fila.empty()
+        assert "Falha na análise fundamentalista" not in caplog.text
 
     def test_erro_publica_mensagem_de_erro(self):
         class _CasoComErro:
@@ -268,6 +302,58 @@ class TestDrenarResiliente:
         assert controller._fundamental_job is None
         view.set_fundamental_data.assert_called_once()
         assert presenter._operacoes_ativas == 0
+
+
+class TestCancelamentoFundamental:
+    def _controller(self, view):
+        presenter = FlowScopePresenter(view)
+        controller = FlowScopeController(
+            guard=MagicMock(),
+            load_portfolio=MagicMock(),
+            analyze=MagicMock(),
+            presenter=presenter,
+            logger=MagicMock(),
+            fundamental_repo=object(),
+        )
+        controller._fundamental_generation = 1
+        return controller, presenter
+
+    def test_cancelamento_descarta_resultado_e_encerra(self):
+        view = MagicMock()
+        controller, presenter = self._controller(view)
+        job = FundamentalJob(
+            _CasoFake(), ["HGBS11"], REFERENCIA, 1,
+            cancel_token=presenter.cancel_token,
+        )
+        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+        presenter.job_cancelavel_iniciado()
+        presenter.request_cancel()
+
+        controller._drenar_fundamental(job)
+
+        assert controller._fundamental_job is None
+        view.set_fundamental_data.assert_not_called()
+        assert presenter._operacoes_ativas == 0
+        view.set_status.assert_called_with("Processamento interrompido.", "⚠")
+        view.set_cancellable.assert_called_with(False)
+
+    def test_sem_cancelamento_aplica_resultado(self):
+        view = MagicMock()
+        controller, presenter = self._controller(view)
+        job = FundamentalJob(
+            _CasoFake(), ["HGBS11"], REFERENCIA, 1,
+            cancel_token=presenter.cancel_token,
+        )
+        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
+        controller._fundamental_job = job
+        presenter.on_fundamental_started()
+        presenter.job_cancelavel_iniciado()
+
+        controller._drenar_fundamental(job)
+
+        view.set_fundamental_data.assert_called_once()
 
 
 class TestJobFalhaRecuperavel:

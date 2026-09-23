@@ -267,3 +267,57 @@ class TestFlowScopePresenter:
         result = presenter.get_current_tickers()
         assert result == ["PETR4", "VALE3"]
         view.get_current_tickers.assert_called_once()
+
+
+class TestCancelamento:
+    def test_clique_solicita_cancelamento(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        assert presenter.cancel_token.is_set is False
+        presenter.request_cancel()
+        assert presenter.cancel_token.is_set is True
+
+    def test_nova_operacao_limpa_cancelamento(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.request_cancel()
+        presenter.on_operation_started()
+        assert presenter.cancel_token.is_set is False
+
+    def test_job_sobreposto_nao_limpa_cancelamento(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.request_cancel()
+        presenter.on_operation_started()
+        assert presenter.cancel_token.is_set is True
+
+    def test_botao_visivel_apenas_com_job_cancelavel(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.job_cancelavel_iniciado()
+        view.set_cancellable.assert_called_with(True)
+        presenter.job_cancelavel_finalizado()
+        view.set_cancellable.assert_called_with(False)
+
+    def test_finalizar_job_extra_e_idempotente(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.job_cancelavel_finalizado()
+        view.set_cancellable.assert_not_called()
+
+    def test_exit_com_cancelamento_exibe_mensagem_uma_vez(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_fundamental_started()
+        presenter.request_cancel()
+        presenter.on_fundamental_finished()
+        view.set_status.assert_called_once_with("Processamento interrompido.", "⚠")
+        view.set_cancellable.assert_called_with(False)
+
+    def test_exit_sem_cancelamento_nao_exibe_mensagem(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        presenter.on_operation_finished()
+        view.set_status.assert_not_called()

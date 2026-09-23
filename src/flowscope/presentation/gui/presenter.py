@@ -7,6 +7,7 @@ from datetime import date
 from enum import Enum
 from typing import Protocol
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.application.logging_port import LogReference
 from flowscope.domain.sampling import SamplingConfig
 
@@ -73,6 +74,10 @@ class GUIView(Protocol):
         """Limpa a barra de progresso da barra de status."""
         ...
 
+    def set_cancellable(self: "GUIView", cancellable: bool) -> None:
+        """Mostra ou oculta o botão de interromper processamento."""
+        ...
+
     def set_current_data(self: "GUIView", data: dict) -> None:
         """Armazena os dados carregados da análise atual."""
         ...
@@ -107,6 +112,30 @@ class FlowScopePresenter:
         self._operacoes_ativas = 0
         self._estado = _BusyState.IDLE
         self._dados_disponiveis = False
+        self._cancel_token = CancellationToken()
+        self._jobs_cancelaveis = 0
+
+    @property
+    def cancel_token(self: "FlowScopePresenter") -> CancellationToken:
+        """Retorna o token de cancelamento compartilhado pelos jobs."""
+        return self._cancel_token
+
+    def request_cancel(self: "FlowScopePresenter") -> None:
+        """Solicita o cancelamento de todos os processamentos em background."""
+        self._cancel_token.request()
+
+    def job_cancelavel_iniciado(self: "FlowScopePresenter") -> None:
+        """Contabiliza o início de um job cancelável e exibe o botão."""
+        self._jobs_cancelaveis += 1
+        self._view.set_cancellable(True)
+
+    def job_cancelavel_finalizado(self: "FlowScopePresenter") -> None:
+        """Contabiliza o fim de um job cancelável e oculta o botão no último."""
+        if self._jobs_cancelaveis == 0:
+            return
+        self._jobs_cancelaveis -= 1
+        if self._jobs_cancelaveis == 0:
+            self._view.set_cancellable(False)
 
     def enter(self: "FlowScopePresenter") -> None:
         """Contabiliza o início de uma operação, entrando no estado ocupado.
@@ -118,6 +147,7 @@ class FlowScopePresenter:
         self._operacoes_ativas += 1
         if self._estado is _BusyState.IDLE:
             self._estado = _BusyState.BUSY
+            self._cancel_token.clear()
             self._view.disable_all_buttons()
             self._view.enter_busy()
 
@@ -136,6 +166,10 @@ class FlowScopePresenter:
             self._view.restore_all_buttons()
             self._view.exit_busy()
             self._view.clear_progress()
+            self._jobs_cancelaveis = 0
+            self._view.set_cancellable(False)
+            if self._cancel_token.is_set:
+                self._view.set_status("Processamento interrompido.", "⚠")
             self._sincronizar_copy_button()
 
     @contextmanager

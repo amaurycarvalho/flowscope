@@ -2,6 +2,12 @@
 
 from pathlib import Path
 
+import pytest
+
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.infrastructure.document_catalog import DocumentoArquivo
 from flowscope.presentation.gui.resumos_job import (
@@ -118,3 +124,64 @@ class TestResumosPendentesJob:
         assert [m[1].nome for m in erros] == ["20.pdf"]
         assert "30.pdf" not in painel.gerados
         assert mensagens[-1] is True
+
+
+class _PainelQueCancela(_PainelFake):
+    """Painel fake que solicita cancelamento após preparar/gerar cada item."""
+
+    def __init__(self, textos, token):
+        super().__init__(textos)
+        self._token = token
+
+    def preparar_texto(self, arquivo):
+        texto = super().preparar_texto(arquivo)
+        self._token.request()
+        return texto
+
+    def gerar_resumo_estrito(self, arquivo, texto):
+        resumo = super().gerar_resumo_estrito(arquivo, texto)
+        self._token.request()
+        return resumo
+
+
+class TestCancelamento:
+    def test_cancelamento_interrompe_preparacao(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        token = CancellationToken()
+        painel = _PainelQueCancela(
+            {"10.pdf": "texto A", "20.pdf": "texto B"}, token
+        )
+        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+
+        with pytest.raises(OperacaoCancelada):
+            job._preparar_textos()
+
+        assert painel.preparados == ["10.pdf"]
+
+    def test_cancelamento_interrompe_resumo(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        token = CancellationToken()
+        painel = _PainelQueCancela(
+            {"10.pdf": "texto A", "20.pdf": "texto B"}, token
+        )
+        com_texto = [(a, painel._textos[a.nome]) for a in arquivos]
+        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+
+        with pytest.raises(OperacaoCancelada):
+            job._resumir(com_texto)
+
+        assert painel.gerados == ["10.pdf"]
+
+    def test_job_cancelado_encerra_limpo(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        token = CancellationToken()
+        painel = _PainelQueCancela(
+            {"10.pdf": "texto A", "20.pdf": "texto B"}, token
+        )
+        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+        thread = job.iniciar()
+        thread.join(timeout=2)
+
+        assert not thread.is_alive()
+        assert _mensagens(job)[-1] is True
+        assert painel.gerados == []

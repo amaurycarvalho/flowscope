@@ -1153,6 +1153,9 @@ class _BusyCursorHost(tk.Tk, StatusMixin):
     def clear_progress(self) -> None:
         pass
 
+    def set_cancellable(self, cancellable: bool) -> None:
+        pass
+
     def config_copy_button_state(self, state: str) -> None:
         pass
 

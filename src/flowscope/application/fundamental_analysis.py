@@ -12,6 +12,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import TypeVar
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.application.fundamental_fields import (
     _avisos_ffo_ausente,
     _classificacao_exibicao,
@@ -136,6 +137,7 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         reference_date: date | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
         force_refresh: bool = False,
+        cancel_token: CancellationToken | None = None,
     ) -> list[AnaliseFundamental]:
         """Analisa cada ticker de forma isolada e retorna uma linha por ativo."""
         referencia = reference_date or datetime.now(timezone.utc).date()
@@ -144,6 +146,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         resultados: list[AnaliseFundamental] = []
         total = len(tickers)
         for indice, ticker in enumerate(tickers, start=1):
+            if cancel_token is not None:
+                cancel_token.raise_if_cancelled()
             normalizado = normalizar_ticker(ticker)
             try:
                 resultado, de_cache = self._analisar_ou_cache(

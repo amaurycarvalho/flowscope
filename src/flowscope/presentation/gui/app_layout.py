@@ -223,6 +223,17 @@ class LayoutMixin:
             length=140,
         )
 
+        self._stop_button = tk.Button(
+            self._status_frame,
+            image=self._load_icon("process-stop.png", size=(16, 16)),
+            command=self._on_stop_clicked,
+            bd=0,
+            relief=tk.FLAT,
+            padx=PAD_SMALL,
+            cursor="hand2",
+        )
+        self._stop_button_visivel = False
+
     def _bind_shortcuts(self: "LayoutMixin") -> None:
         self._date_entry.bind("<Return>", lambda e: self._on_load_data())
         self.bind_all("<Control-Shift-c>", lambda e: self._copy_data())

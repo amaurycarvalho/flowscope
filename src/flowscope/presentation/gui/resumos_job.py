@@ -11,6 +11,10 @@ import queue
 import threading
 from typing import Protocol
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.infrastructure.document_catalog import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_preview import tem_texto
@@ -50,10 +54,12 @@ class ResumosPendentesJob:
         self: "ResumosPendentesJob",
         painel: _PainelDocumentos,
         arquivos: list[DocumentoArquivo],
+        cancel_token: CancellationToken | None = None,
     ) -> None:
         """Inicializa o job com a fachada do painel e o snapshot de arquivos."""
         self._painel = painel
         self._arquivos = list(arquivos)
+        self._cancel_token = cancel_token
         self.fila: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
         self.total = len(self._arquivos)
@@ -74,6 +80,8 @@ class ResumosPendentesJob:
             preparados = self._preparar_textos()
             if preparados is not None:
                 self._resumir(preparados)
+        except OperacaoCancelada:
+            logger.debug("Resumo em lote interrompido pelo usuário")
         finally:
             self.fila.put(True)
 
@@ -88,6 +96,8 @@ class ResumosPendentesJob:
         self._progresso(1, 0, total, FASE_PREPARAR)
         preparados: list[tuple[DocumentoArquivo, str]] = []
         for indice, arquivo in enumerate(self._arquivos, start=1):
+            if self._cancel_token is not None:
+                self._cancel_token.raise_if_cancelled()
             try:
                 texto = self._painel.preparar_texto(arquivo)
             except Exception as exc:
@@ -107,6 +117,8 @@ class ResumosPendentesJob:
         total = len(com_texto)
         self._progresso(2, 0, total, FASE_RESUMIR)
         for indice, (arquivo, texto) in enumerate(com_texto, start=1):
+            if self._cancel_token is not None:
+                self._cancel_token.raise_if_cancelled()
             try:
                 resumo = self._painel.gerar_resumo_estrito(arquivo, texto)
             except Exception as exc:

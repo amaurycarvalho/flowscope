@@ -1,6 +1,12 @@
 from datetime import date
 from decimal import Decimal
 
+import pytest
+
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.fundamental_ports import (
     CAMPO_COTACAO,
@@ -188,6 +194,33 @@ class TestFundamentalAnalysisUseCase:
         caso = FundamentalAnalysisUseCase(repo, ffo_provider=ffo, mercado=mercado)
         resultado = caso.execute(["PETR4", "HCRI11", "HGBS11"], REFERENCIA)
         assert [linha.ticker for linha in resultado] == ["PETR4", "HCRI11", "HGBS11"]
+
+    def test_cancelamento_interrompe_laco_sem_marcar_falha(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        token = CancellationToken()
+        processados: list[str] = []
+
+        def progresso(detalhe: str, falhou: bool) -> None:
+            processados.append(detalhe)
+            token.request()
+
+        with pytest.raises(OperacaoCancelada):
+            caso.execute(
+                ["PETR4", "HCRI11", "HGBS11"],
+                REFERENCIA,
+                progress_callback=progresso,
+                cancel_token=token,
+            )
+
+        assert len(processados) == 1
+        assert caso.houve_falha_recuperavel is False
+
+    def test_sem_token_processa_todos_os_tickers(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["PETR4", "HCRI11"], REFERENCIA)
+        assert [linha.ticker for linha in resultado] == ["PETR4", "HCRI11"]
 
     def test_acao_identidade_sem_dividendos_e_ffo_na(self):
         repo = _repo_hgbs11()

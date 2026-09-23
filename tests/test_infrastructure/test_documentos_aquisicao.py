@@ -2,8 +2,13 @@
 
 from datetime import date
 
+import pytest
 import requests
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.domain.structured import FatoRelevante
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.documentos_relevantes import (
@@ -332,3 +337,43 @@ class TestProgresso:
             tmp_path, cliente, lambda _p: b"%PDF"
         )
         aquisicao.adquirir("PETR3", _REFERENCIA)
+
+
+class TestCancelamento:
+    def test_cancelamento_interrompe_acao_apos_primeiro_documento(self, tmp_path):
+        fatos = {
+            "4": [
+                _fato(url=_URL_FATO),
+                _fato(
+                    url=(
+                        "https://www.rad.cvm.gov.br/ENETWEB/"
+                        "frmExibirArquivoIPEExterno.aspx?ID=222"
+                    )
+                ),
+            ]
+        }
+        cliente = _ClienteFake(code_cvm="9512", fatos=fatos)
+        baixados: list[str] = []
+
+        def _baixar(protocolo):
+            baixados.append(protocolo)
+            return b"%PDF-1.4"
+
+        aquisicao, _documentos, _informes = _aquisicao(
+            tmp_path, cliente, _baixar
+        )
+        token = CancellationToken()
+
+        def progresso(current: int, _total: int, _label: str) -> None:
+            if current >= 1:
+                token.request()
+
+        with pytest.raises(OperacaoCancelada):
+            aquisicao.adquirir(
+                "PETR3",
+                _REFERENCIA,
+                progress=progresso,
+                cancel_token=token,
+            )
+
+        assert baixados == ["1510187"]

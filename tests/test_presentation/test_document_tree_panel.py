@@ -12,6 +12,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.infrastructure.document_catalog import (
     DocumentCatalog,
@@ -1428,10 +1432,11 @@ class TestControllerTickerEdit:
 
 
 class _JobFake:
-    def __init__(self, aquisicao, ticker, reference_date):
+    def __init__(self, aquisicao, ticker, reference_date, cancel_token=None):
         self._aquisicao = aquisicao
         self._ticker = ticker
         self._reference_date = reference_date
+        self.cancel_token = cancel_token
         self.fila = queue.Queue()
 
     def iniciar(self):
@@ -1586,10 +1591,46 @@ class TestPollDocumentosResiliente:
         assert "sem progresso" in caplog.text
 
 
+class TestCancelamentoDocumentos:
+    def test_cancelamento_finaliza_e_suprime_sucesso(self, monkeypatch):
+        host = _HostDocumentos()
+        flashes: list[tuple] = []
+        host._flash_status = lambda *args, **kwargs: flashes.append(args)
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobFake)
+        host._presenter.cancel_token.is_set = True
+
+        host._adquirir_documentos("EXXO34")
+
+        host._presenter.job_cancelavel_iniciado.assert_called_once()
+        host._presenter.job_cancelavel_finalizado.assert_called_once()
+        host._presenter.on_operation_finished.assert_called_once()
+        assert flashes == []
+        assert host._documentos_job is None
+
+    def test_cancelamento_finaliza_sem_aguardar_terminal(self, monkeypatch):
+        class _JobPendente:
+            def __init__(self, *args, **kwargs):
+                self.fila = queue.Queue()
+                self.cancel_token = kwargs.get("cancel_token")
+
+            def iniciar(self):
+                return None
+
+        host = _HostDocumentos()
+        monkeypatch.setattr(app_actions, "DocumentosJob", _JobPendente)
+        host._presenter.cancel_token.is_set = True
+
+        host._adquirir_documentos("EXXO34")
+
+        host._presenter.on_operation_finished.assert_called_once()
+        assert host._documentos_job is None
+
+
 class TestDocumentosJob:
     def test_publica_termino_apos_falha(self):
         class _AquisicaoFalha:
-            def adquirir(self, ticker, reference_date, progress=None):
+            def adquirir(self, ticker, reference_date, progress=None,
+                         cancel_token=None):
                 raise RuntimeError("offline")
 
         job = DocumentosJob(_AquisicaoFalha(), "PETR3", date(2026, 7, 29))
@@ -1598,7 +1639,8 @@ class TestDocumentosJob:
 
     def test_publica_progresso_antes_do_termino(self):
         class _AquisicaoProgresso:
-            def adquirir(self, ticker, reference_date, progress=None):
+            def adquirir(self, ticker, reference_date, progress=None,
+                         cancel_token=None):
                 progress(1, 2, "• Documentos de PETR3 (1/2)")
                 progress(2, 2, "• Documentos de PETR3 (2/2)")
 
@@ -1615,6 +1657,39 @@ class TestDocumentosJob:
             MENSAGEM_PROGRESSO, 2, 2, "• Documentos de PETR3 (2/2)"
         )
         assert mensagens[-1] is True
+
+    def test_token_e_repassado_a_aquisicao(self):
+        capturado = {}
+
+        class _AquisicaoToken:
+            def adquirir(self, ticker, reference_date, progress=None,
+                         cancel_token=None):
+                capturado["token"] = cancel_token
+
+        token = CancellationToken()
+        job = DocumentosJob(
+            _AquisicaoToken(), "PETR3", date(2026, 7, 29), cancel_token=token
+        )
+        job.iniciar().join()
+        assert capturado["token"] is token
+
+    def test_cancelamento_nao_loga_falha(self, caplog):
+        class _AquisicaoCancelada:
+            def adquirir(self, ticker, reference_date, progress=None,
+                         cancel_token=None):
+                raise OperacaoCancelada()
+
+        token = CancellationToken()
+        token.request()
+        job = DocumentosJob(
+            _AquisicaoCancelada(), "PETR3", date(2026, 7, 29),
+            cancel_token=token,
+        )
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            job.iniciar().join()
+
+        assert job.fila.get_nowait() is True
+        assert "Falha na aquisição" not in caplog.text
 
 
 class _PainelResumosFake:
@@ -1722,7 +1797,7 @@ class TestOrquestrarResumos:
         host = _HostResumos(painel)
 
         class _JobFake:
-            def __init__(self, _painel, _arquivos):
+            def __init__(self, _painel, _arquivos, cancel_token=None):
                 self.fila = queue.Queue()
                 self.fila.put(True)
                 self.total = len(_arquivos)
@@ -1737,6 +1812,27 @@ class TestOrquestrarResumos:
         host._presenter.enter.assert_called_once()
         host._presenter.exit.assert_called_once()
         assert painel.refreshes == 1
+
+    def test_cancelamento_suprime_desfecho(self, tmp_path):
+        arquivos = [_arquivo(tmp_path, "10.pdf"), _arquivo(tmp_path, "20.pdf")]
+        painel = _PainelResumosFake(
+            arquivos, {"10.pdf": "texto", "20.pdf": "texto"}
+        )
+        host = _HostResumos(painel)
+        _preparar_poll(host)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        host._resumos_job = job
+        host._presenter.cancel_token.is_set = True
+
+        host._poll_resumos_job(job, "ALZR11")
+
+        assert host._resumos_interrompido is True
+        host._presenter.job_cancelavel_finalizado.assert_called_once()
+        host._presenter.exit.assert_called_once()
+        assert not any(
+            msg.startswith("Resumos gerados") for msg, _icon in host.status
+        )
 
     def test_progresso_resultado_e_desfecho(self, tmp_path):
         arquivos = [_arquivo(tmp_path, "10.pdf"), _arquivo(tmp_path, "20.pdf")]

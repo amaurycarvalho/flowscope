@@ -34,16 +34,41 @@ class StatusMixin:
         "sb_v_double_arrow",
     })
 
+    def _ocultar_botao_interromper(self: "StatusMixin") -> None:
+        botao = getattr(self, "_stop_button", None)
+        if botao is not None:
+            botao.pack_forget()
+
+    def _on_stop_clicked(self: "StatusMixin") -> None:
+        """Solicita ao apresentador a interrupção dos processamentos ativos."""
+        self._presenter.request_cancel()
+
+    def set_cancellable(self: "StatusMixin", cancellable: bool) -> None:
+        """Mostra ou oculta o botão de interromper conforme a operação ativa."""
+        self._stop_button_visivel = bool(cancellable)
+        botao = getattr(self, "_stop_button", None)
+        if botao is None:
+            return
+        if cancellable:
+            botao.pack(side=tk.RIGHT, padx=PAD_SMALL)
+        else:
+            botao.pack_forget()
+
     def _set_status(self: "StatusMixin", msg: str, icon: str = "") -> None:
         text = f"{icon} {msg}" if icon else msg
         self._status_var.set(text)
         self._progress_bar.pack_forget()
+        self._ocultar_botao_interromper()
 
     def _set_progress(self: "StatusMixin", current: int, total: int, label: str) -> None:
         pct = int(current / max(total, 1) * 100) if total > 0 else 100
         self._status_var.set(label)
         self._progress_bar["value"] = pct
         self._progress_bar.pack(side=tk.RIGHT, padx=PAD_SMALL)
+        if getattr(self, "_stop_button_visivel", False):
+            botao = getattr(self, "_stop_button", None)
+            if botao is not None:
+                botao.pack(side=tk.RIGHT, padx=PAD_SMALL)
         self.update_idletasks()
 
     def _flash_status(self: "StatusMixin", msg: str, icon: str = "✓", clear_ms: int = 2500) -> None:
@@ -245,9 +270,10 @@ class StatusMixin:
         self._on_tab_changed()
 
     def clear_progress(self: "StatusMixin") -> None:
-        """Limpa a barra de progresso da barra de status."""
+        """Limpa a barra de progresso e o botão de interromper da barra de status."""
         self._progress_bar.pack_forget()
         self._progress_bar["value"] = 0
+        self._ocultar_botao_interromper()
 
     def set_current_data(self: "StatusMixin", data: dict) -> None:
         """Armazena os dados carregados da análise atual."""

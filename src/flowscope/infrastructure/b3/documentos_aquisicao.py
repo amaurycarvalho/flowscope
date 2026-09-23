@@ -11,6 +11,7 @@ from calendar import monthrange
 from collections.abc import Callable
 from datetime import date
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.domain.structured import (
     CategoriaMaterialFact,
     DocumentoMaterialFact,
@@ -69,22 +70,25 @@ class AquisicaoDocumentos:
         ticker: str,
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> None:
         """Adquire os documentos do ticker conforme o tipo, tolerando falhas.
 
         ``progress``, quando informado, recebe ``(atual, total, rótulo)`` a
-        cada documento processado.
+        cada documento processado. ``cancel_token``, quando informado, é
+        observado no topo de cada unidade de trabalho, interrompendo a
+        aquisição pela via de :class:`OperacaoCancelada`.
         """
         chave = (ticker or "").strip().upper()
         if not chave:
             return
         id_fnet = self._client.resolver_ticker(chave)
         if id_fnet:
-            self._adquirir_fii(chave, id_fnet, reference_date, progress)
+            self._adquirir_fii(chave, id_fnet, reference_date, progress, cancel_token)
             return
         code_cvm = self._client.resolver_code_cvm(chave)
         if code_cvm:
-            self._adquirir_acao(chave, code_cvm, reference_date, progress)
+            self._adquirir_acao(chave, code_cvm, reference_date, progress, cancel_token)
 
     def _adquirir_fii(
         self: "AquisicaoDocumentos",
@@ -92,6 +96,7 @@ class AquisicaoDocumentos:
         id_fnet: str,
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> None:
         """Adquire documentos relevantes e o informe mensal de um FII."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
@@ -103,10 +108,14 @@ class AquisicaoDocumentos:
         self._reportar(progress, 0, total, ticker)
         atual = 0
         for item in itens:
+            if cancel_token is not None:
+                cancel_token.raise_if_cancelled()
             self._persistir_documento_relevante(ticker, id_fnet, item)
             atual += 1
             self._reportar(progress, atual, total, ticker)
         if informe is not None:
+            if cancel_token is not None:
+                cancel_token.raise_if_cancelled()
             self._persistir_informe(ticker, informe)
             atual += 1
             self._reportar(progress, atual, total, ticker)
@@ -192,6 +201,7 @@ class AquisicaoDocumentos:
         code_cvm: str,
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> None:
         """Adquire os material facts de uma ação ou BDR."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
@@ -204,6 +214,8 @@ class AquisicaoDocumentos:
         total = len(documentos)
         self._reportar(progress, 0, total, ticker)
         for atual, (documento, slug) in enumerate(documentos, start=1):
+            if cancel_token is not None:
+                cancel_token.raise_if_cancelled()
             self._persistir_material_fact(
                 ticker, documento, slug, reference_date
             )
