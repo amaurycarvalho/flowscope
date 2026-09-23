@@ -29,6 +29,8 @@ O `pyproject.toml` declara `license = { text = "MIT" }`, divergente do arquivo `
 
 A aba "Sobre" é adicionada ao `_main_notebook` após "Análise do Ticker". O conteúdo é um `Frame` próprio dentro de um `Canvas` com `Scrollbar` vertical (mousewheel com suporte a Linux `Button-4/5` e demais plataformas). O painel direito permanece como está.
 
+Os botões do conteúdo (repositório, log e, quando houver novidade, o da release) são agrupados e centralizados horizontalmente.
+
 *Alternativas:* usar o `OrientationPanel` à direita (rejeitado — não comporta ícone e botões e o pedido é manter o painel intocado); criar sub-aba dentro de "Análise Geral" (rejeitado — o pedido é uma aba após "Análise do Ticker").
 
 ### 2. Tratamento dedicado de "Sobre" no ciclo de troca/restauração de abas

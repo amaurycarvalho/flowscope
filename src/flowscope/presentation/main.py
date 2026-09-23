@@ -10,6 +10,7 @@ from pathlib import Path
 
 from flowscope import __version__
 from flowscope.presentation.cli import build_parser, run_cli
+from flowscope.presentation.log_paths import LOG_FILE_RELATIVE_PATH
 from flowscope.presentation.shortcuts import (
     _create_desktop_shortcut,
     _desktop_path,
@@ -121,11 +122,11 @@ class _MillisecondFormatter(logging.Formatter):
 
 
 def _configure_logging() -> None:
-    log_dir = Path.home() / ".flowscope" / "logs"
-    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = Path.home() / LOG_FILE_RELATIVE_PATH
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
     handlers: list[logging.Handler] = [
-        RotatingFileHandler(log_dir / "flowscope.log", maxBytes=1_000_000, backupCount=3),
+        RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3),
     ]
 
     system = platform.system()

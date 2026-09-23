@@ -42,5 +42,5 @@
 
 - [ ] 7.1 Atualizar `panels.md` com a nova sub-aba (objetivo, pergunta, indicadores, como interpretar)
 - [ ] 7.2 Rodar `ruff`, `flake8` e a suíte de testes completa; verificar zero falhas e cobertura ≥ 85%
-- [ ] 7.3 Rodar o quality gate (mutation/radon/xenon conforme `Makefile`); verificar aprovação
+- [ ] 7.3 Rodar `make lint complexity` e corrigir pendências
 - [ ] 7.4 Validar o build PyInstaller (`flowscope.spec`) com as novas dependências e verificar que o executável inicia

@@ -7,6 +7,7 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB
 from flowscope.presentation.gui.charts.fundamental_evolution_data import (
     montar_series,
 )
@@ -94,11 +95,15 @@ class ActionsMixin:
     def _resolve_chart(self: "ActionsMixin", main_tab: str, sub_tab: str) -> object | None:
         if main_tab == "Análise Geral":
             return self._GENERAL.get(sub_tab)
+        if main_tab == ABOUT_TAB:
+            return None
         return self._TICKER.get(sub_tab)
 
     def _resolve_current_chart(self: "ActionsMixin") -> object | None:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            if main_tab == ABOUT_TAB:
+                return None
             if main_tab == "Análise Geral":
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:

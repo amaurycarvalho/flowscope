@@ -3,7 +3,11 @@
 import tkinter as tk
 from tkinter import ttk
 
-from flowscope.presentation.gui.app_tabs import ENABLED_TABS, TAB_CONFIGS
+from flowscope.presentation.gui.app_tabs import (
+    ABOUT_TAB,
+    ENABLED_TABS,
+    TAB_CONFIGS,
+)
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
@@ -15,6 +19,7 @@ from flowscope.presentation.gui.charts.fundamental_table import FundamentalTable
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
+from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
 
 class TabsLayoutMixin:
@@ -110,17 +115,30 @@ class TabsLayoutMixin:
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
 
+    def _build_about_tab(self: "TabsLayoutMixin") -> None:
+        """Registra a aba "Sobre" logo após a "Análise do Ticker"."""
+        about_frame = ttk.Frame(self._main_notebook)
+        self._main_notebook.add(about_frame, text=ABOUT_TAB)
+        self._about_panel = AboutPanel(
+            about_frame,
+            icon=self._load_icon("flowscope.png", size=(72, 72)),
+            on_open_repository=self._abrir_repositorio,
+            on_open_log=self._abrir_log_flowscope,
+        )
+        self._about_panel.frame.pack(fill=tk.BOTH, expand=True)
+
     def _restore_tabs(self: "TabsLayoutMixin", last_tab: str, last_subtab: str) -> None:
         try:
             for i in range(self._main_notebook.index("end")):
                 if self._main_notebook.tab(i, "text") == last_tab:
                     self._main_notebook.select(i)
                     break
-            notebook = self._general_notebook if last_tab == "Análise Geral" else self._ticker_notebook
-            for i in range(notebook.index("end")):
-                if notebook.tab(i, "text") == last_subtab:
-                    notebook.select(i)
-                    break
+            if last_tab != ABOUT_TAB:
+                notebook = self._general_notebook if last_tab == "Análise Geral" else self._ticker_notebook
+                for i in range(notebook.index("end")):
+                    if notebook.tab(i, "text") == last_subtab:
+                        notebook.select(i)
+                        break
         except tk.TclError:
             pass
         self._on_tab_changed()

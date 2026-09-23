@@ -37,6 +37,6 @@
 
 ## 7. Verificação final
 
-- [ ] 7.1 Rodar `make lint` e corrigir avisos introduzidos
+- [ ] 7.1 Rodar `make lint complexity` e corrigir avisos introduzidos
 - [ ] 7.2 Rodar `make test` e garantir cobertura mínima de 85%
 - [ ] 7.3 Validar a change com `openspec validate "fii-guidance-informacoes-adicionais"`

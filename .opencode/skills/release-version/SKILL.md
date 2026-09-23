@@ -26,14 +26,15 @@ Update the application release version across the codebase and regenerate all ch
      ```
    - Do NOT proceed with any of the steps below.
 
-2. **Update app_version in src/flowscope/__init__.py**
+2. **Update version and release date in src/flowscope/__init__.py**
 
-   Read `src/flowscope/__init__.py` and find the line containing `__version__ =`.
+   Read `src/flowscope/__init__.py` and find the lines containing `__version__ =` and `__release_date__ =`.
 
-   Replace the current value with the new version string:
+   Replace the version value with the new version string and the release date with the current date in ISO format (`YYYY-MM-DD`, e.g. `2026-09-18`):
 
    ```
    __version__ = "<new-version>"
+   __release_date__ = "<release-date>"
    ```
 
 3. **Update flowscope.spec**
@@ -67,9 +68,10 @@ Update the application release version across the codebase and regenerate all ch
 5. **Verify consistency**
 
    Read back the modified files and confirm:
-   - `src/flowscope/__init__.py` has `__version__ = "<new-version>"`
+   - `src/flowscope/__init__.py` has `__version__ = "<new-version>"` and `__release_date__ = "<release-date>"`
    - `flowscope.spec` has the correct `'CFBundleShortVersionString':` and `'CFBundleVersion':`  fields
    - `pyproject.toml` has `version = "<new-version>"`
+   - the release date is consistent with the corresponding release header in `CHANGELOG.md`
 
 **Output On Success**
 
@@ -77,7 +79,7 @@ Update the application release version across the codebase and regenerate all ch
 Release version updated to <version>
 
 Files updated:
-- src/flowscope/__init__.py (__version__)
+- src/flowscope/__init__.py (__version__, __release_date__)
 - flowscope.spec
 - pyproject.toml
 

@@ -1,5 +1,8 @@
 """Dados das abas e textos de orientação da interface gráfica do FlowScope."""
 
+#: Texto da aba de nível superior com informações institucionais.
+ABOUT_TAB = "Sobre"
+
 TAB_CONFIGS = [
     ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
      "ultimo_dividendo", "cotistas", "cotas"),

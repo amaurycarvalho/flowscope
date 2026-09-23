@@ -102,7 +102,7 @@
 
 ## 17. Quality Gate
 
-- [ ] 17.1 `make lint` limpo
+- [ ] 17.1 `make lint complexity` limpo
 - [ ] 17.2 `pytest -m "not llm"` + `pytest -m "llm"` passam
 - [ ] 17.3 Testes existentes sem regressão
 - [ ] 17.4 Executar `openspec validate llm-chat` e garantir que a change permanece válida

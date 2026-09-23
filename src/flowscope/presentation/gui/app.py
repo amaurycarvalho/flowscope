@@ -7,6 +7,7 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from flowscope.presentation.gui.app_about_actions import AboutActionsMixin
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_constants import TITLE_PREFIX
 from flowscope.presentation.gui.app_csv import CsvMixin
@@ -89,7 +90,7 @@ def save_preferences(data: dict) -> None:
         pass
 
 
-class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
+class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, AboutActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
     """Janela principal da aplicação FlowScope."""
 
     def __init__(self: "FlowScopeGUI") -> None:
@@ -125,6 +126,7 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, L
         self._ticker_selecionado: str | None = None
         self._loading_after_id = None
         self._flash_after_id = None
+        self._update_checked = False
 
         self._build_top_bar()
         self._build_main_area()

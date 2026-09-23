@@ -8,6 +8,7 @@ from flowscope.presentation.gui.app_indicators import (
     build_indicator_lines,
     insert_indicators,
 )
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB
 
 
 class TabActionsMixin:
@@ -16,6 +17,8 @@ class TabActionsMixin:
     def _current_tabs(self: "TabActionsMixin") -> tuple[str, str] | None:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
+            if main_tab == ABOUT_TAB:
+                return main_tab, ABOUT_TAB
             if main_tab == "Análise Geral":
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
@@ -29,6 +32,11 @@ class TabActionsMixin:
         if tabs is None:
             return
         main_tab, sub_tab = tabs
+
+        if main_tab == ABOUT_TAB:
+            self._prefs["last_tab"] = main_tab
+            self._verificar_nova_versao()
+            return
 
         chart = self._resolve_chart(main_tab, sub_tab)
         if chart is not None and self._deve_atualizar(chart):

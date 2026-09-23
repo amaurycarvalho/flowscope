@@ -36,4 +36,4 @@
 
 - [ ] 7.1 Cobrir com testes os cenários dos specs `short-interest` e `gui-interface` (limites de classificação, `N/A`, ordem e alinhamento das colunas) e garantir cobertura ≥ 85%; verificar com `python -m pytest tests/ --cov`
 - [ ] 7.2 Atualizar a documentação de painéis (`panels.md`) e conferir a consistência com o OrientationPanel; verificar por inspeção do texto final
-- [ ] 7.3 Rodar o quality gate completo (lint/typecheck/testes) e corrigir pendências; verificar com a suíte de CI do projeto
+- [ ] 7.3 Rodar `make lint complexity` e corrigir pendências.
