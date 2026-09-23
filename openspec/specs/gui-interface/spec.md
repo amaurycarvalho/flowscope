@@ -397,7 +397,7 @@ O sistema DEVE adicionar uma sub-aba "Fundamentos" como a **primeira** sub-aba d
 
 ### Requirement: Colunas da tabela fundamentalista
 
-A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/VP, P/L, Dividend Yield, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, FFO/Receita (12m), FFO/Receita (3m), FFO Trend, Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), Nº de cotas, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais. A coluna `Nº de cotas` DEVE ser exibida imediatamente antes de `Nº de cotistas`, com a quantidade de cotas/ações emitidas formatada como inteiro com separador de milhar. As colunas `FFO Yield`, `P/FFO` e `Dividend Payout (DY/FFOY)` NÃO DEVEM mais ser exibidas.
+A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tipo (`Papel`/`FII`), Sub-tipo, P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/VP, P/L, Dividend Yield, Última data-com, Último dividendo, Dividendo anterior, Tendência do dividendo, Shorts%, Volume de Shorts, Fechamento Shorts, Risco Fechamento, FFO/Receita (12m), FFO/Receita (3m), FFO Trend, Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), Nº de cotas, Nº de cotistas, Classe de cotistas, Patrimônio, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais. A coluna `Nº de cotas` DEVE ser exibida imediatamente antes de `Nº de cotistas`, com a quantidade de cotas/ações emitidas formatada como inteiro com separador de milhar. As colunas `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento` DEVEM ser exibidas imediatamente após `Tendência do dividendo` e imediatamente antes de `FFO/Receita (12m)`. As colunas `FFO Yield`, `P/FFO` e `Dividend Payout (DY/FFOY)` NÃO DEVEM mais ser exibidas.
 
 #### Scenario: Colunas de identidade preenchidas
 - **WHEN** a tabela é renderizada para um ticker conhecido
@@ -451,21 +451,37 @@ A tabela fundamentalista DEVE exibir, nesta ordem, as colunas: Ticker, Nome, Tip
 - **WHEN** a tabela é renderizada
 - **THEN** as colunas de cotistas, classificação de cotistas, tamanho patrimonial, classificação patrimonial e data de referência DEVEM ser exibidas
 
+#### Scenario: Colunas de short interest posicionadas após Tendência do dividendo
+- **WHEN** a tabela é renderizada
+- **THEN** as colunas `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento` DEVEM ser exibidas imediatamente após `Tendência do dividendo` e imediatamente antes de `FFO/Receita (12m)`
+
+#### Scenario: Shorts% e Fechamento Shorts exibidos como numéricos
+- **WHEN** o `Shorts%` e o `SIR` de um ticker estão disponíveis
+- **THEN** `Shorts%` DEVE ser exibido em notação percentual com uma casa decimal e `Fechamento Shorts` em dias, como razão com uma casa decimal e sufixo `d`
+
+#### Scenario: Volume de Shorts e Risco Fechamento exibem rótulos
+- **WHEN** o `Shorts%` e o `SIR` de um ticker estão disponíveis
+- **THEN** `Volume de Shorts` e `Risco Fechamento` DEVEM exibir um dos rótulos `Inexistente`, `Muito Baixo`, `Baixo`, `Alto` ou `Muito Alto`
+
+#### Scenario: Colunas de short interest vazias sem dado
+- **WHEN** o ticker não possui estoque de empréstimos ou denominador aplicável
+- **THEN** `Shorts%` e `Fechamento Shorts` DEVEM exibir `N/A` e `Volume de Shorts` e `Risco Fechamento` DEVEM exibir `Inexistente`, sem impedir a exibição das demais colunas
+
 ### Requirement: Alinhamento das colunas numéricas
 
-A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
+A tabela fundamentalista DEVE alinhar à direita o conteúdo das colunas Último dividendo, Dividendo anterior, Dividend Yield, Shorts%, Fechamento Shorts, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio, mantendo as demais colunas alinhadas à esquerda.
 
 #### Scenario: Colunas numéricas alinhadas à direita
 - **WHEN** a tabela é renderizada
-- **THEN** as colunas Último dividendo, Dividendo anterior, Dividend Yield, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
+- **THEN** as colunas Último dividendo, Dividendo anterior, Dividend Yield, Shorts%, Fechamento Shorts, FFO/Receita (12m), FFO/Receita (3m), Dividendos/Receita (12m), Dividendos/Receita (3m), Dividendos/FFO (12m), Dividendos/FFO (3m), P (Cotação), Preço Típico, P / PT, VP (VP/Cota), P/L, P/VP, Nº de cotas, Nº de cotistas e Patrimônio DEVEM ter o conteúdo alinhado à direita
 
 #### Scenario: Colunas textuais alinhadas à esquerda
 - **WHEN** a tabela é renderizada
-- **THEN** as colunas Ticker, Nome, Tipo, Sub-tipo, Última data-com, Tendência do dividendo, FFO Trend, Classe de cotistas, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais DEVEM ter o conteúdo alinhado à esquerda
+- **THEN** as colunas Ticker, Nome, Tipo, Sub-tipo, Última data-com, Tendência do dividendo, Volume de Shorts, Risco Fechamento, FFO Trend, Classe de cotistas, Classe de patrimônio, Data de referência, Informações adicionais e Dados fiscais DEVEM ter o conteúdo alinhado à esquerda
 
 ### Requirement: OrientationPanel para a sub-aba Fundamentos
 
-O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fundamentos", seguindo o padrão existente (objetivo, pergunta respondida, indicadores envolvidos e como interpretar). O campo **Indicadores envolvidos** DEVE descrever todas as colunas exibidas na tabela, incluindo Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO` (12m e 3m), a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais. O campo **Como interpretar** DEVE conter orientações sucintas de leitura para essas colunas: `FFO/Receita` como quanto da receita vira caixa operacional; `Dividendos/Receita` como quanto da receita é destinado a dividendos; e `Dividendos/FFO` como quanto do caixa operacional é consumido pelos dividendos, abaixo de 100% o FFO cobre os dividendos, acima de 100% os dividendos superam o FFO e negativo o FFO foi negativo no período.
+O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fundamentos", seguindo o padrão existente (objetivo, pergunta respondida, indicadores envolvidos e como interpretar). O campo **Indicadores envolvidos** DEVE descrever todas as colunas exibidas na tabela, incluindo Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO` (12m e 3m), as colunas de *short interest* (`Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento`), a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais. O campo **Como interpretar** DEVE conter orientações sucintas de leitura para essas colunas: `FFO/Receita` como quanto da receita vira caixa operacional; `Dividendos/Receita` como quanto da receita é destinado a dividendos; `Dividendos/FFO` como quanto do caixa operacional é consumido pelos dividendos, abaixo de 100% o FFO cobre os dividendos, acima de 100% os dividendos superam o FFO e negativo o FFO foi negativo no período; `Shorts%` como a magnitude relativa da aposta baixista sobre o *free float*; e `Fechamento Shorts` como a dificuldade operacional de fechamento, com valores acima de 5 considerados altos.
 
 #### Scenario: OrientationPanel da sub-aba Fundamentos
 - **WHEN** o usuário seleciona a sub-aba "Fundamentos"
@@ -473,7 +489,7 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 
 #### Scenario: Indicadores envolvidos descrevem as colunas exibidas
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
-- **THEN** o campo "Indicadores envolvidos" DEVE mencionar Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO`, a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais, além de identidade, cotação, VP/Cota, P/VP, P/L, Dividend Yield, dividendos, tendências, cotistas/acionistas e patrimônio
+- **THEN** o campo "Indicadores envolvidos" DEVE mencionar Preço Típico, P / PT, as razões `FFO/Receita`, `Dividendos/Receita` e `Dividendos/FFO`, as colunas `Shorts%`, `Volume de Shorts`, `Fechamento Shorts` e `Risco Fechamento`, a quantidade de cotas/ações emitidas, Informações adicionais e Dados fiscais, além de identidade, cotação, VP/Cota, P/VP, P/L, Dividend Yield, dividendos, tendências, cotistas/acionistas e patrimônio
 
 #### Scenario: Identidade descreve o Tipo e o Sub-tipo implementados
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
@@ -498,6 +514,10 @@ O sistema DEVE exibir no OrientationPanel o conteúdo explicativo da sub-aba "Fu
 #### Scenario: Orientação de leitura das razões
 - **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
 - **THEN** o campo "Como interpretar" DEVE explicar `FFO/Receita` como quanto da receita vira caixa operacional e `Dividendos/Receita` como quanto da receita é destinado a dividendos
+
+#### Scenario: Como interpretar orienta as colunas de short interest
+- **WHEN** o OrientationPanel da sub-aba "Fundamentos" é exibido
+- **THEN** o campo "Como interpretar" DEVE explicar `Shorts%` como a magnitude relativa da aposta baixista sobre o *free float* e `Fechamento Shorts` como a dificuldade operacional de fechamento, mencionando que valores acima de 5 são considerados altos
 
 ### Requirement: Congelamento das colunas Ticker e Nome na tabela de Fundamentos
 
@@ -783,9 +803,19 @@ A sub-aba "Evolução dos Fundamentos" DEVE ser preenchida somente quando seleci
 
 ### Requirement: OrientationPanel da sub-aba Evolução dos Fundamentos
 
-O OrientationPanel DEVE exibir conteúdo explicativo da sub-aba "Evolução dos Fundamentos", composto por objetivo, pergunta respondida, indicadores envolvidos e como interpretar, no mesmo padrão das demais sub-abas.
+O OrientationPanel DEVE exibir conteúdo explicativo da sub-aba "Evolução dos Fundamentos", composto por objetivo, pergunta respondida, indicadores envolvidos e como interpretar, no mesmo padrão das demais sub-abas. O campo **Indicadores envolvidos** DEVE descrever os oito campos exibidos, incluindo `Shorts%`, e o campo **Como interpretar** DEVE mencionar que o painel mostra oito mini-gráficos (small multiples) e que o `Shorts%` representa a magnitude relativa da aposta baixista.
 
 #### Scenario: Conteúdo explicativo ao selecionar a sub-aba
 
 - **WHEN** o usuário seleciona a sub-aba "Evolução dos Fundamentos"
 - **THEN** o OrientationPanel DEVE exibir o título e o texto explicativo da sub-aba, com as seções no padrão existente
+
+#### Scenario: Indicadores envolvidos descrevem os oito campos
+
+- **WHEN** o OrientationPanel da sub-aba "Evolução dos Fundamentos" é exibido
+- **THEN** o campo "Indicadores envolvidos" DEVE mencionar Cotação, VP (VP/Cota), P/VP, Dividend Yield, Último dividendo, Nº de cotistas, Nº de cotas e `Shorts%`
+
+#### Scenario: Como interpretar menciona os oito mini-gráficos
+
+- **WHEN** o OrientationPanel da sub-aba "Evolução dos Fundamentos" é exibido
+- **THEN** o campo "Como interpretar" DEVE mencionar que o painel exibe oito mini-gráficos e DEVE explicar o `Shorts%` como a magnitude relativa da aposta baixista

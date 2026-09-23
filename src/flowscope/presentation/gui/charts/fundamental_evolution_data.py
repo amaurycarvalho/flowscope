@@ -2,7 +2,7 @@
 
 Concentra as funções puras do painel: a amostragem Fibonacci acumulada das
 datas retidas no cache histórico e a conversão das observações datadas nas
-séries dos sete campos exibidos. Não executa I/O nem desenha — o painel
+séries dos oito campos exibidos. Não executa I/O nem desenha — o painel
 (:mod:`fundamental_evolution_panel`) consome apenas o resultado.
 """
 
@@ -21,6 +21,7 @@ FIBONACCI_GAPS: tuple[int, ...] = (
 #: Tipos de campo, que definem a formatação de exibição no painel.
 TIPO_MONETARIO = "monetario"
 TIPO_PERCENTUAL = "percentual"
+TIPO_PERCENTUAL_1 = "percentual_1"
 TIPO_RAZAO = "razao"
 TIPO_QUANTIDADE = "quantidade"
 TIPO_INTEIRO = "inteiro"
@@ -99,6 +100,11 @@ def _cotas(analise: AnaliseFundamental) -> object | None:
     return analise.cotas
 
 
+def _shorts_pct(analise: AnaliseFundamental) -> object | None:
+    """Extrai o Shorts% das métricas de short interest da análise."""
+    return analise.short.shorts_pct if analise.short else None
+
+
 #: Campos exibidos, na ordem dos painéis do painel de evolução.
 CAMPOS_EVOLUCAO: tuple[CampoEvolucao, ...] = (
     CampoEvolucao("cotacao", "Cotação (R$)", TIPO_MONETARIO, _cotacao),
@@ -110,6 +116,7 @@ CAMPOS_EVOLUCAO: tuple[CampoEvolucao, ...] = (
     ),
     CampoEvolucao("cotistas", "Nº de cotistas", TIPO_INTEIRO, _cotistas),
     CampoEvolucao("cotas", "Nº de cotas", TIPO_QUANTIDADE, _cotas),
+    CampoEvolucao("shorts_pct", "Shorts%", TIPO_PERCENTUAL_1, _shorts_pct),
 )
 
 
@@ -150,7 +157,7 @@ def _mais_proxima(disponiveis: Sequence[date], alvo: date) -> date:
 def montar_series(
     observacoes: Sequence[ObservacaoFundamental],
 ) -> tuple[SerieEvolucao, ...]:
-    """Monta as séries dos sete campos a partir das observações datadas.
+    """Monta as séries dos oito campos a partir das observações datadas.
 
     Aplica a amostragem Fibonacci às datas observadas e, para cada campo,
     produz os pontos com valor disponível — observações sem valor viram

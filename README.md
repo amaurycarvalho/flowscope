@@ -20,7 +20,8 @@ Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI
   - **Dominância do Pregão:** quem venceu a disputa diária pelo preço.
   - **Tabela de Fundamentos:** consolida, por ticker, identidade e classificação, cotação, Preço Típico, P/L, P/VP, Dividend Yield, dividendos, *short interest* (Shorts%, Volume de Shorts, Fechamento Shorts em dias e Risco Fechamento), nº de cotas/cotistas, patrimônio e métricas de FFO dos FIIs; com colunas congeladas, ordenável e exportável em CSV.
 - **Análise do Ticker** — aprofundamento do ativo selecionado:
-  - **Evolução da Dominância**, **Amplitude de Preço**, **Fluxo Financeiro** e **Evolução dos Fundamentos**.
+  - **Evolução dos Fundamentos:** small multiples (oito mini-gráficos) com a série histórica do cache do ticker — Cotação, VP/Cota, P/VP, Dividend Yield, Último dividendo, Nº de cotistas, Nº de cotas e Shorts% — com datas em dia/mês/ano (`DD/MM/AA`) e tooltip de data e valor ao passar o mouse sobre cada ponto.
+  - **Evolução da Dominância**, **Amplitude de Preço** e **Fluxo Financeiro**.
   - **Lista de Documentos:** árvore dos documentos em cache do ticker (avisos aos acionistas, informes mensais e documentos relevantes), com pré-visualização textual e abertura no aplicativo padrão.
 - **Resumo de documentos com I.A. (opcional):** ao selecionar um documento, o FlowScope usa uma LLM para gerar um resumo curto (até 280 caracteres) e um longo (até 1.500 caracteres); os resumos são persistidos em cache e reaproveitados, e a lista de documentos exibe o resumo curto de cada item.
 

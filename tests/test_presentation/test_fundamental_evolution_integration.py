@@ -242,7 +242,7 @@ class TestUpdateFundamentalEvolution:
 
         series, kwargs = host._fundamental_evolution_panel.update.call_args
         assert kwargs["ticker"] == "HGBS11"
-        assert len(series[0]) == 7
+        assert len(series[0]) == 8
 
     def test_sem_historico_usa_estado_vazio(self):
         host = ActionsMixin()
@@ -413,6 +413,8 @@ class TestOrientationText:
         _titulo, corpo = TAB_CONTENT[("Análise do Ticker", "Evolução dos Fundamentos")]
         texto = " ".join(parte for parte, _estilo in corpo)
         assert "small multiples" in texto
+        assert "oito mini-gráficos" in texto
         assert "Fibonacci" in texto
         assert "cache" in texto
         assert "Nº de cotistas" in texto
+        assert "Shorts%" in texto

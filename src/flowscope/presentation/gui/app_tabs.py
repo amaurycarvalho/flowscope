@@ -5,7 +5,7 @@ ABOUT_TAB = "Sobre"
 
 TAB_CONFIGS = [
     ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
-     "ultimo_dividendo", "cotistas", "cotas"),
+     "ultimo_dividendo", "cotistas", "cotas", "shorts_pct"),
     ("Evolução da Dominância", "clv", "daily_efficiency", "dominance_score", "daily_money_flow"),
     ("Amplitude de Preço", "range", "range_percentual", "typical_price", "median_price", "weighted_close"),
     ("Fluxo Financeiro", "clv", "money_flow_multiplier", "money_flow_volume",
@@ -194,11 +194,14 @@ TAB_CONTENT = {
              "• Dividend Yield (%);\n"
              "• Último dividendo (R$);\n"
              "• Nº de cotistas (FII) ou acionistas (ação);\n"
-             "• Nº de cotas ou ações emitidas.\n\n"), ""),
+             "• Nº de cotas ou ações emitidas;\n"
+             "• Shorts% — ações alugadas sobre o free float (ou total emitido), em percentual.\n\n"), ""),
             ("Como interpretar: ", "bold"),
-            (("O painel mostra sete mini-gráficos (small multiples), um por indicador, cada um com a sua própria escala para que os valores "
+            (("O painel mostra oito mini-gráficos (small multiples), um por indicador, cada um com a sua própria escala para que os valores "
              "não sejam misturados. Em cada gráfico, a linha vai da observação mais antiga (esquerda) para a mais recente (direita), e o ponto "
-             "vermelho destaca o valor mais recente do cache. Uma linha subindo indica que o indicador cresceu no período; descendo, que recuou.\n\n"
+             "vermelho destaca o valor mais recente do cache. Uma linha subindo indica que o indicador cresceu no período; descendo, que recuou. "
+             "O Shorts% expressa a magnitude relativa da aposta baixista sobre o free float (para FIIs, sobre o total de cotas). "
+             "Passe o mouse sobre um ponto para ver a data e o valor correspondente.\n\n"
              "As datas exibidas são amostradas a partir da observação mais recente com intervalos que crescem na sequência de Fibonacci "
              "(1, 2, 3, 5, 8, 13, ... dias), ficando mais próximas no presente e mais espaçadas no passado. A data mais antiga e a mais recente "
              "do cache aparecem sempre. A origem dos dados é exclusivamente o cache histórico de fundamentos: só existem pontos para os dias em "

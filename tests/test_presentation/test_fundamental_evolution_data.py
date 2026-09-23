@@ -13,6 +13,7 @@ from flowscope.domain.fii import (
     ClassificacaoExibicao,
     FonteClassificacao,
     MetricasFii,
+    MetricasShort,
     Quality,
     TendenciaDividendo,
     TipoAtivo,
@@ -23,6 +24,7 @@ from flowscope.presentation.gui.charts.fundamental_evolution_data import (
     TIPO_INTEIRO,
     TIPO_MONETARIO,
     TIPO_PERCENTUAL,
+    TIPO_PERCENTUAL_1,
     TIPO_QUANTIDADE,
     TIPO_RAZAO,
     montar_series,
@@ -57,6 +59,7 @@ def _analise(
     dividendo: str | None = None,
     cotistas: int | None = None,
     cotas: str | None = None,
+    shorts: MetricasShort | None = None,
 ) -> AnaliseFundamental:
     tem_metricas = p_vp is not None or dy is not None
     return AnaliseFundamental(
@@ -81,6 +84,7 @@ def _analise(
         vp_cota=None if vp_cota is None else Decimal(vp_cota),
         cotistas=cotistas,
         cotas=None if cotas is None else Decimal(cotas),
+        short=shorts,
     )
 
 
@@ -139,9 +143,9 @@ class TestSelecionarDatasFibonacci:
 
 
 class TestMontarSeries:
-    def test_sempre_sete_series(self):
+    def test_sempre_oito_series(self):
         series = montar_series([])
-        assert len(series) == 7
+        assert len(series) == 8
         assert [serie.campo for serie in series] == [
             campo.campo for campo in CAMPOS_EVOLUCAO
         ]
@@ -155,6 +159,22 @@ class TestMontarSeries:
         assert tipos["ultimo_dividendo"] == TIPO_MONETARIO
         assert tipos["cotistas"] == TIPO_INTEIRO
         assert tipos["cotas"] == TIPO_QUANTIDADE
+        assert tipos["shorts_pct"] == TIPO_PERCENTUAL_1
+
+    def test_shorts_pct_extraido(self):
+        observacoes = [
+            _observacao(
+                BASE,
+                _analise(shorts=MetricasShort(shorts_pct=Decimal("0.1"))),
+            )
+        ]
+        series = {serie.campo: serie for serie in montar_series(observacoes)}
+        assert series["shorts_pct"].pontos[0].valor == Decimal("0.1")
+
+    def test_shorts_pct_ausente_fica_vazio(self):
+        observacoes = [_observacao(BASE, _analise(cotacao="10"))]
+        series = {serie.campo: serie for serie in montar_series(observacoes)}
+        assert series["shorts_pct"].vazia
 
     def test_valores_extraidos(self):
         observacoes = [
@@ -217,4 +237,4 @@ class TestMontarSeries:
 
         monkeypatch.setattr("builtins.open", _sem_io)
         series = montar_series([_observacao(BASE, _analise(cotacao="10"))])
-        assert len(series) == 7
+        assert len(series) == 8

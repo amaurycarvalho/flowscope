@@ -245,7 +245,7 @@ Métricas usadas na tabela de Fundamentos (aba "Análise Geral") e na Evolução
 - **ID:** `shorts_pct`
 - **Descrição:** Fração do *free float* (ações em circulação) que está alugada e ainda não foi devolvida; mede a magnitude relativa da aposta baixista.
 - **Fórmula:** `Ações Alugadas / Free Float`
-- **Aplicabilidade:** O *free float* vem do CVM FRE (`Quantidade_Total_Acoes_Circulacao`); na sua ausência, o denominador é o total emitido (ações/cotas) e, para FIIs, o total de cotas. Insumo ausente ou denominador zero exibem `N/A`; apresentado em percentual com uma casa decimal.
+- **Aplicabilidade:** O *free float* vem do CVM FRE (`Quantidade_Total_Acoes_Circulacao`); na sua ausência, o denominador é o total emitido (ações/cotas) e, para FIIs, o total de cotas. Insumo ausente ou denominador zero exibem `N/A`; apresentado em percentual com uma casa decimal. Também é exibido como série temporal na Evolução dos Fundamentos (aba "Análise do Ticker").
 
 ### Volume de Shorts
 - **ID:** `volume_shorts`
