@@ -95,7 +95,7 @@ class TestPreservacaoDeBlocosExternos:
             save_preferences({"last_tickers": ["PETR4"]})
             dados = json.loads(path.read_text(encoding="utf-8"))
         assert dados["llm"]["chat"]["provider"] == "deepseek"
-        assert dados["llm"]["chat"]["api_key"] == "sk-1"
+        assert dados["llm"]["chat"]["providers"]["deepseek"]["api_key"] == "sk-1"
 
 
 class TestFundamentalColumnWidthsPreferences:

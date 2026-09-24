@@ -26,6 +26,9 @@ DEFAULT_LLM_CONFIG: dict = {
     "rpm": 5,
 }
 
+#: Campos guardados por provedor no mapa ``llm.chat.providers``.
+_CHAT_FIELDS = ("api_url", "model", "api_key", "rpm")
+
 #: Valor padrão do flag de análise de guidance via LLM (desabilitado).
 DEFAULT_GUIDANCE_ENABLED = False
 
@@ -42,35 +45,84 @@ def _read_json(path: Path) -> dict:
     return {}
 
 
-def load_llm_config(path: Path | None = None) -> dict:
-    """Carrega o bloco ``llm.chat`` preenchendo os campos ausentes com defaults."""
-    data = _read_json(path or CONFIG_PATH)
+def _ler_chat(data: dict) -> dict:
+    """Devolve o sub-bloco ``llm.chat`` como dicionário (vazio se ausente)."""
     llm = data.get("llm")
     chat = llm.get("chat") if isinstance(llm, dict) else None
-    if not isinstance(chat, dict):
-        chat = {}
-    config = dict(DEFAULT_LLM_CONFIG)
-    for chave in DEFAULT_LLM_CONFIG:
-        if chave in chat and chat[chave] is not None:
-            config[chave] = chat[chave]
+    return chat if isinstance(chat, dict) else {}
+
+
+def _normalizar_provedor(entrada: dict | None) -> dict:
+    """Preenche os campos ausentes de uma entrada de provedor com defaults."""
+    resultado = {chave: DEFAULT_LLM_CONFIG[chave] for chave in _CHAT_FIELDS}
+    if isinstance(entrada, dict):
+        for chave in _CHAT_FIELDS:
+            if entrada.get(chave) is not None:
+                resultado[chave] = entrada[chave]
     try:
-        config["rpm"] = int(config["rpm"])
+        resultado["rpm"] = int(resultado["rpm"])
     except (TypeError, ValueError):
-        config["rpm"] = DEFAULT_LLM_CONFIG["rpm"]
+        resultado["rpm"] = DEFAULT_LLM_CONFIG["rpm"]
+    return resultado
+
+
+def _providers_do_chat(chat: dict) -> dict[str, dict]:
+    """Normaliza o mapa ``providers``, migrando o formato plano anterior.
+
+    O formato novo guarda um mapa ``providers``; o anterior guardava os campos
+    do provedor ativo de forma plana em ``llm.chat``. Quando o mapa está ausente
+    ou vazio, os campos planos viram a entrada do provedor ativo.
+    """
+    providers = chat.get("providers")
+    if isinstance(providers, dict) and providers:
+        return {
+            nome: _normalizar_provedor(entrada)
+            for nome, entrada in providers.items()
+            if isinstance(nome, str) and nome != "none"
+        }
+    provider = chat.get("provider")
+    if isinstance(provider, str) and provider and provider != "none":
+        plano = {chave: chat.get(chave) for chave in _CHAT_FIELDS}
+        return {provider: _normalizar_provedor(plano)}
+    return {}
+
+
+def load_provider_configs(path: Path | None = None) -> dict[str, dict]:
+    """Carrega o mapa ``llm.chat.providers``, migrando o formato plano anterior."""
+    return _providers_do_chat(_ler_chat(_read_json(path or CONFIG_PATH)))
+
+
+def load_llm_config(path: Path | None = None) -> dict:
+    """Carrega o bloco ``llm.chat`` do provedor ativo com defaults preenchidos."""
+    chat = _ler_chat(_read_json(path or CONFIG_PATH))
+    config = dict(DEFAULT_LLM_CONFIG)
+    provider = chat.get("provider")
+    if isinstance(provider, str) and provider:
+        config["provider"] = provider
+    if config["provider"] == "none":
+        return config
+    entrada = _providers_do_chat(chat).get(config["provider"])
+    if entrada is not None:
+        config.update(entrada)
     return config
 
 
 def save_llm_config(config: dict, path: Path | None = None) -> None:
-    """Grava ``llm.chat`` preservando as demais chaves do arquivo."""
+    """Grava ``llm.chat`` preservando os demais provedores e blocos do arquivo."""
     destino = path or CONFIG_PATH
     data = _read_json(destino)
+    provider = config.get("provider") or "none"
+    providers = _providers_do_chat(_ler_chat(data))
+    if provider != "none":
+        entrada = {
+            chave: config.get(chave, DEFAULT_LLM_CONFIG[chave])
+            for chave in _CHAT_FIELDS
+        }
+        providers[provider] = _normalizar_provedor(entrada)
     llm = data.get("llm")
     if not isinstance(llm, dict):
         llm = {}
-    llm["chat"] = {
-        chave: config.get(chave, DEFAULT_LLM_CONFIG[chave])
-        for chave in DEFAULT_LLM_CONFIG
-    }
+    llm["chat"] = {"provider": provider, "providers": providers}
     data["llm"] = llm
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")

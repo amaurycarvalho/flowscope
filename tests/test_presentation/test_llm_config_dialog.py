@@ -78,9 +78,10 @@ class TestCargaESalvamento:
             dialog._rpm_var.set("9")
             dialog._salvar()
             dados = json.loads(caminho.read_text(encoding="utf-8"))
-            assert dados["llm"]["chat"]["provider"] == "openai"
-            assert dados["llm"]["chat"]["api_key"] == "sk-2"
-            assert dados["llm"]["chat"]["rpm"] == 9
+            chat = dados["llm"]["chat"]
+            assert chat["provider"] == "openai"
+            assert chat["providers"]["openai"]["api_key"] == "sk-2"
+            assert chat["providers"]["openai"]["rpm"] == 9
         finally:
             root.destroy()
 
@@ -151,6 +152,143 @@ class TestCargaESalvamento:
             assert dialog._api_url_var.get() == ""
         finally:
             root.destroy()
+
+
+class TestConfigPorProvedor:
+    def _config_dois_provedores(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "openai",
+                            "providers": {
+                                "openai": {
+                                    "api_url": "https://api.openai.com/v1",
+                                    "model": "gpt-4o-mini",
+                                    "api_key": "sk-open",
+                                    "rpm": 3,
+                                },
+                                "deepseek": {
+                                    "api_url": "https://api.deepseek.com/v1",
+                                    "model": "deepseek-chat",
+                                    "api_key": "sk-deep",
+                                    "rpm": 7,
+                                },
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        return caminho
+
+    @needs_display
+    def test_abertura_carrega_provedor_ativo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=self._config_dois_provedores(tmp_path)
+            )
+            assert dialog._working["deepseek"]["api_key"] == "sk-deep"
+            assert dialog._provider_var.get() == "openai"
+            assert dialog._api_key_var.get() == "sk-open"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_troca_restaura_provedor_salvo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=self._config_dois_provedores(tmp_path)
+            )
+            dialog._provider_var.set("deepseek")
+            dialog._on_preset_change()
+            assert dialog._api_url_var.get() == "https://api.deepseek.com/v1"
+            assert dialog._model_var.get() == "deepseek-chat"
+            assert dialog._api_key_var.get() == "sk-deep"
+            assert dialog._rpm_var.get() == "7"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_troca_para_nao_configurado_limpa_chave(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=self._config_dois_provedores(tmp_path)
+            )
+            dialog._provider_var.set("gemini")
+            dialog._on_preset_change()
+            assert dialog._api_url_var.get() == (
+                "https://generativelanguage.googleapis.com/v1beta/openai/"
+            )
+            assert dialog._api_key_var.get() == ""
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_none_limpa_e_volta_restaura(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=self._config_dois_provedores(tmp_path)
+            )
+            dialog._provider_var.set("none")
+            dialog._on_preset_change()
+            assert dialog._api_url_var.get() == ""
+            assert dialog._model_var.get() == ""
+            assert dialog._api_key_var.get() == ""
+            assert "none" not in dialog._working
+
+            dialog._provider_var.set("deepseek")
+            dialog._on_preset_change()
+            assert dialog._api_key_var.get() == "sk-deep"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_edicao_nao_salva_sobrevive_na_sessao(self, tmp_path):
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(
+                root, config_path=self._config_dois_provedores(tmp_path)
+            )
+            dialog._provider_var.set("deepseek")
+            dialog._on_preset_change()
+            dialog._api_key_var.set("sk-nova")
+            dialog._provider_var.set("openai")
+            dialog._on_preset_change()
+            dialog._provider_var.set("deepseek")
+            dialog._on_preset_change()
+            assert dialog._api_key_var.get() == "sk-nova"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_trocar_sem_salvar_nao_grava(self, tmp_path):
+        caminho = _config_salva(
+            tmp_path,
+            provider="deepseek",
+            api_url="https://api.deepseek.com/v1",
+            model="deepseek-chat",
+            api_key="sk-deep",
+            rpm=7,
+        )
+        antes = caminho.read_text(encoding="utf-8")
+        root = tk.Tk()
+        try:
+            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog._provider_var.set("openai")
+            dialog._on_preset_change()
+            dialog._api_key_var.set("sk-open")
+            dialog.destroy()
+        finally:
+            root.destroy()
+        assert caminho.read_text(encoding="utf-8") == antes
 
 
 class TestTestarConexao:

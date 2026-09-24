@@ -12,6 +12,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.domain.llm import LLMPort
 
 #: Prompt de sistema comum às duas chamadas.
@@ -146,20 +147,25 @@ class ConsultarChatUseCase:
         self._system_prompt = system_prompt
 
     def consultar(
-        self: "ConsultarChatUseCase", pergunta: str, contexto: ContextoChat
+        self: "ConsultarChatUseCase",
+        pergunta: str,
+        contexto: ContextoChat,
+        cancel_token: CancellationToken | None = None,
     ) -> RespostaChat:
         """Consulta o contexto de resumos e escala para o texto integral se preciso."""
+        self._checar(cancel_token)
         primeira = self._completar(self._montar_prompt(pergunta, contexto, None))
         resposta = interpretar_resposta(primeira)
         if not resposta.documentos_solicitados or contexto.documentos is None:
             return resposta
-        return self._escalar(pergunta, contexto, resposta)
+        return self._escalar(pergunta, contexto, resposta, cancel_token)
 
     def _escalar(
         self: "ConsultarChatUseCase",
         pergunta: str,
         contexto: ContextoChat,
         resposta: RespostaChat,
+        cancel_token: CancellationToken | None = None,
     ) -> RespostaChat:
         """Executa a segunda chamada com o texto integral dos alvos."""
         alvos = resposta.documentos_solicitados
@@ -168,7 +174,9 @@ class ConsultarChatUseCase:
                 resposta,
                 texto=resposta.texto or MENSAGEM_SEM_ALVO,
             )
+        self._checar(cancel_token)
         texto_integral = contexto.documentos.preparar_texto(alvos)
+        self._checar(cancel_token)
         segunda = self._completar(
             self._montar_prompt(pergunta, contexto, texto_integral)
         )
@@ -178,6 +186,12 @@ class ConsultarChatUseCase:
             fontes=final.documentos_solicitados or alvos,
             documentos_solicitados=[],
         )
+
+    @staticmethod
+    def _checar(cancel_token: CancellationToken | None) -> None:
+        """Lança ``OperacaoCancelada`` quando o cancelamento foi solicitado."""
+        if cancel_token is not None:
+            cancel_token.raise_if_cancelled()
 
     def _completar(self: "ConsultarChatUseCase", prompt: str) -> str:
         """Envia o prompt como mensagem de usuário, com o sistema estável."""

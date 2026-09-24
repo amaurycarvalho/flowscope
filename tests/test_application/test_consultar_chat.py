@@ -2,6 +2,10 @@
 
 import pytest
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.chat import (
     ConsultarChatUseCase,
     ContextoChat,
@@ -100,6 +104,36 @@ class TestCascata:
         usecase = ConsultarChatUseCase(llm)
         with pytest.raises(LLMUnavailableError):
             usecase.consultar("pergunta", ContextoChat())
+
+
+class TestCancelamento:
+    def test_token_ja_cancelado_nao_chama_llm(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        token = CancellationToken()
+        token.request()
+        usecase = ConsultarChatUseCase(llm)
+        with pytest.raises(OperacaoCancelada):
+            usecase.consultar("pergunta", ContextoChat(), token)
+        assert llm.chamadas == []
+
+    def test_cancelamento_entre_chamadas(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "", "documentos": ["chave"]}',
+                '{"resposta": "final", "documentos": []}',
+            ]
+        )
+        token = CancellationToken()
+
+        def confirmar(_chaves: list[str]) -> bool:
+            token.request()
+            return True
+
+        usecase = ConsultarChatUseCase(llm)
+        contexto = ContextoChat(documentos=_documental(confirmar=confirmar))
+        with pytest.raises(OperacaoCancelada):
+            usecase.consultar("pergunta", contexto, token)
+        assert len(llm.chamadas) == 1
 
 
 class TestParserTolerante:

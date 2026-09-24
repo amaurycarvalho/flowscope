@@ -80,6 +80,26 @@ Falhas da LLM durante o chat DEVEM ser exibidas na barra de status com mensagem 
 - **WHEN** a LLM fica ou está indisponível durante uma pergunta
 - **THEN** a mensagem DEVE aparecer na barra de status e o erro DEVE ser registrado no log
 
+### Requirement: Cancelar o envio da mensagem
+
+O sistema DEVE exibir, ao lado do botão "Enviar", um botão de cancelamento com o ícone `process-stop.png`, habilitado somente enquanto houver um envio em processamento. Ao acioná-lo, o sistema DEVE solicitar a interrupção do processamento, habilitar novamente o botão "Enviar" e desabilitar o botão de cancelamento, sem aguardar o término da thread de trabalho. O desfecho tardio do provedor DEVE ser descartado, sem ser exibido nem registrado na sessão, e a interrupção NÃO DEVE ser tratada como falha.
+
+#### Scenario: Botão desabilitado em repouso
+- **WHEN** o painel está ocioso e nenhum envio está em processamento
+- **THEN** o botão de cancelamento DEVE estar desabilitado
+
+#### Scenario: Botão habilitado durante o envio
+- **WHEN** uma pergunta é enviada e o processamento está em andamento
+- **THEN** o botão de cancelamento DEVE ficar habilitado e o botão "Enviar" desabilitado
+
+#### Scenario: Cancelamento restaura os botões
+- **WHEN** o usuário aciona o botão de cancelamento durante o processamento
+- **THEN** o botão "Enviar" DEVE voltar a ficar habilitado e o de cancelamento desabilitado
+
+#### Scenario: Desfecho tardio é descartado
+- **WHEN** o processamento é cancelado e a thread de trabalho conclui ou falha depois
+- **THEN** nenhuma mensagem do assistente DEVE ser acrescentada à sessão e nenhuma falha DEVE ser registrada no log
+
 ### Requirement: Sessão não persistente
 
 Cada abertura da aba DEVE começar com uma sessão limpa, sem persistência de histórico.

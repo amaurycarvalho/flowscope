@@ -305,6 +305,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - O campo de respostas é somente-leitura, com cursor, seleção, `Ctrl+A` e `Ctrl+C`; a entrada aceita colar livremente. `Enter` envia a pergunta; `Shift+Enter` quebra linha.
   - O cabeçalho tem os botões **"Limpar"**, **"Copiar chat"** e **"Configuração"**, este sempre visível logo após "Copiar chat". O botão "Copiar Dados" também copia o chat quando esta aba está ativa.
   - O botão **"Limpar"**, antes de "Copiar chat", reinicia a conversa como se estivesse começando agora; um pedido de confirmação (Sim/Não) é exibido antes de limpar, e a conversa permanece inalterada se o usuário recusar.
+  - O rodapé tem o botão **"Enviar"** e, ao lado, um botão de cancelamento com o ícone `process-stop.png`, habilitado somente enquanto há um envio em processamento. Acioná-lo interrompe o envio de forma cooperativa, reabilita o "Enviar" e exibe "Envio cancelado." na barra de status; o desfecho tardio do provedor é descartado e não entra na conversa.
 - **Estado não configurado:** sem provedor `llm.chat` (ou com provedor `none`), a aba permanece visível, com a entrada desabilitada e orientação de configuração; a "Configuração" abre o diálogo da `llm-core`. Ao salvar, o estado é reavaliado.
 - **Erros:** falhas da LLM aparecem na barra de status com mensagem amigável e são registradas no log.
 

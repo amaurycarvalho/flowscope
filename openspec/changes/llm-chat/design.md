@@ -75,6 +75,14 @@ Não há seletor de escopo. O contexto enviado é sempre o da watchlist completa
 
 O cabeçalho ganha o botão "Limpar", antes de "Copiar chat", que reinicia a conversa reutilizando `ChatPanel.limpar()`. Como a sessão é em memória, limpar equivale a começar agora. Antes de executar, exibe um `messagebox.askyesno` (mesmo padrão do gate de confirmação de documentos); se o usuário recusar, a sessão permanece inalterada.
 
+### 15. Botão de cancelar o envio com cancelamento cooperativo
+
+O rodapé ganha, ao lado do botão "Enviar", um botão de cancelamento com o ícone `process-stop.png`, habilitado apenas enquanto há um envio em processamento. Ao acioná-lo, o painel solicita o cancelamento pelo `CancellationToken` da `process-cancellation`, restaura imediatamente os controles (Enviar habilitado, cancelar desabilitado) e exibe "Envio cancelado." na barra de status, sem aguardar a thread de trabalho. A thread observa o token antes de montar o contexto, entre as duas chamadas de completion e na confirmação; um contador de geração no painel descarta respostas tardias, que não são registradas na sessão nem exibidas.
+
+Como `LLMPort.complete` é uma chamada bloqueante e não cancelável, o cancelamento é cooperativo: não aborta a requisição HTTP em andamento, mas o usuário recupera o controle de imediato e nenhum resultado posterior contamina a conversa. Isso segue o precedente da `process-cancellation` (finalizar a interface sem aguardar a thread).
+
+Alternativa considerada: aguardar o término da chamada antes de restaurar os botões — deixaria a interface presa enquanto o provedor responde.
+
 ## Risks / Trade-offs
 
 - **[Risco] RPM padrão 5** → cascata limitada a 2 chamadas e interrupção antecipada reduzem a pressão; mensagens de espera na statusbar.
@@ -84,3 +92,4 @@ O cabeçalho ganha o botão "Limpar", antes de "Copiar chat", que reinicia a con
 - **[Risco] Formato da resposta do modelo** → parser tolerante com fallback para texto integral.
 - **[Trade-off] Sem streaming** → resposta completa, sem token-a-token.
 - **[Trade-off] Sem token accounting** → teto por documento (~12k caracteres, precedente do resumidor) e teto global, truncando com aviso.
+- **[Risco] Resposta tardia após cancelar o envio** → token cooperativo e contador de geração descartam o desfecho; nada é registrado na sessão.

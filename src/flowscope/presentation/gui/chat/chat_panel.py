@@ -12,29 +12,30 @@ podem ser registradas para changes futuras (``noticias-b3``, ``llm-chat-rag``).
 """
 
 import logging
-import queue
-import threading
 import tkinter as tk
 from collections.abc import Callable, Iterable
 from tkinter import messagebox, ttk
 
+from PIL import Image, ImageTk
+
 from flowscope.application.chat import (
-    ConsultarChatUseCase,
     ContextoChat,
     ContextoDocumental,
     FonteContexto,
 )
 from flowscope.domain.chat import ChatMessage, ChatSession
-from flowscope.domain.llm import LLMError, LLMPort, LLMUnavailableError
+from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.chat.conhecimento import montar_bloco_conhecimento
 from flowscope.presentation.gui.chat.documentos import (
     FAIXA_AUTOMATICA,
     CascataDocumentos,
     faixa_confirmacao,
 )
+from flowscope.presentation.gui.chat.envio import EnvioMixin
 from flowscope.presentation.gui.chat.fundamentos import montar_contexto_fundamentos
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
+from flowscope.presentation.shortcuts import _resolve_icon_path
 
 logger = logging.getLogger("flowscope")
 
@@ -73,7 +74,7 @@ def mensagem_confirmacao(quantidade: int, nomes: list[str]) -> str | None:
     )
 
 
-class ChatPanel(tk.Frame):
+class ChatPanel(EnvioMixin, tk.Frame):
     """Painel de chat da watchlist completa, com sessão em memória."""
 
     def __init__(
@@ -104,9 +105,9 @@ class ChatPanel(tk.Frame):
         self._status_callback = status_callback
         self._fontes_adicionais = list(fontes_adicionais or [])
         self._confirmation_timeout = confirmation_timeout
-        self._fila: queue.Queue = queue.Queue()
-        self._processando = False
+        self._init_envio()
         self._disponivel = True
+        self._icon_refs: list[ImageTk.PhotoImage] = []
         self._build()
         self.avaliar_estado()
 
@@ -167,6 +168,23 @@ class ChatPanel(tk.Frame):
         self._entrada.bind("<Shift-Return>", lambda _event: None)
         self._send_btn = ttk.Button(rodape, text="Enviar", command=self._enviar)
         self._send_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+        self._cancel_btn = ttk.Button(
+            rodape,
+            image=self._load_icon("process-stop.png", size=(16, 16)),
+            command=self._cancelar_envio,
+            state=tk.DISABLED,
+        )
+        self._cancel_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+
+    def _load_icon(
+        self: "ChatPanel", filename: str, size: tuple = (20, 20)
+    ) -> ImageTk.PhotoImage:
+        """Carrega um ícone do recurso e o mantém referenciado para o Tk."""
+        path = _resolve_icon_path(filename)
+        img = Image.open(path).resize(size, Image.LANCZOS)
+        photo = ImageTk.PhotoImage(img)
+        self._icon_refs.append(photo)
+        return photo
 
     # ── Estado de configuração ───────────────────────────────────────
 
@@ -179,12 +197,24 @@ class ChatPanel(tk.Frame):
         """Habilita ou desabilita a entrada conforme a configuração."""
         if self._disponivel:
             self._mostrar_configuracao(False)
-            self._send_btn.config(state=tk.NORMAL)
             self._entrada.config(state=tk.NORMAL)
         else:
             self._mostrar_configuracao(True)
-            self._send_btn.config(state=tk.DISABLED)
             self._entrada.config(state=tk.DISABLED)
+        self._atualizar_controles()
+
+    def _atualizar_controles(self: "ChatPanel") -> None:
+        """Ajusta os botões ao estado de processamento e disponibilidade."""
+        self._send_btn.config(
+            state=(
+                tk.NORMAL
+                if self._disponivel and not self._processando
+                else tk.DISABLED
+            )
+        )
+        self._cancel_btn.config(
+            state=tk.NORMAL if self._processando else tk.DISABLED
+        )
 
     def _mostrar_configuracao(self: "ChatPanel", visivel: bool) -> None:
         """Exibe ou oculta a orientação de configuração.
@@ -202,51 +232,6 @@ class ChatPanel(tk.Frame):
             self._config_callback()
 
     # ── Envio e resposta ─────────────────────────────────────────────
-
-    def _on_return(self: "ChatPanel", event: tk.Event) -> str:
-        """Envia a pergunta ao pressionar Enter sem Shift."""
-        if event.state & 0x1:
-            return ""
-        self._enviar()
-        return "break"
-
-    def _enviar(self: "ChatPanel") -> None:
-        """Registra a pergunta e inicia a consulta em thread de trabalho."""
-        if self._processando or not self._disponivel:
-            return
-        pergunta = self._texto_entrada()
-        if not pergunta:
-            return
-        self._texto_entrada_set("")
-        self._registrar("user", pergunta)
-        self._processando = True
-        self._send_btn.config(state=tk.DISABLED)
-        self._status("Consultando a I.A.…", "")
-        snapshot_f = dict(self._fundamental_data_provider() or {})
-        snapshot_w = list(self._watchlist_provider() or [])
-        threading.Thread(
-            target=self._executar,
-            args=(pergunta, snapshot_f, snapshot_w),
-            daemon=True,
-        ).start()
-        self.after(20, lambda: self._poll(None))
-
-    def _executar(
-        self: "ChatPanel", pergunta: str, fundamentos: dict, watchlist: list[str]
-    ) -> None:
-        """Monta o contexto e consulta a LLM em thread de trabalho."""
-        try:
-            contexto = self._montar_contexto(pergunta, fundamentos, watchlist)
-            usecase = ConsultarChatUseCase(self._criar_llm())
-            resposta = usecase.consultar(pergunta, contexto)
-        except LLMUnavailableError as exc:
-            self._fila.put(("indisponivel", exc))
-        except LLMError as exc:
-            self._fila.put(("erro", exc))
-        except Exception as exc:
-            self._fila.put(("erro", exc))
-        else:
-            self._fila.put(("ok", resposta))
 
     def _criar_llm(self: "ChatPanel") -> LLMPort:
         """Cria a porta de completion a partir da fábrica configurada."""
@@ -302,27 +287,6 @@ class ChatPanel(tk.Frame):
         alvos = self._cascata.resolver_alvos(chaves)
         return self._cascata.confirmar_leitura(alvos)
 
-    def _confirmar_no_tk(self: "ChatPanel", quantidade: int, nomes: list[str]) -> bool:
-        """Pede confirmação na thread do Tk e aguarda a resposta na thread de trabalho."""
-        evento = threading.Event()
-        caixa: dict = {}
-        self._fila.put(("confirmar", quantidade, nomes, evento, caixa))
-        evento.wait(self._confirmation_timeout)
-        return bool(caixa.get("ok", False))
-
-    def _poll(self: "ChatPanel", _event: object) -> None:
-        """Consome a fila de resultados na thread do Tk."""
-        try:
-            mensagem = self._fila.get_nowait()
-        except queue.Empty:
-            self.after(20, lambda: self._poll(None))
-            return
-        if mensagem[0] == "confirmar":
-            self._atender_confirmacao(mensagem)
-            self.after(10, lambda: self._poll(None))
-            return
-        self._concluir(mensagem)
-
     def _atender_confirmacao(self: "ChatPanel", mensagem: tuple) -> None:
         """Exibe o diálogo de confirmação e libera a thread de trabalho."""
         _tipo, quantidade, nomes, evento, caixa = mensagem
@@ -340,18 +304,17 @@ class ChatPanel(tk.Frame):
 
     def _concluir(self: "ChatPanel", mensagem: tuple) -> None:
         """Aplica o desfecho da consulta e reabilita a entrada."""
-        tipo = mensagem[0]
+        _geracao, tipo, payload = mensagem
         self._processando = False
-        if self._disponivel:
-            self._send_btn.config(state=tk.NORMAL)
+        self._atualizar_controles()
         if tipo == "ok":
-            resposta = mensagem[1]
+            resposta = payload
             self._registrar("assistant", resposta.texto, resposta.fontes)
             self._status("Pronto.", "")
         elif tipo == "indisponivel":
-            self._on_indisponivel(mensagem[1])
+            self._on_indisponivel(payload)
         else:
-            self._on_falha(mensagem[1])
+            self._on_falha(payload)
 
     def _on_indisponivel(self: "ChatPanel", exc: BaseException) -> None:
         """Marca o painel como não configurado e exibe a orientação."""

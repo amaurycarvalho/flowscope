@@ -2,6 +2,7 @@
 
 import logging
 import os
+import threading
 import time
 import tkinter as tk
 
@@ -17,6 +18,7 @@ from flowscope.presentation.gui.chat.chat_panel import (
     mensagem_confirmacao,
 )
 from flowscope.presentation.gui.chat.documentos import CascataDocumentos
+from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
 needs_display = pytest.mark.skipif(
@@ -40,6 +42,23 @@ class _FakeLLM:
         return resposta
 
 
+class _LLMBloqueante:
+    """Porta de completion que bloqueia até ser liberada, para testar cancelamento."""
+
+    def __init__(self, liberar: threading.Event, resposta) -> None:
+        self.liberar = liberar
+        self.resposta = resposta
+        self.chamadas = 0
+
+    def complete(self, messages: list[dict], system_prompt: str | None = None) -> str:
+        self.chamadas += 1
+        resultado = self.resposta
+        self.liberar.wait(3)
+        if isinstance(resultado, BaseException):
+            raise resultado
+        return resultado
+
+
 def _painel(root, tmp_path, **kwargs) -> ChatPanel:
     """Constrói um painel com catálogo temporário e opções sobreponíveis."""
     kwargs.setdefault("cascata", CascataDocumentos(catalog=DocumentCatalog(cache_dir=tmp_path)))
@@ -52,6 +71,15 @@ def _aguardar(root: tk.Tk, painel: ChatPanel, timeout: float = 3.0) -> None:
     """Processa eventos do Tk até o painel concluir a consulta."""
     inicio = time.time()
     while painel._processando and time.time() - inicio < timeout:
+        root.update()
+        time.sleep(0.01)
+    root.update()
+
+
+def _aguardar_ate(root: tk.Tk, condicao, timeout: float = 3.0) -> None:
+    """Processa eventos do Tk até a condição ser satisfeita."""
+    inicio = time.time()
+    while not condicao() and time.time() - inicio < timeout:
         root.update()
         time.sleep(0.01)
     root.update()
@@ -391,4 +419,175 @@ class TestFontesAdicionais:
             assert "resposta mesmo assim" in painel.conteudo_sessao()
             assert len(llm.chamadas) == 1
         finally:
+            root.destroy()
+
+
+class TestCancelarEnvio:
+    @needs_display
+    def test_botao_desabilitado_em_repouso(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            assert str(painel._cancel_btn.cget("state")) == "disabled"
+            assert str(painel._send_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_botao_ao_lado_de_enviar(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            botoes = painel._cancel_btn.master.pack_slaves()
+            assert painel._cancel_btn in botoes
+            assert painel._send_btn in botoes
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_botao_habilitado_durante_envio(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(
+            liberar, '{"resposta": "tardia", "documentos": []}'
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            assert str(painel._cancel_btn.cget("state")) == "normal"
+            assert str(painel._send_btn.cget("state")) == "disabled"
+        finally:
+            liberar.set()
+            root.destroy()
+
+    @needs_display
+    def test_cancelar_restaura_botoes(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(
+            liberar, '{"resposta": "tardia", "documentos": []}'
+        )
+        estados: list[str] = []
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+                status_callback=lambda msg, _icon: estados.append(msg),
+            )
+            painel._texto_entrada_set("pergunta")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            painel._cancel_btn.invoke()
+            root.update()
+            assert str(painel._send_btn.cget("state")) == "normal"
+            assert str(painel._cancel_btn.cget("state")) == "disabled"
+            assert MENSAGEM_CANCELADO in estados
+        finally:
+            liberar.set()
+            root.destroy()
+
+    @needs_display
+    def test_desfecho_tardio_descartado(self, tmp_path, caplog):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(
+            liberar, '{"resposta": "resposta tardia", "documentos": []}'
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            with caplog.at_level(logging.ERROR, logger="flowscope"):
+                painel._enviar()
+                _aguardar_ate(root, lambda: llm.chamadas == 1)
+                painel._cancelar_envio()
+                liberar.set()
+                _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+            assert "resposta tardia" not in painel.conteudo_sessao()
+            assert not any(
+                "Falha no chat" in registro.getMessage()
+                for registro in caplog.records
+            )
+        finally:
+            liberar.set()
+            root.destroy()
+
+    @needs_display
+    def test_falha_tardia_descartada(self, tmp_path, caplog):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(
+            liberar, LLMCommunicationError("falha tardia")
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            with caplog.at_level(logging.ERROR, logger="flowscope"):
+                painel._enviar()
+                _aguardar_ate(root, lambda: llm.chamadas == 1)
+                painel._cancelar_envio()
+                liberar.set()
+                _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+            assert not any(
+                "Falha no chat" in registro.getMessage()
+                for registro in caplog.records
+            )
+        finally:
+            liberar.set()
+            root.destroy()
+
+    @needs_display
+    def test_novo_envio_apos_cancelar(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(
+            liberar, '{"resposta": "primeira", "documentos": []}'
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("um")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            painel._cancelar_envio()
+            llm.resposta = '{"resposta": "segunda", "documentos": []}'
+            liberar.set()
+            _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+
+            painel._texto_entrada_set("dois")
+            painel._enviar()
+            _aguardar(root, painel)
+            _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+            conteudo = painel.conteudo_sessao()
+            assert "segunda" in conteudo
+            assert "primeira" not in conteudo
+        finally:
+            liberar.set()
             root.destroy()

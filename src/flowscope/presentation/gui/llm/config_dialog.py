@@ -15,9 +15,11 @@ from tkinter import ttk
 
 from flowscope.domain.llm import LLMError
 from flowscope.infrastructure.llm.config import (
+    DEFAULT_LLM_CONFIG,
     check_llm_deps,
     get_presets,
     load_llm_config,
+    load_provider_configs,
     save_llm_config,
 )
 from flowscope.infrastructure.llm.factory import create_llm_provider
@@ -57,6 +59,8 @@ class LLMConfigDialog(tk.Toplevel):
         self._on_saved = on_saved
         self._presets = get_presets()
         self._widgets_config: list[tk.Widget] = []
+        self._working: dict[str, dict] = {}
+        self._provider_atual = "none"
         self._fila: queue.Queue = queue.Queue()
         self._testando = False
         self._deps_ok = True
@@ -171,8 +175,10 @@ class LLMConfigDialog(tk.Toplevel):
         return spin
 
     def _carregar(self: "LLMConfigDialog") -> None:
-        """Preenche os campos com a configuração salva."""
+        """Preenche os campos com a configuração salva do provedor ativo."""
+        self._working = load_provider_configs(self._config_path)
         config = load_llm_config(self._config_path)
+        self._provider_atual = config["provider"]
         self._provider_var.set(config["provider"])
         self._api_url_var.set(config["api_url"])
         self._model_var.set(config["model"])
@@ -182,12 +188,46 @@ class LLMConfigDialog(tk.Toplevel):
     def _on_preset_change(
         self: "LLMConfigDialog", event: tk.Event | None = None
     ) -> None:
-        """Preenche modelo e API URL conforme o preset selecionado."""
-        preset = self._presets.get(self._provider_var.get())
-        if preset is None:
+        """Restaura a configuração do provedor selecionado ao trocar o preset."""
+        self._descarregar_provedor_atual()
+        self._provider_atual = self._provider_var.get()
+        self._carregar_provedor(self._provider_atual)
+
+    def _descarregar_provedor_atual(self: "LLMConfigDialog") -> None:
+        """Guarda o formulário atual em memória para o provedor ativo."""
+        if self._provider_atual == "none":
             return
-        self._model_var.set(preset["model"])
-        self._api_url_var.set(preset["api_url"])
+        self._working[self._provider_atual] = self._coletar_campos_provedor()
+
+    def _coletar_campos_provedor(self: "LLMConfigDialog") -> dict:
+        """Monta os campos de um provedor a partir do formulário atual."""
+        return {
+            "api_url": self._api_url_var.get().strip(),
+            "model": self._model_var.get().strip(),
+            "api_key": self._api_key_var.get().strip(),
+            "rpm": self._rpm(),
+        }
+
+    def _carregar_provedor(self: "LLMConfigDialog", provider: str) -> None:
+        """Exibe a configuração salva do provedor ou os defaults do preset."""
+        if provider == "none":
+            self._api_url_var.set("")
+            self._model_var.set("")
+            self._api_key_var.set("")
+            self._rpm_var.set(str(DEFAULT_LLM_CONFIG["rpm"]))
+            return
+        entrada = self._working.get(provider)
+        if entrada is not None:
+            self._api_url_var.set(str(entrada["api_url"]))
+            self._model_var.set(str(entrada["model"]))
+            self._api_key_var.set(str(entrada["api_key"]))
+            self._rpm_var.set(str(entrada["rpm"]))
+            return
+        preset = self._presets.get(provider)
+        self._api_url_var.set(preset["api_url"] if preset else "")
+        self._model_var.set(preset["model"] if preset else "")
+        self._api_key_var.set("")
+        self._rpm_var.set(str(DEFAULT_LLM_CONFIG["rpm"]))
 
     def _rpm(self: "LLMConfigDialog") -> int:
         """Retorna o RPM informado, caindo no padrão 5 quando inválido."""

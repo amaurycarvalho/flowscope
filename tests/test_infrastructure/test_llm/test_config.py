@@ -12,6 +12,7 @@ from flowscope.infrastructure.llm.config import (
     get_presets,
     load_guidance_llm_enabled,
     load_llm_config,
+    load_provider_configs,
     save_guidance_llm_enabled,
     save_llm_config,
 )
@@ -74,6 +75,72 @@ class TestLoad:
         assert load_llm_config(caminho) == DEFAULT_LLM_CONFIG
 
 
+class TestProviderConfigs:
+    def test_novo_formato(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "deepseek",
+                            "providers": {
+                                "openai": {
+                                    "api_url": "https://api.openai.com/v1",
+                                    "model": "gpt-4o-mini",
+                                    "api_key": "sk-open",
+                                    "rpm": 3,
+                                },
+                                "deepseek": {
+                                    "api_url": "https://api.deepseek.com/v1",
+                                    "model": "deepseek-chat",
+                                    "api_key": "sk-deep",
+                                    "rpm": 7,
+                                },
+                            },
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        providers = load_provider_configs(caminho)
+        assert set(providers) == {"openai", "deepseek"}
+        assert providers["deepseek"]["api_key"] == "sk-deep"
+        assert providers["deepseek"]["rpm"] == 7
+
+    def test_migra_formato_plano(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "deepseek",
+                            "api_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat",
+                            "api_key": "sk-123",
+                            "rpm": 15,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        providers = load_provider_configs(caminho)
+        assert providers == {
+            "deepseek": {
+                "api_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "api_key": "sk-123",
+                "rpm": 15,
+            }
+        }
+
+    def test_ausente_retorna_vazio(self, tmp_path):
+        assert load_provider_configs(tmp_path / "config.json") == {}
+
+
 class TestSave:
     def test_gravacao_preserva_outras_chaves(self, tmp_path):
         caminho = tmp_path / "config.json"
@@ -125,7 +192,82 @@ class TestSave:
         caminho = tmp_path / "config.json"
         save_llm_config({"provider": "openai"}, caminho)
         dados = json.loads(caminho.read_text(encoding="utf-8"))
-        assert dados["llm"]["chat"]["rpm"] == 5
+        assert dados["llm"]["chat"]["providers"]["openai"]["rpm"] == 5
+
+    def test_salvar_preserva_outros_provedores(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config(
+            {
+                "provider": "openai",
+                "api_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+                "api_key": "sk-open",
+                "rpm": 3,
+            },
+            caminho,
+        )
+        save_llm_config(
+            {
+                "provider": "deepseek",
+                "api_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "api_key": "sk-deep",
+                "rpm": 7,
+            },
+            caminho,
+        )
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "deepseek"
+        assert (
+            dados["llm"]["chat"]["providers"]["openai"]["api_key"] == "sk-open"
+        )
+        assert (
+            dados["llm"]["chat"]["providers"]["deepseek"]["api_key"] == "sk-deep"
+        )
+
+    def test_salvar_none_preserva_provedores(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config(
+            {
+                "provider": "deepseek",
+                "api_url": "https://api.deepseek.com/v1",
+                "model": "deepseek-chat",
+                "api_key": "sk-deep",
+                "rpm": 7,
+            },
+            caminho,
+        )
+        save_llm_config({"provider": "none"}, caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "none"
+        assert (
+            dados["llm"]["chat"]["providers"]["deepseek"]["api_key"] == "sk-deep"
+        )
+
+    def test_migracao_grava_formato_novo(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "deepseek",
+                            "api_url": "https://api.deepseek.com/v1",
+                            "model": "deepseek-chat",
+                            "api_key": "sk-123",
+                            "rpm": 15,
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        save_llm_config(load_llm_config(caminho), caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert "providers" in dados["llm"]["chat"]
+        entrada = dados["llm"]["chat"]["providers"]["deepseek"]
+        assert entrada["api_key"] == "sk-123"
+        assert entrada["rpm"] == 15
 
 
 class TestGuidanceFlag:

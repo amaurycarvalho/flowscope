@@ -94,3 +94,11 @@
 - [x] 14.2 Atualizar os testes do `ChatPanel` (botão, confirmação e cancelamento)
 - [x] 14.3 Atualizar panels.md com o botão "Limpar"
 - [x] 14.4 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
+
+## 15. Botão "Cancelar o envio" do chat
+
+- [x] 15.1 Adicionar ao lado de "Enviar" um botão de cancelamento com o ícone `process-stop.png`, habilitado somente durante o processamento, e verificar com testes de estado
+- [x] 15.2 Estender `ConsultarChatUseCase.consultar` com `CancellationToken` opcional e verificar a interrupção antes das chamadas de completion
+- [x] 15.3 Implementar o cancelamento cooperativo no `ChatPanel` (token, contador de geração e descarte do desfecho tardio), com restauração imediata dos botões, e verificar com testes
+- [x] 15.4 Atualizar panels.md e README.md com o botão de cancelar o envio
+- [x] 15.5 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
