@@ -1,48 +1,36 @@
 ## Why
 
-O FlowScope extrai dados da B3 mas não permite consultar esses dados em linguagem natural. Com `structured-earnings` fornecendo proventos e os documentos estruturados/regulatórios da B3, além dos documentos em PDF (avisos de BDR e documentos relevantes) e do informe mensal em HTML, o próximo passo é permitir que o usuário faça perguntas sobre qualquer ticker e receba respostas baseadas nos documentos indexados — um assistente RAG integrado à GUI, com pesquisa semântica via SQLite local e LLM via API.
+O FlowScope extrai dados de mercado e mantém documentos em cache, mas não permite consultá-los em linguagem natural. Esta change adiciona sub-abas de chat que respondem perguntas sobre os dados já carregados, sobre os documentos em cache e sobre o próprio FlowScope, consumindo a camada de LLM fornecida pela `llm-core`.
 
-Esta change também centraliza a **preparação para indexação** (contratos `DocumentoIndexavel`/`DocumentSource`, `to_text`/extração de texto e fontes concretas), que estava dispersa nas changes de extração.
+Esta versão inicial NÃO usa RAG vetorial: a recuperação de documentos é uma cascata sobre os resumos e o texto já cacheados pela sub-aba "Documentos". A indexação vetorial é uma evolução separada, na change `llm-chat-rag`.
 
 ## What Changes
 
-- Novo módulo `domain/chat/` com `ChatMessage`, `ChatSession` (in-memory) e as portas `DocumentoIndexavel` (protocolo) e `DocumentSource` (ABC).
-- Fontes de documentos (`DocumentSource`) já implementadas, reconciliadas com o código: `MaterialFactsSource` (fatos relevantes/assembleias/avisos via `RegulacaoRepository`) e `NoticiasSource` (Plantão B3).
-- **Transferido das changes de extração**: `InformeMensalSource` (lê o cache `~/.cache/flowscope/informe-mensal/` e produz texto do HTML) e `RelevantesSource` (lê o cache `~/.cache/flowscope/documentos-relevantes/` e extrai texto dos PDFs).
-- Extração de texto para indexação (HTML→texto e PDF→texto via `pypdf`) como responsabilidade desta change.
-- VectorStore em SQLite puro com busca por cosine similarity — zero dependências nativas adicionais para armazenamento.
-- Módulo de embeddings com dois provedores: `fastembed` (local, default) e liteLLM (API, configurável).
-- **Herdado da change `llm-core`**: a camada base de LLM (`LLMPort`, adaptador liteLLM, presets, rate limiting por RPM e exceções tipadas). Esta change NÃO redefine cliente, config de completion nem diálogo de configuração; consome `create_llm_provider` e `load_llm_config`.
-- Pipeline de indexação via `IndexarDocumentosUseCase`, consumindo as `DocumentSource` disponíveis.
-- Chunker de texto em Python puro (split por parágrafo, overlap configurável, sem langchain).
-- Widget `ChatPanel` tkinter reutilizável com scroll, copy/paste livre e envio de perguntas.
-- Duas abas de chat na GUI: "Chat Geral" (busca global) e "Chat Ticker" (busca filtrada por `WHERE ticker = ?`).
-- Abas de chat desabilitadas quando `llm.chat.provider` não está configurado ou é `none`, com botão "Configurar" que abre o diálogo de configuração da `llm-core`.
-- Dependências opcionais `[llm]` em `pyproject.toml`: a `llm-core` adiciona `litellm`; esta change adiciona `fastembed` (`pypdf` já é dependência base).
-- Testes com marcador `pytest.mark.llm`.
-- README com instrução `pip install flowscope[llm]`.
-- CLI: `--index <TICKER>` para pré-indexar documentos.
+- Aba de topo **Chat AI**, única e sempre visível, posicionada entre "Análise do Ticker" e "Sobre", como ponto único de entrada do chat.
+- Sem seletor de escopo: o contexto cobre a watchlist completa e a LLM infere o ticker referido na pergunta.
+- Contexto do chat com três origens: conhecimento do próprio FlowScope (textos de orientação das sub-abas + aba Sobre), tabela de fundamentos carregada (watchlist completa) e documentos em cache (watchlist completa).
+- Cascata de documentos: resumos curtos → resumos longos → texto integral dos alvos, com interrupção antecipada ao obter resposta.
+- Confirmação ao usuário conforme a quantidade de documentos-alvo (até 3 prossegue; 4 a 7 lista os nomes; 8 ou mais informa a quantidade).
+- Campo de entrada habilitado apenas com a LLM configurada; orientação de configuração quando ausente. O cabeçalho tem os botões "Limpar", "Copiar chat" e "Configuração" (este sempre visível; abre o diálogo da `llm-core`, o mesmo da sub-aba Documentos).
+- Botão "Limpar", antes de "Copiar chat", que reinicia a sessão como se estivesse começando agora, mediante confirmação (Sim/Não) do usuário.
+- Botão "Copiar chat"; a cópia de dados CSV passa a incluir o conteúdo do chat quando a aba "Chat AI" está ativa.
+- Respostas exibidas em campo somente-leitura com cursor, seleção e atalhos de teclado; erros da LLM na statusbar e no log.
+- Sem VectorStore, embeddings, chunker, indexação ou `--index` — esses itens migram para a change `llm-chat-rag`.
 
 ## Capabilities
 
 ### New Capabilities
 
-- `llm-chat-domain`: `ChatMessage`, `ChatSession`, protocolo `DocumentoIndexavel`, ABC `DocumentSource`
-- `llm-chat-vector-store`: VectorStore SQLite puro, busca cosine, chunker sem deps nativas
-- `llm-chat-embeddings`: `FastembedAdapter` (local) + `LiteLLMEmbeddingAdapter` (API), `EmbeddingPort`
-- `llm-chat-llm`: consumo do `LLMPort` da `llm-core` + prompt RAG
-- `llm-chat-indexing`: `DocumentSource` concretas (`MaterialFactsSource`, `NoticiasSource`, `InformeMensalSource`, `RelevantesSource`), extração de texto, `IndexarDocumentosUseCase`, `ConsultarDocumentosUseCase`
-- `llm-chat-gui`: `ChatPanel` widget, abas Chat Geral + Chat Ticker (o `ConfigDialog` é fornecido pela `llm-core`)
-- `llm-chat-config`: persistência da configuração de **embedding** em `config.json`, detecção estendida de `[llm]`, presets de embedding
+- `llm-chat-domain`: entidades de conversa em memória (`ChatMessage`, `ChatSession`).
+- `llm-chat-context`: montagem do contexto (conhecimento do FlowScope, fundamentos carregados e cascata de documentos) e gates de confirmação.
+- `llm-chat-llm`: orquestração da cascata sobre a porta `LLMPort` da `llm-core`, com contrato de resposta estruturada e interrupção antecipada.
+- `llm-chat-gui`: widget de chat e aba única "Chat AI", com os comportamentos associados.
 
 ### Modified Capabilities
 
-- `cli-interface`: Novo argumento `--index <TICKER>` com `--data-inicio` e `--data-fim`
-
 ## Impact
 
-- **Dependências**: a `llm-core` define `[llm]` com `litellm`; esta change estende com `fastembed` (`pypdf` já é base)
-- **Pré-requisitos**: `llm-core` implementada; `structured-earnings` implementada; caches de documento das changes `informe-mensal` e `documentos-relevantes` para as fontes correspondentes
-- **Binário**: ~45MB base; ~185MB com `[llm]`
-- **Cache**: `~/.flowscope/fii_docs.db` + leitura dos caches `~/.cache/flowscope/bdr/`, `informe-mensal/` e `documentos-relevantes/`
-- **Ticker-agnóstico**: Qualquer ticker pode ser indexado e consultado; fontes retornam vazio quando não há dados
+- **Dependências**: consome a `llm-core` (implementada) — `LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, `LLMConfigDialog` e as exceções tipadas. Não adiciona dependências `[llm]` (sem `fastembed`, sem `pypdf`).
+- **Pré-requisitos**: caches `document-texts/` e `document-summaries/` populados pela sub-aba "Documentos"; resolução de fundamentos e material facts das changes de extração.
+- **Remoção de escopo**: VectorStore, embeddings, configuração de embedding, indexação e `--index` saem desta change e passam para `llm-chat-rag`.
+- **Binário**: inalterado (nenhuma dependência nativa nova).

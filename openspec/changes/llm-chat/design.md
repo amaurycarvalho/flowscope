@@ -1,79 +1,86 @@
 ## Context
 
-As changes de extração fornecem dados e documentos sobre qualquer ticker com dados na B3: proventos e documentos estruturados, informe mensal (HTML), avisos de BDR e documentos relevantes (PDF). Esta change adiciona consulta em linguagem natural via RAG, com VectorStore local, embeddings via fastembed e chat LLM via API.
+Ver `proposal.md` — Why. A `llm-core` (arquivada, implementada) já fornece `LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, `LLMConfigDialog` e a hierarquia de exceções. A sub-aba "Documentos" já persiste o texto extraído em `~/.cache/flowscope/document-texts/` e os resumos curto/longo (280/1500 caracteres) em `~/.cache/flowscope/document-summaries/`, e já exibe material facts (fatos relevantes/assembleias) baixados para `documentos-relevantes/`.
 
-As portas `DocumentoIndexavel` e `DocumentSource` vivem em `domain/chat/ports.py`. As fontes concretas já implementadas são `MaterialFactsSource` (fatos relevantes/assembleias/avisos via `RegulacaoRepository`) e `NoticiasSource` (Plantão B3). Esta change recebe, transferidas das changes de extração, `InformeMensalSource` e `RelevantesSource`, que leem os caches de documento em disco e produzem texto para indexação.
-
-Dependências de IA/ML são opcionais via `pip install flowscope[llm]`. A camada base de LLM (porta `LLMPort`, adaptador liteLLM, presets, rate limiting e exceções) é fornecida pela change `llm-core`; esta change a consome e concentra-se em embeddings, VectorStore, RAG e GUI de chat.
+Esta change é a versão não vetorial do chat. Ela reutiliza esses caches e serviços em vez de criar um pipeline de embeddings.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- VectorStore SQLite puro com cosine similarity
-- Embeddings: fastembed local default, liteLLM API alternativo
-- Consumo da porta `LLMPort` da `llm-core` para o prompt RAG
-- Pipeline de indexação unificado sobre `DocumentSource`
-- Fontes concretas: `MaterialFactsSource`, `NoticiasSource`, `InformeMensalSource`, `RelevantesSource`
-- Extração de texto para indexação (HTML→texto, PDF→texto via `pypdf`)
-- Widget ChatPanel tkinter reutilizável
-- Configuração de embedding persistida em `llm.embedding`
-- CLI: `--index <TICKER>`
+- Uma aba de topo única de chat (**Chat AI**) sobre os dados já carregados e documentos em cache, com um ponto único de entrada.
+- Contexto do FlowScope a partir dos textos de orientação e da aba Sobre.
+- Contexto de fundamentos a partir da tabela carregada.
+- Cascata de recuperação de documentos com confirmação por quantidade e orçamento de contexto.
+- Reuso máximo da infraestrutura existente (stores, resumidor, widget readonly, diálogo de configuração).
 
 **Non-Goals:**
-- Cliente de LLM, presets de completion, rate limiting e diálogo de configuração (propriedade da `llm-core`)
-- Persistência de histórico, streaming, fine-tuning, OCR, langchain
-- Aquisição/download dos documentos (pertence às changes de extração)
+- VectorStore, embeddings, chunker e indexação vetorial (change `llm-chat-rag`).
+- Persistência de histórico, streaming, fine-tuning, OCR, langchain.
+- Aquisição/download de documentos (permanece nas changes de extração e em `noticias-b3`).
+- Cliente de LLM, presets de completion e diálogo de configuração (propriedade da `llm-core`).
 
 ## Decisions
 
-### 1. SQLite puro para VectorStore
+### 1. Cascata em até duas chamadas de completion
 
-Python puro, zero deps nativas. Para ~5k chunks, cosine O(n) leva ~5-10ms.
+O pedido original descreve três leituras (resumos curtos, resumos longos, texto integral). Como o RPM padrão é 5 e cada chamada extra adiciona latência e consumo de cota, os dois primeiros níveis são combinados em uma única chamada (resumos curtos + longos juntos). A segunda chamada lê apenas o texto integral dos alvos selecionados. A leitura lógica permanece em três níveis, com interrupção antecipada assim que houver resposta.
 
-### 2. fastembed como embedding provider default
+Alternativa considerada: três chamadas literais — mais fiel à descrição, porém com o dobro de round-trips e pressão sobre o rate limiter.
 
-~120MB vs ~1.5GB do sentence-transformers. ONNX runtime, modelo BGE-small-pt-v1.5 (384d).
+### 2. Contrato de resposta estruturada e tolerante
 
-### 3. EmbeddingPort próprio e LLMPort herdado da llm-core
+A LLM responde em um formato delimitado/JSON com `resposta` e a lista de chaves de documentos-alvo. O parser é tolerante (espelha `ResumoDocumento._interpretar`): quando o formato não é reconhecido, a resposta inteira é tratada como texto e nenhuma nova rodada é disparada.
 
-Embedding e completion têm ciclos de vida diferentes (indexação vs chat) e são testáveis isoladamente. Esta change define apenas o `EmbeddingPort`; a porta de completion (`LLMPort`) e a factory vêm da `llm-core`.
+Alternativa considerada: extração por marcadores textuais simples — menos expressiva para distinguir "resposta" de "selecionar documentos".
 
-### 4. `DocumentSource` ABC e fontes concretas
+### 3. Gates de confirmação por quantidade de documentos-alvo
 
-`DocumentSource` (em `domain/chat/ports.py`) expõe `categoria` e `obter_documentos(ticker)`. Cada fonte tem lógica radicalmente diferente e isola o pipeline, permitindo novas fontes sem modificá-lo.
+Antes da leitura do texto integral: até 3 documentos prossegue automaticamente; entre 4 e 7, lista os nomes e pede confirmação; 8 ou mais, informa a quantidade e pede confirmação. A confirmação é um diálogo que pausa a thread de trabalho e retoma a resposta no contexto do Tk.
 
-- **Já implementadas**: `MaterialFactsSource`, `NoticiasSource`.
-- **Transferidas**: `InformeMensalSource` (lê `~/.cache/flowscope/informe-mensal/<TICKER>/...` e converte o HTML em texto) e `RelevantesSource` (lê `~/.cache/flowscope/documentos-relevantes/<TICKER>/.../<cat>/<id>.pdf` e extrai texto com `pypdf`).
+Alternativa considerada: limite único binário — menos gradual e mais surpreendente para o usuário.
 
-A extração de texto para indexação pertence a esta change; a aquisição/cache permanece nas changes de extração.
+### 4. Reuso dos caches e serviços de documentos
 
-### 5. ChatPanel parametrizado por ticker
+A cascata lê `JsonDocumentSummaryStore`, `JsonDocumentTextStore` e `DocumentCatalog` (já usados pela sub-aba "Documentos"). Quando o texto ou o resumo não estão em cache, a preparação é feita sob demanda reutilizando `DocumentFlowMixin.preparar_texto` / `ResumirDocumentoUseCase`. Isso evita reimplementar extração de HTML/PDF e reutiliza os caches de material facts.
 
-Widget único `ChatPanel(ticker: str | None)`. Única diferença: filtro WHERE no VectorStore.
+### 5. Conhecimento do FlowScope como bloco estático
 
-### 6. Config no config.json existente
+O conhecimento vem de `TAB_CONTENT` (orientação das sub-abas) e das constantes da aba Sobre (apresentação, licença, versão). É montado uma vez e enviado como bloco de sistema, estável entre turnos.
 
-A `llm-core` persiste a configuração de completion em `llm.chat`. Esta change persiste a configuração de embedding no sub-bloco `llm.embedding` do mesmo `~/.flowscope/config.json`, reutilizando o read-modify-write da `llm-core` para preservar as demais chaves.
+### 6. Fundamentos serializados da tabela carregada
 
-### 7. Dependências opcionais + pytest.mark.llm
+Os dados de `_fundamental_data` são serializados de forma compacta (reutilizando o formato da tabela) cobrindo a watchlist completa. O ticker relevante é inferido pela LLM a partir da pergunta, sem seletor de escopo na interface. Sem dados carregados, o chat orienta o carregamento.
 
-A `llm-core` define `[llm]` com `litellm`; esta change estende o grupo com `fastembed` (`pypdf` já é dependência base). Binário base não cresce. CI: `-m "not llm"` + `-m "llm"`.
+### 7. Aba de topo única "Chat AI", sempre visível
 
-### 8. Herança da camada de LLM da `llm-core`
+A aba "Chat AI" entra no `_main_notebook` entre "Análise do Ticker" e "Sobre", substituindo as sub-abas "Chat Geral" e "Chat Ticker". Diferente de esconder a aba, ela permanece visível e mostra o estado não configurado, permitindo ao usuário abrir a configuração pela própria aba.
 
-Esta change NÃO define `ChatPort`, `LiteLLMChatAdapter`, factory de chat, presets de completion nem `ConfigDialog`. Ela consome `LLMPort`, `create_llm_provider`, `load_llm_config` e as exceções tipadas da `llm-core`, adicionando apenas o prompt RAG e a orquestração do `ConsultarDocumentosUseCase`. O botão "Configurar" do ChatPanel abre o diálogo da `llm-core`.
+### 8. Reuso dos componentes de UI existentes
+
+`ReadonlyText` (cursor, seleção, Ctrl+A/C), o despacho por aba de `_texto_para_copiar`, `LLMConfigDialog` via `_abrir_config_llm`, `_set_status`/`_flash_status`, `mensagem_erro_llm`. O cabeçalho da aba tem os botões "Limpar", "Copiar chat" e "Configuração"; este último fica sempre visível, logo após "Copiar chat", e abre o mesmo diálogo da `llm-core` usado na sub-aba "Documentos". O completion roda em thread de trabalho publicando em `queue.Queue`, consumida na thread do Tk via `after` (padrão de `LLMConfigDialog`/`DocumentosJob`).
+
+### 9. Sessão em memória
+
+`ChatSession` sem persistência; a aba começa limpa. Simplicidade e ausência de preocupações de privacidade.
+
+### 10. Escopo por ticker inferido pela LLM
+
+Não há seletor de escopo. O contexto enviado é sempre o da watchlist completa (fundamentos e documentos) e o prompt instrui a LLM a identificar o ticker referido na pergunta, escolhendo os documentos-alvo pelas chaves. Quando a pergunta for ambígua quanto ao ativo, o prompt orienta a LLM a pedir esclarecimento em vez de adivinhar.
+
+### 11. Ponto de extensão de contexto
+
+`ContextoChat` recebe uma lista de fontes adicionais de contexto (título e texto), renderizadas no prompt como seções próprias, além do conhecimento do FlowScope, dos fundamentos e da cascata de documentos. Changes futuras (notícias em `noticias-b3`, recuperação vetorial em `llm-chat-rag`) registram as suas fontes por esse ponto, sem alterar a cascata. A montagem das fontes adicionais ocorre na thread de trabalho, no `ChatPanel`, e pode receber a pergunta para permitir recuperação dependente da consulta. Uma fonte que falha ou retorna vazio é simplesmente omitida, sem impedir a resposta.
+
+### 12. Botão "Limpar" com confirmação
+
+O cabeçalho ganha o botão "Limpar", antes de "Copiar chat", que reinicia a conversa reutilizando `ChatPanel.limpar()`. Como a sessão é em memória, limpar equivale a começar agora. Antes de executar, exibe um `messagebox.askyesno` (mesmo padrão do gate de confirmação de documentos); se o usuário recusar, a sessão permanece inalterada.
 
 ## Risks / Trade-offs
 
-- **[Risco] fastembed não instala** → fallback para embedding via API, configurável no diálogo da `llm-core`
-- **[Risco] PDFs sem texto extraível** → a fonte retorna apenas metadados/vazio, sem interromper a indexação
-- **[Trade-off] Sem streaming** → resposta completa, sem token-a-token
-- **[Trade-off] Sem persistência de sessão** → simplifica, evita preocupações com privacidade
-
-## Migration Plan
-
-1. Confirmar que a change `llm-core` está implementada (`LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, exceções tipadas).
-2. Reconciliar as portas e fontes já implementadas (`DocumentSource`, `DocumentoIndexavel`, `MaterialFactsSource`, `NoticiasSource`).
-3. Implementar `InformeMensalSource` e `RelevantesSource` sobre os caches em disco.
-4. Implementar VectorStore, embeddings, RAG, GUI de chat e CLI, consumindo a `llm-core`.
-5. Rollback: as mudanças são aditivas e opcionais via `[llm]`.
+- **[Risco] RPM padrão 5** → cascata limitada a 2 chamadas e interrupção antecipada reduzem a pressão; mensagens de espera na statusbar.
+- **[Risco] Escopo da watchlist completa** → orçamento de caracteres e gates de confirmação antes de ler o texto integral.
+- **[Risco] Inferência do ticker pela LLM** → o prompt instrui a citar o ticker identificado e a pedir esclarecimento quando a pergunta for ambígua; a seleção de documentos-alvo é validada pelas chaves existentes no escopo.
+- **[Risco] Caches frios** → preparação sob demanda pode ser lenta; a orientação deve sugerir "Atualizar"/"Resumir" na sub-aba Documentos.
+- **[Risco] Formato da resposta do modelo** → parser tolerante com fallback para texto integral.
+- **[Trade-off] Sem streaming** → resposta completa, sem token-a-token.
+- **[Trade-off] Sem token accounting** → teto por documento (~12k caracteres, precedente do resumidor) e teto global, truncando com aviso.

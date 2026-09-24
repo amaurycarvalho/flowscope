@@ -145,6 +145,7 @@ class LayoutMixin:
 
         self._build_general_tabs()
         self._build_ticker_tabs()
+        self._build_chat_tab()
         self._build_about_tab()
 
         self._tab_content = TAB_CONTENT

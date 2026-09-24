@@ -7,7 +7,7 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 
 from flowscope.domain.sampling import SamplingConfig
-from flowscope.presentation.gui.app_tabs import ABOUT_TAB
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
 from flowscope.presentation.gui.charts.fundamental_evolution_data import (
     montar_series,
 )
@@ -17,7 +17,6 @@ from flowscope.presentation.gui.documentos_job import (
     MENSAGEM_PROGRESSO,
     DocumentosJob,
 )
-from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 logger = logging.getLogger("flowscope")
 
@@ -75,14 +74,6 @@ class ActionsMixin:
         """Força a recomputação dos fundamentos da data, ignorando o cache."""
         self._controller.on_atualizar_fundamentos()
 
-    def _abrir_config_llm(self: "ActionsMixin") -> None:
-        """Abre o diálogo de configuração de LLM, reavaliando o botão ao salvar."""
-        painel = getattr(self, "_documents_panel", None)
-        on_saved = (
-            painel.refresh_resumir_button if painel is not None else None
-        )
-        LLMConfigDialog(self, on_saved=on_saved)
-
     def _get_selected_ticker(self: "ActionsMixin") -> str | None:
         selected = self._ticker_list.get_tickers()
         if selected:
@@ -95,14 +86,14 @@ class ActionsMixin:
     def _resolve_chart(self: "ActionsMixin", main_tab: str, sub_tab: str) -> object | None:
         if main_tab == "Análise Geral":
             return self._GENERAL.get(sub_tab)
-        if main_tab == ABOUT_TAB:
+        if main_tab in (ABOUT_TAB, CHAT_AI_TAB):
             return None
         return self._TICKER.get(sub_tab)
 
     def _resolve_current_chart(self: "ActionsMixin") -> object | None:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
-            if main_tab == ABOUT_TAB:
+            if main_tab in (ABOUT_TAB, CHAT_AI_TAB):
                 return None
             if main_tab == "Análise Geral":
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")

@@ -59,6 +59,7 @@ A interface é dividida em três grandes regiões:
 - **Descrição:** Copia para a área de transferência o conteúdo adequado ao contexto ativo:
   - **Análise Geral → Fundamentos:** CSV da tabela de fundamentos dos tickers exibidos.
   - **Análise do Ticker → Documentos:** o texto atual do campo de pré-visualização.
+  - **Chat AI:** o conteúdo da sessão de chat.
   - **Demais sub-abas:** CSV bruto de negociação (`RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol`).
 - **Objetivo:** Exportação rápida para análise externa (planilhas, relatórios) ou cópia de um documento/resumo.
 - **Atalho:** `Ctrl+Shift+C`.
@@ -282,6 +283,30 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   - **Eficiência:** Daily Efficiency, Dominance Score
   - **Densidade:** Financial Density, Trade Density, Volume Density
   - **Adicionais:** VWAP Distance, VWAP do período, Money Flow Volume acumulado
+
+---
+
+## Aba Principal: "Chat AI"
+
+- **Objetivo:** Responder perguntas em linguagem natural sobre a watchlist, os documentos em cache e o próprio FlowScope, sem sair da interface.
+- **Responde a pergunta:** _O que você pode me dizer sobre esses ativos, os documentos que baixei e o próprio FlowScope?_
+- **Posição:** aba de topo única e sempre visível, entre "Análise do Ticker" e "Sobre".
+- **ChatPanel:** widget `ChatPanel(tkinter.Frame)` sem seletor de escopo. O contexto cobre sempre a watchlist completa; a LLM infere o ticker referido na pergunta (e pede esclarecimento quando ela for ambígua).
+- **Contexto enviado à LLM (em cascata):**
+  - **Conhecimento do FlowScope:** apresentação, licença, versão e os textos de orientação das sub-abas (aba "Sobre" + `TAB_CONTENT`), enviados como bloco de sistema estável.
+  - **Fundamentos carregados:** tabela de fundamentos serializada de forma compacta, uma linha por ticker da watchlist completa.
+  - **Documentos:** resumos curtos e longos dos documentos em cache da watchlist. Quando a resposta exige mais detalhe, a LLM devolve as chaves dos documentos-alvo e o texto integral é lido.
+  - **Fontes adicionais:** ponto de extensão para changes futuras (notícias em `noticias-b3`, recuperação vetorial em `llm-chat-rag`), renderizado como seção própria; falha ou ausência de conteúdo é omitida sem impedir a resposta.
+- **Cascata em até duas chamadas:** a primeira usa os resumos; a segunda só ocorre quando a LLM pede o texto integral de documentos-alvo. A leitura é interrompida assim que houver resposta.
+- **Confirmação por quantidade:** até 3 documentos-alvo prossegue automaticamente; de 4 a 7 lista os nomes; com 8 ou mais informa a quantidade e pede confirmação antes de ler o texto integral.
+- **Orçamento de contexto:** teto por documento (12.000 caracteres) e global (40.000 caracteres); o excedente é truncado com aviso no log.
+- **Sessão não persistente:** a aba começa limpa e não persiste histórico.
+- **Interação:**
+  - O campo de respostas é somente-leitura, com cursor, seleção, `Ctrl+A` e `Ctrl+C`; a entrada aceita colar livremente. `Enter` envia a pergunta; `Shift+Enter` quebra linha.
+  - O cabeçalho tem os botões **"Limpar"**, **"Copiar chat"** e **"Configuração"**, este sempre visível logo após "Copiar chat". O botão "Copiar Dados" também copia o chat quando esta aba está ativa.
+  - O botão **"Limpar"**, antes de "Copiar chat", reinicia a conversa como se estivesse começando agora; um pedido de confirmação (Sim/Não) é exibido antes de limpar, e a conversa permanece inalterada se o usuário recusar.
+- **Estado não configurado:** sem provedor `llm.chat` (ou com provedor `none`), a aba permanece visível, com a entrada desabilitada e orientação de configuração; a "Configuração" abre o diálogo da `llm-core`. Ao salvar, o estado é reavaliado.
+- **Erros:** falhas da LLM aparecem na barra de status com mensagem amigável e são registradas no log.
 
 ---
 

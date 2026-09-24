@@ -27,6 +27,7 @@ from flowscope.domain.llm import LLMCommunicationError
 from flowscope.presentation.gui import (
     app_actions,
     app_resumos_actions,
+    app_tab_actions,
     document_actions,
 )
 from flowscope.presentation.gui.app_actions import ActionsMixin
@@ -1316,26 +1317,30 @@ class TestAbrirConfigLLM:
     def test_abre_dialogo(self, monkeypatch):
         chamadas = []
         monkeypatch.setattr(
-            app_actions,
+            app_tab_actions,
             "LLMConfigDialog",
             lambda parent, **kwargs: chamadas.append((parent, kwargs)),
         )
-        host = ActionsMixin()
+        host = TabActionsMixin()
         host._abrir_config_llm()
-        assert chamadas == [(host, {"on_saved": None})]
+        assert len(chamadas) == 1
+        parent, kwargs = chamadas[0]
+        assert parent is host
+        assert callable(kwargs["on_saved"])
 
     def test_injeta_refresh_do_painel(self, monkeypatch):
         chamadas = []
         monkeypatch.setattr(
-            app_actions,
+            app_tab_actions,
             "LLMConfigDialog",
             lambda parent, **kwargs: chamadas.append(kwargs),
         )
-        host = ActionsMixin()
+        host = TabActionsMixin()
         painel = MagicMock()
         host._documents_panel = painel
         host._abrir_config_llm()
-        assert chamadas == [{"on_saved": painel.refresh_resumir_button}]
+        chamadas[0]["on_saved"]()
+        painel.refresh_resumir_button.assert_called_once_with()
 
 
 class TestDeveAtualizar:

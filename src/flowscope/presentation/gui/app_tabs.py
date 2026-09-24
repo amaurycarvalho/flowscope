@@ -3,6 +3,9 @@
 #: Texto da aba de nível superior com informações institucionais.
 ABOUT_TAB = "Sobre"
 
+#: Texto da aba de nível superior de chat com I.A.
+CHAT_AI_TAB = "Chat AI"
+
 TAB_CONFIGS = [
     ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
      "ultimo_dividendo", "cotistas", "cotas", "shorts_pct"),

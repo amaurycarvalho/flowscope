@@ -25,6 +25,7 @@ Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI
   - **Evolução da Dominância**, **Amplitude de Preço** e **Fluxo Financeiro**.
   - **Lista de Documentos:** árvore dos documentos em cache do ticker (avisos aos acionistas, informes mensais e documentos relevantes), com pré-visualização textual e abertura no aplicativo padrão.
 - **Resumo de documentos com I.A. (opcional):** ao selecionar um documento, o FlowScope usa uma LLM para gerar um resumo curto (até 280 caracteres) e um longo (até 1.500 caracteres); os resumos são persistidos em cache e reaproveitados, e a lista de documentos exibe o resumo curto de cada item.
+- **Chat com I.A. (opcional):** a aba de topo **Chat AI**, única e sempre visível, responde perguntas em linguagem natural sobre os dados já carregados, os documentos em cache e o próprio FlowScope. O contexto cobre a watchlist completa e a LLM infere o ticker referido na pergunta. A resposta usa uma cascata de contexto — conhecimento do FlowScope, tabela de fundamentos e resumos/documentos em cache — com confirmação antes de ler o texto integral de muitos documentos, tetos de contexto e botão "Copiar chat". Sem RAG vetorial (a indexação vetorial é uma evolução separada, a change `llm-chat-rag`).
 
 ---
 
@@ -62,7 +63,7 @@ Ao instalar a partir do código-fonte, os recursos de I.A. exigem o grupo opcion
 pip install flowscope[llm]
 ```
 
-Na sub-aba "Documentos", o botão "I.A." (logo após "Abrir documento") abre o diálogo de configuração do provedor, onde é possível escolher um preset, informar a chave de API, ajustar o RPM e testar a conexão. Enquanto o provedor for `none`, nenhuma chamada de rede é realizada.
+Na sub-aba "Documentos", o botão "I.A." (logo após "Abrir documento") abre o diálogo de configuração do provedor, onde é possível escolher um preset, informar a chave de API, ajustar o RPM e testar a conexão. Na aba "Chat AI", o mesmo diálogo é aberto pelo botão "Configuração", sempre visível no cabeçalho. Enquanto o provedor for `none`, nenhuma chamada de rede é realizada.
 
 ---
 

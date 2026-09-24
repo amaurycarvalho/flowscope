@@ -8,7 +8,8 @@ from flowscope.presentation.gui.app_indicators import (
     build_indicator_lines,
     insert_indicators,
 )
-from flowscope.presentation.gui.app_tabs import ABOUT_TAB
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
+from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 
 class TabActionsMixin:
@@ -17,8 +18,8 @@ class TabActionsMixin:
     def _current_tabs(self: "TabActionsMixin") -> tuple[str, str] | None:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
-            if main_tab == ABOUT_TAB:
-                return main_tab, ABOUT_TAB
+            if main_tab in (ABOUT_TAB, CHAT_AI_TAB):
+                return main_tab, main_tab
             if main_tab == "Análise Geral":
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
             else:
@@ -36,6 +37,13 @@ class TabActionsMixin:
         if main_tab == ABOUT_TAB:
             self._prefs["last_tab"] = main_tab
             self._verificar_nova_versao()
+            return
+
+        if main_tab == CHAT_AI_TAB:
+            self._prefs["last_tab"] = main_tab
+            self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
+            self._sync_copy_button_for_tab(main_tab, sub_tab)
+            self._reavaliar_chat_llm()
             return
 
         chart = self._resolve_chart(main_tab, sub_tab)
@@ -56,7 +64,7 @@ class TabActionsMixin:
     def _sync_copy_button_for_tab(
         self: "TabActionsMixin", main_tab: str, sub_tab: str
     ) -> None:
-        """Habilita a cópia na sub-aba Documentos, mesmo sem dados da B3.
+        """Habilita a cópia na sub-aba Documentos e na aba "Chat AI".
 
         Nas demais abas, restaura o estado conforme a existência de dados. Um
         bloqueio global em andamento (``_button_states``) não é sobrescrito.
@@ -65,7 +73,8 @@ class TabActionsMixin:
         if botao is None or getattr(self, "_button_states", None):
             return
         em_documentos = (main_tab, sub_tab) == ("Análise do Ticker", "Documentos")
-        if em_documentos or getattr(self, "_current_data", None):
+        em_chat = main_tab == CHAT_AI_TAB
+        if em_documentos or em_chat or getattr(self, "_current_data", None):
             botao.config(state=tk.NORMAL)
         else:
             botao.config(state=tk.DISABLED)
@@ -110,6 +119,23 @@ class TabActionsMixin:
         """Atualiza o ticker apresentado nas sub-abas da Análise do Ticker."""
         if ticker:
             self._ticker_selecionado = ticker
+
+    def _abrir_config_llm(self: "TabActionsMixin") -> None:
+        """Abre o diálogo de configuração de LLM, reavaliando ao salvar."""
+        painel = getattr(self, "_documents_panel", None)
+
+        def _on_saved() -> None:
+            if painel is not None:
+                painel.refresh_resumir_button()
+            self._reavaliar_chat_llm()
+
+        LLMConfigDialog(self, on_saved=_on_saved)
+
+    def _reavaliar_chat_llm(self: "TabActionsMixin") -> None:
+        """Reavalia o estado de configuração do painel de chat."""
+        painel = getattr(self, "_chat_panel", None)
+        if painel is not None:
+            painel.avaliar_estado()
 
     def _on_fundamental_row_activated(self: "TabActionsMixin", ticker: str) -> None:
         """Ativa a sub-aba de evolução dos fundamentos para o ticker."""

@@ -3,14 +3,18 @@
 import tkinter as tk
 from tkinter import ttk
 
+from flowscope.infrastructure.llm.config import load_llm_config
+from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.presentation.gui.app_tabs import (
     ABOUT_TAB,
+    CHAT_AI_TAB,
     ENABLED_TABS,
     TAB_CONFIGS,
 )
 from flowscope.presentation.gui.charts.correlation_network_panel import (
     CorrelationNetworkPanel,
 )
+from flowscope.presentation.gui.charts.document_summary import llm_configurada
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
@@ -22,6 +26,7 @@ from flowscope.presentation.gui.charts.fundamental_table import FundamentalTable
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
+from flowscope.presentation.gui.chat.chat_panel import ChatPanel
 from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
 
@@ -127,6 +132,34 @@ class TabsLayoutMixin:
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
 
+    def _build_chat_tab(self: "TabsLayoutMixin") -> None:
+        """Registra a aba de topo única "Chat AI" após a "Análise do Ticker"."""
+        chat_frame = ttk.Frame(self._main_notebook)
+        self._main_notebook.add(chat_frame, text=CHAT_AI_TAB)
+        self._chat_panel = self._criar_chat_panel(chat_frame)
+        self._chat_panel.pack(fill=tk.BOTH, expand=True)
+
+    def _criar_chat_panel(
+        self: "TabsLayoutMixin", parent: tk.Widget
+    ) -> ChatPanel:
+        """Constrói o painel de chat ligado ao estado da janela principal."""
+        return ChatPanel(
+            parent,
+            fundamental_data_provider=lambda: getattr(self, "_fundamental_data", {}),
+            watchlist_provider=self._watchlist_provider,
+            llm_factory=lambda: create_llm_provider(load_llm_config()),
+            llm_available=llm_configurada,
+            config_callback=getattr(self, "_abrir_config_llm", None),
+            status_callback=getattr(self, "_set_status", None),
+        )
+
+    def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:
+        """Retorna os tickers exibidos, tolerando hosts sem lista de tickers."""
+        lista = getattr(self, "_ticker_list", None)
+        if lista is None:
+            return []
+        return lista.get_tickers()
+
     def _build_about_tab(self: "TabsLayoutMixin") -> None:
         """Registra a aba "Sobre" logo após a "Análise do Ticker"."""
         about_frame = ttk.Frame(self._main_notebook)
@@ -145,8 +178,12 @@ class TabsLayoutMixin:
                 if self._main_notebook.tab(i, "text") == last_tab:
                     self._main_notebook.select(i)
                     break
-            if last_tab != ABOUT_TAB:
-                notebook = self._general_notebook if last_tab == "Análise Geral" else self._ticker_notebook
+            if last_tab in ("Análise Geral", "Análise do Ticker"):
+                notebook = (
+                    self._general_notebook
+                    if last_tab == "Análise Geral"
+                    else self._ticker_notebook
+                )
                 for i in range(notebook.index("end")):
                     if notebook.tab(i, "text") == last_subtab:
                         notebook.select(i)

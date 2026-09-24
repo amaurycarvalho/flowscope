@@ -1,108 +1,96 @@
 ## 1. Pré-requisitos e Setup
 
-- [ ] 1.1 Verificar que a change `llm-core` está implementada (`LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, exceções tipadas)
-- [ ] 1.2 Verificar que `structured-earnings` está implementada (B3FundosClient, ticker-resolution, value objects, DocumentoProvento, ProventosRepository)
-- [ ] 1.3 Verificar que as portas `DocumentoIndexavel` e `DocumentSource` já existem em `domain/chat/ports.py`
-- [ ] 1.4 Verificar que as fontes `MaterialFactsSource` e `NoticiasSource` já existem em `infrastructure/document_sources/`
-- [ ] 1.5 Verificar que os caches de `informe-mensal` e `documentos-relevantes` existem e são legíveis
-- [ ] 1.6 Estender o grupo `[llm]` do `pyproject.toml` com `fastembed>=0.4` (`litellm` já é adicionado pela `llm-core`; `pypdf` já é base)
-- [ ] 1.7 Criar a estrutura de diretórios restante
-- [ ] 1.8 Atualizar README.md com seção "Chat com IA" e `pip install flowscope[llm]`
+- [x] 1.1 Verificar que a `llm-core` está implementada (`LLMPort`, `create_llm_provider`, `load_llm_config`, `check_llm_deps`, `LLMConfigDialog`, exceções tipadas) e registrar o resultado
+- [x] 1.2 Verificar que os caches `document-texts/` e `document-summaries/` são legíveis via `DocumentCatalog`/`JsonDocument*Store`
+- [x] 1.3 Criar a estrutura de diretórios de domínio/contexto/LLM/GUI do chat
+- [x] 1.4 Atualizar README.md com a seção "Chat com IA" (sem novas dependências)
 
-## 2. Domínio — Chat Models e Ports (reconciliação)
+## 2. Domínio — Chat Models
 
-- [ ] 2.1 `ChatMessage`, `ChatSession` em `domain/chat/models.py`
-- [ ] 2.2 Confirmar `DocumentoIndexavel` e `DocumentSource` em `domain/chat/ports.py` (já implementados)
-- [ ] 2.3 Atualizar `domain/chat/__init__.py` com os novos modelos
+- [x] 2.1 `ChatMessage` e `ChatSession` em `domain/chat/models.py` e verificar testes unitários
+- [x] 2.2 Atualizar `domain/chat/__init__.py` com os novos modelos e verificar importação
 
-## 3. Extração de texto para indexação (transferido)
+## 3. Contexto — Conhecimento do FlowScope
 
-- [ ] 3.1 Extração de texto de HTML (informe mensal) para a `InformeMensalSource`
-- [ ] 3.2 Extração de texto de PDF via `pypdf` para a `RelevantesSource`, reutilizando/generalizando o extrator existente de BDR
-- [ ] 3.3 `to_text()`/representação textual densa das entidades usadas pelas fontes
+- [x] 3.1 Coletor que monta o bloco de conhecimento de `TAB_CONTENT` + constantes da aba Sobre, e verificar teste com fixture
+- [x] 3.2 Bloco enviado como system prompt estável nos dois chats, e verificar presença nos dois escopos
 
-## 4. Testes do Domínio
+## 4. Contexto — Fundamentos
 
-- [ ] 4.1 Testar `ChatMessage`, `ChatSession`
-- [ ] 4.2 Testar a extração de texto (HTML e PDF) com fixtures
+- [x] 4.1 Serializador compacto da tabela de fundamentos (`_fundamental_data`), e verificar saída por ticker
+- [x] 4.2 Seleção do escopo: watchlist completa no Chat Geral e ticker foco no Chat Ticker, e verificar cenários
+- [x] 4.3 Estado sem dados carregados exibe orientação de carregamento, e verificar mensagem
 
-## 5. Infraestrutura — VectorStore
+## 5. Contexto — Cascata de Documentos
 
-- [ ] 5.1 `VectorStore` em `infrastructure/vector_store/store.py` — SQLite, tabela, índices
-- [ ] 5.2 `add(chunks)` com INSERT OR IGNORE
-- [ ] 5.3 `search(query_embedding, ticker?, k)` — cosine similarity Python puro
-- [ ] 5.4 `chunk_text()` em `infrastructure/vector_store/chunker.py`
+- [x] 5.1 Leitor dos resumos curtos/longos por escopo via `DocumentCatalog`, e verificar com store temporário
+- [x] 5.2 Leitor do texto integral dos alvos via `JsonDocumentTextStore`, e verificar com cache temporário
+- [x] 5.3 Preparação sob demanda de texto/resumo reutilizando `preparar_texto`/`ResumirDocumentoUseCase`, e verificar cache frio
+- [x] 5.4 Gates de confirmação por quantidade (0–3, 4–7, ≥8) expostos como callback, e verificar cada faixa
+- [x] 5.5 Orçamento de contexto (teto por documento e global) com truncamento e aviso, e verificar limite excedido
 
-## 6. Infraestrutura — Embeddings
+## 6. LLM — Orquestração da Cascata
 
-- [ ] 6.1 `EmbeddingPort` protocol
-- [ ] 6.2 `FastembedAdapter` — lazy loading, batch, ImportError handling
-- [ ] 6.3 `LiteLLMEmbeddingAdapter` — API, erro HTTP
-- [ ] 6.4 `create_embedding_provider(config)` factory
+- [x] 6.1 `ConsultarChatUseCase` consumindo `LLMPort`/`create_llm_provider` da `llm-core`, e verificar com mock
+- [x] 6.2 Primeira chamada com resumos curtos + longos e interrupção antecipada, e verificar 1 chamada quando há resposta
+- [x] 6.3 Segunda chamada com o texto integral dos alvos e verificar 2 chamadas quando necessário
+- [x] 6.4 Contrato de resposta estruturada com parser tolerante e fallback, e verificar formato inválido
+- [x] 6.5 Prompt de sistema (responder só pelo contexto, citar fontes, admitir ausência) e verificar conteúdo
+- [x] 6.6 Mapear `LLMUnavailableError` da `llm-core` para o estado "Chat desabilitado", e verificar propagação
 
-## 7. Infraestrutura — RAG sobre o LLMPort da llm-core
+## 7. Testes de Domínio e Caso de Uso
 
-- [ ] 7.1 Consumir `LLMPort`/`create_llm_provider` da `llm-core` no fluxo de consulta, sem definir cliente de LLM próprio
-- [ ] 7.2 `build_rag_prompt()` — system prompt, chunks com fonte/data e pergunta
-- [ ] 7.3 Mapear `LLMUnavailableError` da `llm-core` para o estado "Chat desabilitado" na GUI
+- [x] 7.1 Testar `ChatMessage`/`ChatSession`
+- [x] 7.2 Testar o caso de uso completo com mocks (resposta nos resumos, escalada, sem documentos, LLM indisponível)
 
-## 8. Infraestrutura — Document Sources (reconciliadas + transferidas)
+## 8. GUI — ChatPanel
 
-- [ ] 8.1 Confirmar `MaterialFactsSource` (fatos relevantes via `RegulacaoRepository`)
-- [ ] 8.2 Confirmar `NoticiasSource` (Plantão B3)
-- [ ] 8.3 `InformeMensalSource` — lê o cache `informe-mensal/`, converte HTML em texto, retorna vazio se ticker sem dados
-- [ ] 8.4 `RelevantesSource` — lê o cache `documentos-relevantes/`, extrai texto do PDF, retorna vazio se ticker sem dados
-- [ ] 8.5 Registrar as fontes disponíveis na factory/composição de indexação
+- [x] 8.1 `ChatPanel(tkinter.Frame)` parametrizado por ticker (mensagens, scroll, entrada, enviar), e verificar construção
+- [x] 8.2 Área de respostas com `ReadonlyText` (cursor, seleção, Ctrl+A/C), e verificar bloqueio de edição
+- [x] 8.3 Estado não configurado com entrada desabilitada, orientação e botão "Configurar", e verificar cenário
+- [x] 8.4 Botão "Copiar chat" copiando o conteúdo da sessão, e verificar clipboard
+- [x] 8.5 Cabeçalho com o ticker foco no Chat Ticker, e verificar atualização ao trocar de ticker
+- [x] 8.6 Diálogo de confirmação por quantidade de documentos-alvo, e verificar as três faixas
 
-## 9. Aplicação — Use Cases
+## 9. GUI — Integração
 
-- [ ] 9.1 `IndexarDocumentosUseCase` — sources disponíveis, VectorStore, EmbeddingPort, progress
-- [ ] 9.2 `ConsultarDocumentosUseCase` — embed → search → prompt RAG → `LLMPort` da `llm-core` → resposta + fontes
-- [ ] 9.3 Erro em uma fonte não interrompe as outras
+- [x] 9.1 Sub-aba "Chat Geral" no notebook da Análise Geral, sempre visível, e verificar `ChatPanel(ticker=None)`
+- [x] 9.2 Sub-aba "Chat Ticker" no notebook da Análise do Ticker, e verificar filtro pelo ticker
+- [x] 9.3 "Configurar" abre `LLMConfigDialog` via `_abrir_config_llm` e reavalia o estado ao salvar, e verificar
+- [x] 9.4 `_texto_para_copiar` inclui o chat quando a sub-aba está ativa, e verificar cópia
+- [x] 9.5 Erros da LLM na statusbar (via `mensagem_erro_llm`) e no log, e verificar falha simulada
 
-## 10. Testes Infraestrutura
+## 10. Testes GUI
 
-- [ ] 10.1 VectorStore: criar, inserir, buscar, deduplicar
-- [ ] 10.2 Embedding adapters com mocks
-- [ ] 10.3 Consumo do `LLMPort` da `llm-core` com mock
-- [ ] 10.4 Document sources com mocks (incluindo `InformeMensalSource` e `RelevantesSource` sobre caches temporários)
-- [ ] 10.5 Use cases com mocks — fluxo completo, fonte falhando, VectorStore vazio
+- [x] 10.1 Estados do ChatPanel, cópia do chat, cabeçalho do ticker e integração com o diálogo
+- [x] 10.2 Cópia de dados CSV com a sub-aba de chat ativa
 
-## 11. Config — Embedding Config
+## 11. Quality Gate
 
-- [ ] 11.1 `load_embedding_config()`/`save_embedding_config()` no sub-bloco `llm.embedding`, reutilizando o read-modify-write da `llm-core`
-- [ ] 11.2 Estender `check_llm_deps()` da `llm-core` para também exigir `fastembed`
-- [ ] 11.3 `get_embedding_presets()`
+- [x] 11.1 `make lint` e `make complexity` limpos
+- [x] 11.2 `pytest -m "not llm"` passa
+- [x] 11.3 Testes existentes sem regressão
+- [x] 11.4 Executar `openspec validate llm-chat` e garantir que a change permanece válida
 
-## 12. GUI — ChatPanel
+## 12. Documentação
 
-- [ ] 12.1 `ChatPanel(tkinter.Frame)` — mensagens, scroll, entrada, enviar
-- [ ] 12.2 Estado não configurado, estado sem documentos
-- [ ] 12.3 Copy/paste livre, scroll automático
-- [ ] 12.4 Barra de progresso "Atualizar Documentos"
+- [x] 12.1 Atualize README.md, indicators.md e panels.md com o que foi implementado nessa change.
 
-## 13. GUI — Integração com o diálogo da llm-core
+## 13. Revisão de UX — Aba única "Chat AI"
 
-- [ ] 13.1 Botão "Configurar" do ChatPanel abre o `LLMConfigDialog` da `llm-core`
+- [x] 13.1 Mover o chat para uma aba de topo "Chat AI" entre "Análise do Ticker" e "Sobre" e remover as sub-abas "Chat Geral"/"Chat Ticker"
+- [x] 13.2 Ajustar `_current_tabs`/`_restore_tabs`, `_resolve_chart` e a restauração de preferências à aba de topo
+- [x] 13.3 Adaptar `_texto_para_copiar`, `_sync_copy_button_for_tab` e `_reavaliar_chat_llm` à aba única
+- [x] 13.4 Usar o contexto da watchlist completa e fazer a LLM inferir o ticker pela pergunta (prompt e remoção do escopo foco do `ChatPanel`)
+- [x] 13.5 Adicionar o botão "Configuração" após "Copiar chat", sempre visível, abrindo o mesmo diálogo da sub-aba Documentos
+- [x] 13.6 Atualizar testes de chat, integração, wiring e do estado não configurado
+- [x] 13.7 Atualizar panels.md, README.md e indicators.md para a aba única e o botão permanente
+- [x] 13.8 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
+- [x] 13.9 Expor ponto de extensão de contexto (`ContextoChat` com fontes adicionais por pergunta) para `noticias-b3` e `llm-chat-rag`, e verificar com fonte de teste e fonte que falha
 
-## 14. GUI — Integração
+## 14. Botão "Limpar" do chat
 
-- [ ] 14.1 Aba "Chat Geral" com `ChatPanel(ticker=None)`
-- [ ] 14.2 Aba "Chat Ticker" com `ChatPanel(ticker=<selecionado>)`
-- [ ] 14.3 Visibilidade condicionada a `llm.chat.provider`
-
-## 15. CLI
-
-- [ ] 15.1 `--index <TICKER>` com `--data-inicio`, `--data-fim`
-- [ ] 15.2 `run_index(args)`, verificação de deps, dispatch
-
-## 16. Testes GUI
-
-- [ ] 16.1 ChatPanel estados, integração com o diálogo da `llm-core`, load_embedding_config
-
-## 17. Quality Gate
-
-- [ ] 17.1 `make lint complexity` limpo
-- [ ] 17.2 `pytest -m "not llm"` + `pytest -m "llm"` passam
-- [ ] 17.3 Testes existentes sem regressão
-- [ ] 17.4 Executar `openspec validate llm-chat` e garantir que a change permanece válida
+- [x] 14.1 Adicionar o botão "Limpar" antes de "Copiar chat" no cabeçalho do `ChatPanel`, com confirmação (Sim/Não) e reinício da sessão
+- [x] 14.2 Atualizar os testes do `ChatPanel` (botão, confirmação e cancelamento)
+- [x] 14.3 Atualizar panels.md com o botão "Limpar"
+- [x] 14.4 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`

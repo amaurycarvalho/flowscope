@@ -3,6 +3,7 @@
 import tkinter as tk
 from datetime import date
 
+from flowscope.presentation.gui.app_tabs import CHAT_AI_TAB
 from flowscope.presentation.gui.charts.fundamental_table import montar_csv
 
 CSV_HEADER = "RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol"
@@ -88,15 +89,28 @@ class CsvMixin:
                 self._fallback_clipboard_text(texto)
 
     def _texto_para_copiar(self: "CsvMixin") -> str:
-        """Seleciona o conteúdo conforme a sub-aba ativa.
+        """Seleciona o conteúdo conforme a aba ou sub-aba ativa.
 
         Na sub-aba "Documentos", copia o texto exibido no campo de
-        pré-visualização; nas demais, monta o CSV do contexto atual.
+        pré-visualização; na aba "Chat AI", copia o conteúdo da sessão; nas
+        demais, monta o CSV do contexto atual.
         """
-        if self._current_tabs() == ("Análise do Ticker", "Documentos"):
+        tabs = self._current_tabs()
+        if tabs == ("Análise do Ticker", "Documentos"):
             painel = getattr(self, "_documents_panel", None)
             return painel.texto_atual() if painel is not None else ""
+        painel_chat = self._chat_panel_para_tabs(tabs)
+        if painel_chat is not None:
+            return painel_chat.conteudo_sessao()
         return self._build_csv_for_current_tab()
+
+    def _chat_panel_para_tabs(
+        self: "CsvMixin", tabs: tuple[str, str] | None
+    ) -> object | None:
+        """Retorna o painel de chat quando a aba ativa é a "Chat AI"."""
+        if tabs is not None and tabs[0] == CHAT_AI_TAB:
+            return getattr(self, "_chat_panel", None)
+        return None
 
     def _build_csv_for_current_tab(self: "CsvMixin") -> str:
         """Monta o CSV do contexto atual: tabela de Fundamentos ou CSV bruto."""

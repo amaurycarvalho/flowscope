@@ -272,6 +272,35 @@ Métricas usadas na tabela de Fundamentos (aba "Análise Geral") e na Evolução
 
 ---
 
+## Contexto do Chat com I.A.
+
+O chat não calcula indicadores novos: ele reaproveita os indicadores e dados já produzidos pelo FlowScope como contexto para a LLM. A aba "Chat AI" monta esse contexto em três origens, além de um ponto de extensão para fontes adicionais.
+
+### Conhecimento do FlowScope
+- **Origem:** textos de orientação das sub-abas (`TAB_CONTENT`) e informações da aba "Sobre" (apresentação, licença e versão).
+- **Aplicabilidade:** responde perguntas sobre o próprio aplicativo e sobre como interpretar cada painel; enviado como bloco de sistema estável.
+
+### Fundamentos carregados
+- **Origem:** a mesma tabela da sub-aba "Fundamentos" (análise fundamentalista por ticker).
+- **Serialização:** uma linha por ticker com os valores não vazios no formato `[TICKER] Coluna=valor; ...`.
+- **Escopo:** watchlist completa; o ticker referido é inferido pela LLM a partir do texto da pergunta, que pede esclarecimento quando a pergunta for ambígua quanto ao ativo.
+
+### Documentos em cache
+- **Resumos:** os `short_summary` (até 280 caracteres) e `long_summary` (até 1.500 caracteres) da sub-aba "Documentos", lidos por `DocumentCatalog`/`JsonDocumentSummaryStore`.
+- **Texto integral:** lido de `document-texts/` (`JsonDocumentTextStore`) apenas para os documentos-alvo pedidos pela LLM, após o gate de confirmação por quantidade.
+- **Preparação sob demanda:** quando o texto ou o resumo não estão em cache, são preparados reutilizando a extração de HTML/PDF e o `ResumirDocumentoUseCase`.
+
+### Fontes adicionais
+- **Origem:** ponto de extensão `ContextoChat.fontes_adicionais`, com provedores que recebem a pergunta e devolvem um título e um texto.
+- **Aplicabilidade:** changes futuras (notícias em `noticias-b3`, recuperação vetorial em `llm-chat-rag`) registram as suas fontes; cada uma é renderizada como seção própria, sem alterar a ordem da cascata de documentos. Fonte que falha ou retorna vazio é omitida, sem impedir a resposta.
+
+### Orçamento de contexto
+- **Teto por documento:** 12.000 caracteres (mesmo precedente do resumidor).
+- **Teto global:** 40.000 caracteres.
+- **Excedente:** truncado com aviso registrado no log.
+
+---
+
 ## Classificações Qualitativas
 
 Rótulos derivados dos indicadores para uso nos painéis e no card de classificação.
