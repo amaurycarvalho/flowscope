@@ -74,6 +74,27 @@ TAB_CONTENT = {
              "Passe o mouse sobre as barras para ver detalhes do ticker."), ""),
         ]
     ),
+    ("Análise Geral", "Rede de Correlação"): (
+        "Rede de Correlação — Topologia de Correlação e Cointegração",
+        [
+            ("Objetivo: ", "bold"),
+            ("Revelar a topologia da carteira — quem se agrupa com quem — distinguindo o co-movimento de curto prazo (correlação) do vínculo de equilíbrio de longo prazo (cointegração do spread), em vez de uma matriz N×N ilegível.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Quais papéis se movem juntos e quais mantêm uma relação de equilíbrio no tempo?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Correlação assinada dos retornos entre observações consecutivas;\n"
+             "• Cointegração par-a-par (Engle-Granger + ADF), com defasagem por BIC;\n"
+             "• Meia-vida de reversão do spread;\n"
+             "• Comunidades, centralidade (grau) e modularidade da rede.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Cada nó é um ticker e cada aresta um par com relação relevante. A cor da aresta representa a correlação de curto prazo, em escala divergente fixa de −1 a +1 (azul para correlação negativa, vermelho para positiva), com colorbar. "
+             "O estilo e a espessura da aresta representam a cointegração de longo prazo: traço sólido e grosso quando o par é cointegrado; tracejado e fino caso contrário. "
+             "A cor do nó representa a comunidade (cluster) e o tamanho representa a centralidade (grau) do papel na rede. Só entram arestas com |correlação| acima do limiar ou pares cointegrados, evitando grafos densos demais.\n\n"
+             "A rede é calculada sobre os dados já carregados, conforme o período e a amostragem dos combos globais, restrita aos tickers selecionados; um seletor de janela próprio não é necessário. Mudar período ou amostragem recalcula a rede.\n\n"
+             "Gates de densidade: a correlação exige ao menos 30 observações alinhadas e a cointegração, no mínimo 40. Com menos de 30 o painel fica vazio; entre 30 e 39 exibe apenas as arestas de correlação e avisa que a cointegração requer 40. "
+             "A amostragem esparsa da B3 (Fibonacci) cria intervalos irregulares: o diagnóstico no topo informa o número de observações, o período coberto e os gaps mínimo/mediana/máximo em dias úteis. A cointegração é um indício exploratório sob espaçamento irregular; para densificar a grade, use \"Todos os dias\" com um período maior. O resultado do Engle-Granger é direcional (a direção da regressão é fixada pela ordem alfabética dos tickers) e, com muitos pares, alguns falsos positivos são esperados."), ""),
+        ]
+    ),
     ("Análise Geral", "Fundamentos"): (
         "Fundamentos — Métricas Fundamentalistas e Dividendos",
         [

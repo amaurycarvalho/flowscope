@@ -117,6 +117,15 @@ class ActionsMixin:
         filtered = {t: self._current_data.get(t) for t in tickers if t in self._current_data}
         if isinstance(chart, QuadrantChart):
             chart.update(filtered, show_arrows=(len(filtered) == 1))
+        else:
+            self._update_especial(chart, filtered, tickers)
+
+    def _update_especial(
+        self: "ActionsMixin", chart: object, filtered: dict, tickers: list[str]
+    ) -> None:
+        """Atualiza os painéis que não seguem o fluxo padrão de dados filtrados."""
+        if chart is getattr(self, "_correlation_network_panel", None):
+            chart.update(filtered, tickers=tickers)
         elif isinstance(chart, FundamentalTablePanel):
             dados = getattr(self, "_fundamental_data", {})
             chart.update({t: dados[t] for t in tickers if t in dados})

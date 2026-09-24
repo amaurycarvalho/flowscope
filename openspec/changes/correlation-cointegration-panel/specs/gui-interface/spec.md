@@ -14,6 +14,11 @@ O sistema DEVE registrar a sub-aba "Rede de Correlação" no sub-notebook da aba
 - **WHEN** o usuário seleciona a sub-aba "Rede de Correlação"
 - **THEN** o sistema DEVE atualizar o painel correspondente e o botão "Copiar Gráfico"
 
+#### Scenario: Recálculo ao mudar período ou amostragem
+
+- **WHEN** a sub-aba "Rede de Correlação" está ativa e o usuário altera o período ou a amostragem
+- **THEN** o sistema DEVE recarregar os dados e recalcular a rede, mantendo a sub-aba ativa
+
 #### Scenario: Restauração da última sub-aba
 
 - **WHEN** o usuário reabre a aplicação tendo selecionado "Rede de Correlação" por último

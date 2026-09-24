@@ -93,6 +93,20 @@ A interface é dividida em três grandes regiões:
 - **Indicadores envolvidos:** CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.
 - **Como interpretar:** Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. Passe o mouse sobre as barras para ver detalhes do ticker.
 
+### Sub-aba: Rede de Correlação
+
+- **Objetivo:** Revelar a topologia da carteira — quem se agrupa com quem — distinguindo o co-movimento de curto prazo (correlação) do vínculo de equilíbrio de longo prazo (cointegração do spread), em vez de uma matriz N×N ilegível.
+- **Responde a pergunta:** _Quais papéis se movem juntos e quais mantêm uma relação de equilíbrio no tempo?_
+- **Indicadores envolvidos:** correlação assinada dos retornos entre observações consecutivas; cointegração par-a-par (Engle-Granger + ADF, com defasagem escolhida por BIC); meia-vida de reversão do spread; comunidades, centralidade (grau) e modularidade da rede.
+- **Como interpretar:**
+  - Cada nó é um ticker e cada aresta um par com relação relevante. A **cor da aresta** representa a correlação de curto prazo em escala divergente fixa de −1 a +1 (azul para negativa, vermelho para positiva), com colorbar. O **estilo e a espessura** representam a cointegração: traço sólido e grosso quando o par é cointegrado; tracejado e fino caso contrário, com legenda.
+  - A **cor do nó** representa a comunidade (cluster) e o **tamanho** representa a centralidade (grau) do papel na rede. Só entram arestas com |correlação| acima do limiar (`0,5`) ou pares cointegrados, evitando grafos densos demais.
+  - **Uso dos combos globais:** a rede é calculada sobre os dados já carregados, conforme o período e a amostragem dos combos globais e restrita aos tickers selecionados no Listbox. Não há seletor de janela próprio; mudar período ou amostragem recarrega os dados e recalcula a rede.
+  - **Gates de densidade:** a correlação exige ao menos 30 observações alinhadas e a cointegração, no mínimo 40. Com menos de 30 o painel fica vazio; entre 30 e 39 exibe apenas as arestas de correlação e avisa que a cointegração requer 40.
+  - **Limitações da amostragem:** a amostragem esparsa da B3 (Fibonacci) cria intervalos irregulares; o diagnóstico no topo informa o número de observações, o período coberto e os gaps mínimo/mediana/máximo em dias úteis. A cointegração é um indício exploratório sob espaçamento irregular; para densificar a grade, use a amostragem "Todos os dias" com um período maior. O resultado do Engle-Granger é direcional (a direção da regressão é fixada pela ordem alfabética dos tickers) e, com muitos pares, alguns falsos positivos são esperados.
+  - **Barra de ferramentas:** a mesma da sub-aba VWAP — Início, Voltar, Avançar, Mover, Ampliar, Salvar e "Copiar Gráfico" (copia a figura para a área de transferência como imagem).
+- **Reprodutibilidade:** o layout force-directed usa semente fixa, de modo que a mesma seleção e a mesma grade de observações produzem a mesma disposição de nós.
+
 ### Sub-aba: Fundamentos
 
 - **Objetivo:** Consolidar, por ticker da watchlist, a identidade, a classificação, os dividendos, o P/L, a quantidade de cotas emitidas, o número de cotistas/acionistas, as métricas de short interest e — para FIIs elegíveis — as métricas fundamentalistas de FFO.

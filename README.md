@@ -18,6 +18,7 @@ Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI
   - **VWAP:** distribuição de preços dos ativos frente ao preço médio ponderado pelo volume.
   - **Quadrantes:** classificação por CLV × desvio do VWAP.
   - **Dominância do Pregão:** quem venceu a disputa diária pelo preço.
+  - **Rede de Correlação:** grafo da carteira com a correlação assinada (cor da aresta), a cointegração (estilo/espessura) e as comunidades (cor do nó), a partir dos dados já carregados pelos combos de período e amostragem.
   - **Tabela de Fundamentos:** consolida, por ticker, identidade e classificação, cotação, Preço Típico, P/L, P/VP, Dividend Yield, dividendos, *short interest* (Shorts%, Volume de Shorts, Fechamento Shorts em dias e Risco Fechamento), nº de cotas/cotistas, patrimônio e métricas de FFO dos FIIs; com colunas congeladas, ordenável e exportável em CSV.
 - **Análise do Ticker** — aprofundamento do ativo selecionado:
   - **Evolução dos Fundamentos:** small multiples (oito mini-gráficos) com a série histórica do cache do ticker — Cotação, VP/Cota, P/VP, Dividend Yield, Último dividendo, Nº de cotistas, Nº de cotas e Shorts% — com datas em dia/mês/ano (`DD/MM/AA`) e tooltip de data e valor ao passar o mouse sobre cada ponto.

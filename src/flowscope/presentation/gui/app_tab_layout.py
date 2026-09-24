@@ -8,6 +8,9 @@ from flowscope.presentation.gui.app_tabs import (
     ENABLED_TABS,
     TAB_CONFIGS,
 )
+from flowscope.presentation.gui.charts.correlation_network_panel import (
+    CorrelationNetworkPanel,
+)
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
@@ -61,6 +64,15 @@ class TabsLayoutMixin:
             general_dominance_frame, copy_chart_callback=self._copy_chart,
         )
         self._dominance_ranking.frame.pack(fill=tk.BOTH, expand=True)
+
+        general_network_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(
+            general_network_frame, text="Rede de Correlação"
+        )
+        self._correlation_network_panel = CorrelationNetworkPanel(
+            general_network_frame, copy_chart_callback=self._copy_chart,
+        )
+        self._correlation_network_panel.frame.pack(fill=tk.BOTH, expand=True)
 
     def _on_fundamental_widths_changed(self: "TabsLayoutMixin", widths: dict) -> None:
         """Guarda as larguras das colunas para persistir no fechamento."""

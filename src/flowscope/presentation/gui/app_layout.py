@@ -192,6 +192,7 @@ class LayoutMixin:
             "VWAP": self._vwap_chart,
             "Quadrantes": self._quadrant_chart,
             "Dominância do Pregão": self._dominance_ranking,
+            "Rede de Correlação": self._correlation_network_panel,
             "Fundamentos": self._fundamental_table,
         }
         self._TICKER = {

@@ -53,6 +53,8 @@ a = Analysis(
         'matplotlib.backends.backend_tkagg',
         'mpl_toolkits',
         'mpl_toolkits.mplot3d',
+        'numpy',
+        'networkx',
         'ctypes',
         'pyxclip',
         'tkcalendar',
@@ -100,8 +102,8 @@ if sys.platform == 'darwin':
         icon=icon_file,
         bundle_identifier='com.github.amaurycarvalho.flowscope',
         info_plist={
-            'CFBundleShortVersionString': '1.2.0',
-            'CFBundleVersion': '1.2.0',
+            'CFBundleShortVersionString': '1.3.0',
+            'CFBundleVersion': '1.3.0',
             'NSHighResolutionCapable': True,
         },
     )
