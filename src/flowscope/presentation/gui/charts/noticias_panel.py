@@ -21,7 +21,10 @@ from flowscope.infrastructure.b3.noticias_catalogo import (
     CatalogoNoticias,
     NoticiasCatalog,
 )
-from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vinculado
+from flowscope.infrastructure.b3.noticias_vinculo import (
+    apontador_pendente,
+    baixar_conteudo_vinculado,
+)
 from flowscope.infrastructure.document_catalog import DocumentoArquivo
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
@@ -36,6 +39,7 @@ from flowscope.presentation.gui.charts.document_grouping import (
 )
 from flowscope.presentation.gui.charts.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
+    tem_texto,
     texto_preview,
 )
 from flowscope.presentation.gui.charts.document_summary import (
@@ -192,21 +196,61 @@ class NoticiasPanel(DocumentFlowMixin):
             self._popular(catalogo)
         self.refresh_resumir_button()
 
+    def _texto_cacheado(
+        self: "NoticiasPanel", arquivo: DocumentoArquivo
+    ) -> str | None:
+        """Retorna o texto cacheado, invalidando apontadores não resolvidos.
+
+        Um download anterior que falhou deixa no cache o próprio apontador do
+        Plantão B3. Para não confiar nele para sempre, o texto é descartado
+        quando é um apontador pendente — forçando nova tentativa de resolução.
+        Documentos já resolvidos seguem reutilizados.
+        """
+        texto = super()._texto_cacheado(arquivo)
+        if texto is None:
+            return texto
+        if self._apontador_pendente(arquivo, texto):
+            return None
+        return texto
+
+    def _apontador_pendente(
+        self: "NoticiasPanel", arquivo: DocumentoArquivo, texto: str
+    ) -> bool:
+        """Indica se o texto é o apontador da "Geral" ainda não resolvido.
+
+        É apontador pendente quando contém uma URL suportada (CVM RAD ou FNET)
+        e é idêntico ao corpo atual do ``#conteudoDetalhe``. A comparação evita
+        tratar como pendente um documento já resolvido que cite uma URL.
+        """
+        if getattr(arquivo, "secao", "") != SECAO_GERAL:
+            return False
+        corpo = texto_preview(arquivo.caminho, SELETOR_CONTEUDO_DETALHE)
+        return apontador_pendente(texto, corpo)
+
+    def texto_utilizavel(
+        self: "NoticiasPanel", arquivo: DocumentoArquivo, texto: str
+    ) -> bool:
+        """Indica se o texto serve para resumir (não é apontador pendente).
+
+        O lote usa este gancho para pular notícias cujo documento vinculado não
+        foi baixado: elas permanecem pendentes e são tentadas de novo, em vez de
+        gerar um resumo a partir do apontador.
+        """
+        return tem_texto(texto) and not self._apontador_pendente(arquivo, texto)
+
     def _texto_do_arquivo(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str:
         """Extrai o corpo do artigo, resolvendo o documento vinculado da "Geral".
 
         O corpo do Plantão B3 é extraído de ``#conteudoDetalhe``. Quando ele é
-        apenas um apontador para um documento (notícias "Geral" com URL embutida),
-        o conteúdo vinculado é baixado e anexado ao texto; sem URL suportada ou
-        em falha, mantém-se apenas o corpo. Roda na thread de trabalho.
+        apenas um apontador para um documento (notícias "Geral" com URL embutida
+        no visualizador da CVM RAD ou do FNET), o texto do documento vinculado
+        substitui o apontador; sem URL suportada ou em falha, mantém-se o corpo.
+        Roda na thread de trabalho.
         """
         texto = texto_preview(arquivo.caminho, SELETOR_CONTEUDO_DETALHE)
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
             return texto
-        vinculado = baixar_conteudo_vinculado(texto)
-        if not vinculado:
-            return texto
-        return f"{texto}\n\n---\n\n{vinculado}".strip()
+        return baixar_conteudo_vinculado(texto) or texto
 
     def all_buttons(self: "NoticiasPanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""

@@ -1,8 +1,10 @@
+# noticias-panel Specification
+
 ## Purpose
 
 Fornece a sub-aba "Notícias" na Análise Geral, com árvore dos artigos, pré-visualização do conteúdo, resumos por LLM e controles de atualização.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Sub-aba "Notícias" na Análise Geral
 
@@ -39,6 +41,10 @@ O sistema DEVE expor a sub-aba "Notícias" na "Análise Geral", organizando os i
 #### Scenario: Atualização com progresso
 - **WHEN** o usuário aciona "Atualizar"
 - **THEN** a aquisição DEVE rodar em segundo plano com progresso e reexibir a árvore ao concluir
+
+#### Scenario: Cancelamento reflete a carga parcial
+- **WHEN** o usuário cancela a aquisição
+- **THEN** a árvore DEVE ser remontada com os itens já persistidos assim que o worker encerrar, sem sobrescrever uma carga iniciada depois
 
 #### Scenario: Sem itens
 - **WHEN** não há itens para nenhuma categoria
@@ -106,11 +112,15 @@ O sistema DEVE extrair o texto do HTML do item em cache para a pré-visualizaç�
 
 ### Requirement: Documento vinculado sob demanda
 
-Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento (URL suportada embutida no texto), o sistema DEVE baixar e extrair o conteúdo vinculado ao selecionar a notícia e ao processar "Resumir pendentes", anexando-o ao corpo. O resultado DEVE ser persistido no cache de textos, evitando novo download. Se o download não puder ser concluído (captcha habilitado, falha de rede ou formato inesperado), o corpo original DEVE ser mantido, sem erro.
+Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento, o sistema DEVE baixar e extrair o conteúdo vinculado ao selecionar a notícia e ao processar "Resumir pendentes". As URLs suportadas incluem o **visualizador da CVM RAD** (`rad.cvm.gov.br`) e o **visualizador do FNET** (`fnet.bmfbovespa.com.br`). O texto do documento extraído DEVE substituir o apontador no corpo e ser persistido no cache de textos, evitando novo download. Se o download não puder ser concluído (captcha habilitado, falha de rede ou formato inesperado), o corpo original DEVE ser mantido, sem erro.
 
-#### Scenario: Pré-visualização resolve o documento vinculado
-- **WHEN** uma notícia "Geral" com URL de documento embutida é selecionada
-- **THEN** o conteúdo vinculado DEVE ser baixado, extraído e exibido junto do corpo
+#### Scenario: Pré-visualização resolve o documento vinculado da CVM
+- **WHEN** uma notícia "Geral" com URL do visualizador da CVM RAD é selecionada
+- **THEN** o conteúdo vinculado DEVE ser baixado, extraído e exibido no corpo
+
+#### Scenario: Pré-visualização resolve o documento vinculado do FNET
+- **WHEN** uma notícia "Geral" com URL do visualizador do FNET é selecionada
+- **THEN** o PDF apontado pelo `iframe` do visualizador DEVE ser baixado, extraído e exibido no corpo
 
 #### Scenario: Resumo em lote usa o documento vinculado
 - **WHEN** "Resumir pendentes" processa uma notícia "Geral" com documento vinculado
@@ -123,6 +133,14 @@ Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento
 #### Scenario: Captcha ou falha mantém o corpo
 - **WHEN** o documento vinculado exige captcha, falha a rede ou vem em formato inesperado
 - **THEN** a notícia DEVE exibir o corpo original, sem erro
+
+#### Scenario: Apontador não resolvido é reprocessado
+- **WHEN** o texto cacheado de uma notícia "Geral" é idêntico ao apontador atual (download anterior não concluído)
+- **THEN** o download DEVE ser tentado novamente na próxima seleção ou em "Resumir pendentes"
+
+#### Scenario: Apontador não resolvido não gera resumo
+- **WHEN** "Resumir pendentes" processa uma notícia "Geral" cujo documento vinculado não pôde ser baixado
+- **THEN** nenhum resumo DEVE ser gerado para ela e o item DEVE permanecer pendente para nova tentativa
 
 ### Requirement: Resumo curto e longo por LLM
 

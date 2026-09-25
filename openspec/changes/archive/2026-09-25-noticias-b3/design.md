@@ -155,6 +155,50 @@ Ao carregar (inicial ou após "Atualizar"), a árvore de notícias é exibida ex
 
 Alternativa considerada: abrir também as categorias (mostrando os anos) — descartada por já exibir muitos nós em períodos longos.
 
+### 20. Resolvedor de documento vinculado generalizado (CVM RAD e FNET)
+
+Algumas notícias da "Geral" trazem no corpo apenas a URL do documento. A leitura do cache em 25/09/2026 mostrou que essas URLs pertencem a **dois hosts**: `www.rad.cvm.gov.br` (1.129 itens, `frmExibirArquivoIPEExterno.aspx?ID=…`) e `fnet.bmfbovespa.com.br` (113 itens, `/fnet/publico/visualizarDocumento?id=…`). A decisão 16 resolvia apenas o primeiro; as notícias FNET exibiam somente o apontador.
+
+O resolvedor (`noticias_vinculo`) passa a ser um **despachante por host**: `extrair_url_vinculada` reconhece ambos e `baixar_conteudo_vinculado` delega ao resolvedor do host.
+
+- **CVM RAD** (existente): GET do visualizador (cookie de sessão), checagem de captcha, POST JSON ao WebMethod `ExibirPDF` e decodificação do PDF em base64 (`pypdf`).
+- **FNET** (novo): GET de `visualizarDocumento?id=…`; se a resposta já for `application/pdf`, usa-se direto; caso contrário, extrai-se o `<iframe src="exibirDocumento?id=…">`, resolve-se a URL relativa e faz-se o GET do PDF (mesma sessão e `Referer` do visualizador). A extração usa `pypdf` ou HTML→texto como fallback.
+- **Tolerância e retry:** o FNET responde de forma intermitente (Cloudflare); a leitura usa retry com pequena espera. Captcha, erro do WebMethod, timeout ou formato inesperado resultam em `None`, mantendo o corpo original.
+- **Corpo da notícia:** quando o documento é resolvido, o seu texto **substitui** o apontador na pré-visualização e no resumo (o apontador só permanece quando a resolução falha), coerente com "é do arquivo apontado pela URL que se extrai o texto da notícia". O resultado é persistido no cache de textos, evitando novo download (mantém-se a decisão 16).
+
+Alternativa considerada (baixar no "Atualizar"): descartada por multiplicar as requisições (cada item exige ao menos um GET) e por baixar conteúdo que talvez nunca seja lido; a resolução continua sob demanda.
+
+### 21. Re-resolução de apontador em cache (auto-recuperação)
+
+A decisão 16 persiste o texto no cache e só baixa o documento vinculado em *cache miss*. Se o primeiro download falha (captcha, rede ou PDF digitalizado), o texto gravado é o próprio apontador do Plantão B3 e a seleção/resumo seguintes o reutilizam para sempre — o conteúdo do arquivo nunca é obtido, mesmo depois de o host voltar a responder.
+
+Decisão: ao obter o texto cacheado de uma notícia "Geral", se o texto contiver uma URL suportada **e** for idêntico ao corpo atual do `#conteudoDetalhe`, o cache é tratado como apontador não resolvido e é invalidado, forçando nova tentativa de download na próxima seleção ou "Resumir pendentes". A comparação com o corpo atual evita reprocessar documentos já resolvidos que porventura citem uma URL suportada. O texto só permanece em cache quando a resolução é bem-sucedida (ou quando o item não é um apontador).
+
+### 22. Resumo não gerado a partir de apontador não resolvido
+
+A decisão 21 faz a extração de texto retentar o download, mas o lote ainda resumia o apontador quando todas as tentativas falhavam — e, uma vez com resumo, o item deixava de ser pendente e o conteúdo correto nunca era resumido.
+
+Decisão: o lote de resumos consulta um gancho `texto_utilizavel(arquivo, texto)` no painel (com fallback para o texto extraível genérico nos demais painéis de documentos). Na sub-aba "Notícias", o texto de uma notícia "Geral" que seja um apontador pendente **não é utilizável**: a LLM não é chamada, nenhum resumo é persistido e o item permanece pendente (`long_summary is None`), sendo tentado de novo no próximo "Resumir pendentes". A pré-visualização continua exibindo o apontador, permitindo abrir o documento no navegador.
+
+### 23. Contexto do chat em duas camadas (índice + leitura por chave)
+
+A fonte de notícias do chat (`FonteNoticias`) entregava, no primeiro prompt, o resumo/texto integral de quantos itens coubessem no teto de 12.000 caracteres. Medição no cache real: 272 itens → apenas 23 blocos (todos de "Censuras Públicas"); "Condições Excepcionais" e "Programas de Aquisição de Ações" ficavam de fora, e a "Geral" (1.535 itens) é a última na ordem — logo, quase nunca apareceria. Além disso, o texto de uma notícia "Geral" só era correto se o documento vinculado já tivesse sido resolvido; caso contrário o chat recebia o apontador (a URL).
+
+Decisão: a fonte passa a operar em **duas camadas**, espelhando a cascata de documentos.
+
+1. **Índice compacto** (1ª chamada): uma linha por item — `[seção] data — tipo — título (chave curta)` — mais a instrução de pedir as chaves cujo conteúdo integral se deseja. Os itens são **intercalados por seção** (ordem fixa) e ordenados do mais recente ao mais antigo, de modo que todas as categorias apareçam mesmo com orçamento curto. O teto do índice sobe para 32.000 caracteres (configurável), cobrindo centenas de itens.
+2. **Leitura por chave** (2ª chamada): a LLM devolve as chaves no campo `documentos`; o `ChatPanel` soma a resolução da cascata de documentos e das **fontes adicionais escaláveis** (as que expõem `resolver_alvos`/`preparar_texto`). Para cada notícia, devolve o resumo longo/curto e o texto resolvido; quando o texto é um apontador não resolvido, entrega um aviso em vez de apresentar a URL como conteúdo. Tetos por item (12.000) e global (48.000).
+
+A chave exibida é curta e estável (`n` + `sha1(chave relativa)[:10]`), economizando espaço no índice. Fontes adicionais que não implementam o escalonamento continuam sendo apenas texto.
+
+Alternativa considerada: manter tudo no primeiro prompt com um teto maior — descartada por enviar dezenas de milhares de caracteres de resumos/textos em toda pergunta; o índice compacto dá visão de todas as categorias a baixo custo e só paga pela leitura do que a LLM pedir.
+
+### 24. Cancelamento da carga reflete a parcial na árvore
+
+Ao cancelar o "Atualizar", o `_poll_noticias_job` encerrava o job assim que o token de cancelamento era observado, sem esperar o worker. Como a árvore lê o índice e os metadados da "Geral" são gravados em lotes (descarregados no `except OperacaoCancelada` do worker), a remontagem acontecia antes do flush: os itens recém-baixados não apareciam e não havia nova remontagem depois.
+
+Decisão: na finalização por cancelamento, a árvore é remontada imediatamente (liberando a interface) e **reagendada** uma nova remontagem para quando a thread do worker encerrar, já com o índice descarregado. A remontagem reagendada é abortada se um novo "Atualizar" tiver começado, para não sobrescrever a carga mais recente, e o atraso é limitado (~30s) para não manter um laço indefinido caso o worker não encerre.
+
 ## Risks / Trade-offs
 
 - **[Risco] Corpo do artigo não é HTML server-rendered** → spike de verificação antes de fixar a extração; se necessário, ajustar a estratégia ou degradar para metadados.

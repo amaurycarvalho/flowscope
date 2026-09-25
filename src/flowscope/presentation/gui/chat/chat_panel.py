@@ -302,15 +302,45 @@ class ChatPanel(EnvioMixin, tk.Frame):
                 fontes.append(fonte)
         return fontes
 
+    def _fontes_escalaveis(self: "ChatPanel") -> list[object]:
+        """Fontes adicionais que resolvem chaves para o conteúdo integral.
+
+        A fonte de notícias expõe ``resolver_alvos``/``preparar_texto``; fontes
+        que não implementam o escalonamento (apenas texto) são ignoradas aqui.
+        """
+        return [
+            fonte
+            for fonte in self._fontes_adicionais
+            if callable(getattr(fonte, "resolver_alvos", None))
+            and callable(getattr(fonte, "preparar_texto", None))
+        ]
+
     def _preparar_texto(self: "ChatPanel", chaves: list[str]) -> str:
-        """Resolve as chaves e lê o texto integral dos documentos-alvo."""
-        alvos = self._cascata.resolver_alvos(chaves)
-        return self._cascata.preparar_texto(alvos)
+        """Resolve as chaves nos documentos e nas fontes adicionais escaláveis."""
+        restantes = set(chaves)
+        partes: list[str] = []
+        docs = self._cascata.resolver_alvos(chaves)
+        if docs:
+            partes.append(self._cascata.preparar_texto(docs))
+            restantes -= {doc.chave for doc in docs}
+        for fonte in self._fontes_escalaveis():
+            alvos = fonte.resolver_alvos(restantes)
+            if not alvos:
+                continue
+            partes.append(fonte.preparar_texto(alvos))
+            restantes -= {alvo.chave for alvo in alvos}
+        return "\n\n".join(parte for parte in partes if parte)
 
     def _confirmar_leitura(self: "ChatPanel", chaves: list[str]) -> bool:
-        """Resolve as chaves e aplica o gate de confirmação no contexto do Tk."""
-        alvos = self._cascata.resolver_alvos(chaves)
-        return self._cascata.confirmar_leitura(alvos)
+        """Aplica o gate de confirmação somando documentos e fontes adicionais."""
+        nomes = [doc.nome for doc in self._cascata.resolver_alvos(chaves)]
+        for fonte in self._fontes_escalaveis():
+            nomes.extend(alvo.nome for alvo in fonte.resolver_alvos(chaves))
+        if faixa_confirmacao(len(nomes)) == FAIXA_AUTOMATICA:
+            return True
+        return bool(
+            self._confirmar_no_tk(len(nomes), nomes if len(nomes) <= 7 else [])
+        )
 
     def _atender_confirmacao(self: "ChatPanel", mensagem: tuple) -> None:
         """Exibe o diálogo de confirmação e libera a thread de trabalho."""

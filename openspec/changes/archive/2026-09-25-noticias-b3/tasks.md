@@ -141,3 +141,39 @@
 - [x] 18.4 Extrair `AquisicaoNoticias` para `noticias_carga.py` para manter o gate de complexidade
 - [x] 18.5 Atualizar os testes (janelas diárias, agrupamento de escritas, cargas) e os docs/artefatos
 - [x] 18.6 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`
+
+## 19. Documento vinculado: CVM RAD e FNET
+
+- [x] 19.1 Generalizar `noticias_vinculo` em despachante por host, reconhecendo CVM RAD e FNET
+- [x] 19.2 Implementar `_baixar_fnet` (GET do visualizador, iframe `exibirDocumento`, PDF/HTML) com retry
+- [x] 19.3 Usar o texto do documento vinculado como corpo da notícia (substituindo o apontador) e persistir no cache de textos
+- [x] 19.4 Cobrir com testes de infraestrutura (CVM, FNET com iframe relativo, PDF direto, HTML, retry/erro) e do painel
+- [x] 19.5 Atualizar design, specs, README.md, indicators.md e panels.md
+- [x] 19.6 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`
+
+## 20. Re-resolução de apontador em cache
+
+- [x] 20.1 Invalidar o texto cacheado quando ele for apenas o apontador da "Geral" (`_texto_cacheado` em `NoticiasPanel`), forçando nova resolução
+- [x] 20.2 Cobrir com teste (apontador invalida; documento resolvido não invalida)
+- [x] 20.3 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`
+
+## 21. Resumo não gerado a partir de apontador
+
+- [x] 21.1 Gancho `texto_utilizavel` no `ResumosPendentesJob` (com fallback genérico) e implementação em `NoticiasPanel`
+- [x] 21.2 Testes: apontador pendente é pulado pelo lote e permanece pendente; é resumido quando a resolução ocorre
+- [x] 21.3 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`
+
+## 22. Contexto do chat em duas camadas
+
+- [x] 22.1 `FonteNoticias` monta índice compacto (chave curta, intercalado por seção, teto próprio) e resolve/entrega resumo e texto por chave
+- [x] 22.2 `ChatPanel` soma a cascata de documentos e as fontes adicionais escaláveis no `preparar_texto` e no gate de confirmação
+- [x] 22.3 Sinalizar documento vinculado não resolvido no lugar de apresentar a URL como conteúdo
+- [x] 22.4 Atualizar testes da fonte, do prompt e do escalonamento no painel
+- [x] 22.5 Atualizar design, specs, README.md, indicators.md e panels.md
+- [x] 22.6 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`
+
+## 23. Cancelamento da carga reflete a parcial
+
+- [x] 23.1 Reagendar a remontagem da árvore após o worker de cancelamento encerrar, com guarda contra novo job e limite de atraso
+- [x] 23.2 Cobrir com teste (remonta após o worker; não sobrescreve novo job)
+- [x] 23.3 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate noticias-b3`

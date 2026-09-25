@@ -23,6 +23,19 @@ _CORPO = (
     f"{_VIEWER_URL}\n\n(R) = Reapresentacao"
 )
 
+_FNET_VIEWER_URL = (
+    "https://fnet.bmfbovespa.com.br/fnet/publico/visualizarDocumento"
+    "?id=1326844&flnk"
+)
+_FNET_PDF_URL = (
+    "https://fnet.bmfbovespa.com.br/fnet/publico/exibirDocumento"
+    "?id=1326844&toolbar=0"
+)
+_CORPO_FNET = (
+    "FII INHF (INHF) Aviso de Modificacao de Oferta - 21/09/26\n\n"
+    f"{_FNET_VIEWER_URL}\n\n(R) = Reapresentacao"
+)
+
 
 def _viewer(captcha: str = "N") -> str:
     return (
@@ -33,13 +46,30 @@ def _viewer(captcha: str = "N") -> str:
     )
 
 
+def _viewer_fnet() -> str:
+    return (
+        "<html><body>"
+        '<iframe src="exibirDocumento?id=1326844&toolbar=0"></iframe>'
+        '<iframe src="/fnet/publico/visualizarProtocoloDocumentoCVM'
+        '?idDocumento=1326844"></iframe>'
+        "</body></html>"
+    )
+
+
+def _pdf() -> bytes:
+    return b"%PDF-1.7\nconteudo"
+
+
 def _pdf_b64() -> str:
-    return base64.b64encode(b"%PDF-1.7\nconteudo").decode()
+    return base64.b64encode(_pdf()).decode()
 
 
 class TestExtrairUrl:
     def test_encontra_url_cvm(self):
         assert extrair_url_vinculada(_CORPO) == _VIEWER_URL
+
+    def test_encontra_url_fnet(self):
+        assert extrair_url_vinculada(_CORPO_FNET) == _FNET_VIEWER_URL
 
     def test_ignora_url_nao_suportada(self):
         assert extrair_url_vinculada("veja https://exemplo.com/doc.pdf") is None
@@ -123,3 +153,77 @@ class TestBaixarConteudoVinculado:
 
     def test_sem_url_suportada_retorna_none(self):
         assert baixar_conteudo_vinculado("sem link") is None
+
+
+class TestBaixarConteudoFnet:
+    def test_segue_iframe_e_extrai_o_pdf(self, monkeypatch):
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_texto_pdf",
+            lambda _dados: "texto do fnet",
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _FNET_VIEWER_URL, body=_viewer_fnet(), status=200)
+            rsps.add(
+                responses.GET,
+                _FNET_PDF_URL,
+                body=_pdf(),
+                status=200,
+                content_type="application/pdf",
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO_FNET)
+        assert resultado == "texto do fnet"
+
+    def test_visualizador_ja_e_o_pdf(self, monkeypatch):
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_texto_pdf",
+            lambda _dados: "pdf direto",
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                _FNET_VIEWER_URL,
+                body=_pdf(),
+                status=200,
+                content_type="application/pdf",
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO_FNET)
+        assert resultado == "pdf direto"
+
+    def test_sem_iframe_retorna_none(self):
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                _FNET_VIEWER_URL,
+                body="<html><body>sem iframe</body></html>",
+                status=200,
+            )
+            assert baixar_conteudo_vinculado(_CORPO_FNET) is None
+
+    def test_retry_apos_falha_temporaria(self, monkeypatch):
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_texto_pdf",
+            lambda _dados: "texto recuperado",
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _FNET_VIEWER_URL, status=500)
+            rsps.add(responses.GET, _FNET_VIEWER_URL, body=_viewer_fnet(), status=200)
+            rsps.add(
+                responses.GET,
+                _FNET_PDF_URL,
+                body=_pdf(),
+                status=200,
+                content_type="application/pdf",
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO_FNET)
+        assert resultado == "texto recuperado"
+
+    def test_falha_de_rede_retorna_none(self, monkeypatch):
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        with responses.RequestsMock() as rsps:
+            for _ in range(noticias_vinculo.TENTATIVAS):
+                rsps.add(responses.GET, _FNET_VIEWER_URL, status=500)
+            assert baixar_conteudo_vinculado(_CORPO_FNET) is None

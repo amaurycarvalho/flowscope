@@ -39,13 +39,17 @@ from flowscope.infrastructure.b3.noticias_index import (
     NoticiaMeta,
     NoticiasIndexStore,
 )
-from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
+from flowscope.infrastructure.document_summaries import (
+    JsonDocumentSummaryStore,
+    chave_documento,
+)
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.presentation.gui import noticias_actions
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.charts import noticias_panel as noticias_panel_mod
+from flowscope.presentation.gui.charts.document_summary import DocumentSummaryService
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
 from flowscope.presentation.gui.noticias_actions import NoticiasActionsMixin
 from flowscope.presentation.gui.noticias_job import (
@@ -130,6 +134,17 @@ def _pump(root, condicao, timeout=3.0):
             return True
         time.sleep(0.01)
     return condicao()
+
+
+def _tipos_do_job(job):
+    """Drena a fila de um job e retorna os tipos de mensagem publicados."""
+    tipos: list[str] = []
+    while True:
+        mensagem = job.fila.get_nowait()
+        if mensagem is True:
+            break
+        tipos.append(mensagem[0])
+    return tipos
 
 
 def _no_arquivo(painel, nome):
@@ -336,7 +351,7 @@ class TestExtracaoNoticias:
         painel = NoticiasPanel.__new__(NoticiasPanel)
         assert painel._texto_do_arquivo(arquivo) == "Corpo do artigo"
 
-    def test_geral_anexa_documento_vinculado(self, tmp_path, monkeypatch):
+    def test_geral_usa_documento_vinculado(self, tmp_path, monkeypatch):
         caminho = tmp_path / "noticia.html"
         caminho.write_text(
             "<html><body><pre id='conteudoDetalhe'>"
@@ -362,8 +377,8 @@ class TestExtracaoNoticias:
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
         resultado = painel._texto_do_arquivo(arquivo)
-        assert "texto do documento" in resultado
-        assert "Titulo" in resultado
+        assert resultado == "texto do documento"
+        assert "Titulo" not in resultado
 
     def test_geral_sem_vinculo_mantem_corpo(self, tmp_path, monkeypatch):
         caminho = tmp_path / "noticia.html"
@@ -416,6 +431,128 @@ class TestExtracaoNoticias:
         painel = NoticiasPanel.__new__(NoticiasPanel)
         assert painel._texto_do_arquivo(arquivo) == "Corpo"
         assert chamadas == []
+
+
+class TestAutoRecuperacao:
+    @staticmethod
+    def _painel_cache(tmp_path):
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._preview_cache = {}
+        painel._text_store = JsonDocumentTextStore(cache_dir=tmp_path)
+        painel._summary = DocumentSummaryService(
+            JsonDocumentSummaryStore(cache_dir=tmp_path), tmp_path
+        )
+        return painel
+
+    @staticmethod
+    def _arquivo_geral(tmp_path):
+        caminho = tmp_path / "noticia.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>Titulo\n"
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk</pre></body></html>",
+            encoding="utf-8",
+        )
+        return NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="18",
+            nome="noticia",
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+        )
+
+    def _semear_texto(self, painel, tmp_path, arquivo, texto):
+        painel._text_store.salvar(
+            arquivo.ticker, chave_documento(arquivo.caminho, tmp_path), texto
+        )
+
+    def test_cache_de_apontador_e_invalidado(self, tmp_path):
+        painel = self._painel_cache(tmp_path)
+        arquivo = self._arquivo_geral(tmp_path)
+        apontador = (
+            "Titulo\nhttps://www.rad.cvm.gov.br/ENETWEB/"
+            "frmExibirArquivoIPEExterno.aspx?ID=1&flnk"
+        )
+        self._semear_texto(painel, tmp_path, arquivo, apontador)
+        assert painel._texto_cacheado(arquivo) is None
+
+    def test_cache_de_documento_resolvido_e_reutilizado(self, tmp_path):
+        painel = self._painel_cache(tmp_path)
+        arquivo = self._arquivo_geral(tmp_path)
+        self._semear_texto(painel, tmp_path, arquivo, "CONTEUDO DO DOCUMENTO")
+        assert painel._texto_cacheado(arquivo) == "CONTEUDO DO DOCUMENTO"
+
+    def test_documento_resolvido_que_cita_url_e_reutilizado(self, tmp_path):
+        painel = self._painel_cache(tmp_path)
+        arquivo = self._arquivo_geral(tmp_path)
+        resolvido = (
+            "Ofício cita https://www.rad.cvm.gov.br/ENET/"
+            "frmExibirArquivoIPEExterno.aspx?ID=9&flnk"
+        )
+        self._semear_texto(painel, tmp_path, arquivo, resolvido)
+        assert painel._texto_cacheado(arquivo) == resolvido
+
+    def test_preparar_texto_reprocessa_apontador_falho(self, tmp_path, monkeypatch):
+        painel = self._painel_cache(tmp_path)
+        arquivo = self._arquivo_geral(tmp_path)
+        chamadas: list[str] = []
+
+        def _baixar(texto):
+            chamadas.append(texto)
+            return None if len(chamadas) == 1 else "CONTEUDO DO DOCUMENTO"
+
+        monkeypatch.setattr(
+            noticias_panel_mod, "baixar_conteudo_vinculado", _baixar
+        )
+        primeiro = painel.preparar_texto(arquivo)
+        assert "frmExibirArquivoIPEExterno" in primeiro
+        segundo = painel.preparar_texto(arquivo)
+        assert segundo == "CONTEUDO DO DOCUMENTO"
+        assert len(chamadas) == 2
+
+    def _painel_com_llm(self, tmp_path, store, llm):
+        painel = self._painel_cache(tmp_path)
+        painel._summary = DocumentSummaryService(
+            store, tmp_path, llm_factory=lambda: llm, llm_available=lambda: True
+        )
+        return painel
+
+    def test_lote_pula_apontador_e_mantem_pendente(self, tmp_path, monkeypatch):
+        arquivo = self._arquivo_geral(tmp_path)
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        llm = _LLMFake()
+        painel = self._painel_com_llm(tmp_path, store, llm)
+        monkeypatch.setattr(
+            noticias_panel_mod, "baixar_conteudo_vinculado", lambda _texto: None
+        )
+        job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
+        job.iniciar().join()
+        assert job.sem_texto == 1
+        assert llm.chamadas == []
+        assert MENSAGEM_RESULTADO not in _tipos_do_job(job)
+        chave = chave_documento(arquivo.caminho, tmp_path)
+        assert store.obter(ESCOPO_NOTICIAS, chave) is None
+
+    def test_lote_resume_quando_documento_resolve(self, tmp_path, monkeypatch):
+        arquivo = self._arquivo_geral(tmp_path)
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        llm = _LLMFake()
+        painel = self._painel_com_llm(tmp_path, store, llm)
+        monkeypatch.setattr(
+            noticias_panel_mod,
+            "baixar_conteudo_vinculado",
+            lambda _texto: "CONTEUDO DO DOCUMENTO",
+        )
+        job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
+        job.iniciar().join()
+        assert job.sem_texto == 0
+        assert llm.chamadas
+        assert "CONTEUDO DO DOCUMENTO" in llm.chamadas[0][0]["content"]
+        assert MENSAGEM_RESULTADO in _tipos_do_job(job)
 
 
 class TestAbertura:
@@ -536,6 +673,56 @@ class TestResumos:
             assert _pump(root, lambda: "resumo longo" in painel.texto_atual())
             chave = catalogo.chave(_arquivo_por_nome(painel, noticia.titulo))
             assert store.obter(ESCOPO_NOTICIAS, chave).long_summary == "resumo longo"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_resumir_pendentes_usa_documento_vinculado(self, tmp_path, monkeypatch):
+        cache = NoticiasCache(tmp_path)
+        indice = NoticiasIndexStore(cache_dir=tmp_path)
+        noticia = _noticia(titulo="Vinculo - Suspensão de negociação")
+        data = data_noticia(noticia.data_publicacao, _REFERENCIA)
+        chave = chave_noticia(noticia)
+        html = (
+            "<html><body><pre id='conteudoDetalhe'>Titulo\n"
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk</pre></body></html>"
+        )
+        cache.gravar(chave, data, html.encode("utf-8"))
+        indice.registrar(
+            cache.caminho(chave, data),
+            NoticiaMeta(
+                secao=SECAO_GERAL,
+                titulo=noticia.titulo,
+                data_publicacao=noticia.data_publicacao,
+                categoria=classificar_tipo(noticia.titulo),
+                url=noticia.url,
+            ),
+        )
+        catalogo = NoticiasCatalog(cache_dir=tmp_path)
+        monkeypatch.setattr(
+            noticias_panel_mod,
+            "baixar_conteudo_vinculado",
+            lambda _texto: "CONTEUDO DO ARQUIVO VINCULADO",
+        )
+        llm = _LLMFake()
+        root = tk.Tk()
+        try:
+            painel = NoticiasPanel(
+                root,
+                catalog=catalogo,
+                llm_factory=lambda: llm,
+                llm_available=lambda: True,
+                debounce_ms=0,
+            )
+            painel.update(_REFERENCIA)
+            job = ResumosPendentesJob(
+                painel, list(painel._itens.values()), continuar_em_erro=True
+            )
+            job.iniciar().join()
+            prompt = llm.chamadas[0][0]["content"]
+            assert "CONTEUDO DO ARQUIVO VINCULADO" in prompt
+            assert "frmExibirArquivoIPEExterno" not in prompt
         finally:
             root.destroy()
 
@@ -712,6 +899,63 @@ class TestNoticiasActions:
         host._adquirir_noticias()
         host._presenter.on_operation_finished.assert_called_once()
         assert host._noticias_job is None
+
+    def test_cancelamento_reagenda_remontagem_apos_worker(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+
+        class _Thread:
+            def __init__(self):
+                self.chamadas = 0
+
+            def is_alive(self):
+                self.chamadas += 1
+                return self.chamadas == 1
+
+        class _Job:
+            def __init__(self):
+                self.fila = queue.Queue()
+                self.thread = _Thread()
+
+        host._cancelamento_solicitado = lambda: True
+        job = _Job()
+        host._noticias_job = job
+        host._finalizar_noticias_job(job)
+
+        assert host._noticias_job is None
+        assert painel.update.call_count == 2
+        host._presenter.job_cancelavel_finalizado.assert_called_once()
+        host._presenter.on_operation_finished.assert_called_once()
+
+    def test_cancelamento_nao_sobrescreve_novo_job(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+        pendentes: list = []
+        host.after = lambda ms, cb: pendentes.append(cb)
+
+        class _Thread:
+            def __init__(self):
+                self.chamadas = 0
+
+            def is_alive(self):
+                self.chamadas += 1
+                return self.chamadas == 1
+
+        class _Job:
+            def __init__(self):
+                self.fila = queue.Queue()
+                self.thread = _Thread()
+
+        host._cancelamento_solicitado = lambda: True
+        job = _Job()
+        host._noticias_job = job
+        host._finalizar_noticias_job(job)
+        assert painel.update.call_count == 1
+        assert pendentes
+
+        host._noticias_job = object()  # um novo "Atualizar" começou
+        pendentes.pop(0)()
+        assert painel.update.call_count == 1
 
 
 class _HostAbas(TabsLayoutMixin):

@@ -16,6 +16,9 @@ logger = logging.getLogger("flowscope")
 #: Tempo máximo sem progresso antes de encerrar a aquisição de notícias.
 _LIMITE_INATIVIDADE_NOTICIAS_S = 120.0
 
+#: Número máximo de reagendamentos da remontagem após cancelamento (~30s).
+_LIMITE_REMONTAGEM = 300
+
 
 class NoticiasActionsMixin:
     """Adquire as notícias e mantém a sub-aba "Notícias" atualizada."""
@@ -111,16 +114,51 @@ class NoticiasActionsMixin:
             logger.exception("Erro ao tratar progresso da aquisição de notícias")
 
     def _finalizar_noticias_job(self: "NoticiasActionsMixin", job: NoticiasJob) -> None:
-        """Encerra o job, remonta a árvore e libera o estado ocupado."""
+        """Encerra o job, remonta a árvore e libera o estado ocupado.
+
+        Em cancelamento, o worker pode ainda estar terminando o item corrente e
+        gravando no índice os metadados acumulados. Como a árvore lê o índice, a
+        remontagem é repetida quando a thread encerrar, refletindo a carga
+        parcial recém-persistida.
+        """
         if getattr(self, "_noticias_job", None) is job:
             self._noticias_job = None
+        self._remontar_noticias()
+        self._presenter.job_cancelavel_finalizado()
+        self._presenter.on_operation_finished()
+        if self._cancelamento_solicitado():
+            self._reagendar_remontagem(job)
+        else:
+            self._flash_status("Notícias atualizadas!")
+
+    def _remontar_noticias(self: "NoticiasActionsMixin") -> None:
+        """Remonta a árvore de notícias a partir do cache local."""
         painel = getattr(self, "_noticias_panel", None)
         if painel is not None:
             painel.update(self._data_referencia())
-        self._presenter.job_cancelavel_finalizado()
-        self._presenter.on_operation_finished()
-        if not self._cancelamento_solicitado():
-            self._flash_status("Notícias atualizadas!")
+
+    def _reagendar_remontagem(
+        self: "NoticiasActionsMixin", job: NoticiasJob, tentativas: int = 0
+    ) -> None:
+        """Remonta a árvore de novo quando o worker de cancelamento encerrar.
+
+        Enquanto a thread estiver viva, a remontagem é adiada; ao encerrar (ou
+        ao esgotar o limite), a árvore é remontada uma última vez — desde que
+        nenhum novo "Atualizar" tenha começado, para não sobrescrever a carga
+        mais recente.
+        """
+        thread = getattr(job, "thread", None)
+        if (
+            thread is not None
+            and thread.is_alive()
+            and tentativas < _LIMITE_REMONTAGEM
+        ):
+            self.after(
+                100, lambda: self._reagendar_remontagem(job, tentativas + 1)
+            )
+            return
+        if getattr(self, "_noticias_job", None) is None:
+            self._remontar_noticias()
 
     def _noticias_job_travado(self: "NoticiasActionsMixin", job: NoticiasJob) -> bool:
         """Indica se o job morreu ou ficou sem progresso por tempo demais."""

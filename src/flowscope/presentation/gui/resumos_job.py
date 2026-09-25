@@ -118,13 +118,30 @@ class ResumosPendentesJob:
                 if not self._continuar_em_erro:
                     return None
                 continue
-            if tem_texto(texto):
+            if self._texto_utilizavel(arquivo, texto):
                 self._avaliar_guidance(arquivo, texto)
             preparados.append((arquivo, texto))
             self._progresso(1, indice, total, FASE_PREPARAR)
-        com_texto = [(a, t) for a, t in preparados if tem_texto(t)]
+        com_texto = [
+            (a, t) for a, t in preparados if self._texto_utilizavel(a, t)
+        ]
         self.sem_texto = total - len(com_texto)
         return com_texto
+
+    def _texto_utilizavel(
+        self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
+    ) -> bool:
+        """Indica se o texto preparado serve para resumir.
+
+        Painéis que distinguem texto resolvido de conteúdo sem valor (por
+        exemplo, notícias "Geral" cujo documento vinculado não foi baixado)
+        expõem ``texto_utilizavel``; na ausência do método, vale o texto
+        extraível genérico.
+        """
+        metodo = getattr(self._painel, "texto_utilizavel", None)
+        if metodo is not None:
+            return bool(metodo(arquivo, texto))
+        return tem_texto(texto)
 
     def _avaliar_guidance(
         self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
