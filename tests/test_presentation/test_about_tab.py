@@ -10,7 +10,7 @@ import pytest
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
-from flowscope.presentation.gui.app_tabs import ABOUT_TAB
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB, TAB_CONTENT
 from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
 needs_display = pytest.mark.skipif(
@@ -50,17 +50,27 @@ class TestResolucaoDeGrafico:
 
 
 class TestOnTabChanged:
-    def test_sobre_nao_resolve_grafico_nem_painel(self):
+    def test_sobre_preenche_orientacao_sem_resolver_grafico(self):
         host = MagicMock()
         host._prefs = {}
         host._current_tabs = MagicMock(return_value=(ABOUT_TAB, ABOUT_TAB))
+        conteudo = ("Sobre — Informações do FlowScope", [("texto", "")])
+        host._tab_content = {(ABOUT_TAB, ABOUT_TAB): conteudo}
 
         TabActionsMixin._on_tab_changed(host)
 
         host._resolve_chart.assert_not_called()
-        host._orientation_panel.set_content.assert_not_called()
+        host._orientation_panel.set_content.assert_called_once_with(*conteudo)
         host._verificar_nova_versao.assert_called_once()
         assert host._prefs["last_tab"] == ABOUT_TAB
+
+
+class TestOrientacaoSobre:
+    def test_tab_content_da_aba_sobre(self):
+        assert (ABOUT_TAB, ABOUT_TAB) in TAB_CONTENT
+        titulo, corpo = TAB_CONTENT[(ABOUT_TAB, ABOUT_TAB)]
+        assert "Sobre" in titulo
+        assert corpo
 
 
 class _FakeNotebook:

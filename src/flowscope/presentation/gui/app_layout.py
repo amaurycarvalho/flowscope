@@ -195,6 +195,7 @@ class LayoutMixin:
             "Dominância do Pregão": self._dominance_ranking,
             "Rede de Correlação": self._correlation_network_panel,
             "Fundamentos": self._fundamental_table,
+            "Notícias": self._noticias_panel,
         }
         self._TICKER = {
             "Evolução da Dominância": self._dominance_timeline,

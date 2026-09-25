@@ -9,6 +9,7 @@ from flowscope.domain.structured import (
     DocumentoMaterialFact,
     FatoRelevante,
     NoticiaB3,
+    ProgramaAquisicao,
 )
 
 
@@ -105,6 +106,36 @@ class TestCondicaoExcepcional:
         assert "Novo Mercado" in texto
         assert "19/05/2026" in texto
         assert "30/10/2027" in texto
+
+
+class TestProgramaAquisicao:
+    def test_to_text_inclui_dados(self):
+        programa = ProgramaAquisicao(
+            empresa="3TENTOS (NM)",
+            data_aprovacao="13/08/2026",
+            data_inicio="13/08/2026",
+            data_fim="13/02/2028",
+            quantidade="5.000.000 (ON)",
+            intermediarios="Bradesco",
+        )
+        texto = programa.to_text()
+        assert "3TENTOS (NM)" in texto
+        assert "5.000.000 (ON)" in texto
+        assert "13/08/2026" in texto
+
+    def test_to_dict(self):
+        programa = ProgramaAquisicao(
+            empresa="3TENTOS (NM)",
+            data_aprovacao=None,
+            data_inicio="13/08/2026",
+            data_fim="13/02/2028",
+            quantidade=None,
+            intermediarios=None,
+        )
+        dicionario = programa.to_dict()
+        assert dicionario["empresa"] == "3TENTOS (NM)"
+        assert dicionario["dataAprovacao"] is None
+        assert dicionario["dataFim"] == "13/02/2028"
 
 
 class TestNoticiaB3:

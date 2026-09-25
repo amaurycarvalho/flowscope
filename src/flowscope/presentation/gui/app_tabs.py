@@ -28,6 +28,45 @@ ENABLED_TABS = {
 }
 
 TAB_CONTENT = {
+    (ABOUT_TAB, ABOUT_TAB): (
+        "Sobre — Informações do FlowScope",
+        [
+            ("Objetivo: ", "bold"),
+            ("Apresentar o FlowScope, a versão e a data de release em uso, a licença de software livre e os atalhos para o repositório e para o log da aplicação.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"O que é o FlowScope, qual a versão que estou usando e onde encontro o código e o log?\"\n\n", "italic"),
+            ("Conteúdo: ", "bold"),
+            (("• Apresentação do projeto: ferramenta open source de análise quantitativa de fluxo de ordens sobre dados públicos da B3, com interface gráfica e linha de comando;\n"
+              "• Versão e data de release, licença (GNU GPLv3) e endereço do repositório oficial;\n"
+              "• Aviso de nova versão disponível, quando houver, com atalho para a página da release.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Use \"Repositório no GitHub\" para abrir o código-fonte no navegador e \"Abrir log da aplicação\" para inspecionar o arquivo de log. "
+              "As mesmas informações institucionais compõem o conhecimento do próprio FlowScope usado pela aba \"Chat AI\"."), ""),
+        ]
+    ),
+    (CHAT_AI_TAB, CHAT_AI_TAB): (
+        "Chat AI — Conversa sobre a watchlist e os caches",
+        [
+            ("Objetivo: ", "bold"),
+            ("Conversar em linguagem natural com a I.A. sobre os dados já carregados, os documentos e as notícias em cache e o próprio FlowScope.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"O que os dados, os documentos e as notícias dizem sobre este ativo?\"\n\n", "italic"),
+            ("Como usar: ", "bold"),
+            (("O campo de envio só é habilitado quando a LLM está configurada em \"Configuração\" e há fundamentos carregados pela análise. "
+              "Não há seletor de escopo: o contexto cobre a watchlist completa e a I.A. identifica o ticker referido na pergunta, "
+              "pedindo esclarecimento quando ela for ambígua.\n\n"), ""),
+            ("Contexto enviado: ", "bold"),
+            (("• Conhecimento do próprio FlowScope (orientações das sub-abas e informações da aba \"Sobre\");\n"
+              "• Fundamentos da watchlist carregada;\n"
+              "• Documentos em cache, lidos em cascata (resumos curtos e longos e, se necessário, o texto integral dos alvos);\n"
+              "• Notícias e informações regulatórias da sub-aba \"Notícias\", quando houver cache do período.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Pressione Enter para enviar (Shift+Enter quebra a linha). Enquanto a I.A. responde, o botão ao lado de \"Enviar\" cancela o envio "
+              "e a conversa guarda o histórico dos turnos anteriores. \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
+              "texto exibido; \"Configuração\" abre o mesmo diálogo de LLM da sub-aba \"Documentos\". Se a resposta exigir ler o texto integral de "
+              "vários documentos, o FlowScope pede confirmação antes de prosseguir."), ""),
+        ]
+    ),
     ("Análise Geral", "VWAP"): (
         "VWAP — Volume Weighted Average Price",
         [
@@ -128,6 +167,24 @@ TAB_CONTENT = {
              "Informações adicionais reúnem indicadores do ativo (LPA, ROE e ROIC em ações; imóveis, Cap Rate, Vacância Média, percentuais por indexador e o guidance de distribuição quando disponível no cache em FIIs) e "
              "Dados fiscais reúnem o CNPJ e, para FIIs, o administrador e o gestor; itens sem dado em nenhuma fonte são omitidos. "
              "Os valores são calculados com precisão decimal completa e arredondados somente na apresentação."), ""),
+        ]
+    ),
+    ("Análise Geral", "Notícias"): (
+        "Notícias — Plantão B3",
+        [
+            ("Objetivo: ", "bold"),
+            ("Navegar pelas notícias do Plantão B3 do período, baixar o corpo dos artigos e resumi-los com I.A.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"O que foi publicado no mercado no período e o que isso significa?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Árvore por ano → mês → agência → artigos;\n"
+             "• Pré-visualização do texto do artigo extraído do HTML em cache;\n"
+             "• Resumo curto e longo gerados pela LLM a partir do texto.\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Use \"Atualizar\" para baixar o corpo dos artigos do período; a aquisição roda em segundo plano com "
+             "progresso e pode ser interrompida. Selecione um artigo para ver o resumo e o texto extraído. Use \"Abrir\" "
+             "para abrir a notícia no navegador e \"Resumir pendentes\" para gerar em lote os resumos que faltam. "
+             "As notícias também são oferecidas como fonte adicional de contexto na aba \"Chat AI\"."), ""),
         ]
     ),
     ("Análise do Ticker", "Evolução da Dominância"): (

@@ -21,6 +21,22 @@ def _noticia(titulo: str = "PETROBRAS anuncia pagamento de dividendos") -> dict:
     }
 
 
+def _item_plantao(
+    titulo: str = "PETROBRAS (PETR-N2) - Outros Comunicados ao Mercado",
+    data: str = "2026-09-25 09:18:13",
+    identificador: int | str = 3494020,
+) -> dict:
+    return {
+        "NwsMsg": {
+            "IdAgencia": 18,
+            "content": None,
+            "dateTime": data,
+            "headline": titulo,
+            "id": identificador,
+        }
+    }
+
+
 class TestListarNoticias:
     @responses.activate
     def test_retorna_noticias_convertidas(self, tmp_path):
@@ -91,3 +107,55 @@ class TestListarNoticias:
         responses.get(_NOTICIAS, json=[_noticia()], status=200)
         noticias = client.listar_noticias()
         assert len(noticias) == 1
+
+
+class TestFormatoPlantaoB3:
+    @responses.activate
+    def test_formato_nwsmsg_extrai_campos_e_deriva_url(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        responses.get(_NOTICIAS, json=[_item_plantao()], status=200)
+        noticias = client.listar_noticias(
+            data_inicio=date(2026, 9, 1), data_fim=date(2026, 9, 25)
+        )
+        assert len(noticias) == 1
+        noticia = noticias[0]
+        assert noticia.titulo.startswith("PETROBRAS")
+        assert noticia.data_publicacao == "2026-09-25 09:18:13"
+        assert noticia.url is not None
+        assert "Detail" in noticia.url
+        assert "idNoticia=3494020" in noticia.url
+        assert "dataNoticia=2026-09-25" in noticia.url
+        assert "agencia=18" in noticia.url
+
+    @responses.activate
+    def test_deriva_url_de_id_noticia_alternativo(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        item = {"NwsMsg": {"headline": "Aviso", "dateTime": "2026-09-25 09:18:13"}}
+        item["NwsMsg"]["idNoticia"] = "123"
+        responses.get(_NOTICIAS, json=[item], status=200)
+        noticias = client.listar_noticias(
+            data_inicio=date(2026, 9, 1), data_fim=date(2026, 9, 25)
+        )
+        assert "idNoticia=123" in noticias[0].url
+
+    @responses.activate
+    def test_url_explicita_tem_precedencia(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        item = _item_plantao()
+        item["NwsMsg"]["url"] = "https://exemplo/noticia"
+        responses.get(_NOTICIAS, json=[item], status=200)
+        noticias = client.listar_noticias(
+            data_inicio=date(2026, 9, 1), data_fim=date(2026, 9, 25)
+        )
+        assert noticias[0].url == "https://exemplo/noticia"
+
+    @responses.activate
+    def test_sem_id_nao_deriva_url(self, tmp_path):
+        client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
+        item = {"NwsMsg": {"headline": "Sem id", "dateTime": "2026-09-25 09:18:13"}}
+        responses.get(_NOTICIAS, json=[item], status=200)
+        noticias = client.listar_noticias(
+            data_inicio=date(2026, 9, 1), data_fim=date(2026, 9, 25)
+        )
+        assert noticias[0].titulo == "Sem id"
+        assert noticias[0].url is None

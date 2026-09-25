@@ -48,18 +48,34 @@ class DocumentTreeView:
         """Insere a hierarquia do catálogo e mapeia os agrupamentos."""
         raiz = self.tree.insert("", "end", text=catalogo.ticker, open=True)
         self.grupos[raiz] = Agrupamento("ticker", catalogo.ticker)
+        self.popular_catalogo(raiz, catalogo)
+
+    def popular_catalogo(
+        self: "DocumentTreeView",
+        no_pai: str,
+        catalogo: CatalogoTicker,
+        *,
+        abrir: bool = True,
+    ) -> None:
+        """Insere a hierarquia ano → mês → categoria sob o nó pai.
+
+        ``abrir`` define se os nós inseridos começam expandidos; as notícias
+        usam ``False`` para exibir a árvore apenas até o primeiro nível.
+        """
         for ano in catalogo.anos:
-            no_ano = self.tree.insert(raiz, "end", text=str(ano.ano), open=True)
+            no_ano = self.tree.insert(no_pai, "end", text=str(ano.ano), open=abrir)
             self.grupos[no_ano] = Agrupamento("ano", str(ano.ano), ano=ano.ano)
             for mes in ano.meses:
                 no_mes = self.tree.insert(
-                    no_ano, "end", text=f"{mes.mes:02d}", open=True
+                    no_ano, "end", text=f"{mes.mes:02d}", open=abrir
                 )
                 self.grupos[no_mes] = Agrupamento(
                     "mes", f"{mes.mes:02d}", ano=ano.ano, mes=mes.mes
                 )
                 for categoria in mes.categorias:
-                    self._inserir_categoria(no_mes, ano.ano, mes.mes, categoria)
+                    self._inserir_categoria(
+                        no_mes, ano.ano, mes.mes, categoria, abrir=abrir
+                    )
 
     def _inserir_categoria(
         self: "DocumentTreeView",
@@ -67,9 +83,11 @@ class DocumentTreeView:
         ano: int,
         mes: int,
         categoria: CategoriaDocumentos,
+        *,
+        abrir: bool = True,
     ) -> None:
         """Insere a categoria, seus arquivos e os registra nos mapas."""
-        no_cat = self.tree.insert(no_mes, "end", text=categoria.nome, open=True)
+        no_cat = self.tree.insert(no_mes, "end", text=categoria.nome, open=abrir)
         self.grupos[no_cat] = Agrupamento(
             "categoria",
             categoria.nome,

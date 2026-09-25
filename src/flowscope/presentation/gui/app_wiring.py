@@ -18,6 +18,7 @@ from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.emprestimos import B3ShortInterestSource
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
+from flowscope.infrastructure.b3.noticias_carga import AquisicaoNoticias
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
@@ -64,6 +65,7 @@ class WiringMixin:
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
         cache = CacheManager()
         self._aquisicao_documentos = AquisicaoDocumentos(cache=cache)
+        self._aquisicao_noticias = AquisicaoNoticias(cache=cache)
         b3_fund_repository = B3FundRepository()
         fundamental_repo = B3FundamentalRepository(
             fund_repository=b3_fund_repository,

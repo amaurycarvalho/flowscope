@@ -18,6 +18,7 @@ from flowscope.domain.structured.entities import (
     Entidade,
     FatoRelevante,
     NoticiaB3,
+    ProgramaAquisicao,
     Provento,
 )
 from flowscope.domain.structured.value_objects import (
@@ -47,6 +48,7 @@ __all__ = [
     "Entidade",
     "FatoRelevante",
     "NoticiaB3",
+    "ProgramaAquisicao",
     "Provento",
     "ValorProvento",
     "nome_categoria",

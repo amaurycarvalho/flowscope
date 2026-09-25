@@ -11,6 +11,7 @@ from flowscope.domain.structured import (
     DocumentoMaterialFact,
     DocumentoProvento,
     NoticiaB3,
+    ProgramaAquisicao,
 )
 
 
@@ -79,6 +80,12 @@ class RegulacaoRepository(Protocol):
         self: "RegulacaoRepository",
     ) -> list[CondicaoExcepcional]:
         """Lista as condições excepcionais da B3."""
+        ...
+
+    def listar_programas_aquisicao(
+        self: "RegulacaoRepository", reference_date: date | None = None
+    ) -> list[ProgramaAquisicao]:
+        """Lista os programas de aquisição de ações em andamento da B3."""
         ...
 
 

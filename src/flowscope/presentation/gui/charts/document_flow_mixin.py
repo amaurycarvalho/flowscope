@@ -96,6 +96,12 @@ class DocumentFlowMixin:
             self._preview_cache[arquivo.caminho] = texto
         return texto
 
+    def _texto_do_arquivo(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> str:
+        """Extrai o texto do arquivo; subclasses podem restringir a extração."""
+        return texto_preview(arquivo.caminho)
+
     def preparar_texto(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
     ) -> str:
@@ -106,7 +112,7 @@ class DocumentFlowMixin:
         texto = self._texto_cacheado(arquivo)
         if texto is not None:
             return texto
-        texto = texto_preview(arquivo.caminho)
+        texto = self._texto_do_arquivo(arquivo)
         self._text_store.salvar(
             arquivo.ticker, self._summary.chave(arquivo), texto or SEM_TEXTO
         )

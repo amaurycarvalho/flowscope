@@ -7,6 +7,9 @@ _LISTED_BASE_URL = (
 _NOTICIAS_URL = (
     "https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/ListarTitulosNoticias"
 )
+_NOTICIAS_DETALHE_URL = (
+    "https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/Detail"
+)
 _CENSURAS_URL = (
     "https://www.b3.com.br/pt_br/regulacao/regulacao-de-emissores/censuras-publicas/"
 )
@@ -14,6 +17,11 @@ _CONDICOES_URL = (
     "https://www.b3.com.br/pt_br/regulacao/regulacao-de-emissores/"
     "condicoes-excepcionais/"
 )
+_PROGRAMAS_URL = (
+    "https://sistemaswebb3-listados.b3.com.br/stockProgramProxy/"
+    "StockProgramCall/GetListedCompany"
+)
+_PROGRAMAS_PAGE_SIZE = 60
 _CADASTRO_EMPRESAS_URL = (
     "https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/consultas/"
     "empresas-listadas/empresas-listadas.csv"

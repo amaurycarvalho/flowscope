@@ -16,6 +16,7 @@ from flowscope.application.chat.consultar import (
     SYSTEM_PROMPT,
     interpretar_resposta,
 )
+from flowscope.domain.chat import ChatMessage
 from flowscope.domain.llm import LLMUnavailableError
 
 
@@ -205,3 +206,85 @@ class TestPrompt:
         assert "NOTICIA PETR4" in prompt
         assert "## RAG" in prompt
         assert "TRECHO RELEVANTE" in prompt
+
+
+class TestHistorico:
+    def test_historico_enviado_em_ordem(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        historico = [
+            ChatMessage(role="user", content="pergunta anterior"),
+            ChatMessage(role="assistant", content="resposta anterior"),
+        ]
+        ConsultarChatUseCase(llm).consultar(
+            "pergunta atual", ContextoChat(), historico=historico
+        )
+        mensagens = llm.chamadas[0][0]
+        assert mensagens[0] == {"role": "user", "content": "pergunta anterior"}
+        assert mensagens[1] == {"role": "assistant", "content": "resposta anterior"}
+        assert mensagens[-1]["role"] == "user"
+        assert "pergunta atual" in mensagens[-1]["content"]
+
+    def test_ambos_os_niveis_herdam_o_historico(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "", "documentos": ["chave"]}',
+                '{"resposta": "final", "documentos": []}',
+            ]
+        )
+        historico = [ChatMessage(role="user", content="turno antigo")]
+        ConsultarChatUseCase(llm).consultar(
+            "pergunta",
+            ContextoChat(documentos=_documental()),
+            historico=historico,
+        )
+        assert len(llm.chamadas) == 2
+        for mensagens, _sistema in llm.chamadas:
+            assert mensagens[0] == {
+                "role": "user",
+                "content": "turno antigo",
+            }
+
+    def test_erros_fora_do_historico(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        historico = [
+            ChatMessage(role="user", content="pergunta anterior"),
+            ChatMessage(
+                role="assistant",
+                content="mensagem de erro",
+                enviar_ao_modelo=False,
+            ),
+        ]
+        ConsultarChatUseCase(llm).consultar(
+            "pergunta atual", ContextoChat(), historico=historico
+        )
+        mensagens = llm.chamadas[0][0]
+        conteudos = [msg["content"] for msg in mensagens]
+        assert "pergunta anterior" in conteudos
+        assert not any("mensagem de erro" in c for c in conteudos)
+
+    def test_teto_de_mensagens_descarta_mais_antigas(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        historico = [
+            ChatMessage(role="user", content=f"m{indice}") for indice in range(12)
+        ]
+        ConsultarChatUseCase(llm).consultar(
+            "atual", ContextoChat(), historico=historico
+        )
+        mensagens = llm.chamadas[0][0]
+        assert len(mensagens) == 11
+        assert mensagens[0]["content"] == "m2"
+        assert mensagens[9]["content"] == "m11"
+
+    def test_teto_de_caracteres_descarta_mais_antigas(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        historico = [
+            ChatMessage(role="user", content="a" * 5000),
+            ChatMessage(role="assistant", content="b" * 5000),
+        ]
+        ConsultarChatUseCase(llm).consultar(
+            "atual", ContextoChat(), historico=historico
+        )
+        mensagens = llm.chamadas[0][0]
+        assert len(mensagens) == 2
+        assert mensagens[0]["content"] == "b" * 5000
+

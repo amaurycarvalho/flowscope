@@ -194,9 +194,11 @@ class StatusMixin:
         for btn in self._ticker_list.all_buttons():
             self._button_states[btn] = btn.cget("state")
             btn.config(state=tk.DISABLED)
-        painel_documentos = getattr(self, "_documents_panel", None)
-        if painel_documentos is not None:
-            for btn in painel_documentos.all_buttons():
+        for nome in ("_documents_panel", "_noticias_panel"):
+            painel = getattr(self, nome, None)
+            if painel is None:
+                continue
+            for btn in painel.all_buttons():
                 self._button_states[btn] = btn.cget("state")
                 btn.config(state=tk.DISABLED)
         for combo in (self._period_combo, self._sampling_combo):
@@ -214,10 +216,11 @@ class StatusMixin:
             except tk.TclError:
                 pass
         self._button_states = {}
-        painel_documentos = getattr(self, "_documents_panel", None)
-        if painel_documentos is not None:
-            painel_documentos.refresh_open_button()
-            painel_documentos.refresh_resumir_button()
+        for nome in ("_documents_panel", "_noticias_panel"):
+            painel = getattr(self, nome, None)
+            if painel is not None:
+                painel.refresh_open_button()
+                painel.refresh_resumir_button()
 
     # ── GUIView protocol public methods ──────────────────────────────
 

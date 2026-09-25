@@ -23,10 +23,12 @@ from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
     FundamentalEvolutionPanel,
 )
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
+from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.chat.chat_panel import ChatPanel
+from flowscope.presentation.gui.chat.noticias import FonteNoticias
 from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
 
@@ -78,6 +80,21 @@ class TabsLayoutMixin:
             general_network_frame, copy_chart_callback=self._copy_chart,
         )
         self._correlation_network_panel.frame.pack(fill=tk.BOTH, expand=True)
+
+        general_noticias_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(general_noticias_frame, text="Notícias")
+        self._noticias_panel = NoticiasPanel(
+            general_noticias_frame,
+            status_callback=getattr(self, "_set_status", None),
+            acquire_callback=getattr(self, "_adquirir_noticias", None),
+            ia_callback=getattr(self, "_abrir_config_llm", None),
+            resumir_callback=getattr(self, "_resumir_noticias_pendentes", None),
+            resumir_ativo_callback=getattr(
+                self, "_noticias_resumos_em_andamento", None
+            ),
+            reference_date_provider=getattr(self, "_data_referencia", None),
+        )
+        self._noticias_panel.frame.pack(fill=tk.BOTH, expand=True)
 
     def _on_fundamental_widths_changed(self: "TabsLayoutMixin", widths: dict) -> None:
         """Guarda as larguras das colunas para persistir no fechamento."""
@@ -151,6 +168,13 @@ class TabsLayoutMixin:
             llm_available=llm_configurada,
             config_callback=getattr(self, "_abrir_config_llm", None),
             status_callback=getattr(self, "_set_status", None),
+            fontes_adicionais=[self._criar_fonte_noticias()],
+        )
+
+    def _criar_fonte_noticias(self: "TabsLayoutMixin") -> FonteNoticias:
+        """Cria a fonte adicional de contexto com as notícias do período."""
+        return FonteNoticias(
+            reference_date_provider=getattr(self, "_data_referencia", None)
         )
 
     def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:

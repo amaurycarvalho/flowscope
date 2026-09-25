@@ -102,3 +102,31 @@
 - [x] 15.3 Implementar o cancelamento cooperativo no `ChatPanel` (token, contador de geração e descarte do desfecho tardio), com restauração imediata dos botões, e verificar com testes
 - [x] 15.4 Atualizar panels.md e README.md com o botão de cancelar o envio
 - [x] 15.5 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
+
+## 16. Histórico textual da conversa
+
+- [x] 16.1 Adicionar `enviar_ao_modelo` (bool, padrão `True`) ao `ChatMessage` e cobrir com teste de domínio
+- [x] 16.2 Estender `ConsultarChatUseCase.consultar` com `historico: Sequence[ChatMessage]` e enviar os turnos anteriores antes da pergunta atual, com o mesmo histórico nas duas chamadas da cascata
+- [x] 16.3 Aplicar o teto de 10 mensagens e 8.000 caracteres ao histórico, descartando os turnos mais antigos
+- [x] 16.4 Marcar erros e avisos da LLM com `enviar_ao_modelo=False` e filtrá-los do histórico
+- [x] 16.5 Capturar o snapshot da sessão no `ChatPanel`/`EnvioMixin` antes de registrar a pergunta e passá-lo ao caso de uso
+- [x] 16.6 Atualizar os testes do caso de uso e do painel (histórico presente/ordenado, ambas as chamadas, teto, erros excluídos, Limpar)
+- [x] 16.7 Atualizar panels.md e README.md com o contexto multi-turno
+- [x] 16.8 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
+
+## 17. Estados dos botões e orientação da aba "Chat AI"
+
+- [x] 17.1 Condicionar o botão "Enviar" à existência de fundamentos carregados (`_tem_fundamentos`) e reavaliar o painel no `on_tab_changed` disparado ao final da carga de fundamentos, e verificar com testes de estado
+- [x] 17.2 Desabilitar "Limpar", "Copiar chat" e "Configuração" durante o envio e restaurá-los ao término (resposta, erro ou cancelamento), e verificar com testes
+- [x] 17.3 Habilitar "Limpar" e "Copiar chat" apenas com conteúdo textual na conversa, desabilitando após "Limpar", e verificar com testes
+- [x] 17.4 Adicionar a orientação da aba "Chat AI" em `TAB_CONTENT` e aplicá-la ao quadro textual em `_on_tab_changed`, e verificar no teste de integração
+- [x] 17.5 Verificar o acesso da LLM aos caches da sub-aba "Notícias" via `FonteNoticias` (`noticias-b3`), confirmando o registro em `fontes_adicionais` e a leitura dos caches; adicionar teste de wiring
+- [x] 17.6 Atualizar panels.md e README.md com os estados dos botões e a orientação da aba
+- [x] 17.7 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`
+
+## 18. Orientação da aba "Sobre"
+
+- [x] 18.1 Adicionar a orientação da aba "Sobre" em `TAB_CONTENT` (chave `(ABOUT_TAB, ABOUT_TAB)`)
+- [x] 18.2 Aplicar a orientação ao quadro textual em `_on_tab_changed` quando a aba "Sobre" está ativa, e verificar com testes
+- [x] 18.3 Atualizar panels.md e README.md
+- [x] 18.4 `make lint`, `make complexity` e `pytest -m "not llm"` limpos; `openspec validate llm-chat`

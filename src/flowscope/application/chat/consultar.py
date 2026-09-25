@@ -9,11 +9,18 @@ formato estruturado não é reconhecido.
 
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 from flowscope.application.cancellation import CancellationToken
+from flowscope.domain.chat import ChatMessage
 from flowscope.domain.llm import LLMPort
+
+#: Teto de turnos anteriores enviados à LLM.
+HISTORICO_MAX_MENSAGENS = 10
+
+#: Teto de caracteres do histórico de turnos anteriores enviado à LLM.
+HISTORICO_MAX_CARACTERES = 8000
 
 #: Prompt de sistema comum às duas chamadas.
 SYSTEM_PROMPT = (
@@ -134,6 +141,31 @@ def interpretar_resposta(resposta: str) -> RespostaChat:
     return RespostaChat(texto=(resposta or "").strip())
 
 
+def _selecionar_historico(
+    historico: Sequence[ChatMessage] | None,
+) -> list[dict]:
+    """Seleciona os turnos anteriores que compõem o histórico da LLM.
+
+    Descarta as mensagens marcadas como fora do histórico (erros e avisos) e,
+    quando o teto de mensagens ou de caracteres é excedido, remove os turnos
+    mais antigos, preservando os mais recentes.
+    """
+    if not historico:
+        return []
+    elegiveis = [msg for msg in historico if msg.enviar_ao_modelo and msg.content]
+    selecionadas: list[ChatMessage] = []
+    total = 0
+    for msg in reversed(elegiveis):
+        if len(selecionadas) >= HISTORICO_MAX_MENSAGENS:
+            break
+        if total + len(msg.content) > HISTORICO_MAX_CARACTERES and selecionadas:
+            break
+        selecionadas.append(msg)
+        total += len(msg.content)
+    selecionadas.reverse()
+    return [{"role": msg.role, "content": msg.content} for msg in selecionadas]
+
+
 class ConsultarChatUseCase:
     """Resolve uma pergunta do chat em até duas chamadas de completion."""
 
@@ -151,14 +183,18 @@ class ConsultarChatUseCase:
         pergunta: str,
         contexto: ContextoChat,
         cancel_token: CancellationToken | None = None,
+        historico: Sequence[ChatMessage] | None = None,
     ) -> RespostaChat:
         """Consulta o contexto de resumos e escala para o texto integral se preciso."""
         self._checar(cancel_token)
-        primeira = self._completar(self._montar_prompt(pergunta, contexto, None))
+        turnos = _selecionar_historico(historico)
+        primeira = self._completar(
+            self._montar_prompt(pergunta, contexto, None), turnos
+        )
         resposta = interpretar_resposta(primeira)
         if not resposta.documentos_solicitados or contexto.documentos is None:
             return resposta
-        return self._escalar(pergunta, contexto, resposta, cancel_token)
+        return self._escalar(pergunta, contexto, resposta, cancel_token, turnos)
 
     def _escalar(
         self: "ConsultarChatUseCase",
@@ -166,6 +202,7 @@ class ConsultarChatUseCase:
         contexto: ContextoChat,
         resposta: RespostaChat,
         cancel_token: CancellationToken | None = None,
+        historico: list[dict] | None = None,
     ) -> RespostaChat:
         """Executa a segunda chamada com o texto integral dos alvos."""
         alvos = resposta.documentos_solicitados
@@ -178,7 +215,8 @@ class ConsultarChatUseCase:
         texto_integral = contexto.documentos.preparar_texto(alvos)
         self._checar(cancel_token)
         segunda = self._completar(
-            self._montar_prompt(pergunta, contexto, texto_integral)
+            self._montar_prompt(pergunta, contexto, texto_integral),
+            historico or [],
         )
         final = interpretar_resposta(segunda)
         return replace(
@@ -193,10 +231,13 @@ class ConsultarChatUseCase:
         if cancel_token is not None:
             cancel_token.raise_if_cancelled()
 
-    def _completar(self: "ConsultarChatUseCase", prompt: str) -> str:
-        """Envia o prompt como mensagem de usuário, com o sistema estável."""
+    def _completar(
+        self: "ConsultarChatUseCase", prompt: str, historico: list[dict]
+    ) -> str:
+        """Envia o histórico e a pergunta atual, com o sistema estável."""
+        mensagens = [*historico, {"role": "user", "content": prompt}]
         return self._llm.complete(
-            [{"role": "user", "content": prompt}],
+            mensagens,
             system_prompt=self._system_prompt,
         )
 

@@ -17,6 +17,7 @@ from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_wiring import WiringMixin
+from flowscope.presentation.gui.noticias_actions import NoticiasActionsMixin
 from flowscope.presentation.main import _create_desktop_shortcut
 
 CONFIG_DIR = Path.home() / ".flowscope"
@@ -90,7 +91,7 @@ def save_preferences(data: dict) -> None:
         pass
 
 
-class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, AboutActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
+class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, LayoutMixin, ActionsMixin, AboutActionsMixin, NoticiasActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
     """Janela principal da aplicação FlowScope."""
 
     def __init__(self: "FlowScopeGUI") -> None:

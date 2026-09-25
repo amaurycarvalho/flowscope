@@ -35,6 +35,9 @@ from flowscope.infrastructure.b3.structured_parser.html_utils import (
     _valor_ou_none,
     parse_html,
 )
+from flowscope.infrastructure.b3.structured_parser.programas import (
+    extrair_programas_aquisicao,
+)
 from flowscope.infrastructure.b3.structured_parser.rotulos import (
     _pares_rotulo_valor,
     _rotulo_em_celula,
@@ -107,6 +110,7 @@ __all__ = [
     "extrair_nota_isencao",
     "extrair_por_regex",
     "extrair_por_rotulo",
+    "extrair_programas_aquisicao",
     "extrair_tabelas",
     "identificar_contexto_tabela",
     "identificar_tipo_provento",

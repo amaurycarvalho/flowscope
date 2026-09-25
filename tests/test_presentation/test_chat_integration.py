@@ -47,6 +47,22 @@ class TestAbaChatAI:
         assert "Chat Geral" not in _abas(gui._general_notebook)
         assert "Chat Ticker" not in _abas(gui._ticker_notebook)
 
+    @needs_display
+    def test_orientacao_da_aba_chat(self, gui):
+        gui._select_tab(gui._main_notebook, "Chat AI")
+        gui.update()
+        titulo = gui._orientation_panel._title_label.cget("text")
+        assert "Chat AI" in titulo
+
+
+class TestContextoNoticias:
+    @needs_display
+    def test_chat_registra_fonte_de_noticias(self, gui):
+        from flowscope.presentation.gui.chat.noticias import FonteNoticias
+
+        fontes = gui._chat_panel._fontes_adicionais
+        assert any(isinstance(fonte, FonteNoticias) for fonte in fontes)
+
 
 class TestCopiaComChatAtivo:
     @needs_display

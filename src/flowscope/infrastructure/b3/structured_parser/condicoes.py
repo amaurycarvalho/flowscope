@@ -4,6 +4,7 @@ import logging
 
 from flowscope.domain.structured import CondicaoExcepcional
 from flowscope.infrastructure.b3.structured_parser.html_utils import (
+    _normalizar,
     _valor_ou_none,
     parse_html,
 )
@@ -24,6 +25,8 @@ def extrair_condicoes_excepcionais(html: str) -> list[CondicaoExcepcional]:
         celulas = [td.get_text(" ", strip=True) for td in row.find_all("td")]
         if not celulas:
             continue
+        if _linha_de_cabecalho(celulas):
+            continue
         if len(celulas) < 5:
             logger.warning(
                 "Linha de condições excepcionais ignorada com %d colunas",
@@ -40,3 +43,12 @@ def extrair_condicoes_excepcionais(html: str) -> list[CondicaoExcepcional]:
             )
         )
     return condicoes
+
+
+def _linha_de_cabecalho(celulas: list[str]) -> bool:
+    """Indica se a linha é o cabeçalho da tabela (datado como ``td``)."""
+    if len(celulas) < 2:
+        return False
+    primeira = _normalizar(celulas[0])
+    segunda = _normalizar(celulas[1])
+    return primeira == "companhia" and segunda.startswith("segmento")

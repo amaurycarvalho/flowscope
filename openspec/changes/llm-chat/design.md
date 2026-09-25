@@ -83,6 +83,40 @@ Como `LLMPort.complete` é uma chamada bloqueante e não cancelável, o cancelam
 
 Alternativa considerada: aguardar o término da chamada antes de restaurar os botões — deixaria a interface presa enquanto o provedor responde.
 
+### 16. Histórico textual da conversa no envio multi-turno
+
+O `ChatPanel` captura, na thread do Tk e antes de registrar a pergunta atual, a lista de `ChatMessage` bem-sucedidos da `ChatSession` e a passa ao `ConsultarChatUseCase` como `historico: Sequence[ChatMessage]`. O caso de uso converte cada turno em `{"role", "content"}` e envia `[*historico, {"role": "user", "content": prompt}]`, mantendo o mesmo histórico nas duas chamadas da cascata. Somente o texto final exibido compõe o histórico — o envelope JSON e as chaves de documentos ficam de fora. As mensagens de erro e aviso são registradas com `enviar_ao_modelo=False` e não são reenviadas ao modelo. O histórico respeita um teto de 10 mensagens e 8.000 caracteres, descartando os turnos mais antigos quando excedido; "Limpar" zera a sessão e, com ela, o histórico. Sem persistência entre aberturas da aba.
+
+Alternativa considerada: reinjetar a transcrição inteira dentro de um único prompt de sistema — descartada por duplicar o formato de mensagens que a porta `LLMPort` já oferece e por dificultar a truncagem por turno.
+
+### 17. "Enviar" condicionado aos fundamentos carregados
+
+O chat só faz sentido com dados para consultar, e a sub-aba "Fundamentos" é a origem canônica dos dados da watchlist. O botão "Enviar" passa a exigir `_disponivel` (LLM configurada) **e** fundamentos não vazios, consultados por `fundamental_data_provider`. `ChatPanel._tem_fundamentos` centraliza essa checagem. Quando os fundamentos chegam com a aba "Chat AI" já aberta, o desfecho da carga chama `on_tab_changed`, que reavalia o painel por `_reavaliar_chat_llm` — sem novo acoplamento em `set_fundamental_data`.
+
+Alternativa considerada: manter o envio habilitado e orientar no prompt — descartada por permitir uma consulta sem contexto útil e mascarar o estado vazio.
+
+### 18. Bloqueio do cabeçalho durante o envio e habilitação por conteúdo
+
+Enquanto `_processando`, "Limpar", "Copiar chat" e "Configuração" ficam desabilitados, junto do "Enviar"; ao terminar (resposta, erro ou cancelamento) todos são reavaliados. "Limpar" e "Copiar chat" só habilitam com conteúdo textual (a sessão exibida não vazia) e voltam a desabilitar após "Limpar". `_atualizar_controles` passa a ser o ponto único dessa política, chamado no registro de mensagens, no desfecho e no `limpar`.
+
+Alternativa considerada: desabilitar apenas o "Enviar" durante o envio — deixaria o usuário apagar ou sobrescrever a conversa em andamento, correndo o risco de o desfecho tardio contaminar uma sessão já reiniciada.
+
+### 19. Orientação da aba "Chat AI" no quadro textual
+
+A entrada `(CHAT_AI_TAB, CHAT_AI_TAB)` é adicionada a `TAB_CONTENT` com objetivo, requisitos, contexto enviado e uso dos botões. `_on_tab_changed` passa a aplicar esse conteúdo ao `OrientationPanel` no ramo da aba "Chat AI"; por vir de `TAB_CONTENT`, a orientação também entra automaticamente no bloco de conhecimento do FlowScope enviado à LLM.
+
+Alternativa considerada: um texto dedicado fora de `TAB_CONTENT` — descartada por duplicar a fonte e mantê-la fora do conhecimento do próprio aplicativo.
+
+### 20. Verificação do acesso aos caches de Notícias
+
+A fonte `FonteNoticias` (change `noticias-b3`) já é registrada em `fontes_adicionais` do `ChatPanel` e lê os mesmos caches da sub-aba "Notícias" (`NoticiasCatalog` com a raiz padrão, resumos longos/curtos e texto cacheado, com fallback para o HTML). A verificação confirmou o wiring e a leitura; nenhuma mudança de código foi necessária nesta change. A leitura é sob demanda e tolerante a cache frio/falha, omitindo a seção quando não há conteúdo.
+
+### 21. Orientação da aba "Sobre" no quadro textual
+
+Assim como a aba "Chat AI", a aba "Sobre" ganha uma entrada em `TAB_CONTENT` (chave `(ABOUT_TAB, ABOUT_TAB)`) com objetivo, conteúdo e uso dos atalhos. `_on_tab_changed` passa a aplicá-la ao `OrientationPanel` no ramo da aba "Sobre". Por vir de `TAB_CONTENT`, a orientação também integra o bloco de conhecimento do FlowScope enviado à LLM — sem duplicar a fonte.
+
+Alternativa considerada: manter o quadro vazio na aba "Sobre" — descartada por deixar o painel lateral inútil nessa aba.
+
 ## Risks / Trade-offs
 
 - **[Risco] RPM padrão 5** → cascata limitada a 2 chamadas e interrupção antecipada reduzem a pressão; mensagens de espera na statusbar.

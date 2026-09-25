@@ -203,18 +203,43 @@ class ChatPanel(EnvioMixin, tk.Frame):
             self._entrada.config(state=tk.DISABLED)
         self._atualizar_controles()
 
+    def _tem_fundamentos(self: "ChatPanel") -> bool:
+        """Indica se há dados de fundamentos carregados na sub-aba Fundamentos."""
+        return bool(self._fundamental_data_provider() or {})
+
+    def _tem_conteudo(self: "ChatPanel") -> bool:
+        """Indica se a conversa já possui conteúdo textual exibido."""
+        return bool(self.conteudo_sessao().strip())
+
     def _atualizar_controles(self: "ChatPanel") -> None:
-        """Ajusta os botões ao estado de processamento e disponibilidade."""
+        """Ajusta os botões ao estado de processamento, disponibilidade e conteúdo.
+
+        "Enviar" exige a LLM configurada e fundamentos carregados. "Limpar" e
+        "Copiar chat" exigem conteúdo textual na conversa. Durante o envio, os
+        três botões de cabeçalho (Limpar, Copiar chat e Configuração) ficam
+        desabilitados e voltam ao normal quando o processamento termina.
+        """
+        processando = self._processando
         self._send_btn.config(
             state=(
                 tk.NORMAL
-                if self._disponivel and not self._processando
+                if self._disponivel and not processando and self._tem_fundamentos()
                 else tk.DISABLED
             )
         )
         self._cancel_btn.config(
-            state=tk.NORMAL if self._processando else tk.DISABLED
+            state=tk.NORMAL if processando else tk.DISABLED
         )
+        self._config_btn.config(
+            state=tk.DISABLED if processando else tk.NORMAL
+        )
+        estado_texto = (
+            tk.NORMAL
+            if self._tem_conteudo() and not processando
+            else tk.DISABLED
+        )
+        self._clear_btn.config(state=estado_texto)
+        self._copy_btn.config(state=estado_texto)
 
     def _mostrar_configuracao(self: "ChatPanel", visivel: bool) -> None:
         """Exibe ou oculta a orientação de configuração.
@@ -306,7 +331,6 @@ class ChatPanel(EnvioMixin, tk.Frame):
         """Aplica o desfecho da consulta e reabilita a entrada."""
         _geracao, tipo, payload = mensagem
         self._processando = False
-        self._atualizar_controles()
         if tipo == "ok":
             resposta = payload
             self._registrar("assistant", resposta.texto, resposta.fontes)
@@ -315,10 +339,13 @@ class ChatPanel(EnvioMixin, tk.Frame):
             self._on_indisponivel(payload)
         else:
             self._on_falha(payload)
+        self._atualizar_controles()
 
     def _on_indisponivel(self: "ChatPanel", exc: BaseException) -> None:
         """Marca o painel como não configurado e exibe a orientação."""
-        self._registrar("assistant", mensagem_erro_llm(exc))
+        self._registrar(
+            "assistant", mensagem_erro_llm(exc), enviar_ao_modelo=False
+        )
         self._disponivel = False
         self._aplicar_estado()
         self._status(mensagem_erro_llm(exc), "⚠")
@@ -326,7 +353,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
     def _on_falha(self: "ChatPanel", exc: BaseException) -> None:
         """Exibe e registra uma falha da LLM durante o chat."""
         mensagem = mensagem_erro_llm(exc)
-        self._registrar("assistant", mensagem)
+        self._registrar("assistant", mensagem, enviar_ao_modelo=False)
         logger.error(
             "Falha no chat: %s: %s", type(exc).__name__, exc, exc_info=exc
         )
@@ -335,22 +362,33 @@ class ChatPanel(EnvioMixin, tk.Frame):
     # ── Sessão, cópia e utilidades ───────────────────────────────────
 
     def _registrar(
-        self: "ChatPanel", role: str, texto: str, fontes: list[str] | None = None
+        self: "ChatPanel",
+        role: str,
+        texto: str,
+        fontes: list[str] | None = None,
+        enviar_ao_modelo: bool = True,
     ) -> None:
         """Acrescenta a mensagem à sessão e ao campo somente-leitura."""
         self._sessao.add_message(
-            ChatMessage(role=role, content=texto, sources=list(fontes or []))
+            ChatMessage(
+                role=role,
+                content=texto,
+                sources=list(fontes or []),
+                enviar_ao_modelo=enviar_ao_modelo,
+            )
         )
         bloco = f"{_ROTULOS.get(role, role)}: {texto}"
         if fontes:
             bloco += "\nFontes: " + ", ".join(fontes)
         self._respostas.insert(tk.END, bloco + "\n\n")
         self._respostas.see(tk.END)
+        self._atualizar_controles()
 
     def limpar(self: "ChatPanel") -> None:
         """Reinicia a sessão e limpa a área de mensagens."""
         self._sessao.clear()
         self._respostas.delete("1.0", tk.END)
+        self._atualizar_controles()
 
     def _limpar_chat(self: "ChatPanel") -> None:
         """Pede confirmação e reinicia a conversa como se começasse agora."""

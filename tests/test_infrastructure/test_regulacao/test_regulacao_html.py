@@ -3,12 +3,17 @@ import json
 import pytest
 import responses
 
-from flowscope.domain.structured import CensuraPublica, CondicaoExcepcional
+from flowscope.domain.structured import (
+    CensuraPublica,
+    CondicaoExcepcional,
+    ProgramaAquisicao,
+)
 from flowscope.infrastructure.b3 import funds_client as fc
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.b3.structured_parser import (
     extrair_censuras,
     extrair_condicoes_excepcionais,
+    extrair_programas_aquisicao,
 )
 from flowscope.infrastructure.cache import CacheManager
 
@@ -98,7 +103,102 @@ CONDICOES_COLUNAS_FALTANTES_HTML = """<html><body>
 """
 
 
+CENSURAS_ACCORDION_HTML = """<html><body>
+<ul>
+  <li class="accordion-navigation">
+    <a href="#panel1">FII TORDE EI (TORD) (25/02/2026)</a>
+    <div class="content">
+      <p>Primeiro paragrafo da censura.</p>
+      <p>Segundo paragrafo da censura.</p>
+    </div>
+  </li>
+  <li class="accordion-navigation">
+    <a href="#panel2">SPRINGS (SGPS3)(01/10/2024)</a>
+    <div class="content"><p>Outro conteudo.</p></div>
+  </li>
+</ul>
+</body></html>
+"""
+
+PROGRAMAS_PAYLOAD = {
+    "page": {"pageNumber": 1, "pageSize": 60, "totalRecords": 2, "totalPages": 1},
+    "results": [
+        {
+            "aprrovedDate": "13/08/2026",
+            "startDate": "13/08/2026",
+            "endDate": "13/02/2028",
+            "quantity": "5.000.000 (ON)",
+            "company": "3TENTOS (NM)",
+            "observation": "Bradesco",
+        },
+        {
+            "aprrovedDate": "07/02/2019",
+            "startDate": "08/02/2019",
+            "endDate": "31/12/9999",
+            "quantity": "1.800.000 (PN)",
+            "company": "EMPRESA XPTO (XPTO)",
+            "observation": "BTG Pactual",
+        },
+    ],
+}
+
+
+CONDICOES_CABECALHO_TD_HTML = """<html><body>
+<table>
+  <tr>
+    <td>Companhia</td>
+    <td>Segmento</td>
+    <td>Condição Excepcional</td>
+    <td>Data da concessão</td>
+    <td>Prazo para cumprimento</td>
+  </tr>
+  <tr>
+    <td>Bradsaúde S.A.</td>
+    <td>Novo Mercado</td>
+    <td>Percentual Mínimo de Ações em Circulação abaixo do requerido</td>
+    <td>19/05/2026</td>
+    <td>30/10/2027</td>
+  </tr>
+</table>
+</body></html>
+"""
+
+
+class TestExtrairProgramas:
+    def test_mapeia_campos_do_payload(self):
+        programas = extrair_programas_aquisicao(PROGRAMAS_PAYLOAD)
+        assert len(programas) == 2
+        primeiro = programas[0]
+        assert isinstance(primeiro, ProgramaAquisicao)
+        assert primeiro.empresa == "3TENTOS (NM)"
+        assert primeiro.data_inicio == "13/08/2026"
+        assert primeiro.data_fim == "13/02/2028"
+        assert primeiro.quantidade == "5.000.000 (ON)"
+        assert primeiro.intermediarios == "Bradesco"
+
+    def test_item_sem_empresa_eh_ignorado(self):
+        payload = {"results": [{"startDate": "01/01/2026", "company": "  "}]}
+        assert extrair_programas_aquisicao(payload) == []
+
+    def test_payload_invalido_retorna_lista_vazia(self):
+        assert extrair_programas_aquisicao(None) == []
+        assert extrair_programas_aquisicao({"results": "x"}) == []
+
+
 class TestExtrairCensuras:
+    def test_extrai_formato_accordion_da_pagina_real(self):
+        censuras = extrair_censuras(CENSURAS_ACCORDION_HTML)
+        assert len(censuras) == 2
+        primeira = censuras[0]
+        assert primeira.titulo == "FII TORDE EI (TORD)"
+        assert primeira.ticker == "TORD"
+        assert primeira.data == "25/02/2026"
+        assert "Primeiro paragrafo" in primeira.conteudo
+        assert "Segundo paragrafo" in primeira.conteudo
+        segunda = censuras[1]
+        assert segunda.ticker == "SGPS3"
+        assert segunda.data == "01/10/2024"
+
     def test_extrai_ticker_data_e_conteudo(self):
         censuras = extrair_censuras(CENSURAS_HTML)
         assert len(censuras) == 2
@@ -146,6 +246,11 @@ class TestExtrairCondicoesExcepcionais:
         assert len(condicoes) == 1
         assert condicoes[0].companhia == "Bradsaúde S.A."
         assert any("2 colunas" in record.getMessage() for record in caplog.records)
+
+    def test_cabecalho_em_td_eh_ignorado(self):
+        condicoes = extrair_condicoes_excepcionais(CONDICOES_CABECALHO_TD_HTML)
+        assert len(condicoes) == 1
+        assert condicoes[0].companhia == "Bradsaúde S.A."
 
     def test_html_sem_tabela_retorna_lista_vazia(self):
         assert extrair_condicoes_excepcionais("<html><body><p>x</p></body></html>") == []

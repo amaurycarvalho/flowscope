@@ -15,12 +15,17 @@ def _agora() -> datetime:
 
 @dataclass
 class ChatMessage:
-    """Mensagem de uma conversa, do usuário ou do assistente."""
+    """Mensagem de uma conversa, do usuário ou do assistente.
+
+    ``enviar_ao_modelo`` indica se a mensagem participa do histórico textual
+    enviado à LLM. Erros e avisos ficam fora do histórico.
+    """
 
     role: str
     content: str
     sources: list[dict] = field(default_factory=list)
     timestamp: datetime = field(default_factory=_agora)
+    enviar_ao_modelo: bool = True
 
 
 @dataclass

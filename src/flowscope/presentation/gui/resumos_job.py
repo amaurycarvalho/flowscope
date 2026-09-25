@@ -61,11 +61,18 @@ class ResumosPendentesJob:
         painel: _PainelDocumentos,
         arquivos: list[DocumentoArquivo],
         cancel_token: CancellationToken | None = None,
+        continuar_em_erro: bool = False,
     ) -> None:
-        """Inicializa o job com a fachada do painel e o snapshot de arquivos."""
+        """Inicializa o job com a fachada do painel e o snapshot de arquivos.
+
+        Quando ``continuar_em_erro`` é verdadeiro, uma falha por item é
+        publicada e o lote prossegue com os demais; caso contrário, o lote é
+        interrompido no primeiro erro.
+        """
         self._painel = painel
         self._arquivos = list(arquivos)
         self._cancel_token = cancel_token
+        self._continuar_em_erro = continuar_em_erro
         self.fila: queue.Queue = queue.Queue()
         self.thread: threading.Thread | None = None
         self.total = len(self._arquivos)
@@ -108,7 +115,9 @@ class ResumosPendentesJob:
                 texto = self._painel.preparar_texto(arquivo)
             except Exception as exc:
                 self.fila.put((MENSAGEM_ERRO, arquivo, exc))
-                return None
+                if not self._continuar_em_erro:
+                    return None
+                continue
             if tem_texto(texto):
                 self._avaliar_guidance(arquivo, texto)
             preparados.append((arquivo, texto))
@@ -142,7 +151,9 @@ class ResumosPendentesJob:
                 resumo = self._painel.gerar_resumo_estrito(arquivo, texto)
             except Exception as exc:
                 self.fila.put((MENSAGEM_ERRO, arquivo, exc))
-                return
+                if not self._continuar_em_erro:
+                    return
+                continue
             self.fila.put((MENSAGEM_RESULTADO, arquivo, resumo))
             self._progresso(2, indice, total, FASE_RESUMIR)
 

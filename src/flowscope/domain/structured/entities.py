@@ -27,6 +27,7 @@ from flowscope.domain.structured.proventos import (
 from flowscope.domain.structured.regulatorio import (
     CensuraPublica,
     CondicaoExcepcional,
+    ProgramaAquisicao,
 )
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
     "Entidade",
     "FatoRelevante",
     "NoticiaB3",
+    "ProgramaAquisicao",
     "Provento",
     "_texto_documento",
 ]

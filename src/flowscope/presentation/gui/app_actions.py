@@ -125,6 +125,8 @@ class ActionsMixin:
             self._update_fundamental_evolution()
         elif chart is getattr(self, "_documents_panel", None):
             self._update_documents()
+        elif chart is getattr(self, "_noticias_panel", None):
+            self._update_noticias()
         elif chart in self._ticker_charts:
             chart.update(self._current_data, ticker=self._ticker_apresentado())
         else:

@@ -138,7 +138,7 @@ class DocumentCatalog:
             )
         )
         arquivos = [_enriquecer(arquivo, resumos, self._base) for arquivo in arquivos]
-        return _montar_catalogo(chave, arquivos)
+        return montar_catalogo(chave, arquivos)
 
 
 def _enriquecer(
@@ -219,7 +219,7 @@ def _entrada(
     )
 
 
-def _montar_catalogo(
+def montar_catalogo(
     ticker: str, arquivos: list[DocumentoArquivo]
 ) -> CatalogoTicker:
     """Agrupa e ordena os arquivos na hierarquia ano → mês → categoria."""

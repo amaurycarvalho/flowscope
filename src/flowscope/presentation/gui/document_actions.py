@@ -3,6 +3,7 @@
 import os
 import platform
 import subprocess
+import webbrowser
 from pathlib import Path
 
 
@@ -20,3 +21,8 @@ def abrir_no_aplicativo(caminho: Path) -> None:
         subprocess.run(["open", destino], check=False)
     else:
         subprocess.run(["xdg-open", destino], check=False)
+
+
+def abrir_url(url: str) -> None:
+    """Abre a URL no navegador padrão do sistema."""
+    webbrowser.open(url)

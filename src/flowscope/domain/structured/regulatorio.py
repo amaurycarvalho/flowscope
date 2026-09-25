@@ -64,3 +64,41 @@ class CondicaoExcepcional:
             "dataConcessao": self.data_concessao,
             "prazo": self.prazo,
         }
+
+
+@dataclass(frozen=True)
+class ProgramaAquisicao:
+    """Programa de aquisição de ações em andamento da B3."""
+
+    empresa: str
+    data_aprovacao: str | None
+    data_inicio: str | None
+    data_fim: str | None
+    quantidade: str | None
+    intermediarios: str | None
+
+    def to_text(self: "ProgramaAquisicao") -> str:
+        """Produz representação textual densa do programa para indexação."""
+        lines = [f"[Programa de Aquisição de Ações] {self.empresa}"]
+        if self.quantidade:
+            lines.append(f"Quantidade: {self.quantidade}")
+        if self.data_aprovacao:
+            lines.append(f"Data de aprovação: {self.data_aprovacao}")
+        if self.data_inicio:
+            lines.append(f"Início: {self.data_inicio}")
+        if self.data_fim:
+            lines.append(f"Término: {self.data_fim}")
+        if self.intermediarios:
+            lines.append(f"Intermediários: {self.intermediarios}")
+        return "\n".join(lines)
+
+    def to_dict(self: "ProgramaAquisicao") -> dict:
+        """Serializa o programa de aquisição como um dicionário."""
+        return {
+            "empresa": self.empresa,
+            "dataAprovacao": self.data_aprovacao,
+            "dataInicio": self.data_inicio,
+            "dataFim": self.data_fim,
+            "quantidade": self.quantidade,
+            "intermediarios": self.intermediarios,
+        }

@@ -132,7 +132,12 @@ class TestEstadoConfiguracao:
     def test_configurado_habilita_entrada(self, tmp_path):
         root = tk.Tk()
         try:
-            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+            )
             root.update()
             assert str(painel._entrada.cget("state")) == "normal"
             assert str(painel._send_btn.cget("state")) == "normal"
@@ -170,6 +175,125 @@ class TestEstadoConfiguracao:
             painel._config_btn.invoke()
             assert chamadas == [True]
         finally:
+            root.destroy()
+
+
+class TestEstadoBotoes:
+    @needs_display
+    def test_enviar_exige_fundamentos_carregados(self, tmp_path):
+        root = tk.Tk()
+        dados: dict = {}
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: dados,
+            )
+            root.update()
+            assert str(painel._send_btn.cget("state")) == "disabled"
+            dados["PETR4"] = {}
+            painel.avaliar_estado()
+            root.update()
+            assert str(painel._send_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_limpar_e_copiar_exigem_conteudo(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+            )
+            root.update()
+            assert str(painel._clear_btn.cget("state")) == "disabled"
+            assert str(painel._copy_btn.cget("state")) == "disabled"
+            painel._registrar("assistant", "resposta")
+            painel._atualizar_controles()
+            root.update()
+            assert str(painel._clear_btn.cget("state")) == "normal"
+            assert str(painel._copy_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_limpar_desabilita_apos_esvaziar(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+            )
+            painel._registrar("assistant", "resposta")
+            painel._atualizar_controles()
+            monkeypatch.setattr(
+                chat_panel_mod.messagebox, "askyesno", lambda *a, **k: True
+            )
+            painel._clear_btn.invoke()
+            root.update()
+            assert str(painel._clear_btn.cget("state")) == "disabled"
+            assert str(painel._copy_btn.cget("state")) == "disabled"
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_cabecalho_desabilitado_durante_envio(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(liberar, '{"resposta": "pronta", "documentos": []}')
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            assert str(painel._clear_btn.cget("state")) == "disabled"
+            assert str(painel._copy_btn.cget("state")) == "disabled"
+            assert str(painel._config_btn.cget("state")) == "disabled"
+            liberar.set()
+            _aguardar(root, painel)
+            assert str(painel._config_btn.cget("state")) == "normal"
+            assert str(painel._clear_btn.cget("state")) == "normal"
+            assert str(painel._copy_btn.cget("state")) == "normal"
+        finally:
+            liberar.set()
+            root.destroy()
+
+    @needs_display
+    def test_cancelar_reabilita_cabecalho(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(liberar, '{"resposta": "tardia", "documentos": []}')
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            painel._cancelar_envio()
+            root.update()
+            assert str(painel._config_btn.cget("state")) == "normal"
+            assert str(painel._send_btn.cget("state")) == "normal"
+        finally:
+            liberar.set()
             root.destroy()
 
 
@@ -427,7 +551,12 @@ class TestCancelarEnvio:
     def test_botao_desabilitado_em_repouso(self, tmp_path):
         root = tk.Tk()
         try:
-            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+            )
             assert str(painel._cancel_btn.cget("state")) == "disabled"
             assert str(painel._send_btn.cget("state")) == "normal"
         finally:
@@ -481,6 +610,7 @@ class TestCancelarEnvio:
                 root,
                 tmp_path,
                 llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
                 llm_factory=lambda: llm,
                 watchlist_provider=list,
                 status_callback=lambda msg, _icon: estados.append(msg),
@@ -590,4 +720,106 @@ class TestCancelarEnvio:
             assert "primeira" not in conteudo
         finally:
             liberar.set()
+            root.destroy()
+
+
+class TestHistoricoPainel:
+    @needs_display
+    def test_segundo_turno_envia_historico(self, tmp_path):
+        root = tk.Tk()
+        llm = _FakeLLM(
+            [
+                '{"resposta": "primeira resposta", "documentos": []}',
+                '{"resposta": "segunda resposta", "documentos": []}',
+            ]
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("primeira pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            painel._texto_entrada_set("segunda pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            mensagens = llm.chamadas[1][0]
+            assert mensagens[0] == {
+                "role": "user",
+                "content": "primeira pergunta",
+            }
+            assert mensagens[1] == {
+                "role": "assistant",
+                "content": "primeira resposta",
+            }
+            assert mensagens[-1]["role"] == "user"
+            assert "segunda pergunta" in mensagens[-1]["content"]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_erro_nao_compõe_historico(self, tmp_path):
+        root = tk.Tk()
+        llm = _FakeLLM(
+            [
+                LLMCommunicationError("timeout de rede"),
+                '{"resposta": "resposta após falha", "documentos": []}',
+            ]
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("primeira pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            painel._texto_entrada_set("segunda pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            mensagens = llm.chamadas[1][0]
+            conteudos = [msg["content"] for msg in mensagens]
+            assert conteudos[0] == "primeira pergunta"
+            assert not any("Não foi possível conectar" in c for c in conteudos)
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_limpar_reinicia_historico(self, tmp_path, monkeypatch):
+        root = tk.Tk()
+        llm = _FakeLLM(
+            [
+                '{"resposta": "primeira resposta", "documentos": []}',
+                '{"resposta": "segunda resposta", "documentos": []}',
+            ]
+        )
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("primeira pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            monkeypatch.setattr(
+                chat_panel_mod.messagebox, "askyesno", lambda *a, **k: True
+            )
+            painel._clear_btn.invoke()
+            painel._texto_entrada_set("segunda pergunta")
+            painel._enviar()
+            _aguardar(root, painel)
+            mensagens = llm.chamadas[1][0]
+            assert len(mensagens) == 1
+            assert "segunda pergunta" in mensagens[0]["content"]
+        finally:
             root.destroy()

@@ -36,11 +36,17 @@ class TabActionsMixin:
 
         if main_tab == ABOUT_TAB:
             self._prefs["last_tab"] = main_tab
+            content = self._tab_content.get((ABOUT_TAB, ABOUT_TAB))
+            if content:
+                self._orientation_panel.set_content(*content)
             self._verificar_nova_versao()
             return
 
         if main_tab == CHAT_AI_TAB:
             self._prefs["last_tab"] = main_tab
+            content = self._tab_content.get((CHAT_AI_TAB, CHAT_AI_TAB))
+            if content:
+                self._orientation_panel.set_content(*content)
             self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
             self._sync_copy_button_for_tab(main_tab, sub_tab)
             self._reavaliar_chat_llm()
@@ -73,8 +79,9 @@ class TabActionsMixin:
         if botao is None or getattr(self, "_button_states", None):
             return
         em_documentos = (main_tab, sub_tab) == ("Análise do Ticker", "Documentos")
+        em_noticias = (main_tab, sub_tab) == ("Análise Geral", "Notícias")
         em_chat = main_tab == CHAT_AI_TAB
-        if em_documentos or em_chat or getattr(self, "_current_data", None):
+        if em_documentos or em_noticias or em_chat or getattr(self, "_current_data", None):
             botao.config(state=tk.NORMAL)
         else:
             botao.config(state=tk.DISABLED)
@@ -99,8 +106,10 @@ class TabActionsMixin:
         """
         if self._current_data:
             return True
-        return chart is getattr(self, "_fundamental_evolution_panel", None) or (
-            chart is getattr(self, "_documents_panel", None)
+        return chart in (
+            getattr(self, "_fundamental_evolution_panel", None),
+            getattr(self, "_documents_panel", None),
+            getattr(self, "_noticias_panel", None),
         )
 
     @staticmethod
@@ -122,11 +131,15 @@ class TabActionsMixin:
 
     def _abrir_config_llm(self: "TabActionsMixin") -> None:
         """Abre o diálogo de configuração de LLM, reavaliando ao salvar."""
-        painel = getattr(self, "_documents_panel", None)
+        paineis = [
+            getattr(self, "_documents_panel", None),
+            getattr(self, "_noticias_panel", None),
+        ]
 
         def _on_saved() -> None:
-            if painel is not None:
-                painel.refresh_resumir_button()
+            for painel in paineis:
+                if painel is not None:
+                    painel.refresh_resumir_button()
             self._reavaliar_chat_llm()
 
         LLMConfigDialog(self, on_saved=_on_saved)

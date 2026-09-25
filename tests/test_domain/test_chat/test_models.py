@@ -12,6 +12,11 @@ class TestChatMessage:
         assert msg.content == "Qual foi o último rendimento?"
         assert msg.sources == []
         assert isinstance(msg.timestamp, datetime)
+        assert msg.enviar_ao_modelo is True
+
+    def test_mensagem_fora_do_historico(self):
+        msg = ChatMessage(role="assistant", content="falha", enviar_ao_modelo=False)
+        assert msg.enviar_ao_modelo is False
 
     def test_mensagem_assistente_com_fontes(self):
         fontes = [{"descricao": "Fato Relevante 15/07"}]

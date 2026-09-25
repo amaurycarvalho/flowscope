@@ -16,6 +16,9 @@ logger = logging.getLogger("flowscope")
 #: Mensagem exibida quando o arquivo não tem texto extraível.
 SEM_TEXTO = "Sem texto extraível para pré-visualização."
 
+#: Seletor do corpo do artigo nas páginas do Plantão B3 (notícias "Geral").
+SELETOR_CONTEUDO_DETALHE = "#conteudoDetalhe"
+
 
 def tem_texto(texto: str | None) -> bool:
     """Indica se o texto contém conteúdo extraído (e não o marcador de ausência)."""
@@ -25,12 +28,21 @@ def tem_texto(texto: str | None) -> bool:
     return bool(limpo) and limpo != SEM_TEXTO
 
 
-def texto_de_html(html: str) -> str:
-    """Extrai o texto visível de um documento HTML."""
+def texto_de_html(html: str, seletor: str | None = None) -> str:
+    """Extrai o texto visível de um documento HTML.
+
+    Com ``seletor`` informado e presente no HTML, extrai apenas o texto desse
+    elemento (por exemplo, o corpo do artigo); caso contrário, extrai o texto
+    da página inteira.
+    """
     if not html:
         return ""
     try:
         sopa = BeautifulSoup(html, "html.parser")
+        if seletor:
+            elemento = sopa.select_one(seletor)
+            if elemento is not None:
+                return elemento.get_text("\n", strip=True)
         return sopa.get_text("\n", strip=True)
     except Exception:  # HTML malformado
         logger.warning("Falha ao extrair texto do HTML", exc_info=True)
@@ -54,11 +66,17 @@ def texto_de_pdf(dados: bytes) -> str:
         return ""
 
 
-def texto_preview(caminho: Path) -> str:
-    """Deriva o texto de pré-visualização conforme o tipo do arquivo."""
+def texto_preview(caminho: Path, seletor: str | None = None) -> str:
+    """Deriva o texto de pré-visualização conforme o tipo do arquivo.
+
+    ``seletor``, quando informado para HTML, restringe a extração a um elemento
+    (notícias "Geral" usam o corpo do artigo do Plantão B3).
+    """
     try:
         if caminho.suffix.lower() in (".html", ".htm"):
-            return texto_de_html(caminho.read_text(encoding="utf-8", errors="replace"))
+            return texto_de_html(
+                caminho.read_text(encoding="utf-8", errors="replace"), seletor
+            )
         if caminho.suffix.lower() == ".pdf":
             return texto_de_pdf(caminho.read_bytes())
     except OSError:

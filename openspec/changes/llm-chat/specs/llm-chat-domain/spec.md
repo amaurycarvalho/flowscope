@@ -6,7 +6,7 @@ Define as entidades de conversa em memória usadas pelas sub-abas de chat do Flo
 
 ### Requirement: Entidade ChatMessage
 
-O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" ou "assistant"), `content` (str), `sources` (lista opcional com metadados dos chunks-fonte) e `timestamp` (datetime). `sources` DEVE ser lista vazia quando não informada.
+O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" ou "assistant"), `content` (str), `sources` (lista opcional com metadados dos chunks-fonte), `timestamp` (datetime) e `enviar_ao_modelo` (bool, `True` por padrão), que indica se a mensagem participa do histórico textual enviado à LLM. `sources` DEVE ser lista vazia quando não informada.
 
 #### Scenario: Mensagem do usuário
 - **WHEN** `ChatMessage(role="user", content="Qual foi o último rendimento?")` é criada
@@ -15,6 +15,10 @@ O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" o
 #### Scenario: Mensagem do assistente com fontes
 - **WHEN** `ChatMessage(role="assistant", content="O último rendimento foi...", sources=[{"descricao": "Fato Relevante 15/07"}])` é criada
 - **THEN** `sources` DEVE conter a lista de metadados para exibição na GUI
+
+#### Scenario: Mensagem fora do histórico do modelo
+- **WHEN** `ChatMessage(role="assistant", content="...", enviar_ao_modelo=False)` é criada
+- **THEN** `enviar_ao_modelo` DEVE ser `False`, sinalizando que a mensagem NÃO DEVE compor o histórico enviado à LLM
 
 ### Requirement: Entidade ChatSession
 

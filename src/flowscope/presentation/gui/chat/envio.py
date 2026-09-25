@@ -47,6 +47,7 @@ class EnvioMixin:
         if not pergunta:
             return
         self._texto_entrada_set("")
+        historico = list(self._sessao.messages)
         self._registrar("user", pergunta)
         self._geracao += 1
         geracao = self._geracao
@@ -59,7 +60,7 @@ class EnvioMixin:
         snapshot_w = list(self._watchlist_provider() or [])
         threading.Thread(
             target=self._executar,
-            args=(geracao, pergunta, snapshot_f, snapshot_w),
+            args=(geracao, pergunta, snapshot_f, snapshot_w, historico),
             daemon=True,
         ).start()
         self._iniciar_poll()
@@ -77,6 +78,7 @@ class EnvioMixin:
         pergunta: str,
         fundamentos: dict,
         watchlist: list[str],
+        historico: list,
     ) -> None:
         """Monta o contexto e consulta a LLM em thread de trabalho."""
         try:
@@ -84,7 +86,9 @@ class EnvioMixin:
             contexto = self._montar_contexto(pergunta, fundamentos, watchlist)
             self._cancel_token.raise_if_cancelled()
             usecase = ConsultarChatUseCase(self._criar_llm())
-            resposta = usecase.consultar(pergunta, contexto, self._cancel_token)
+            resposta = usecase.consultar(
+                pergunta, contexto, self._cancel_token, historico
+            )
         except OperacaoCancelada:
             self._fila.put((geracao, "cancelado", None))
         except LLMUnavailableError as exc:

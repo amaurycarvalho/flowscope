@@ -99,6 +99,9 @@ class CsvMixin:
         if tabs == ("Análise do Ticker", "Documentos"):
             painel = getattr(self, "_documents_panel", None)
             return painel.texto_atual() if painel is not None else ""
+        if tabs == ("Análise Geral", "Notícias"):
+            painel = getattr(self, "_noticias_panel", None)
+            return painel.texto_atual() if painel is not None else ""
         painel_chat = self._chat_panel_para_tabs(tabs)
         if painel_chat is not None:
             return painel_chat.conteudo_sessao()

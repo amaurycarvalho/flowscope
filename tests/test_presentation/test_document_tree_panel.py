@@ -54,6 +54,7 @@ from flowscope.presentation.gui.app_tabs import (
 )
 from flowscope.presentation.gui.charts import document_preview
 from flowscope.presentation.gui.charts.document_preview import (
+    SELETOR_CONTEUDO_DETALHE,
     SEM_TEXTO,
     tem_texto,
     texto_de_html,
@@ -159,6 +160,26 @@ class TestPreview:
 
     def test_texto_de_html_vazio(self):
         assert texto_de_html("") == ""
+
+    def test_texto_de_html_com_seletor_isola_conteudo(self):
+        html = (
+            "<html><body>"
+            "<div id='topo'>Moldura da pagina</div>"
+            "<pre id='conteudoDetalhe'>Corpo do artigo</pre>"
+            "<footer>Rodape</footer>"
+            "</body></html>"
+        )
+        texto = texto_de_html(html, SELETOR_CONTEUDO_DETALHE)
+        assert texto == "Corpo do artigo"
+        assert "Moldura" not in texto
+        assert "Rodape" not in texto
+
+    def test_texto_de_html_seletor_ausente_usa_pagina(self):
+        texto = texto_de_html(
+            "<html><body><h1>Titulo</h1></body></html>",
+            SELETOR_CONTEUDO_DETALHE,
+        )
+        assert "Titulo" in texto
 
     def test_texto_de_pdf_invalido_retorna_vazio(self):
         assert texto_de_pdf(b"nao e pdf") == ""

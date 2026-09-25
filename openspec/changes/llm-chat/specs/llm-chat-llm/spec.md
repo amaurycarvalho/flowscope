@@ -47,3 +47,23 @@ O prompt DEVE instruir a LLM a responder apenas com base no contexto fornecido, 
 #### Scenario: Instruções no prompt
 - **WHEN** o prompt é construído
 - **THEN** ele DEVE conter as instruções de restringir-se ao contexto, citar fontes, identificar o ticker e admitir insuficiência
+
+### Requirement: Histórico da conversa no prompt
+
+O sistema DEVE enviar à LLM os turnos anteriores bem-sucedidos da sessão (`user` e `assistant`) em ordem cronológica, como mensagens separadas, antecedendo a mensagem do turno atual. As duas chamadas da cascata DEVEM compartilhar o mesmo histórico. Mensagens marcadas como fora do histórico (erros e avisos) NÃO DEVEM ser enviadas. O envelope JSON e as chaves de documentos da resposta NÃO DEVEM integrar o histórico — apenas o texto final exibido. O histórico DEVE respeitar um teto de 10 mensagens e 8.000 caracteres, descartando os turnos mais antigos quando excedido.
+
+#### Scenario: Histórico enviado
+- **WHEN** há turnos anteriores na sessão e uma nova pergunta é feita
+- **THEN** as mensagens anteriores DEVEM ser enviadas em ordem, antes da pergunta atual
+
+#### Scenario: Ambos os níveis da cascata herdam o histórico
+- **WHEN** a cascata escala para a segunda chamada com o texto integral dos alvos
+- **THEN** a segunda chamada DEVE receber o mesmo histórico da primeira
+
+#### Scenario: Erros fora do histórico
+- **WHEN** uma mensagem de erro ou aviso da LLM está registrada na sessão
+- **THEN** ela NÃO DEVE ser enviada ao modelo
+
+#### Scenario: Teto do histórico
+- **WHEN** o histórico ultrapassa 10 mensagens ou 8.000 caracteres
+- **THEN** os turnos mais antigos DEVEM ser descartados, preservando os mais recentes
