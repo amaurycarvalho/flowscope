@@ -129,6 +129,7 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, L
         self._flash_after_id = None
         self._update_checked = False
 
+        self._wire_ports()
         self._build_top_bar()
         self._wire_documentos()
         self._wire_noticias()

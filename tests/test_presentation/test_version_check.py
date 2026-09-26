@@ -20,9 +20,10 @@ class _ThreadImediata:
 
 
 class _Host(AboutActionsMixin):
-    def __init__(self, panel=None):
+    def __init__(self, panel=None, release_checker=None):
         self._update_checked = False
         self._about_panel = panel if panel is not None else MagicMock()
+        self._release_checker = release_checker or (lambda: None)
         self.status = []
 
     def _set_status(self, msg, icon=""):
@@ -32,22 +33,33 @@ class _Host(AboutActionsMixin):
         callback()
 
 
+class _Contador:
+    """Checker de release que conta as consultas para os testes de memoização."""
+
+    def __init__(self, resultado=None):
+        self._resultado = resultado
+        self.chamadas = 0
+
+    def __call__(self):
+        self.chamadas += 1
+        return self._resultado
+
+
 def _executar_verificacao(resultado=None):
-    host = _Host()
-    with patch(f"{_MODULO}.obter_ultima_release", return_value=resultado):
-        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-            host._verificar_nova_versao()
+    host = _Host(release_checker=lambda: resultado)
+    with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
+        host._verificar_nova_versao()
     return host
 
 
 class TestVerificacaoUmaVezPorSessao:
     def test_primeira_verificacao_memoiza(self):
-        host = _Host()
-        with patch(f"{_MODULO}.obter_ultima_release", return_value=None) as consulta:
-            with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-                host._verificar_nova_versao()
-                host._verificar_nova_versao()
-        consulta.assert_called_once()
+        checker = _Contador()
+        host = _Host(release_checker=checker)
+        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
+            host._verificar_nova_versao()
+            host._verificar_nova_versao()
+        assert checker.chamadas == 1
         assert host._update_checked is True
 
 
@@ -72,20 +84,21 @@ class TestNotificacaoDeNovaVersao:
         host._about_panel.show_update.assert_not_called()
 
     def test_falha_inesperada_nao_propaga(self):
-        host = _Host()
-        with patch(f"{_MODULO}.obter_ultima_release", side_effect=RuntimeError("boom")):
-            with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-                host._verificar_nova_versao()
+        def _falha():
+            raise RuntimeError("boom")
+
+        host = _Host(release_checker=_falha)
+        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
+            host._verificar_nova_versao()
         host._about_panel.show_update.assert_not_called()
 
     def test_botao_da_release_abre_url(self):
-        host = _Host()
-        with patch(f"{_MODULO}.obter_ultima_release", return_value=("9.9.9", "http://release")):
-            with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-                with patch(f"{_MODULO}.webbrowser.open") as abrir:
-                    host._verificar_nova_versao()
-                    callback = host._about_panel.show_update.call_args.args[1]
-                    callback()
+        host = _Host(release_checker=lambda: ("9.9.9", "http://release"))
+        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
+            with patch(f"{_MODULO}.webbrowser.open") as abrir:
+                host._verificar_nova_versao()
+                callback = host._about_panel.show_update.call_args.args[1]
+                callback()
         abrir.assert_called_once_with("http://release")
 
     def test_sem_painel_nao_falha(self):

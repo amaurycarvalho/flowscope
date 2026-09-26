@@ -1,13 +1,9 @@
 # Allowlist das violações legadas de fronteira entre camadas.
 #
 # Formato: <caminho relativo a src/flowscope> -> <camada importada>
-# Entradas aqui são dívida técnica a ser removida pelos increments do change
-# `clean-architecture-layering`; violação nova reprova o teste e entrada sem
-# violação correspondente também reprova (a lista só pode encolher).
+# A lista foi zerada pelo change `enforce-clean-architecture-boundaries`.
+# A allowlist só pode encolher: violação nova reprova o teste e uma entrada
+# sem violação correspondente também reprova, então ela deve permanecer vazia.
 #
 # Pontos de composição (presentation/cli.py, presentation/main.py e
 # presentation/gui/app_wiring.py) NÃO entram aqui: são exceção estrutural.
-
-presentation/gui/app_about_actions.py -> infrastructure
-presentation/gui/app_actions.py -> infrastructure
-presentation/gui/llm/config_dialog.py -> infrastructure

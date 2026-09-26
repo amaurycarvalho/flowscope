@@ -6,6 +6,10 @@ from pathlib import Path
 
 from matplotlib.figure import Figure
 
+from flowscope.application.clipboard_port import (
+    ClipboardError as ClipboardPortError,
+)
+
 
 class ClipboardError(Exception):
     """Erro ao tentar copiar uma imagem para a área de transferência."""
@@ -28,6 +32,17 @@ def copy_image_to_clipboard(figure: Figure) -> None:
         raise ClipboardError(
             f"Clipboard de imagem não suportado em {system}"
         )
+
+
+class ClipboardImageAdapter:
+    """Adaptador da porta de clipboard sobre o clipboard do sistema."""
+
+    def copy_image(self: "ClipboardImageAdapter", figure: Figure) -> None:
+        """Copia a figura, traduzindo o erro de infraestrutura para a aplicação."""
+        try:
+            copy_image_to_clipboard(figure)
+        except ClipboardError as exc:
+            raise ClipboardPortError(str(exc)) from exc
 
 
 def _copy_linux(path: Path) -> None:

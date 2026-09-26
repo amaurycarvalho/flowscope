@@ -6,6 +6,7 @@ import time
 import tkinter as tk
 from datetime import date, datetime, timezone
 
+from flowscope.application.clipboard_port import ClipboardError, ImageClipboardPort
 from flowscope.application.fundamental.evolucao import montar_series
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
@@ -24,6 +25,9 @@ _LIMITE_INATIVIDADE_DOCUMENTOS_S = 120.0
 
 class ActionsMixin:
     """Lida com eventos de seleção de período, amostragem e atualização dos gráficos."""
+
+    #: Porta de cópia de gráficos; injetada pelo composition root.
+    _clipboard: ImageClipboardPort | None = None
 
     def _on_period_combo_changed(self: "ActionsMixin", event: tk.Event | None = None) -> None:
         text = self._PERIOD_STATUS.get(self._period_var.get(), "")
@@ -328,14 +332,11 @@ class ActionsMixin:
             self._ticker_selecionado = next(iter(dados), None)
 
     def _copy_chart(self: "ActionsMixin", figure: object) -> None:
-        from flowscope.infrastructure.clipboard_image import (
-            ClipboardError,
-            copy_image_to_clipboard,
-        )
-
+        if self._clipboard is None:
+            return
         with self._presenter.busy():
             try:
-                copy_image_to_clipboard(figure)
+                self._clipboard.copy_image(figure)
                 self._flash_status("Gráfico copiado!")
             except ClipboardError as e:
                 self._set_status(f"Erro: {e}", "⚠")

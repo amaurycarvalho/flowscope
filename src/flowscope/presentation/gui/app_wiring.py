@@ -34,6 +34,7 @@ from flowscope.infrastructure.b3.noticias_catalogo import NoticiasCatalog
 from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vinculado
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.clipboard_image import ClipboardImageAdapter
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
 from flowscope.infrastructure.document_catalog import DocumentCatalog
@@ -67,8 +68,10 @@ from flowscope.infrastructure.llm.config import (
     llm_configurada,
     load_llm_config,
 )
+from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
 from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
+from flowscope.infrastructure.releases import obter_ultima_release
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
@@ -164,6 +167,12 @@ def montar_adaptadores_noticias(
 
 class WiringMixin:
     """Constrói o controller e os providers usados pela janela principal."""
+
+    def _wire_ports(self: "WiringMixin") -> None:
+        """Injeta as portas de releases, LLM e clipboard usadas pela janela."""
+        self._release_checker = obter_ultima_release
+        self._clipboard = ClipboardImageAdapter()
+        self._llm_config = InfrastructureLLMConfig()
 
     def _wire_documentos(self: "WiringMixin") -> None:
         """Monta os adaptadores de documentos antes da construção das abas."""

@@ -13,16 +13,8 @@ from collections.abc import Callable
 from pathlib import Path
 from tkinter import ttk
 
+from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.domain.llm import LLMError
-from flowscope.infrastructure.llm.config import (
-    DEFAULT_LLM_CONFIG,
-    check_llm_deps,
-    get_presets,
-    load_llm_config,
-    load_provider_configs,
-    save_llm_config,
-)
-from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 
 logger = logging.getLogger("flowscope")
@@ -49,15 +41,17 @@ class LLMConfigDialog(tk.Toplevel):
         self: "LLMConfigDialog",
         parent: tk.Misc,
         *,
+        config_port: LLMConfigPort,
         config_path: Path | None = None,
         on_saved: Callable[[], None] | None = None,
     ) -> None:
         """Constrói o diálogo, carrega a configuração salva e aplica as deps."""
         super().__init__(parent)
         self.title("Configuração de I.A.")
+        self._port = config_port
         self._config_path = config_path
         self._on_saved = on_saved
-        self._presets = get_presets()
+        self._presets = config_port.get_presets()
         self._widgets_config: list[tk.Widget] = []
         self._working: dict[str, dict] = {}
         self._provider_atual = "none"
@@ -176,8 +170,8 @@ class LLMConfigDialog(tk.Toplevel):
 
     def _carregar(self: "LLMConfigDialog") -> None:
         """Preenche os campos com a configuração salva do provedor ativo."""
-        self._working = load_provider_configs(self._config_path)
-        config = load_llm_config(self._config_path)
+        self._working = self._port.load_provider_configs(self._config_path)
+        config = self._port.load_llm_config(self._config_path)
         self._provider_atual = config["provider"]
         self._provider_var.set(config["provider"])
         self._api_url_var.set(config["api_url"])
@@ -214,7 +208,7 @@ class LLMConfigDialog(tk.Toplevel):
             self._api_url_var.set("")
             self._model_var.set("")
             self._api_key_var.set("")
-            self._rpm_var.set(str(DEFAULT_LLM_CONFIG["rpm"]))
+            self._rpm_var.set(str(self._port.default_config()["rpm"]))
             return
         entrada = self._working.get(provider)
         if entrada is not None:
@@ -227,7 +221,7 @@ class LLMConfigDialog(tk.Toplevel):
         self._api_url_var.set(preset["api_url"] if preset else "")
         self._model_var.set(preset["model"] if preset else "")
         self._api_key_var.set("")
-        self._rpm_var.set(str(DEFAULT_LLM_CONFIG["rpm"]))
+        self._rpm_var.set(str(self._port.default_config()["rpm"]))
 
     def _rpm(self: "LLMConfigDialog") -> int:
         """Retorna o RPM informado, caindo no padrão 5 quando inválido."""
@@ -248,7 +242,7 @@ class LLMConfigDialog(tk.Toplevel):
 
     def _salvar(self: "LLMConfigDialog") -> None:
         """Grava o bloco ``llm.chat``, notifica o salvamento e fecha o diálogo."""
-        save_llm_config(self._coletar_config(), self._config_path)
+        self._port.save_llm_config(self._coletar_config(), self._config_path)
         if self._on_saved is not None:
             self._on_saved()
         self.destroy()
@@ -275,7 +269,7 @@ class LLMConfigDialog(tk.Toplevel):
     ) -> None:
         """Executa a completion de teste em thread de trabalho."""
         try:
-            provedor = create_llm_provider(config)
+            provedor = self._port.create_provider(config)
             resposta = provedor.complete(
                 [{"role": "user", "content": TEXTO_TESTE}]
             )
@@ -334,7 +328,7 @@ class LLMConfigDialog(tk.Toplevel):
 
     def _aplicar_deps(self: "LLMConfigDialog") -> None:
         """Bloqueia a configuração quando as dependências ``[llm]`` faltam."""
-        self._deps_ok = check_llm_deps()
+        self._deps_ok = self._port.check_llm_deps()
         if self._deps_ok:
             return
         for widget in self._widgets_config:

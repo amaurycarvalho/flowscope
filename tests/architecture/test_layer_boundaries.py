@@ -45,6 +45,11 @@ class TestFronteirasDeCamada:
             f"{sorted(obsoletas)}"
         )
 
+    def test_fronteira_zerada(self) -> None:
+        """Após o fechamento, não deve restar nenhuma violação nem entrada."""
+        assert _violations() == set()
+        assert _allowlist() == set()
+
     def test_allowlist_sem_duplicatas(self) -> None:
         """A allowlist não deve repetir entradas."""
         linhas = [

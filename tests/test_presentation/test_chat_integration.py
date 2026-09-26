@@ -92,7 +92,7 @@ class TestDialogoConfiguracao:
         capturado: dict = {}
 
         class _Dialogo:
-            def __init__(self, parent, on_saved=None):
+            def __init__(self, parent, config_port=None, on_saved=None):
                 capturado["on_saved"] = on_saved
 
         monkeypatch.setattr(app_tab_actions_mod, "LLMConfigDialog", _Dialogo)

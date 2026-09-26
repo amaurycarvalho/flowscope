@@ -16,7 +16,7 @@ from flowscope.domain.llm import (
     LLMServiceUnavailableError,
     LLMUnavailableError,
 )
-from flowscope.presentation.gui.llm import config_dialog
+from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
 from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 pytestmark = pytest.mark.llm
@@ -25,6 +25,13 @@ needs_display = pytest.mark.skipif(
     not os.environ.get("DISPLAY"),
     reason="Test requires a display (no DISPLAY env var)",
 )
+
+
+def _dialog(parent, *, config_port=None, **kwargs):
+    """Cria o diálogo com a porta de configuração de LLM já injetada."""
+    return LLMConfigDialog(
+        parent, config_port=config_port or InfrastructureLLMConfig(), **kwargs
+    )
 
 
 def _aguardar(root: tk.Tk, dialog: LLMConfigDialog, timeout: float = 3.0) -> None:
@@ -56,7 +63,7 @@ class TestCargaESalvamento:
         )
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog = _dialog(root, config_path=caminho)
             assert dialog._provider_var.get() == "deepseek"
             assert dialog._api_url_var.get() == "https://api.deepseek.com/v1"
             assert dialog._model_var.get() == "deepseek-chat"
@@ -70,7 +77,7 @@ class TestCargaESalvamento:
         caminho = tmp_path / "config.json"
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog = _dialog(root, config_path=caminho)
             dialog._provider_var.set("openai")
             dialog._api_url_var.set("https://api.openai.com/v1")
             dialog._model_var.set("gpt-4o-mini")
@@ -90,7 +97,7 @@ class TestCargaESalvamento:
         caminho = tmp_path / "config.json"
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog = _dialog(root, config_path=caminho)
             dialog._salvar()
             assert dialog.winfo_exists() == 0
         finally:
@@ -101,14 +108,14 @@ class TestCargaESalvamento:
         caminho = tmp_path / "config.json"
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog = _dialog(root, config_path=caminho)
             dialog._provider_var.set("deepseek")
             dialog._api_url_var.set("https://api.deepseek.com/v1")
             dialog._model_var.set("deepseek-chat")
             dialog._api_key_var.set("sk-9")
             dialog._rpm_var.set("8")
             dialog._salvar()
-            reaberto = LLMConfigDialog(root, config_path=caminho)
+            reaberto = _dialog(root, config_path=caminho)
             try:
                 assert reaberto._provider_var.get() == "deepseek"
                 assert reaberto._api_url_var.get() == "https://api.deepseek.com/v1"
@@ -124,7 +131,7 @@ class TestCargaESalvamento:
     def test_chave_mascarada(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             assert dialog._api_key_entry.cget("show") == "*"
         finally:
             root.destroy()
@@ -133,7 +140,7 @@ class TestCargaESalvamento:
     def test_preset_preenche_modelo_e_url(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             dialog._provider_var.set("deepseek")
             dialog._on_preset_change()
             assert dialog._model_var.get() == "deepseek-chat"
@@ -145,7 +152,7 @@ class TestCargaESalvamento:
     def test_preset_custom_fica_em_branco(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             dialog._provider_var.set("custom")
             dialog._on_preset_change()
             assert dialog._model_var.get() == ""
@@ -189,7 +196,7 @@ class TestConfigPorProvedor:
     def test_abertura_carrega_provedor_ativo(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=self._config_dois_provedores(tmp_path)
             )
             assert dialog._working["deepseek"]["api_key"] == "sk-deep"
@@ -202,7 +209,7 @@ class TestConfigPorProvedor:
     def test_troca_restaura_provedor_salvo(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=self._config_dois_provedores(tmp_path)
             )
             dialog._provider_var.set("deepseek")
@@ -218,7 +225,7 @@ class TestConfigPorProvedor:
     def test_troca_para_nao_configurado_limpa_chave(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=self._config_dois_provedores(tmp_path)
             )
             dialog._provider_var.set("gemini")
@@ -234,7 +241,7 @@ class TestConfigPorProvedor:
     def test_none_limpa_e_volta_restaura(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=self._config_dois_provedores(tmp_path)
             )
             dialog._provider_var.set("none")
@@ -254,7 +261,7 @@ class TestConfigPorProvedor:
     def test_edicao_nao_salva_sobrevive_na_sessao(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=self._config_dois_provedores(tmp_path)
             )
             dialog._provider_var.set("deepseek")
@@ -281,7 +288,7 @@ class TestConfigPorProvedor:
         antes = caminho.read_text(encoding="utf-8")
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=caminho)
+            dialog = _dialog(root, config_path=caminho)
             dialog._provider_var.set("openai")
             dialog._on_preset_change()
             dialog._api_key_var.set("sk-open")
@@ -292,18 +299,19 @@ class TestConfigPorProvedor:
 
 
 class TestTestarConexao:
-    def _dialogo(self, tmp_path):
+    def _dialogo(self, tmp_path, port=None):
         root = tk.Tk()
-        return root, LLMConfigDialog(root, config_path=tmp_path / "c.json")
+        return root, _dialog(
+            root, config_port=port, config_path=tmp_path / "c.json"
+        )
 
     @needs_display
     def test_sucesso(self, tmp_path, monkeypatch):
         provedor = MagicMock()
         provedor.complete.return_value = "olá mundo"
-        monkeypatch.setattr(
-            config_dialog, "create_llm_provider", lambda _c: provedor
-        )
-        root, dialog = self._dialogo(tmp_path)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "create_provider", lambda _c: provedor)
+        root, dialog = self._dialogo(tmp_path, port)
         try:
             dialog._on_testar()
             _aguardar(root, dialog)
@@ -335,8 +343,9 @@ class TestTestarConexao:
         def _falha(_config):
             raise erro
 
-        monkeypatch.setattr(config_dialog, "create_llm_provider", _falha)
-        root, dialog = self._dialogo(tmp_path)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "create_provider", _falha)
+        root, dialog = self._dialogo(tmp_path, port)
         try:
             dialog._on_testar()
             _aguardar(root, dialog)
@@ -350,8 +359,9 @@ class TestTestarConexao:
         def _falha(_config):
             raise LLMCommunicationError("timeout de rede")
 
-        monkeypatch.setattr(config_dialog, "create_llm_provider", _falha)
-        root, dialog = self._dialogo(tmp_path)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "create_provider", _falha)
+        root, dialog = self._dialogo(tmp_path, port)
         try:
             dialog._provider_var.set("deepseek")
             dialog._model_var.set("deepseek-chat")
@@ -383,8 +393,9 @@ class TestTestarConexao:
             liberar.wait(3)
             return provedor
 
-        monkeypatch.setattr(config_dialog, "create_llm_provider", _lento)
-        root, dialog = self._dialogo(tmp_path)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "create_provider", _lento)
+        root, dialog = self._dialogo(tmp_path, port)
         try:
             dialog._on_testar()
             for _ in range(100):
@@ -415,7 +426,7 @@ class TestOnSaved:
         caminho = tmp_path / "config.json"
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(
+            dialog = _dialog(
                 root, config_path=caminho,
                 on_saved=lambda: chamadas.append(True),
             )
@@ -429,7 +440,7 @@ class TestOnSaved:
     def test_sem_on_saved_nao_falha(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             dialog._salvar()
         finally:
             root.destroy()
@@ -440,7 +451,7 @@ class TestModalidade:
     def test_nao_redimensionavel(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             assert dialog.resizable() == (0, 0)
         finally:
             root.destroy()
@@ -449,7 +460,7 @@ class TestModalidade:
     def test_modal_com_grab(self, tmp_path):
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(root, config_path=tmp_path / "c.json")
             assert dialog.grab_current() == dialog
         finally:
             root.destroy()
@@ -458,10 +469,13 @@ class TestModalidade:
 class TestDependenciasAusentes:
     @needs_display
     def test_bloqueia_configuracao_e_teste(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_dialog, "check_llm_deps", lambda: False)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "check_llm_deps", lambda: False)
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(
+                root, config_port=port, config_path=tmp_path / "c.json"
+            )
             assert "pip install flowscope[llm]" in dialog._status_var.get()
             assert str(dialog._test_btn.cget("state")) == "disabled"
             assert str(dialog._api_url_entry.cget("state")) == "disabled"
@@ -472,16 +486,17 @@ class TestDependenciasAusentes:
 
     @needs_display
     def test_testar_nao_inicia_sem_deps(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_dialog, "check_llm_deps", lambda: False)
+        port = InfrastructureLLMConfig()
+        monkeypatch.setattr(port, "check_llm_deps", lambda: False)
         chamadas = []
         monkeypatch.setattr(
-            config_dialog,
-            "create_llm_provider",
-            lambda _c: chamadas.append(1),
+            port, "create_provider", lambda _c: chamadas.append(1)
         )
         root = tk.Tk()
         try:
-            dialog = LLMConfigDialog(root, config_path=tmp_path / "c.json")
+            dialog = _dialog(
+                root, config_port=port, config_path=tmp_path / "c.json"
+            )
             dialog._on_testar()
             root.update()
             assert chamadas == []

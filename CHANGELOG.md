@@ -27,73 +27,205 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
-## [1.3.0] — 2026-09-25
+## [1.3.1] — 2026-09-26
 
-### [correlation-cointegration-panel](openspec/changes/archive/2026-09-25-correlation-cointegration-panel) Nova sub-aba "Rede de Correlação" na "Análise Geral" com grafo force-directed, codificando a correlação assinada na cor da aresta e a cointegração (Engle-Granger + ADF em `numpy` puro) no estilo/espessura
-
-#### Added
-
-- Nova sub-aba "Rede de Correlação" na "Análise Geral", com grafo force-directed (nós = papéis, arestas = pares com relação relevante).
-- Codificação visual dupla: cor da aresta = correlação de curto prazo assinada (colormap divergente, escala fixa `[-1, +1]`); estilo/espessura = cointegração de longo prazo (sólido/grosso quando cointegrado, tracejado/fino caso contrário).
-- Cor do nó = comunidade da rede; tamanho do nó = centralidade (grau).
-- Cálculo de correlação e cointegração (Engle-Granger + ADF) implementado em `numpy` puro, sem `statsmodels`/`scipy`.
-- Rede calculada sobre o resultado já carregado na análise corrente, filtrado pelos tickers selecionados no Listbox, sem leitor de cache, download, janela própria ou job em background.
-- Recálculo automático quando o período ou a amostragem mudam com a sub-aba ativa.
-- Gates por densidade: correlação exige ≥ 30 observações alinhadas; cointegração exige ≥ 40, com diagnóstico de gaps (mín/mediana/máx em dias úteis) e span de calendário.
-- `networkx` adicionado para layout (`spring_layout`), detecção de comunidades e centralidade.
-- Texto de orientação (OrientationPanel) e a mesma barra de ferramentas (`ToolbarBR`) da sub-aba VWAP, incluindo "Copiar Gráfico".
-
-### [llm-chat](openspec/changes/archive/2026-09-25-llm-chat) Aba de topo "Chat AI" que responde em linguagem natural sobre os dados carregados, os documentos em cache e o próprio FlowScope, com cascata de recuperação sobre resumos e texto e histórico de conversa em memória
+### [add-layer-architecture-guardrails](openspec/changes/archive/2026-09-25-add-layer-architecture-guardrails) Fundação do programa de arquitetura: teste de fronteira generalizado para todas as camadas, allowlist de violações legadas que só encolhe e convenção de view-model documentada
 
 #### Added
 
-- Aba de topo "Chat AI", única e sempre visível, entre "Análise do Ticker" e "Sobre", como ponto único de entrada do chat.
-- Sem seletor de escopo: o contexto cobre a watchlist completa e a LLM infere o ticker referido na pergunta.
-- Contexto com três origens: conhecimento do próprio FlowScope, tabela de fundamentos carregada e documentos em cache (watchlist completa).
-- Cascata de documentos: resumos curtos → resumos longos → texto integral dos alvos, com interrupção antecipada ao obter resposta.
-- Histórico textual da conversa com teto de 10 mensagens e 8.000 caracteres; erros e avisos fora do histórico e sessão em memória, sem persistência.
-- Confirmação ao usuário conforme a quantidade de documentos-alvo (até 3 prossegue; 4 a 7 lista os nomes; 8 ou mais informa a quantidade).
-- Cabeçalho com "Limpar", "Copiar chat" e "Configuração"; campo de entrada e "Enviar" habilitados apenas com a LLM configurada e fundamentos carregados.
-- Botão "Limpar" com confirmação (Sim/Não); "Limpar" e "Copiar chat" habilitados apenas quando há conteúdo textual.
-- Bloqueio de "Limpar", "Copiar chat", "Configuração" e "Enviar" durante o envio, com restauração ao término ou cancelamento.
-- Quadro de texto orientativo das abas "Chat AI" e "Sobre"; a cópia de dados CSV inclui o conteúdo do chat quando a aba está ativa.
-- Respostas em campo somente-leitura com cursor, seleção e atalhos de teclado; erros da LLM na statusbar e no log.
-- Caches da sub-aba "Notícias" oferecidos como fonte adicional de contexto do chat.
+- Teste de fronteira generalizado para `domain`, `application`, `infrastructure` e `presentation`, cobrindo os imports proibidos definidos em `specs/layer-boundaries/spec.md`.
+- Allowlist explícita das violações legadas (arquivo de dados versionado), que só pode encolher; import novo fora do permitido reprova o teste.
+- Verificação de que a allowlist está vazia como critério de fechamento do programa.
+- Documentação da convenção de view-model (aplicação devolve dados prontos; apresentação formata/desenha).
 
 #### Changed
 
-- Sem VectorStore, embeddings, chunker, indexação ou `--index`, itens que migram para a change `llm-chat-rag`.
+- **BREAKING (interno)**: a partir daqui, violações de fronteira novas reprovam o quality gate.
 
-### [llm-config-por-provedor](openspec/changes/archive/2026-09-25-llm-config-por-provedor) Persistência da configuração de completion por provedor no bloco `llm.chat`, com restauração da configuração salva ao trocar de provedor e migração do formato plano anterior
-
-#### Added
-
-- Mapa `providers` no bloco `llm.chat` com `api_url`, `model`, `api_key` e `rpm` por provedor, mantendo `provider` como a seleção ativa.
-- Restauração automática da configuração salva ao trocar de provedor; sem configuração salva, aplica os defaults do preset e limpa a chave, sem herdar a de outro provedor.
-- Selecionar `none` limpa os campos ativos sem apagar as configurações dos demais provedores, permitindo voltar a qualquer um e retomar o que foi salvo.
-- Gravação em disco apenas ao clicar em "Salvar"; edições ainda não salvas ficam em memória durante a sessão do diálogo.
-- Migração automática do formato plano (sem `providers`) na primeira gravação, sem perder a configuração existente.
+### [clean-architecture-layering](openspec/changes/archive/2026-09-26-clean-architecture-layering) Change chapéu que fixa o contrato de fronteira entre camadas, a convenção de view-model, o guardrail com allowlist decrescente e o orçamento de testes de UI, coordenando os incrementos filhos
 
 #### Changed
 
-- `load_llm_config()` continua devolvendo o dicionário plano resolvido do provedor ativo, preservando os consumidores atuais (factory, resumo de documentos, guidance e chat).
+- Define o contrato de fronteira entre camadas (`domain`, `application`, `infrastructure`, `presentation`) e a regra de importação de cada uma.
+- Define a convenção de view-model: `application` devolve dataclasses prontas; `presentation` apenas formata e desenha.
+- Estabelece um guardrail de fronteira com allowlist de violações legadas que só pode encolher, zerada no incremento de fechamento.
+- Restringe o escopo dos testes de UI a wiring, estado de widget/botão, empty-state e ciclo de thread/queue; lógica pura passa a ser testada em `test_domain`/`test_application`.
+- Coordena os incrementos filhos na ordem fundação, Documentos, Notícias, Correlação/Rede, Dominância, Quadrante+VWAP, Amplitude de Preço, Fluxo Financeiro, Fundamentos, Chat e fechamento.
+- **BREAKING (interno)**: imports entre camadas passam a ser validados por teste; violações novas reprovam o quality gate.
 
-### [noticias-b3](openspec/changes/archive/2026-09-25-noticias-b3) Nova sub-aba "Notícias" na Análise Geral, com aquisição e cache do corpo dos artigos, pré-visualização, resumos por LLM e disponibilização como contexto do "Chat AI"
+### [documentos-resumo-lote-persistente](openspec/changes/archive/2026-09-25-documentos-resumo-lote-persistente) Resumo em lote dos documentos pendentes passa a persistir cada resultado imediatamente após a geração, sobrevivendo a interrupções
 
 #### Added
 
-- Sub-aba "Notícias" na Análise Geral com árvore, pré-visualização e botões "Atualizar", "Abrir", "I.A." e "Resumir pendentes".
-- Categorias de topo "Geral", "Censuras Públicas", "Condições Excepcionais" e "Programas de Aquisição de Ações", cada uma seguindo a sub-estrutura ano → mês → categoria → item.
-- Categoria "Geral" lista o Plantão B3 do último ano, somente casos excepcionais de mercado, com carga incremental dia a dia e marcadores persistidos da data mais antiga processada e da última carga.
-- Fontes regulatórias ("Censuras Públicas", "Condições Excepcionais" e "Programas de Aquisição de Ações") carregadas com histórico completo e tolerância à falha individual.
-- Cache próprio do HTML das notícias, reuso dos caches de texto e resumos da sub-aba "Documentos" e índice de metadados para exibição sem rede.
-- Carga inicial somente do cache local; a listagem e a aquisição de novos itens ocorrem apenas pelo botão "Atualizar", em segundo plano.
-- Status por categoria durante o "Atualizar", carga parcial preservada a cada item processado e escritas do índice agrupadas em lotes.
-- Corpo do artigo da "Geral" extraído de `#conteudoDetalhe`, com resolução sob demanda de documentos vinculados da CVM RAD e do FNET.
-- Extração de texto (HTML → texto), resumo curto/longo por LLM, pré-visualização e abertura do artigo no navegador.
-- Conteúdo disponibilizado como fonte adicional de contexto da aba "Chat AI", cobrindo as quatro categorias, com o ticker inferido pela LLM.
+- Seam reutilizável no fluxo compartilhado (`DocumentFlowMixin` + `ResumosPendentesJob`): gerar e persistir no worker e apenas refletir em memória na thread do Tk.
 
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.3.0...HEAD
-[1.3.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.3.0
+#### Changed
+
+- Cada resumo passa a ser gravado imediatamente após a geração, na thread de trabalho do lote, antes de processar o próximo documento.
+- `JsonDocumentSummaryStore.salvar` torna-se segura a escritas concorrentes (lock), evitando *lost update* entre o lote e a pré-visualização individual.
+- Interrupção por cancelamento, fechamento do aplicativo ou crash passa a preservar todos os resumos já gerados; perde-se no máximo o item em processamento.
+
+### [enforce-clean-architecture-boundaries](openspec/changes/archive/2026-09-26-enforce-clean-architecture-boundaries) Fechamento do programa: imports de `infrastructure` restritos ao composition root via portas de `application` e allowlist de fronteira zerada
+
+#### Added
+
+- Portas de `application` para releases, configuração de LLM e clipboard, com adaptadores em `infrastructure` ligados no composition root.
+- Testes puros em `tests/test_application` para as portas/casos de uso.
+
+#### Changed
+
+- A verificação de nova versão (`obter_ultima_release`) sai de `presentation/gui/app_about_actions.py` para uma porta de `application`, com a comparação de versões usando `domain.version.is_newer`.
+- O diálogo de LLM deixa de importar `infrastructure.llm.config`/`factory` e passa a receber uma porta de configuração de `application`.
+- A cópia de gráfico deixa de importar `infrastructure.clipboard_image` e passa a receber uma porta de clipboard de `application`.
+- O composition root (`presentation/cli.py`, `presentation/main.py` e `presentation/gui/app_wiring.py`) constrói os adaptadores de infraestrutura e injeta as portas, continuando a única exceção a `presentation -> infrastructure`.
+- A allowlist de fronteira (`tests/architecture/allowlist.txt`) é zerada; o teste passa a exigir zero violações e zero entradas.
+
+### [noticias-cache-sharding](openspec/changes/archive/2026-09-25-noticias-cache-sharding) Caches JSON de texto e resumo das notícias particionados por ano e mês, reduzindo o custo de O(N²) e migrando o `NOTICIAS.json` anterior
+
+#### Added
+
+- Wrapper de shard de notícias que deriva o shard da chave estável (`noticias/<ANO>/<MES>/<hash>.html`) e delega aos stores JSON existentes.
+
+#### Changed
+
+- Os caches JSON de texto e resumo das notícias passam a ser particionados por ano e mês (`NOTICIAS-<ANO>-<MES>.json`), levando o custo de O(N²) para a soma dos quadrados por shard.
+- A leitura em massa de resumos do catálogo passa a mesclar os shards.
+- `NoticiaArquivo.ticker` continua `NOTICIAS` e o fluxo compartilhado (`DocumentFlowMixin`, `DocumentSummaryService`, chat) permanece inalterado.
+- **BREAKING (formato do cache de notícias)**: o `NOTICIAS.json` anterior é migrado uma única vez para os shards, sem reconverter.
+
+### [noticias-resumo-lote-ordenado](openspec/changes/archive/2026-09-25-noticias-resumo-lote-ordenado) Resumo em lote das notícias passa a seguir ordem explícita por grupo e da mais recente para a mais antiga, persistindo cada resumo imediatamente
+
+#### Changed
+
+- Ordem explícita do lote por grupo ("Censuras Públicas" → "Condições Excepcionais" → "Programas de Aquisição de Ações" → "Geral") e, dentro de cada grupo, da notícia mais recente para a mais antiga.
+- A ordenação deixa de ser efeito colateral da inserção na árvore e passa a ser regra explícita, com desempate determinista para datas ausentes ou empatadas.
+- Cada resumo é gravado imediatamente após a geração, no worker, reutilizando o seam de `documentos-resumo-lote-persistente`.
+- Interrupção (cancelar, fechar, crash) preserva os resumos já gerados; perde-se no máximo o item em processamento.
+
+### [refactor-chat-context-layers](openspec/changes/archive/2026-09-26-refactor-chat-context-layers) Montagem de contexto do chat movida para `application`; painel restrito a widget, sessão e thread
+
+#### Added
+
+- Montador de contexto em `application/chat/` que reúne conhecimento, fundamentos, cascata de documentos e fontes adicionais em um `ContextoChat`, com o gate de confirmação delegado a um callback.
+
+#### Changed
+
+- `chat/fundamentos.py`, `chat/documentos.py` e `chat/noticias.py` saem de `presentation` para `application/chat/`.
+- `chat/conhecimento.py` passa a ser montado em `application/chat/`, com os textos de interface fornecidos pela apresentação como entrada.
+- A extração de texto de documentos sai de `presentation/gui/charts/document_preview.py` para `application/document_preview.py`.
+- `chat_panel.py` e `envio.py` consomem o montador de `application` e mantêm apenas widget, sessão, thread/fila, cancelamento, cópia/limpeza e o diálogo de confirmação.
+- Testes puros de contexto migram para `tests/test_application`; os testes de `tests/test_presentation` ficam restritos a wiring, estado de widget e thread/queue.
+
+### [refactor-correlation-network-layers](openspec/changes/archive/2026-09-26-refactor-correlation-network-layers) Extração de séries da rede de correlação movida para `application`; painel apenas desenha
+
+#### Changed
+
+- O módulo puro `network_data.py` sai de `presentation` para `application/network/`, como read-model pronto (`DadosRede`, `extrair_series`, mensagens e formatadores).
+- `correlation_network_panel.py` consome o read-model de `application` e permanece apenas com o desenho (grafo, colorbar, legenda, estado vazio).
+- Testes puros de `tests/test_presentation/test_network_data.py` migram para `tests/test_application`; o painel mantém apenas testes de UI.
+
+### [refactor-documentos-layers](openspec/changes/archive/2026-09-26-refactor-documentos-layers) Entidades de catálogo para `domain`, catálogo e resumo em `application`; painel de documentos apenas desenha
+
+#### Added
+
+- Porta `CatalogoRepository` e caso de uso de consulta do catálogo em `application`, incluindo a montagem/ordenação e a derivação da chave estável.
+- Porta `DocumentSummaryStore` em `application`; `JsonDocumentSummaryStore` e `JsonDocumentTextStore` passam a implementá-la.
+
+#### Changed
+
+- Entidades de catálogo (`DocumentoArquivo`, `CategoriaDocumentos`, `MesDocumentos`, `AnoDocumentos`, `CatalogoTicker`) saem de `infrastructure/document_catalog.py` para `domain/documents/`.
+- `infrastructure/document_catalog.py` passa a implementar a porta varrendo o cache (apenas I/O), usando as entidades de domínio.
+- `DocumentSummaryService` e `GuidanceService` saem de `presentation/gui/charts/` para `application`.
+- `document_tree_panel` recebe as dependências por injeção pelo composition root, sem importar `infrastructure`.
+- Testes puros de documentos migram para `tests/test_domain`/`tests/test_application`.
+
+#### Removed
+
+- Entradas correspondentes de `tests/architecture/allowlist.txt`.
+
+### [refactor-dominance-panels-layers](openspec/changes/archive/2026-09-26-refactor-dominance-panels-layers) Construção de ranking/timeline e geometria das hastes movidas para `application`; painéis apenas desenham
+
+#### Added
+
+- Testes puros em `tests/test_application` para as funções movidas, sem `DISPLAY`.
+
+#### Changed
+
+- A construção pura do ranking (`build_rows`, `stem_lengths`) sai de `ranking_data.py` para `application/dominance/`, como view-model pronto (`RankingRow`).
+- A construção pura da linha do tempo (`build_rows`, `direction_balance`) sai de `timeline_data.py` para `application/dominance/` (`TimelineRow`).
+- A geometria/cor das hastes e a localização da linha sob o cursor saem de `dominance_data.py` para `application/dominance/`.
+- `dominance_ranking.py` e `dominance_timeline.py` passam a consumir `application` e mantêm apenas o desenho.
+
+### [refactor-flow-panels-layers](openspec/changes/archive/2026-09-26-refactor-flow-panels-layers) Extração de métricas e resumo do fluxo para `application`/`domain`; painel apenas orquestra e desenha
+
+#### Added
+
+- Testes puros em `tests/test_application` e `tests/test_domain` para as funções movidas, sem `DISPLAY`.
+
+#### Changed
+
+- `extract_session_metrics` sai de `financial_flow_helpers.py` para `application/flow/`, como view-model pronto (`SessionFlowMetrics` + `build_session_metrics`).
+- `generate_summary` e os trechos `flow_intensity_part`, `close_position_part`, `dominance_part` e `conviction_part` saem do helper para `application/flow/`.
+- `pressure_percentages` sai do helper para `domain`.
+- `financial_flow_helpers.py` permanece com a formatação, o desenho e o tooltip, consumindo `domain`/`application`.
+- `financial_flow_panel.py` passa a consumir os view-models e o resumo de `application`.
+
+### [refactor-fundamental-table-layers](openspec/changes/archive/2026-09-26-refactor-fundamental-table-layers) Linhas, CSV e evolução dos fundamentos como view-models de `application`; a tabela apenas insere e copia
+
+#### Changed
+
+- `montar_linhas`, `montar_csv`, o layout de colunas e os formatadores saem de `fundamental_rows.py` e `fundamental_formatters.py` para `application/fundamental/`.
+- A amostragem Fibonacci e a montagem das séries de evolução (`fundamental_evolution_data.py`) saem de `presentation` para `application`.
+- `app_csv.py` passa a montar o CSV da tabela a partir do view-model de `application`.
+- `controller_fundamental.py` recebe o adaptador de mercado por injeção do composition root.
+- Testes puros (linhas, CSV, formatação e evolução) migram para `tests/test_application`.
+
+#### Removed
+
+- Entrada `presentation/gui/controller_fundamental.py -> infrastructure` de `tests/architecture/allowlist.txt`.
+
+### [refactor-noticias-layers](openspec/changes/archive/2026-09-26-refactor-noticias-layers) Classificação e entidades de notícia para `domain`/`application`; painel de notícias apenas desenha
+
+#### Changed
+
+- A classificação de notícias sai de `infrastructure/b3/noticias_tipos.py` para `domain`.
+- Entidades de catálogo e a ordenação do lote saem de `infrastructure`/`presentation` para `domain`/`application`.
+- `infrastructure/b3/noticias_catalogo.py` permanece como adaptador de leitura, implementando a porta de catálogo e reaproveitando o read-model `montar_catalogo`.
+- A montagem do índice compacto do chat e a intercalação por seção passam para `application`.
+- `NoticiasPanel` recebe caso de uso e portas por injeção; `NoticiasTreeView` importa entidades de `domain`.
+- Testes puros de notícias migram para `tests/test_domain`/`tests/test_application`.
+
+#### Removed
+
+- Três entradas de notícias de `tests/architecture/allowlist.txt`.
+
+### [refactor-price-range-layers](openspec/changes/archive/2026-09-26-refactor-price-range-layers) Classificação de pregão para `domain`; normalização e dimensionamento permanecem em `presentation`
+
+#### Added
+
+- Testes puros em `tests/test_domain` para a classificação movida, sem `DISPLAY`.
+
+#### Changed
+
+- `classify_trend` e `classify_session` (com o auxiliar `median_value`) saem de `price_range_helpers.py` para `domain`, preservando as mesmas categorias.
+- `normalize`, `efficiency_color`, `size_mapper`/`_constant_size` e o desenho permanecem em `presentation`.
+- `price_range_helpers.py` passa a importar `classify_session` do `domain` em `draw_classification_text`.
+
+### [refactor-quadrant-vwap-layers](openspec/changes/archive/2026-09-26-refactor-quadrant-vwap-layers) Quadrante para `domain`; dados de VWAP e trajetórias/dispersão para `application`; painéis apenas desenham
+
+#### Added
+
+- Testes puros em `tests/test_domain` e `tests/test_application`, sem `DISPLAY`.
+
+#### Changed
+
+- `classify_quadrant` (e a constante dos quadrantes) sai de `quadrant_data.py` para `domain`, passando a operar sobre primitivos (`clv`, `vwap_dist`).
+- A preparação das trajetórias e dos pontos de dispersão do quadrante vai para `application`, como view-models prontos (`PontoQuadrante`).
+- As contagens/interpretação/resumo (`count_quadrants`, `pick_interpretation`, `generate_summary`) saem para `application`, preservando os mesmos textos.
+- A preparação dos dados de VWAP (`to_pct`, `collect_ticker_data`, `estimate_bucket_size`, `compute_violin_shapes`) sai para `application`, como read-model pronto (`DadosVwap`).
+- `quadrant_chart.py` e `vwap_hist.py` consomem `domain`/`application` e mantêm apenas o desenho.
+
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.3.1
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.

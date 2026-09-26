@@ -2,6 +2,7 @@
 
 import tkinter as tk
 
+from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.presentation.gui.app_indicators import (
     build_extra_indicator_lines,
     build_full_indicator_lines,
@@ -14,6 +15,9 @@ from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 class TabActionsMixin:
     """Lida com eventos de abas, resumos e formatação de indicadores."""
+
+    #: Porta de configuração da LLM; injetada pelo composition root.
+    _llm_config: LLMConfigPort | None = None
 
     def _current_tabs(self: "TabActionsMixin") -> tuple[str, str] | None:
         try:
@@ -142,7 +146,9 @@ class TabActionsMixin:
                     painel.refresh_resumir_button()
             self._reavaliar_chat_llm()
 
-        LLMConfigDialog(self, on_saved=_on_saved)
+        LLMConfigDialog(
+            self, config_port=self._llm_config, on_saved=_on_saved
+        )
 
     def _reavaliar_chat_llm(self: "TabActionsMixin") -> None:
         """Reavalia o estado de configuração do painel de chat."""

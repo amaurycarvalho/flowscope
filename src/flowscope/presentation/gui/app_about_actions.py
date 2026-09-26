@@ -5,8 +5,7 @@ import threading
 import webbrowser
 
 from flowscope import __version__
-from flowscope.domain.version import is_newer
-from flowscope.infrastructure.releases import obter_ultima_release
+from flowscope.application.releases import ReleaseChecker, verificar_nova_versao
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
 from flowscope.presentation.gui.widgets.about_panel import REPOSITORIO_URL
 from flowscope.presentation.log_paths import log_file_path
@@ -16,6 +15,9 @@ logger = logging.getLogger("flowscope")
 
 class AboutActionsMixin:
     """Lida com os atalhos e a verificação de versão da aba "Sobre"."""
+
+    #: Consulta a última release; injetada pelo composition root.
+    _release_checker: ReleaseChecker | None = None
 
     def _abrir_url(self: "AboutActionsMixin", url: str) -> None:
         """Abre ``url`` no navegador padrão, informando falhas na barra de status."""
@@ -50,16 +52,17 @@ class AboutActionsMixin:
 
     def _consultar_versao_publicada(self: "AboutActionsMixin") -> None:
         """Consulta a última release e publica o aviso na thread da interface."""
+        checker = self._release_checker
+        if checker is None:
+            return
         try:
-            resultado = obter_ultima_release()
+            resultado = verificar_nova_versao(__version__, checker)
         except Exception:
             logger.warning("Falha inesperada na verificação de versão", exc_info=True)
             return
         if resultado is None:
             return
         versao, url = resultado
-        if not is_newer(versao, __version__):
-            return
         self.after(0, lambda: self._notificar_nova_versao(versao, url))
 
     def _notificar_nova_versao(
