@@ -9,10 +9,10 @@ from tkinter import ttk
 import numpy as np
 import pytest
 
+from flowscope.application.network.dados import AVISO_COINT_INDISPONIVEL
 from flowscope.presentation.gui.charts.correlation_network_panel import (
     CorrelationNetworkPanel,
 )
-from flowscope.presentation.gui.charts.network_data import AVISO_COINT_INDISPONIVEL
 
 START = date(2025, 1, 6)
 

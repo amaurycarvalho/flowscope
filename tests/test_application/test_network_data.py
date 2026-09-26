@@ -3,11 +3,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from flowscope.domain.network_analysis import (
-    SamplingDiagnostics,
-    analyze_network,
-)
-from flowscope.presentation.gui.charts.network_data import (
+from flowscope.application.network.dados import (
     MENSAGEM_POUCAS_OBS,
     MENSAGEM_SEM_TICKERS,
     extrair_series,
@@ -16,6 +12,10 @@ from flowscope.presentation.gui.charts.network_data import (
     formatar_modularidade,
     mensagem_indisponivel,
     rotulo_diagnostico,
+)
+from flowscope.domain.network_analysis import (
+    SamplingDiagnostics,
+    analyze_network,
 )
 
 BASE = date(2025, 1, 1)

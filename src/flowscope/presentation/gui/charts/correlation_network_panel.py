@@ -18,13 +18,7 @@ from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
-from flowscope.domain.network_analysis import NetworkResult, analyze_network
-from flowscope.presentation.gui.charts.empty_state import (
-    create_empty,
-    hide_empty,
-    show_empty,
-)
-from flowscope.presentation.gui.charts.network_data import (
+from flowscope.application.network.dados import (
     AVISO_COINT_INDISPONIVEL,
     MENSAGEM_SEM_TICKERS,
     DadosRede,
@@ -32,6 +26,12 @@ from flowscope.presentation.gui.charts.network_data import (
     formatar_modularidade,
     mensagem_indisponivel,
     rotulo_diagnostico,
+)
+from flowscope.domain.network_analysis import NetworkResult, analyze_network
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
