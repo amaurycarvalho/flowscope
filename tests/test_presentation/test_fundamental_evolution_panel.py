@@ -12,6 +12,15 @@ from unittest.mock import MagicMock
 import pytest
 from matplotlib.dates import date2num
 
+from flowscope.application.fundamental.evolucao import (
+    TIPO_INTEIRO,
+    TIPO_MONETARIO,
+    TIPO_PERCENTUAL,
+    TIPO_PERCENTUAL_1,
+    TIPO_QUANTIDADE,
+    TIPO_RAZAO,
+    montar_series,
+)
 from flowscope.application.fundamental_ports import (
     SCHEMA_VERSION_FUNDAMENTOS,
     ObservacaoFundamental,
@@ -26,15 +35,6 @@ from flowscope.domain.fii import (
     TendenciaDividendo,
     TipoAtivo,
     UltimoDividendo,
-)
-from flowscope.presentation.gui.charts.fundamental_evolution_data import (
-    TIPO_INTEIRO,
-    TIPO_MONETARIO,
-    TIPO_PERCENTUAL,
-    TIPO_PERCENTUAL_1,
-    TIPO_QUANTIDADE,
-    TIPO_RAZAO,
-    montar_series,
 )
 from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
     FundamentalEvolutionPanel,

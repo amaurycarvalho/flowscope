@@ -6,11 +6,9 @@ import time
 import tkinter as tk
 from datetime import date, datetime, timezone
 
+from flowscope.application.fundamental.evolucao import montar_series
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
-from flowscope.presentation.gui.charts.fundamental_evolution_data import (
-    montar_series,
-)
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.documentos_job import (

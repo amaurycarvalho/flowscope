@@ -10,5 +10,4 @@
 
 presentation/gui/app_about_actions.py -> infrastructure
 presentation/gui/app_actions.py -> infrastructure
-presentation/gui/controller_fundamental.py -> infrastructure
 presentation/gui/llm/config_dialog.py -> infrastructure

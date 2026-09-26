@@ -3,6 +3,17 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from flowscope.application.fundamental.evolucao import (
+    CAMPOS_EVOLUCAO,
+    TIPO_INTEIRO,
+    TIPO_MONETARIO,
+    TIPO_PERCENTUAL,
+    TIPO_PERCENTUAL_1,
+    TIPO_QUANTIDADE,
+    TIPO_RAZAO,
+    montar_series,
+    selecionar_datas_fibonacci,
+)
 from flowscope.application.fundamental_ports import (
     SCHEMA_VERSION_FUNDAMENTOS,
     ObservacaoFundamental,
@@ -18,17 +29,6 @@ from flowscope.domain.fii import (
     TendenciaDividendo,
     TipoAtivo,
     UltimoDividendo,
-)
-from flowscope.presentation.gui.charts.fundamental_evolution_data import (
-    CAMPOS_EVOLUCAO,
-    TIPO_INTEIRO,
-    TIPO_MONETARIO,
-    TIPO_PERCENTUAL,
-    TIPO_PERCENTUAL_1,
-    TIPO_QUANTIDADE,
-    TIPO_RAZAO,
-    montar_series,
-    selecionar_datas_fibonacci,
 )
 
 BASE = date(2025, 1, 1)

@@ -3,7 +3,7 @@
 Exibe small multiples — um mini-gráfico de linha por campo (Cotação, VP,
 P/VP, Dividend Yield, Último dividendo, Nº de cotistas, Nº de cotas e
 Shorts%) — com eixo de datas compartilhado e escala própria, a partir das
-séries montadas pelo módulo :mod:`fundamental_evolution_data`.
+séries montadas por :mod:`flowscope.application.fundamental.evolucao`.
 """
 
 import math
@@ -18,12 +18,7 @@ from matplotlib.dates import date2num
 from matplotlib.figure import Figure
 from matplotlib.text import Annotation
 
-from flowscope.presentation.gui.charts.empty_state import (
-    create_empty,
-    hide_empty,
-    show_empty,
-)
-from flowscope.presentation.gui.charts.fundamental_evolution_data import (
+from flowscope.application.fundamental.evolucao import (
     TIPO_INTEIRO,
     TIPO_MONETARIO,
     TIPO_PERCENTUAL,
@@ -33,12 +28,17 @@ from flowscope.presentation.gui.charts.fundamental_evolution_data import (
     PontoEvolucao,
     SerieEvolucao,
 )
-from flowscope.presentation.gui.charts.fundamental_formatters import (
+from flowscope.application.fundamental.formatters import (
     formatar_inteiro,
     formatar_percentual,
     formatar_quantidade,
     formatar_ratio,
     formatar_valor,
+)
+from flowscope.presentation.gui.charts.empty_state import (
+    create_empty,
+    hide_empty,
+    show_empty,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 

@@ -43,6 +43,7 @@ from flowscope.infrastructure.fii.b3_fundamental_provider import (
 from flowscope.infrastructure.fii.b3_fundamental_repository import (
     B3FundamentalRepository,
 )
+from flowscope.infrastructure.fii.b3_price import B3MarketPriceFromResult
 from flowscope.infrastructure.fii.cvm_fund_data_provider import (
     CvmAnnualFundDataProvider,
     CvmIndexadoresProvider,
@@ -232,6 +233,7 @@ class WiringMixin:
             fundamental_bdr_provider=fundamental_bdr_provider,
             fundamental_guidance_store=self._guidance_store,
             fundamental_short_interest_provider=fundamental_short_interest_provider,
+            fundamental_mercado_factory=B3MarketPriceFromResult,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

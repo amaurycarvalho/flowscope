@@ -4,16 +4,17 @@ Renderiza, em um ``ttk.Treeview``, uma linha por ticker da watchlist com as
 colunas de identidade, dividendo e — para FIIs elegíveis — as métricas FFO.
 Ativos não elegíveis exibem ``N/A`` nas colunas fundamentalistas.
 
-A montagem de colunas e linhas e os formatadores de exibição ficam em módulos
-irmãos (:mod:`fundamental_rows` e :mod:`fundamental_formatters`) e são
-reexportados aqui para manter a API pública do painel.
+A montagem de colunas e linhas e os formatadores de exibição vivem em
+:mod:`flowscope.application.fundamental.linhas` e
+:mod:`flowscope.application.fundamental.formatters` e são reexportados aqui
+para manter a API pública do painel.
 """
 
 import tkinter as tk
 from collections.abc import Mapping
 from tkinter import ttk
 
-from flowscope.presentation.gui.charts.fundamental_formatters import (
+from flowscope.application.fundamental.formatters import (
     NA,
     formatar_cnpj,
     formatar_data,
@@ -33,7 +34,7 @@ from flowscope.presentation.gui.charts.fundamental_formatters import (
     rotulo_tendencia,
     rotulo_tipo,
 )
-from flowscope.presentation.gui.charts.fundamental_rows import (
+from flowscope.application.fundamental.linhas import (
     _COLUNAS,
     _COLUNAS_DIREITA,
     _COLUNAS_FIXAS,

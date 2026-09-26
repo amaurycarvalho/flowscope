@@ -6,7 +6,6 @@ from datetime import date
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.application.logging_port import LogEntry
-from flowscope.infrastructure.fii.b3_price import B3MarketPriceFromResult
 from flowscope.presentation.gui.fundamental_job import (
     MENSAGEM_ERRO,
     MENSAGEM_PROGRESSO,
@@ -36,11 +35,14 @@ class FundamentalMixin:
             for ticker, dados in result.items()
             if isinstance(dados, dict)
         }
+        mercado = None
+        if self._fundamental_mercado_factory is not None:
+            mercado = self._fundamental_mercado_factory(daily)
         job_anterior = self._fundamental_job
         self._fundamental_generation += 1
         caso = FundamentalAnalysisUseCase(
             repository=self._fundamental_repo,
-            mercado=B3MarketPriceFromResult(daily),
+            mercado=mercado,
             fundamental_provider=self._fundamental_provider,
             ffo_provider=self._fundamental_ffo_provider,
             historico_dividendos=self._fundamental_dividend_provider,

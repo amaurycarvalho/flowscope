@@ -8,16 +8,7 @@ em linhas prontas para o ``ttk.Treeview`` e para exportação CSV.
 from collections.abc import Mapping
 from datetime import date
 
-from flowscope.domain.fii import (
-    TIPO_EXIBICAO_FII,
-    AnaliseFundamental,
-    ClassificacaoExibicao,
-    MargensFii,
-    MetricasShort,
-    classificar_exibicao,
-    classificar_ticker,
-)
-from flowscope.presentation.gui.charts.fundamental_formatters import (
+from flowscope.application.fundamental.formatters import (
     NA,
     formatar_cnpj,
     formatar_data,
@@ -34,6 +25,15 @@ from flowscope.presentation.gui.charts.fundamental_formatters import (
     rotulo_classe_patrimonio,
     rotulo_classificacao_short,
     rotulo_tendencia,
+)
+from flowscope.domain.fii import (
+    TIPO_EXIBICAO_FII,
+    AnaliseFundamental,
+    ClassificacaoExibicao,
+    MargensFii,
+    MetricasShort,
+    classificar_exibicao,
+    classificar_ticker,
 )
 
 _LARGURA_PADRAO = 140

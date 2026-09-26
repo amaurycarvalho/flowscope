@@ -3,8 +3,8 @@
 import tkinter as tk
 from datetime import date
 
+from flowscope.application.fundamental.linhas import montar_csv
 from flowscope.presentation.gui.app_tabs import CHAT_AI_TAB
-from flowscope.presentation.gui.charts.fundamental_table import montar_csv
 
 CSV_HEADER = "RptDt;TckrSymb;MinPric;MaxPric;TradAvrgPric;LastPric;TradQty;FinInstrmQty;NtlFinVol"
 

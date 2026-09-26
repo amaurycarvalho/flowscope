@@ -15,11 +15,11 @@ passa e o change aparece em `openspec list`.
 
 - [x] 2.1 Criar o change `refactor-documentos-layers` (entidades de catálogo para `domain`; catálogo/resumo em `application`; painéis só desenham) e verificar com `openspec validate refactor-documentos-layers`
 - [x] 2.2 Criar o change `refactor-noticias-layers` (classificação e entidades de notícia para `domain`/`application`; painel só desenha) e verificar com `openspec validate refactor-noticias-layers`
-- [ ] 2.3 Criar o change `refactor-fundamental-table-layers` (linhas, CSV e evolução dos fundamentos como view-models de `application`) e verificar com `openspec validate refactor-fundamental-table-layers`
+- [x] 2.3 Criar o change `refactor-fundamental-table-layers` (linhas, CSV e evolução dos fundamentos como view-models de `application`) e verificar com `openspec validate refactor-fundamental-table-layers`
 
 ## 3. Fatias de gráficos e indicadores
 
-- [ ] 3.1 Criar o change `refactor-correlation-network-layers` (extração de séries para `application`) e verificar com `openspec validate refactor-correlation-network-layers`
+- [x] 3.1 Criar o change `refactor-correlation-network-layers` (extração de séries para `application`) e verificar com `openspec validate refactor-correlation-network-layers`
 - [ ] 3.2 Criar o change `refactor-dominance-panels-layers` (construção de ranking/timeline para `application`) e verificar com `openspec validate refactor-dominance-panels-layers`
 - [ ] 3.3 Criar o change `refactor-quadrant-vwap-layers` (quadrante para `domain`; dados de VWAP para `application`) e verificar com `openspec validate refactor-quadrant-vwap-layers`
 - [ ] 3.4 Criar o change `refactor-price-range-layers` (classificação de pregão para `domain`; normalização e dimensionamento permanecem em `presentation`) e verificar com `openspec validate refactor-price-range-layers`

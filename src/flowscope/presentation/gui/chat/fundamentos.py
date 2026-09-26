@@ -8,8 +8,8 @@ pela LLM a partir da pergunta.
 
 from collections.abc import Iterable, Mapping
 
-from flowscope.presentation.gui.charts.fundamental_formatters import NA
-from flowscope.presentation.gui.charts.fundamental_rows import (
+from flowscope.application.fundamental.formatters import NA
+from flowscope.application.fundamental.linhas import (
     _COLUNAS,
     montar_linhas,
 )
