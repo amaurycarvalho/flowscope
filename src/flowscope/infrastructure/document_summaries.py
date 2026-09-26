@@ -9,6 +9,7 @@ atômica, preservando os resumos dos demais documentos.
 import json
 import logging
 import re
+import threading
 from pathlib import Path
 
 from flowscope.application.resumo_documento import ResumoDocumento
@@ -44,6 +45,7 @@ class JsonDocumentSummaryStore:
         """Inicializa o store no subdiretório de resumos do cache informado."""
         base = cache_dir if cache_dir is not None else CacheManager().get_cache_dir()
         self._cache_dir = Path(base) / DIRETORIO_RESUMOS
+        self._lock = threading.Lock()
 
     def resumos(
         self: "JsonDocumentSummaryStore", ticker: str
@@ -72,13 +74,19 @@ class JsonDocumentSummaryStore:
         short_summary: str,
         long_summary: str,
     ) -> None:
-        """Grava o resumo de um documento preservando os demais do ticker."""
-        resumos = self._carregar(ticker)
-        resumos[chave] = {
-            "short_summary": short_summary,
-            "long_summary": long_summary,
-        }
-        self._gravar(ticker, resumos)
+        """Grava o resumo de um documento preservando os demais do ticker.
+
+        O *read-modify-write* é serializado por um lock para que gravações
+        concorrentes — por exemplo, o lote de resumos e a pré-visualização
+        individual — não percam resumos já gravados.
+        """
+        with self._lock:
+            resumos = self._carregar(ticker)
+            resumos[chave] = {
+                "short_summary": short_summary,
+                "long_summary": long_summary,
+            }
+            self._gravar(ticker, resumos)
 
     def _carregar(self: "JsonDocumentSummaryStore", ticker: str) -> dict:
         """Carrega o mapa de resumos, tolerando ausência e corrupção."""

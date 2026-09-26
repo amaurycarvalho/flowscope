@@ -184,6 +184,56 @@ class TestGuidanceNoLote:
         assert painel.guidances == [("10.pdf", "texto A")]
 
 
+class _PainelPersistente(_PainelFake):
+    """Painel fake que grava no worker e opcionalmente cancela após cada item."""
+
+    def __init__(self, textos, store, token=None):
+        super().__init__(textos)
+        self._store = store
+        self._token = token
+
+    def persistir_no_lote(self):
+        return True
+
+    def gerar_e_persistir(self, arquivo, texto):
+        resumo = super().gerar_resumo_estrito(arquivo, texto)
+        self._store[arquivo.nome] = resumo
+        if self._token is not None:
+            self._token.request()
+        return resumo
+
+
+class TestPersistenciaNoWorker:
+    def test_resultado_publicado_ja_esta_persistido(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        store: dict = {}
+        painel = _PainelPersistente({"10.pdf": "A", "20.pdf": "B"}, store)
+        job = ResumosPendentesJob(painel, arquivos)
+        job.iniciar().join()
+        mensagens = _mensagens(job)
+
+        resultados = [
+            m
+            for m in mensagens
+            if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO
+        ]
+        assert set(store) == {"10.pdf", "20.pdf"}
+        for _tipo, arquivo, resumo in resultados:
+            assert store[arquivo.nome] is resumo
+
+    def test_cancelamento_preserva_resumos_ja_gerados(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf"), _arquivo("30.pdf")]
+        token = CancellationToken()
+        store: dict = {}
+        painel = _PainelPersistente(
+            {"10.pdf": "A", "20.pdf": "B", "30.pdf": "C"}, store, token
+        )
+        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+        job.iniciar().join()
+
+        assert set(store) == {"10.pdf"}
+
+
 class _StoreFake:
     def __init__(self):
         self._dados = {}

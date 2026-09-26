@@ -1,5 +1,6 @@
 """Testes do store de resumos de documentos em JSON por ticker."""
 
+import concurrent.futures
 import json
 from pathlib import Path
 
@@ -63,6 +64,25 @@ class TestPreservacao:
         store.salvar("ALZR11", CHAVE_A, "antigo", "antigo")
         store.salvar("ALZR11", CHAVE_A, "novo", "novo")
         assert store.obter("ALZR11", CHAVE_A) == ResumoDocumento("novo", "novo")
+
+
+class TestConcorrencia:
+    def test_gravacoes_concorrentes_preservam_todos_os_resumos(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        chaves = [f"bdr/ALZR11/2026/02/{i}.pdf" for i in range(30)]
+
+        def gravar(chave):
+            store.salvar("ALZR11", chave, f"curto {chave}", f"longo {chave}")
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            list(executor.map(gravar, chaves))
+
+        resumos = store.resumos("ALZR11")
+        assert set(resumos) == set(chaves)
+        for chave in chaves:
+            assert resumos[chave] == ResumoDocumento(
+                f"curto {chave}", f"longo {chave}"
+            )
 
 
 class TestChaveDocumento:

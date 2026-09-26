@@ -21,16 +21,16 @@ from flowscope.infrastructure.b3.noticias_aquisicao import (
     NoticiasCache,
 )
 from flowscope.infrastructure.b3.noticias_index import NoticiasIndexStore
+from flowscope.infrastructure.b3.noticias_shards import (
+    NoticiasSummaryStore,
+    NoticiasTextStore,
+)
 from flowscope.infrastructure.document_catalog import (
     CatalogoTicker,
     DocumentoArquivo,
     montar_catalogo,
 )
-from flowscope.infrastructure.document_summaries import (
-    JsonDocumentSummaryStore,
-    chave_documento,
-)
-from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.infrastructure.document_summaries import chave_documento
 
 logger = logging.getLogger("flowscope")
 
@@ -89,10 +89,10 @@ class NoticiasCatalog:
         self._index = index_store or NoticiasIndexStore(
             cache_dir=self._cache.base_dir
         )
-        self._summary_store = JsonDocumentSummaryStore(
+        self._summary_store = NoticiasSummaryStore(
             cache_dir=self._cache.base_dir
         )
-        self._text_store = JsonDocumentTextStore(cache_dir=self._cache.base_dir)
+        self._text_store = NoticiasTextStore(cache_dir=self._cache.base_dir)
 
     @property
     def base_dir(self: "NoticiasCatalog") -> Path:
@@ -105,12 +105,12 @@ class NoticiasCatalog:
         return self._cache
 
     @property
-    def summary_store(self: "NoticiasCatalog") -> JsonDocumentSummaryStore:
+    def summary_store(self: "NoticiasCatalog") -> NoticiasSummaryStore:
         """Retorna o store de resumos associado ao catálogo."""
         return self._summary_store
 
     @property
-    def text_store(self: "NoticiasCatalog") -> JsonDocumentTextStore:
+    def text_store(self: "NoticiasCatalog") -> NoticiasTextStore:
         """Retorna o store de textos associado ao catálogo."""
         return self._text_store
 

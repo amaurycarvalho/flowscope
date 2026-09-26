@@ -1,0 +1,26 @@
+# Allowlist das violações legadas de fronteira entre camadas.
+#
+# Formato: <caminho relativo a src/flowscope> -> <camada importada>
+# Entradas aqui são dívida técnica a ser removida pelos increments do change
+# `clean-architecture-layering`; violação nova reprova o teste e entrada sem
+# violação correspondente também reprova (a lista só pode encolher).
+#
+# Pontos de composição (presentation/cli.py, presentation/main.py e
+# presentation/gui/app_wiring.py) NÃO entram aqui: são exceção estrutural.
+
+presentation/gui/app_about_actions.py -> infrastructure
+presentation/gui/app_actions.py -> infrastructure
+presentation/gui/app_tab_layout.py -> infrastructure
+presentation/gui/charts/document_flow_mixin.py -> infrastructure
+presentation/gui/charts/document_grouping.py -> infrastructure
+presentation/gui/charts/document_guidance.py -> infrastructure
+presentation/gui/charts/document_summary.py -> infrastructure
+presentation/gui/charts/document_tree_panel.py -> infrastructure
+presentation/gui/charts/document_tree_view.py -> infrastructure
+presentation/gui/charts/noticias_panel.py -> infrastructure
+presentation/gui/charts/noticias_tree_view.py -> infrastructure
+presentation/gui/chat/documentos.py -> infrastructure
+presentation/gui/chat/noticias.py -> infrastructure
+presentation/gui/controller_fundamental.py -> infrastructure
+presentation/gui/llm/config_dialog.py -> infrastructure
+presentation/gui/resumos_job.py -> infrastructure

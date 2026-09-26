@@ -280,7 +280,7 @@ A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de con
 
 ### Requirement: Resumo em lote dos documentos pendentes
 
-Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da thread da interface, todos os documentos do ticker apresentado sem `long_summary`, em duas fases: preparar o texto — reutilizando o texto em cache e convertendo apenas quando ausente — e gerar o resumo via LLM, como se cada documento tivesse sido selecionado. O `short_summary` e o `long_summary` resultantes DEVEM ser persistidos e refletidos no catálogo do documento. O andamento DEVE ser exibido na barra de status com a barra de progresso, uma fase por vez. Documentos sem texto extraível DEVEM ser pulados, sem chamada à LLM. Ao concluir, o sistema DEVE exibir o desfecho e reavaliar o estado do botão.
+Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da thread da interface, todos os documentos do ticker apresentado sem `long_summary`, em duas fases: preparar o texto — reutilizando o texto em cache e convertendo apenas quando ausente — e gerar o resumo via LLM, como se cada documento tivesse sido selecionado. Cada resumo gerado DEVE ser gravado no cache persistente imediatamente após a sua geração e antes de processar o próximo documento, na própria thread de trabalho, de modo que uma interrupção — cancelamento, fechamento do aplicativo ou falha — preserve todos os resumos já gerados e perca no máximo o documento em processamento. O `short_summary` e o `long_summary` resultantes DEVEM ser refletidos no catálogo do documento. O andamento DEVE ser exibido na barra de status com a barra de progresso, uma fase por vez. Documentos sem texto extraível DEVEM ser pulados, sem chamada à LLM. Ao concluir, o sistema DEVE exibir o desfecho e reavaliar o estado do botão.
 
 #### Scenario: Lote com documentos pendentes
 - **WHEN** o usuário aciona "Resumir pendentes" com a LLM configurada e documentos sem `long_summary`
@@ -309,6 +309,14 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 #### Scenario: Resumo gerado fica disponível na lista
 - **WHEN** o lote conclui
 - **THEN** uma seleção posterior do agrupamento DEVE exibir o `short_summary` dos documentos resumidos
+
+#### Scenario: Persistência imediata por documento
+- **WHEN** o lote gera o resumo de um documento e avança para o próximo
+- **THEN** o resumo do documento anterior já DEVE estar gravado no cache persistente, antes da geração do próximo
+
+#### Scenario: Interrupção preserva os resumos já gerados
+- **WHEN** o lote é cancelado, o aplicativo é fechado ou falha após gerar resumos de alguns documentos
+- **THEN** os resumos já gerados DEVEM estar gravados no cache persistente
 
 #### Scenario: Interrupção por erro
 - **WHEN** ocorre um erro em qualquer documento durante o lote

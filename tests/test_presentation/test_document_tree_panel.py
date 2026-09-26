@@ -1046,6 +1046,62 @@ class TestAplicarResumo:
             root.destroy()
 
 
+class TestPersistenciaNoWorkerDoPainel:
+    @needs_display
+    def test_painel_de_documentos_persiste_no_lote(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=_catalogo(tmp_path), debounce_ms=0
+            )
+            assert painel.persistir_no_lote() is True
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_gerar_e_persistir_grava_sem_tocar_no_catalogo(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        llm = _LLMFake(resposta="Resumo gerado")
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store,
+                llm_available=lambda: True, llm_factory=lambda: llm,
+                debounce_ms=0,
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            arquivo = painel._itens[no]
+            resumo = painel.gerar_e_persistir(arquivo, "texto")
+            assert resumo is not None
+            salvo = store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf")
+            assert salvo.long_summary == resumo.long_summary
+            assert painel._itens[no].long_summary is None
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_refletir_resumo_nao_grava_no_store(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        root = tk.Tk()
+        try:
+            painel = DocumentTreePanel(
+                root, catalog=catalogo, summary_store=store, debounce_ms=0
+            )
+            painel.update("ALZR11")
+            no = _no_arquivo(painel, "10.pdf")
+            arquivo = painel._itens[no]
+            painel.refletir_resumo(arquivo, ResumoDocumento("curto", "longo"))
+            assert painel._itens[no].long_summary == "longo"
+            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") is None
+        finally:
+            root.destroy()
+
+
 class TestBotaoResumir:
     @needs_display
     def test_acionamento_chama_callback(self, tmp_path):

@@ -22,7 +22,9 @@ from flowscope.domain.structured import CensuraPublica, NoticiaB3
 from flowscope.infrastructure.b3.noticias_aquisicao import (
     ESCOPO_NOTICIAS,
     SECAO_CENSURAS,
+    SECAO_CONDICOES,
     SECAO_GERAL,
+    SECAO_PROGRAMAS,
     NoticiasCache,
     chave_item,
     chave_noticia,
@@ -46,6 +48,7 @@ from flowscope.infrastructure.document_summaries import (
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.presentation.gui import noticias_actions
 from flowscope.presentation.gui.app_actions import ActionsMixin
+from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.charts import noticias_panel as noticias_panel_mod
@@ -992,3 +995,209 @@ class TestWiringSubAba:
 
     def test_tab_content_documentado(self):
         assert ("Análise Geral", "Notícias") in TAB_CONTENT
+
+
+def _arq_noticia(
+    secao,
+    nome,
+    data="",
+    *,
+    ano=2026,
+    mes=9,
+    categoria="cat",
+    resumo=None,
+):
+    return NoticiaArquivo(
+        ticker=ESCOPO_NOTICIAS,
+        ano=ano,
+        mes=mes,
+        categoria=categoria,
+        nome=nome,
+        tipo="html",
+        caminho=Path(f"/tmp/{nome}"),
+        long_summary=resumo,
+        url="https://x/1",
+        data_publicacao=data,
+        secao=secao,
+    )
+
+
+class TestOrdemDoLote:
+    @needs_display
+    def test_ordena_por_grupo_e_data_decrescente(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = NoticiasPanel(
+                root,
+                catalog=NoticiasCatalog(cache_dir=tmp_path),
+                debounce_ms=0,
+            )
+            painel._itens = {
+                "1": _arq_noticia(SECAO_GERAL, "g_old", "2026-01-05"),
+                "2": _arq_noticia(SECAO_CENSURAS, "c_old", "2026-02-01"),
+                "3": _arq_noticia(SECAO_GERAL, "g_new", "2026-09-20 10:00:00"),
+                "4": _arq_noticia(SECAO_CENSURAS, "c_new", "2026-08-01"),
+                "5": _arq_noticia(SECAO_PROGRAMAS, "p", "2026-05-05"),
+                "6": _arq_noticia(SECAO_CONDICOES, "co", "2026-03-03"),
+                "7": _arq_noticia(SECAO_GERAL, "g_resumido", resumo="x"),
+            }
+            nomes = [a.nome for a in painel.pendentes_ordenados()]
+            assert nomes == ["c_new", "c_old", "co", "p", "g_new", "g_old"]
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_data_ausente_ou_empatada_tem_ordem_estavel(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = NoticiasPanel(
+                root,
+                catalog=NoticiasCatalog(cache_dir=tmp_path),
+                debounce_ms=0,
+            )
+            painel._itens = {
+                "1": _arq_noticia(
+                    SECAO_GERAL, "sem_data", "", ano=2025, mes=3, categoria="B"
+                ),
+                "2": _arq_noticia(SECAO_GERAL, "iso_data", "2026-09-20"),
+                "3": _arq_noticia(
+                    SECAO_GERAL, "iso_data_hora", "2026-09-20 10:00:00"
+                ),
+                "4": _arq_noticia(
+                    SECAO_GERAL, "empate_a", "2026-09-20", categoria="A"
+                ),
+                "5": _arq_noticia(
+                    SECAO_GERAL, "invalida", "not-a-date", ano=2024, mes=1
+                ),
+            }
+            primeira = [a.nome for a in painel.pendentes_ordenados()]
+            segunda = [a.nome for a in painel.pendentes_ordenados()]
+            assert primeira == segunda
+            assert primeira == [
+                "empate_a",
+                "iso_data",
+                "iso_data_hora",
+                "sem_data",
+                "invalida",
+            ]
+        finally:
+            root.destroy()
+
+
+class _LLMQueCancela(_LLMFake):
+    """LLM fake que solicita cancelamento logo após a primeira resposta."""
+
+    def __init__(self, token):
+        super().__init__()
+        self._token = token
+
+    def complete(self, messages, system_prompt=None):
+        resposta = super().complete(messages, system_prompt)
+        self._token.request()
+        return resposta
+
+
+class TestPersistenciaImediataNoticias:
+    @needs_display
+    def test_lote_grava_no_worker(self, tmp_path):
+        noticias = [
+            _noticia(
+                titulo="PETROBRAS (PETR4) - Suspensão de negociação",
+                url="https://x/1",
+                data_publicacao="2026-09-20 10:00:00",
+            ),
+            _noticia(
+                titulo="VALE (VALE3) - Retomada de negociação",
+                url="https://x/2",
+                data_publicacao="2026-09-10 10:00:00",
+            ),
+        ]
+        catalogo = _semear(tmp_path, noticias)
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        llm = _LLMFake()
+        root = tk.Tk()
+        try:
+            painel = NoticiasPanel(
+                root,
+                catalog=catalogo,
+                summary_store=store,
+                llm_factory=lambda: llm,
+                llm_available=lambda: True,
+                debounce_ms=0,
+            )
+            painel.update(_REFERENCIA)
+            assert painel.persistir_no_lote() is True
+
+            job = ResumosPendentesJob(
+                painel, painel.pendentes_ordenados(), continuar_em_erro=True
+            )
+            job.iniciar().join()
+
+            assert len(store.resumos(ESCOPO_NOTICIAS)) == 2
+        finally:
+            root.destroy()
+
+    @needs_display
+    def test_cancelamento_preserva_resumos_ja_gerados(self, tmp_path):
+        noticias = [
+            _noticia(
+                titulo="A - Suspensão de negociação",
+                url="https://x/1",
+                data_publicacao="2026-09-20 10:00:00",
+            ),
+            _noticia(
+                titulo="B - Retomada de negociação",
+                url="https://x/2",
+                data_publicacao="2026-09-10 10:00:00",
+            ),
+        ]
+        catalogo = _semear(tmp_path, noticias)
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        token = CancellationToken()
+        root = tk.Tk()
+        try:
+            painel = NoticiasPanel(
+                root,
+                catalog=catalogo,
+                summary_store=store,
+                llm_factory=lambda: _LLMQueCancela(token),
+                llm_available=lambda: True,
+                debounce_ms=0,
+            )
+            painel.update(_REFERENCIA)
+            job = ResumosPendentesJob(
+                painel,
+                painel.pendentes_ordenados(),
+                cancel_token=token,
+                continuar_em_erro=True,
+            )
+            job.iniciar().join()
+
+            assert len(store.resumos(ESCOPO_NOTICIAS)) == 1
+        finally:
+            root.destroy()
+
+
+class _HostResumosNoticias(ResumosActionsMixin):
+    def __init__(self, painel):
+        self._noticias_panel = painel
+        self._resumos_job = None
+        self.capturado = None
+
+    def _iniciar_lote_resumos(self, painel, pendentes, guarda, continuar=False):
+        self.capturado = (painel, pendentes, guarda, continuar)
+
+
+class TestResumirNoticiasPendentes:
+    def test_usa_lista_ordenada_do_painel(self):
+        painel = MagicMock()
+        ordenados = [object(), object()]
+        painel.pendentes_ordenados.return_value = ordenados
+        host = _HostResumosNoticias(painel)
+
+        host._resumir_noticias_pendentes()
+
+        painel.pendentes_ordenados.assert_called_once()
+        assert host.capturado[0] is painel
+        assert host.capturado[1] == ordenados
+        assert host.capturado[3] is True

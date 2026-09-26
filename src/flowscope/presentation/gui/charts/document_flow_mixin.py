@@ -125,6 +125,28 @@ class DocumentFlowMixin:
         """Gera o resumo propagando falhas (usado pelo lote)."""
         return self._summary.gerar_estrito(arquivo, texto)
 
+    def persistir_no_lote(self: "DocumentFlowMixin") -> bool:
+        """Indica se o lote deve gravar o resumo na própria thread de trabalho.
+
+        O padrão é ``False``; painéis que querem sobreviver a interrupções do
+        lote — cancelamento, fechamento ou falha — sobrescrevem para ``True``.
+        """
+        return False
+
+    def gerar_e_persistir(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo, texto: str
+    ) -> ResumoDocumento | None:
+        """Gera o resumo e o grava no store, sem tocar em widgets nem memória.
+
+        É seguro chamar da thread de trabalho do lote: apenas o store é
+        acessado. A reflexão na árvore e na pré-visualização fica a cargo da
+        thread do Tk, via :meth:`refletir_resumo`.
+        """
+        resumo = self._summary.gerar_estrito(arquivo, texto)
+        if resumo is not None:
+            self._summary.persistir(arquivo, resumo)
+        return resumo
+
     def _iniciar_preview(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
     ) -> None:
@@ -255,6 +277,26 @@ class DocumentFlowMixin:
     ) -> None:
         """Grava o resumo e reflete-o no catálogo e na pré-visualização."""
         atualizado = self._summary.persistir(arquivo, resumo)
+        self._refletir_resumo(arquivo, resumo, atualizado)
+
+    def refletir_resumo(
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        resumo: ResumoDocumento,
+    ) -> None:
+        """Reflete um resumo já persistido, sem regravar no store.
+
+        Usado pela thread do Tk quando a gravação ocorreu no worker do lote.
+        """
+        self._refletir_resumo(arquivo, resumo, self._summary.atualizar(arquivo, resumo))
+
+    def _refletir_resumo(
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        resumo: ResumoDocumento,
+        atualizado: DocumentoArquivo,
+    ) -> None:
+        """Atualiza o catálogo em memória e recompõe a pré-visualização."""
         self._atualizar_resumo(atualizado)
         selecionado = self._arquivo_selecionado()
         if selecionado is not None and selecionado.caminho == arquivo.caminho:

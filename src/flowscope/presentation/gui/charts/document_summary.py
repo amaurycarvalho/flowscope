@@ -126,6 +126,18 @@ class DocumentSummaryService:
             return None
         return ResumirDocumentoUseCase(self._criar_llm()).resumir(texto)
 
+    def atualizar(
+        self: "DocumentSummaryService",
+        arquivo: DocumentoArquivo,
+        resumo: ResumoDocumento,
+    ) -> DocumentoArquivo:
+        """Devolve a entrada atualizada com o resumo, sem gravar no store."""
+        return replace(
+            arquivo,
+            short_summary=resumo.short_summary,
+            long_summary=resumo.long_summary,
+        )
+
     def persistir(
         self: "DocumentSummaryService",
         arquivo: DocumentoArquivo,
@@ -138,11 +150,7 @@ class DocumentSummaryService:
             resumo.short_summary,
             resumo.long_summary,
         )
-        return replace(
-            arquivo,
-            short_summary=resumo.short_summary,
-            long_summary=resumo.long_summary,
-        )
+        return self.atualizar(arquivo, resumo)
 
     def chave(self: "DocumentSummaryService", arquivo: DocumentoArquivo) -> str:
         """Deriva a chave do documento relativa à raiz de cache."""

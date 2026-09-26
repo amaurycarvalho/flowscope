@@ -16,10 +16,18 @@ from tkinter import ttk
 
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.domain.llm import LLMPort
-from flowscope.infrastructure.b3.noticias_aquisicao import SECAO_GERAL
+from flowscope.infrastructure.b3.noticias_aquisicao import (
+    SECAO_GERAL,
+    SECOES_ORDEM,
+    data_noticia,
+)
 from flowscope.infrastructure.b3.noticias_catalogo import (
     CatalogoNoticias,
     NoticiasCatalog,
+)
+from flowscope.infrastructure.b3.noticias_shards import (
+    NoticiasSummaryStore,
+    NoticiasTextStore,
 )
 from flowscope.infrastructure.b3.noticias_vinculo import (
     apontador_pendente,
@@ -27,7 +35,6 @@ from flowscope.infrastructure.b3.noticias_vinculo import (
 )
 from flowscope.infrastructure.document_catalog import DocumentoArquivo
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
-from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
@@ -53,6 +60,9 @@ from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 logger = logging.getLogger("flowscope")
 
 __all__ = ["CARREGANDO", "GERANDO_RESUMO", "NoticiasPanel"]
+
+#: Índice de cada categoria de topo na ordem de processamento do lote.
+_INDICE_SECAO = {secao: indice for indice, secao in enumerate(SECOES_ORDEM)}
 
 
 def _hoje() -> date:
@@ -87,13 +97,13 @@ class NoticiasPanel(DocumentFlowMixin):
         store = (
             summary_store
             or getattr(self._catalog, "summary_store", None)
-            or JsonDocumentSummaryStore(cache_dir=base)
+            or NoticiasSummaryStore(cache_dir=base)
         )
         self._summary = DocumentSummaryService(store, base, llm_factory, llm_available)
         self._text_store: DocumentTextStore = (
             text_store
             or getattr(self._catalog, "text_store", None)
-            or JsonDocumentTextStore(cache_dir=base)
+            or NoticiasTextStore(cache_dir=base)
         )
         self._open_callback = open_callback or abrir_url
         self._status_callback = status_callback
@@ -237,6 +247,48 @@ class NoticiasPanel(DocumentFlowMixin):
         gerar um resumo a partir do apontador.
         """
         return tem_texto(texto) and not self._apontador_pendente(arquivo, texto)
+
+    def persistir_no_lote(self: "NoticiasPanel") -> bool:
+        """Grava cada resumo na thread de trabalho, à prova de interrupção."""
+        return True
+
+    def pendentes_ordenados(self: "NoticiasPanel") -> list[DocumentoArquivo]:
+        """Retorna as notícias sem resumo por grupo e da mais recente à mais antiga.
+
+        A ordem é explícita e independe da ordem de inserção na árvore: as
+        categorias de topo seguem ``SECOES_ORDEM`` e, dentro de cada grupo, a
+        data de publicação é decrescente, com desempate determinista.
+        """
+        pendentes = [
+            arquivo
+            for arquivo in self._itens.values()
+            if arquivo.long_summary is None
+        ]
+        return sorted(pendentes, key=self._chave_ordenacao)
+
+    def _chave_ordenacao(
+        self: "NoticiasPanel", arquivo: DocumentoArquivo
+    ) -> tuple:
+        """Chave determinista: grupo, data decrescente e desempate estável."""
+        secao = getattr(arquivo, "secao", "")
+        return (
+            _INDICE_SECAO.get(secao, len(SECOES_ORDEM)),
+            -self._data_ordinal(arquivo),
+            getattr(arquivo, "categoria", ""),
+            arquivo.nome,
+            str(arquivo.caminho),
+        )
+
+    def _data_ordinal(
+        self: "NoticiasPanel", arquivo: DocumentoArquivo
+    ) -> int:
+        """Retorna o ordinal da data de publicação, com fallback ``(ano, mês)``."""
+        ano = max(arquivo.ano, 1)
+        mes = arquivo.mes if 1 <= arquivo.mes <= 12 else 1
+        fallback = date(ano, mes, 1)
+        return data_noticia(
+            getattr(arquivo, "data_publicacao", ""), fallback
+        ).toordinal()
 
     def _texto_do_arquivo(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str:
         """Extrai o corpo do artigo, resolvendo o documento vinculado da "Geral".

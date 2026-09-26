@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock
 
 from flowscope.domain.chat import DocumentSource
@@ -97,8 +97,9 @@ class TestNoticiasSource:
     def test_periodo_padrao_ultimos_30_dias(self):
         repositorio = MagicMock()
         repositorio.listar_noticias.return_value = []
-        NoticiasSource(repositorio).obter_documentos()
+        agora = datetime(2026, 7, 28, 23, 30, tzinfo=timezone.utc)
+        NoticiasSource(repositorio, now=lambda: agora).obter_documentos()
         chamada = repositorio.listar_noticias.call_args
-        hoje = date.today()
+        hoje = agora.date()
         assert chamada.kwargs["data_fim"] == hoje
         assert chamada.kwargs["data_inicio"] == hoje - timedelta(days=30)

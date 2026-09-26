@@ -56,7 +56,7 @@ class ResumosActionsMixin:
             return
         if self._resumos_em_andamento():
             return
-        pendentes = painel.documentos_sem_resumo()
+        pendentes = painel.pendentes_ordenados()
         if not pendentes:
             painel.refresh_resumir_button()
             return
@@ -81,6 +81,7 @@ class ResumosActionsMixin:
         self._resumos_continuar = continuar
         self._resumos_falhas = 0
         self._resumos_resumidos = 0
+        self._resumos_persistir_worker = self._painel_persiste_no_worker(painel)
         self._resumos_fase = None
         self._resumos_fase_inicio = None
         self._resumos_fase_completa = False
@@ -187,6 +188,11 @@ class ResumosActionsMixin:
             return painel
         return getattr(self, "_documents_panel", None)
 
+    def _painel_persiste_no_worker(self: "ResumosActionsMixin", painel: object) -> bool:
+        """Indica se o painel grava o resumo na thread de trabalho do lote."""
+        metodo = getattr(painel, "persistir_no_lote", None)
+        return bool(metodo()) if metodo is not None else False
+
     def _aplicar_resultado_resumo(
         self: "ResumosActionsMixin", mensagem: tuple, guarda: object
     ) -> None:
@@ -197,7 +203,10 @@ class ResumosActionsMixin:
         painel = self._painel_resumos()
         if painel is None or resumo is None:
             return
-        painel.aplicar_resumo(arquivo, resumo)
+        if getattr(self, "_resumos_persistir_worker", False):
+            painel.refletir_resumo(arquivo, resumo)
+        else:
+            painel.aplicar_resumo(arquivo, resumo)
         self._resumos_resumidos = getattr(self, "_resumos_resumidos", 0) + 1
 
     def _interromper_resumos(

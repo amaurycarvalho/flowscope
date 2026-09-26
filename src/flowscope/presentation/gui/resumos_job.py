@@ -128,6 +128,20 @@ class ResumosPendentesJob:
         self.sem_texto = total - len(com_texto)
         return com_texto
 
+    def _gerar_resumo(
+        self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
+    ) -> ResumoDocumento | None:
+        """Gera o resumo, persistindo no worker quando o painel assim o exige.
+
+        Painéis que expõem ``persistir_no_lote`` verdadeiro têm o resumo gravado
+        no store imediatamente após a geração, antes do próximo item; os demais
+        apenas geram e deixam a gravação para a thread do Tk.
+        """
+        metodo = getattr(self._painel, "persistir_no_lote", None)
+        if metodo is not None and metodo():
+            return self._painel.gerar_e_persistir(arquivo, texto)
+        return self._painel.gerar_resumo_estrito(arquivo, texto)
+
     def _texto_utilizavel(
         self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
     ) -> bool:
@@ -165,7 +179,7 @@ class ResumosPendentesJob:
             if self._cancel_token is not None:
                 self._cancel_token.raise_if_cancelled()
             try:
-                resumo = self._painel.gerar_resumo_estrito(arquivo, texto)
+                resumo = self._gerar_resumo(arquivo, texto)
             except Exception as exc:
                 self.fila.put((MENSAGEM_ERRO, arquivo, exc))
                 if not self._continuar_em_erro:

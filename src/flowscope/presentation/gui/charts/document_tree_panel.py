@@ -205,6 +205,10 @@ class DocumentTreePanel(DocumentFlowMixin):
         """Reavalia o estado do botão "Abrir documento" conforme a seleção."""
         self._atualizar_botao_abrir()
 
+    def persistir_no_lote(self: "DocumentTreePanel") -> bool:
+        """Grava cada resumo na thread de trabalho, à prova de interrupção."""
+        return True
+
     def mostrar_carregando(
         self: "DocumentTreePanel", ticker: str | None = None
     ) -> None:

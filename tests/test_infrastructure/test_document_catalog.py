@@ -7,6 +7,7 @@ from flowscope.infrastructure.document_catalog import (
     DocumentCatalog,
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
+from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 
 
 def _touch(caminho: Path, conteudo: bytes = b"x") -> None:
@@ -159,3 +160,10 @@ class TestResumos:
             cache_dir=tmp_path, summary_store=store
         ).catalogo("ALZR11")
         assert _arquivos(catalogo)[0].short_summary is None
+
+
+class TestStoresDeDocumentos:
+    def test_documentos_usa_os_stores_concretos_json(self, tmp_path):
+        catalogo = DocumentCatalog(cache_dir=tmp_path)
+        assert type(catalogo.summary_store) is JsonDocumentSummaryStore
+        assert type(catalogo.text_store) is JsonDocumentTextStore
