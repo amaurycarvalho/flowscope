@@ -21,15 +21,21 @@ from pathlib import Path
 import requests
 
 from flowscope.application.structured_ports import RegulacaoRepository
+from flowscope.domain.noticias import (
+    ESCOPO_NOTICIAS,
+    SECAO_CENSURAS,
+    SECAO_CONDICOES,
+    SECAO_GERAL,
+    SECAO_PROGRAMAS,
+    SECOES_ORDEM,
+    classificar_tipo,
+    noticia_excepcional,
+)
 from flowscope.domain.structured import (
     CensuraPublica,
     CondicaoExcepcional,
     NoticiaB3,
     ProgramaAquisicao,
-)
-from flowscope.infrastructure.b3.noticias_tipos import (
-    classificar_tipo,
-    noticia_excepcional,
 )
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
@@ -37,12 +43,21 @@ from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
 
 logger = logging.getLogger("flowscope")
 
+#: Constantes e regras de domínio reexportadas para compatibilidade de imports.
+__all__ = [
+    "ESCOPO_NOTICIAS",
+    "SECAO_CENSURAS",
+    "SECAO_CONDICOES",
+    "SECAO_GERAL",
+    "SECAO_PROGRAMAS",
+    "SECOES_ORDEM",
+    "classificar_tipo",
+    "noticia_excepcional",
+]
+
 
 #: Subpasta do cache de notícias sob o diretório de cache.
 PASTA_NOTICIAS = "noticias"
-
-#: Escopo usado como "ticker" nas stores de texto e resumo (notícias são globais).
-ESCOPO_NOTICIAS = "NOTICIAS"
 
 #: Granularidade (em dias) da carga da "Geral": um dia por vez.
 DIAS_LOTE = 1
@@ -52,23 +67,6 @@ _LOTE_INDICE = 25
 
 #: Período (em dias) de retrocesso da carga da "Geral" (aproximadamente 1 ano).
 DIAS_PERIODO = 365
-
-#: Categoria de topo "Geral" (notícias do Plantão B3).
-SECAO_GERAL = "Geral"
-
-#: Categoria de topo das censuras públicas.
-SECAO_CENSURAS = "Censuras Públicas"
-
-#: Categoria de topo das condições excepcionais.
-SECAO_CONDICOES = "Condições Excepcionais"
-
-#: Categoria de topo dos programas de aquisição de ações.
-SECAO_PROGRAMAS = "Programas de Aquisição de Ações"
-
-#: Ordem de exibição e de processamento das categorias de topo. A "Geral" fica
-#: por último para que sua carga (pesada, um download por artigo) e seus
-#: resumos só ocorram depois das fontes regulatórias.
-SECOES_ORDEM = (SECAO_CENSURAS, SECAO_CONDICOES, SECAO_PROGRAMAS, SECAO_GERAL)
 
 #: Timeout padrão do download do corpo do artigo.
 _TIMEOUT = 30

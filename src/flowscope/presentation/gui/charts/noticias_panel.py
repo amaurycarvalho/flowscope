@@ -15,26 +15,22 @@ from pathlib import Path
 from tkinter import ttk
 
 from flowscope.application.document_text_port import DocumentTextStore
+from flowscope.application.documentos.document_summary import DocumentSummaryService
+from flowscope.application.documentos.document_summary_port import (
+    DocumentSummaryStore,
+)
+from flowscope.application.noticias.catalogo import (
+    ConsultarCatalogoNoticiasUseCase,
+    NoticiasCatalogo,
+)
+from flowscope.application.noticias.lote import pendentes_ordenados
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMPort
-from flowscope.infrastructure.b3.noticias_aquisicao import (
+from flowscope.domain.noticias import (
     SECAO_GERAL,
-    SECOES_ORDEM,
-    data_noticia,
-)
-from flowscope.infrastructure.b3.noticias_catalogo import (
     CatalogoNoticias,
-    NoticiasCatalog,
-)
-from flowscope.infrastructure.b3.noticias_shards import (
-    NoticiasSummaryStore,
-    NoticiasTextStore,
-)
-from flowscope.infrastructure.b3.noticias_vinculo import (
     apontador_pendente,
-    baixar_conteudo_vinculado,
 )
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
-from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
@@ -49,9 +45,6 @@ from flowscope.presentation.gui.charts.document_preview import (
     tem_texto,
     texto_preview,
 )
-from flowscope.presentation.gui.charts.document_summary import (
-    DocumentSummaryService,
-)
 from flowscope.presentation.gui.charts.noticias_tree_view import NoticiasTreeView
 from flowscope.presentation.gui.document_actions import abrir_url
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
@@ -60,9 +53,6 @@ from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 logger = logging.getLogger("flowscope")
 
 __all__ = ["CARREGANDO", "GERANDO_RESUMO", "NoticiasPanel"]
-
-#: Índice de cada categoria de topo na ordem de processamento do lote.
-_INDICE_SECAO = {secao: indice for indice, secao in enumerate(SECOES_ORDEM)}
 
 
 def _hoje() -> date:
@@ -77,9 +67,12 @@ class NoticiasPanel(DocumentFlowMixin):
         self: "NoticiasPanel",
         parent: tk.Widget,
         *,
-        catalog: NoticiasCatalog | None = None,
-        summary_store: JsonDocumentSummaryStore | None = None,
+        catalogo_use_case: ConsultarCatalogoNoticiasUseCase | None = None,
+        catalog: NoticiasCatalogo | None = None,
+        summary_service: DocumentSummaryService | None = None,
+        summary_store: DocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
+        baixar_vinculo: Callable[[str], str | None] | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[str], None] | None = None,
@@ -91,20 +84,17 @@ class NoticiasPanel(DocumentFlowMixin):
         reference_date_provider: Callable[[], date] | None = None,
         debounce_ms: int = 150,
     ) -> None:
-        """Constrói a árvore, a caixa de pré-visualização e os controles."""
-        self._catalog = catalog or NoticiasCatalog()
-        base = self._catalog.base_dir
-        store = (
-            summary_store
-            or getattr(self._catalog, "summary_store", None)
-            or NoticiasSummaryStore(cache_dir=base)
+        """Constrói a árvore, a caixa de pré-visualização e os controles.
+
+        O caso de uso do catálogo e as portas chegam por injeção; o painel não
+        constrói adaptadores de infraestrutura.
+        """
+        self._catalogo_uc = self._resolver_use_case(catalogo_use_case, catalog)
+        self._summary = self._resolver_summary(
+            summary_service, summary_store, catalog, llm_factory, llm_available
         )
-        self._summary = DocumentSummaryService(store, base, llm_factory, llm_available)
-        self._text_store: DocumentTextStore = (
-            text_store
-            or getattr(self._catalog, "text_store", None)
-            or NoticiasTextStore(cache_dir=base)
-        )
+        self._text_store = self._resolver_text_store(text_store, catalog)
+        self._baixar_vinculo = baixar_vinculo or (lambda _texto: None)
         self._open_callback = open_callback or abrir_url
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
@@ -116,7 +106,7 @@ class NoticiasPanel(DocumentFlowMixin):
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, object] = {}
         self._por_caminho: dict[Path, DocumentoArquivo] = {}
-        self._catalogo_noticias: CatalogoNoticias | None = None
+        self._catalogo_noticias = None
         self._catalogo_selecionado = None
         self._preview_cache: dict[Path, str] = {}
         self._reference_date: date | None = None
@@ -128,6 +118,55 @@ class NoticiasPanel(DocumentFlowMixin):
         self._build_toolbar()
         self._build_container()
         self.reset()
+
+    @staticmethod
+    def _resolver_use_case(
+        catalogo_use_case: ConsultarCatalogoNoticiasUseCase | None,
+        catalog: NoticiasCatalogo | None,
+    ) -> ConsultarCatalogoNoticiasUseCase:
+        """Resolve o caso de uso do catálogo, construindo-o do repositório."""
+        if catalogo_use_case is not None:
+            return catalogo_use_case
+        if catalog is None:
+            raise ValueError(
+                "NoticiasPanel exige 'catalogo_use_case' ou 'catalog'."
+            )
+        return ConsultarCatalogoNoticiasUseCase(catalog)
+
+    @staticmethod
+    def _resolver_summary(
+        summary_service: DocumentSummaryService | None,
+        summary_store: DocumentSummaryStore | None,
+        catalog: NoticiasCatalogo | None,
+        llm_factory: Callable[[], LLMPort] | None,
+        llm_available: Callable[[], bool] | None,
+    ) -> DocumentSummaryService:
+        """Resolve o serviço de resumo, injetado ou montado do repositório."""
+        if summary_service is not None:
+            return summary_service
+        store = summary_store
+        base = None
+        if catalog is not None:
+            store = store or catalog.summary_store
+            base = catalog.base_dir
+        if store is None or base is None:
+            raise ValueError(
+                "NoticiasPanel exige 'summary_service' ou "
+                "'summary_store' com a raiz de cache."
+            )
+        return DocumentSummaryService(store, base, llm_factory, llm_available)
+
+    @staticmethod
+    def _resolver_text_store(
+        text_store: DocumentTextStore | None,
+        catalog: NoticiasCatalogo | None,
+    ) -> DocumentTextStore:
+        """Resolve o store de texto, injetado ou obtido do repositório."""
+        if text_store is not None:
+            return text_store
+        if catalog is None:
+            raise ValueError("NoticiasPanel exige 'text_store' ou 'catalog'.")
+        return catalog.text_store
 
     def _build_toolbar(self: "NoticiasPanel") -> None:
         """Constrói a barra com os controles de atualizar e abrir."""
@@ -198,7 +237,7 @@ class NoticiasPanel(DocumentFlowMixin):
         """
         self._reference_date = reference_date
         self._limpar()
-        catalogo = self._catalog.secoes(reference_date)
+        catalogo = self._catalogo_uc.secoes()
         if catalogo.vazio:
             self._show_empty("Sem notícias em cache")
         else:
@@ -255,40 +294,10 @@ class NoticiasPanel(DocumentFlowMixin):
     def pendentes_ordenados(self: "NoticiasPanel") -> list[DocumentoArquivo]:
         """Retorna as notícias sem resumo por grupo e da mais recente à mais antiga.
 
-        A ordem é explícita e independe da ordem de inserção na árvore: as
-        categorias de topo seguem ``SECOES_ORDEM`` e, dentro de cada grupo, a
-        data de publicação é decrescente, com desempate determinista.
+        A ordem é determinista e vive na aplicação; a apresentação apenas
+        delega os itens em memória.
         """
-        pendentes = [
-            arquivo
-            for arquivo in self._itens.values()
-            if arquivo.long_summary is None
-        ]
-        return sorted(pendentes, key=self._chave_ordenacao)
-
-    def _chave_ordenacao(
-        self: "NoticiasPanel", arquivo: DocumentoArquivo
-    ) -> tuple:
-        """Chave determinista: grupo, data decrescente e desempate estável."""
-        secao = getattr(arquivo, "secao", "")
-        return (
-            _INDICE_SECAO.get(secao, len(SECOES_ORDEM)),
-            -self._data_ordinal(arquivo),
-            getattr(arquivo, "categoria", ""),
-            arquivo.nome,
-            str(arquivo.caminho),
-        )
-
-    def _data_ordinal(
-        self: "NoticiasPanel", arquivo: DocumentoArquivo
-    ) -> int:
-        """Retorna o ordinal da data de publicação, com fallback ``(ano, mês)``."""
-        ano = max(arquivo.ano, 1)
-        mes = arquivo.mes if 1 <= arquivo.mes <= 12 else 1
-        fallback = date(ano, mes, 1)
-        return data_noticia(
-            getattr(arquivo, "data_publicacao", ""), fallback
-        ).toordinal()
+        return pendentes_ordenados(list(self._itens.values()))
 
     def _texto_do_arquivo(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str:
         """Extrai o corpo do artigo, resolvendo o documento vinculado da "Geral".
@@ -302,7 +311,7 @@ class NoticiasPanel(DocumentFlowMixin):
         texto = texto_preview(arquivo.caminho, SELETOR_CONTEUDO_DETALHE)
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
             return texto
-        return baixar_conteudo_vinculado(texto) or texto
+        return self._baixar_vinculo(texto) or texto
 
     def all_buttons(self: "NoticiasPanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""

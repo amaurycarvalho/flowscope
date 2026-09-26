@@ -11,10 +11,10 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
+from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import Guidance
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
-from flowscope.presentation.gui.charts.document_guidance import GuidanceService
 from flowscope.presentation.gui.resumos_job import (
     FASE_PREPARAR,
     FASE_RESUMIR,
@@ -65,6 +65,9 @@ class _PainelFake:
             raise RuntimeError("conversão falhou")
         self.preparados.append(arquivo.nome)
         return self._textos.get(arquivo.nome, "")
+
+    def persistir_no_lote(self):
+        return False
 
     def gerar_resumo_estrito(self, arquivo, texto):
         if self._falha_resumir == arquivo.nome:

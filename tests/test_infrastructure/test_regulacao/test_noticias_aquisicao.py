@@ -39,7 +39,7 @@ from flowscope.infrastructure.b3.noticias_aquisicao import (
 from flowscope.infrastructure.b3.noticias_carga import AquisicaoNoticias
 from flowscope.infrastructure.b3.noticias_catalogo import NoticiasCatalog
 from flowscope.infrastructure.b3.noticias_index import NoticiasIndexStore
-from flowscope.infrastructure.b3.noticias_tipos import (
+from flowscope.domain.noticias import (
     TERMOS_EXCEPCIONAIS,
     TIPO_OUTROS,
     TIPOS_NOTICIA,

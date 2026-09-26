@@ -5,11 +5,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
+from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.documents.texto import SEM_TEXTO
 from flowscope.domain.fii import Guidance
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
-from flowscope.presentation.gui.charts import document_guidance
-from flowscope.presentation.gui.charts.document_guidance import GuidanceService
-from flowscope.presentation.gui.charts.document_preview import SEM_TEXTO
+from flowscope.infrastructure.llm.config import guidance_llm_disponivel
 
 GUIDANCE = Guidance(
     valor_min=Decimal("0.74"),
@@ -123,7 +123,7 @@ def _mock_flag(monkeypatch, habilitado: bool, provider: bool) -> None:
         lambda: habilitado,
     )
     monkeypatch.setattr(
-        "flowscope.presentation.gui.charts.document_summary.llm_configurada",
+        "flowscope.infrastructure.llm.config.llm_configurada",
         lambda: provider,
     )
 
@@ -131,23 +131,27 @@ def _mock_flag(monkeypatch, habilitado: bool, provider: bool) -> None:
 class TestFlagLLM:
     def test_flag_desabilitado_nao_usa_llm(self, monkeypatch):
         _mock_flag(monkeypatch, habilitado=False, provider=True)
-        assert document_guidance._llm_disponivel() is False
+        assert guidance_llm_disponivel() is False
 
     def test_flag_habilitado_com_provider(self, monkeypatch):
         _mock_flag(monkeypatch, habilitado=True, provider=True)
-        assert document_guidance._llm_disponivel() is True
+        assert guidance_llm_disponivel() is True
 
     def test_flag_habilitado_sem_provider(self, monkeypatch):
         _mock_flag(monkeypatch, habilitado=True, provider=False)
-        assert document_guidance._llm_disponivel() is False
+        assert guidance_llm_disponivel() is False
 
     def test_desabilitado_usa_apenas_deterministico(self, monkeypatch):
         _mock_flag(monkeypatch, habilitado=False, provider=True)
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99")
-        monkeypatch.setattr(document_guidance, "extrair_guidance", extrator)
-        servico = GuidanceService(store, llm_factory=lambda: llm)
+        servico = GuidanceService(
+            store,
+            extrator=extrator,
+            llm_factory=lambda: llm,
+            llm_available=guidance_llm_disponivel,
+        )
         assert servico.avaliar(_arquivo(), "texto") == GUIDANCE
         assert llm.chamadas == []
         assert extrator.chamadas == 1
@@ -157,8 +161,12 @@ class TestFlagLLM:
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99")
-        monkeypatch.setattr(document_guidance, "extrair_guidance", extrator)
-        servico = GuidanceService(store, llm_factory=lambda: llm)
+        servico = GuidanceService(
+            store,
+            extrator=extrator,
+            llm_factory=lambda: llm,
+            llm_available=guidance_llm_disponivel,
+        )
         resultado = servico.avaliar(_arquivo(), "texto")
         assert resultado is not None
         assert resultado.valor_min == Decimal("0.99")

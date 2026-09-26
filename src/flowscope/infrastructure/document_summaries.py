@@ -12,11 +12,22 @@ import re
 import threading
 from pathlib import Path
 
+from flowscope.application.documentos.catalogo import chave_documento
+from flowscope.application.documentos.document_summary_port import (
+    DocumentSummaryStore,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
 
 logger = logging.getLogger("flowscope")
+
+__all__ = [
+    "DIRETORIO_RESUMOS",
+    "SCHEMA_VERSION_RESUMOS",
+    "JsonDocumentSummaryStore",
+    "chave_documento",
+]
 
 #: Subdiretório dos resumos dentro do diretório de cache.
 DIRETORIO_RESUMOS = "document-summaries"
@@ -28,16 +39,13 @@ SCHEMA_VERSION_RESUMOS = 1
 _CARACTERES_INSEGUROS = re.compile(r"[^A-Za-z0-9._-]")
 
 
-def chave_documento(caminho: Path, base: Path) -> str:
-    """Deriva a chave estável de um documento a partir do caminho relativo."""
-    try:
-        return Path(caminho).relative_to(Path(base)).as_posix()
-    except ValueError:
-        return Path(caminho).name
+class JsonDocumentSummaryStore(DocumentSummaryStore):
+    """Armazena resumos por ticker em arquivos JSON com escrita atômica.
 
-
-class JsonDocumentSummaryStore:
-    """Armazena resumos por ticker em arquivos JSON com escrita atômica."""
+    Adaptador concreto da porta ``DocumentSummaryStore``. O *read-modify-write*
+    de :meth:`salvar` é serializado por um lock para que gravações concorrentes
+    não percam resumos.
+    """
 
     def __init__(
         self: "JsonDocumentSummaryStore", cache_dir: Path | None = None

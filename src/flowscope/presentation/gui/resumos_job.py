@@ -15,8 +15,11 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
-from flowscope.application.resumo_documento import ResumoDocumento
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
+from flowscope.application.documentos.lote import (
+    PainelLote,
+    gerar_resumo_do_lote,
+)
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_preview import tem_texto
 
 logger = logging.getLogger("flowscope")
@@ -31,19 +34,18 @@ FASE_PREPARAR = "• Preparando textos"
 FASE_RESUMIR = "• Resumindo documentos"
 
 
-class _PainelDocumentos(Protocol):
-    """Fachada do painel de documentos usada pelo job de lote."""
+class _PainelDocumentos(PainelLote, Protocol):
+    """Fachada do painel de documentos usada pelo job de lote.
+
+    Além do seam de persistência (``persistir_no_lote``/``gerar_e_persistir``/
+    ``gerar_resumo_estrito``), expõe a preparação de texto e a avaliação de
+    guidance.
+    """
 
     def preparar_texto(
         self: "_PainelDocumentos", arquivo: DocumentoArquivo
     ) -> str:
         """Retorna o texto do documento, convertendo apenas em *miss*."""
-        ...
-
-    def gerar_resumo_estrito(
-        self: "_PainelDocumentos", arquivo: DocumentoArquivo, texto: str
-    ) -> ResumoDocumento | None:
-        """Gera o resumo propagando falhas."""
         ...
 
     def avaliar_guidance(
@@ -128,20 +130,6 @@ class ResumosPendentesJob:
         self.sem_texto = total - len(com_texto)
         return com_texto
 
-    def _gerar_resumo(
-        self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
-    ) -> ResumoDocumento | None:
-        """Gera o resumo, persistindo no worker quando o painel assim o exige.
-
-        Painéis que expõem ``persistir_no_lote`` verdadeiro têm o resumo gravado
-        no store imediatamente após a geração, antes do próximo item; os demais
-        apenas geram e deixam a gravação para a thread do Tk.
-        """
-        metodo = getattr(self._painel, "persistir_no_lote", None)
-        if metodo is not None and metodo():
-            return self._painel.gerar_e_persistir(arquivo, texto)
-        return self._painel.gerar_resumo_estrito(arquivo, texto)
-
     def _texto_utilizavel(
         self: "ResumosPendentesJob", arquivo: DocumentoArquivo, texto: str
     ) -> bool:
@@ -179,7 +167,7 @@ class ResumosPendentesJob:
             if self._cancel_token is not None:
                 self._cancel_token.raise_if_cancelled()
             try:
-                resumo = self._gerar_resumo(arquivo, texto)
+                resumo = gerar_resumo_do_lote(self._painel, arquivo, texto)
             except Exception as exc:
                 self.fila.put((MENSAGEM_ERRO, arquivo, exc))
                 if not self._continuar_em_erro:

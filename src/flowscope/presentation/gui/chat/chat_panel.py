@@ -23,6 +23,7 @@ from flowscope.application.chat import (
     ContextoDocumental,
     FonteContexto,
 )
+from flowscope.application.documentos.catalogo import CatalogoDocumentos
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.chat.conhecimento import montar_bloco_conhecimento
@@ -85,6 +86,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         watchlist_provider: Callable[[], list[str]] | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
+        catalogo: CatalogoDocumentos | None = None,
         cascata: CascataDocumentos | None = None,
         config_callback: Callable[[], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
@@ -99,7 +101,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._llm_factory = llm_factory
         self._llm_available = llm_available or (lambda: True)
         self._cascata = cascata or CascataDocumentos(
-            llm_factory=llm_factory, confirmar=self._confirmar_no_tk
+            catalog=catalogo,
+            llm_factory=llm_factory,
+            confirmar=self._confirmar_no_tk,
         )
         self._config_callback = config_callback
         self._status_callback = status_callback

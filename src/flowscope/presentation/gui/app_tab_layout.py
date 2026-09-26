@@ -3,18 +3,21 @@
 import tkinter as tk
 from tkinter import ttk
 
-from flowscope.infrastructure.llm.config import load_llm_config
-from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.presentation.gui.app_tabs import (
     ABOUT_TAB,
     CHAT_AI_TAB,
     ENABLED_TABS,
     TAB_CONFIGS,
 )
+from flowscope.presentation.gui.app_wiring import (
+    AdaptadoresDocumentos,
+    AdaptadoresNoticias,
+    montar_adaptadores_documentos,
+    montar_adaptadores_noticias,
+)
 from flowscope.presentation.gui.charts.correlation_network_panel import (
     CorrelationNetworkPanel,
 )
-from flowscope.presentation.gui.charts.document_summary import llm_configurada
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
@@ -83,8 +86,13 @@ class TabsLayoutMixin:
 
         general_noticias_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(general_noticias_frame, text="Notícias")
+        noticias = self._adaptadores_noticias()
         self._noticias_panel = NoticiasPanel(
             general_noticias_frame,
+            catalogo_use_case=noticias.catalogo_use_case,
+            summary_service=noticias.summary_service,
+            text_store=noticias.text_store,
+            baixar_vinculo=noticias.baixar_vinculo,
             status_callback=getattr(self, "_set_status", None),
             acquire_callback=getattr(self, "_adquirir_noticias", None),
             ia_callback=getattr(self, "_abrir_config_llm", None),
@@ -135,8 +143,13 @@ class TabsLayoutMixin:
                 )
                 self._fundamental_evolution_panel.frame.pack(fill=tk.BOTH, expand=True)
             elif name == "Documentos":
+                documentos = self._adaptadores_documentos()
                 self._documents_panel = DocumentTreePanel(
                     frame,
+                    catalogo_use_case=documentos.catalogo_use_case,
+                    summary_service=documentos.summary_service,
+                    text_store=documentos.text_store,
+                    guidance_service=documentos.guidance_service,
                     status_callback=getattr(self, "_set_status", None),
                     acquire_callback=getattr(self, "_adquirir_documentos", None),
                     ia_callback=getattr(self, "_abrir_config_llm", None),
@@ -156,16 +169,42 @@ class TabsLayoutMixin:
         self._chat_panel = self._criar_chat_panel(chat_frame)
         self._chat_panel.pack(fill=tk.BOTH, expand=True)
 
+    def _adaptadores_documentos(
+        self: "TabsLayoutMixin",
+    ) -> AdaptadoresDocumentos:
+        """Retorna os adaptadores de documentos, montando-os se necessário.
+
+        Em produção o composition root os injeta antes da construção das abas;
+        hosts de teste sem wiring montam o grafo sob demanda.
+        """
+        adaptadores = getattr(self, "_documentos_adapters", None)
+        if adaptadores is None:
+            adaptadores = montar_adaptadores_documentos()
+            self._documentos_adapters = adaptadores
+        return adaptadores
+
+    def _adaptadores_noticias(
+        self: "TabsLayoutMixin",
+    ) -> AdaptadoresNoticias:
+        """Retorna os adaptadores de notícias, montando-os se necessário."""
+        adaptadores = getattr(self, "_noticias_adapters", None)
+        if adaptadores is None:
+            adaptadores = montar_adaptadores_noticias()
+            self._noticias_adapters = adaptadores
+        return adaptadores
+
     def _criar_chat_panel(
         self: "TabsLayoutMixin", parent: tk.Widget
     ) -> ChatPanel:
         """Constrói o painel de chat ligado ao estado da janela principal."""
+        documentos = self._adaptadores_documentos()
         return ChatPanel(
             parent,
             fundamental_data_provider=lambda: getattr(self, "_fundamental_data", {}),
             watchlist_provider=self._watchlist_provider,
-            llm_factory=lambda: create_llm_provider(load_llm_config()),
-            llm_available=llm_configurada,
+            llm_factory=documentos.llm_factory,
+            llm_available=documentos.llm_available,
+            catalogo=documentos.catalogo,
             config_callback=getattr(self, "_abrir_config_llm", None),
             status_callback=getattr(self, "_set_status", None),
             fontes_adicionais=[self._criar_fonte_noticias()],
@@ -173,8 +212,11 @@ class TabsLayoutMixin:
 
     def _criar_fonte_noticias(self: "TabsLayoutMixin") -> FonteNoticias:
         """Cria a fonte adicional de contexto com as notícias do período."""
+        noticias = self._adaptadores_noticias()
         return FonteNoticias(
-            reference_date_provider=getattr(self, "_data_referencia", None)
+            catalog=noticias.catalogo,
+            text_store=noticias.text_store,
+            reference_date_provider=getattr(self, "_data_referencia", None),
         )
 
     def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:

@@ -130,6 +130,8 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, L
         self._update_checked = False
 
         self._build_top_bar()
+        self._wire_documentos()
+        self._wire_noticias()
         self._build_main_area()
         self._build_statusbar()
         self._build_action_buttons()

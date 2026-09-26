@@ -12,7 +12,7 @@ import threading
 import tkinter as tk
 
 from flowscope.application.resumo_documento import ResumoDocumento
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
     render_grupo,
@@ -138,14 +138,12 @@ class DocumentFlowMixin:
     ) -> ResumoDocumento | None:
         """Gera o resumo e o grava no store, sem tocar em widgets nem memória.
 
-        É seguro chamar da thread de trabalho do lote: apenas o store é
-        acessado. A reflexão na árvore e na pré-visualização fica a cargo da
-        thread do Tk, via :meth:`refletir_resumo`.
+        É seguro chamar da thread de trabalho do lote: a orquestração de gerar
+        e gravar vive no serviço de aplicação. A reflexão na árvore e na
+        pré-visualização fica a cargo da thread do Tk, via
+        :meth:`refletir_resumo`.
         """
-        resumo = self._summary.gerar_estrito(arquivo, texto)
-        if resumo is not None:
-            self._summary.persistir(arquivo, resumo)
-        return resumo
+        return self._summary.gerar_e_persistir(arquivo, texto)
 
     def _iniciar_preview(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo

@@ -1,8 +1,8 @@
 """Disponibilidade, geração e persistência de resumos de documentos.
 
-Concentra a decisão de "LLM configurada", a criação da porta de completion, a
-chamada ao serviço de resumo e a gravação no store, mantendo o painel de
-documentos focado na interface.
+Concentra a decisão de "LLM disponível", a chamada ao serviço de resumo e a
+gravação no store. As estratégias de LLM são injetadas pelo ponto de composição:
+a aplicação não conhece a configuração nem a fábrica de provedores.
 """
 
 import logging
@@ -10,33 +10,20 @@ from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
+from flowscope.application.documentos.catalogo import chave_documento
+from flowscope.application.documentos.document_summary_port import (
+    DocumentSummaryStore,
+)
+from flowscope.application.documentos.mensagens import mensagem_indisponivel
 from flowscope.application.resumo_documento import (
     ResumirDocumentoUseCase,
     ResumoDocumento,
 )
+from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.documents.texto import tem_texto
 from flowscope.domain.llm import LLMError, LLMPort
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
-from flowscope.infrastructure.document_summaries import (
-    JsonDocumentSummaryStore,
-    chave_documento,
-)
-from flowscope.infrastructure.llm.config import check_llm_deps, load_llm_config
-from flowscope.infrastructure.llm.factory import create_llm_provider
-from flowscope.presentation.gui.charts.document_grouping import (
-    mensagem_indisponivel,
-)
-from flowscope.presentation.gui.charts.document_preview import tem_texto
 
 logger = logging.getLogger("flowscope")
-
-
-def llm_configurada() -> bool:
-    """Indica se há provedor diferente de ``none`` e dependências presentes."""
-    try:
-        config = load_llm_config()
-        return config.get("provider", "none") != "none" and check_llm_deps()
-    except Exception:  # configuração ilegível não deve quebrar a interface
-        return False
 
 
 class DocumentSummaryService:
@@ -44,7 +31,7 @@ class DocumentSummaryService:
 
     def __init__(
         self: "DocumentSummaryService",
-        summary_store: JsonDocumentSummaryStore,
+        summary_store: DocumentSummaryStore,
         base_dir: Path,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
@@ -59,9 +46,7 @@ class DocumentSummaryService:
         """Indica se a geração de resumos está habilitada."""
         if self._llm_available is not None:
             return self._llm_available()
-        if self._llm_factory is not None:
-            return True
-        return llm_configurada()
+        return self._llm_factory is not None
 
     def mensagem_indisponivel(self: "DocumentSummaryService") -> str:
         """Retorna a mensagem de indisponibilidade conforme a LLM configurada."""
@@ -152,6 +137,21 @@ class DocumentSummaryService:
         )
         return self.atualizar(arquivo, resumo)
 
+    def gerar_e_persistir(
+        self: "DocumentSummaryService",
+        arquivo: DocumentoArquivo,
+        texto: str,
+    ) -> ResumoDocumento | None:
+        """Gera o resumo e o grava no store, sem tocar em widgets.
+
+        É seguro chamar da thread de trabalho do lote: apenas o store é
+        acessado, preservando a gravação imediata após cada item.
+        """
+        resumo = self.gerar_estrito(arquivo, texto)
+        if resumo is not None:
+            self.persistir(arquivo, resumo)
+        return resumo
+
     def chave(self: "DocumentSummaryService", arquivo: DocumentoArquivo) -> str:
         """Deriva a chave do documento relativa à raiz de cache."""
         try:
@@ -160,7 +160,7 @@ class DocumentSummaryService:
             return arquivo.nome
 
     def _criar_llm(self: "DocumentSummaryService") -> LLMPort:
-        """Cria a porta de completion a partir da factory ou da configuração."""
-        if self._llm_factory is not None:
-            return self._llm_factory()
-        return create_llm_provider(load_llm_config())
+        """Cria a porta de completion a partir da fábrica injetada."""
+        if self._llm_factory is None:
+            raise LLMError("Fábrica de LLM não configurada.")
+        return self._llm_factory()

@@ -4,9 +4,10 @@ Define o contrato de leitura/gravação por ticker consumido pela camada de
 apresentação, sem acoplar o consumidor à implementação de infraestrutura.
 """
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class DocumentTextStore(Protocol):
     """Contrato do cache persistente do texto extraído por documento."""
 

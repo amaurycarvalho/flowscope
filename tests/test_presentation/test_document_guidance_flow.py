@@ -3,7 +3,7 @@
 import queue
 from pathlib import Path
 
-from flowscope.infrastructure.document_catalog import DocumentoArquivo
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 
 

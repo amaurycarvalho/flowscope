@@ -12,6 +12,7 @@ import logging
 import re
 from pathlib import Path
 
+from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
 
@@ -27,7 +28,7 @@ SCHEMA_VERSION_TEXTOS = 1
 _CARACTERES_INSEGUROS = re.compile(r"[^A-Za-z0-9._-]")
 
 
-class JsonDocumentTextStore:
+class JsonDocumentTextStore(DocumentTextStore):
     """Armazena textos de documentos por ticker em JSON com escrita atômica."""
 
     def __init__(

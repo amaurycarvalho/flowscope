@@ -13,18 +13,17 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from flowscope.application.resumo_documento import ResumirDocumentoUseCase
-from flowscope.domain.llm import LLMError, LLMPort
-from flowscope.infrastructure.document_catalog import (
-    CatalogoTicker,
-    DocumentCatalog,
-    DocumentoArquivo,
-)
-from flowscope.infrastructure.document_summaries import (
-    JsonDocumentSummaryStore,
+from flowscope.application.document_text_port import DocumentTextStore
+from flowscope.application.documentos.catalogo import (
+    CatalogoDocumentos,
     chave_documento,
 )
-from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.application.documentos.document_summary_port import (
+    DocumentSummaryStore,
+)
+from flowscope.application.resumo_documento import ResumirDocumentoUseCase
+from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
+from flowscope.domain.llm import LLMError, LLMPort
 from flowscope.presentation.gui.charts.document_preview import (
     SEM_TEXTO,
     tem_texto,
@@ -91,14 +90,14 @@ class CascataDocumentos:
 
     def __init__(
         self: "CascataDocumentos",
-        catalog: DocumentCatalog | None = None,
+        catalog: CatalogoDocumentos | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         confirmar: ConfirmaAlvos | None = None,
         teto_documento: int = TETO_DOCUMENTO,
         teto_global: int = TETO_GLOBAL,
     ) -> None:
         """Guarda o catálogo, a fábrica de LLM e os limites do orçamento."""
-        self._catalog = catalog or DocumentCatalog()
+        self._catalog = catalog
         self._llm_factory = llm_factory
         self._confirmar = confirmar
         self._teto_documento = teto_documento
@@ -275,11 +274,11 @@ class CascataDocumentos:
         return "\n\n".join(selecionados)
 
     @property
-    def _text_store(self: "CascataDocumentos") -> JsonDocumentTextStore:
+    def _text_store(self: "CascataDocumentos") -> DocumentTextStore:
         """Store de textos associado ao catálogo."""
         return self._catalog.text_store
 
     @property
-    def _summary_store(self: "CascataDocumentos") -> JsonDocumentSummaryStore:
+    def _summary_store(self: "CascataDocumentos") -> DocumentSummaryStore:
         """Store de resumos associado ao catálogo."""
         return self._catalog.summary_store

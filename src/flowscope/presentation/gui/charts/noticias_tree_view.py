@@ -8,8 +8,8 @@ que a pré-visualização renderize a seção correta.
 
 import tkinter as tk
 
-from flowscope.infrastructure.b3.noticias_catalogo import CatalogoNoticias
-from flowscope.infrastructure.document_catalog import CatalogoTicker
+from flowscope.domain.documents import CatalogoTicker
+from flowscope.domain.noticias import CatalogoNoticias
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
 from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
 

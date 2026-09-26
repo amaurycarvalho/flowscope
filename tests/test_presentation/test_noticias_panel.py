@@ -51,8 +51,7 @@ from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
-from flowscope.presentation.gui.charts import noticias_panel as noticias_panel_mod
-from flowscope.presentation.gui.charts.document_summary import DocumentSummaryService
+from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
 from flowscope.presentation.gui.noticias_actions import NoticiasActionsMixin
 from flowscope.presentation.gui.noticias_job import (
@@ -72,15 +71,6 @@ needs_display = pytest.mark.skipif(
 )
 
 _REFERENCIA = date(2026, 9, 25)
-
-
-@pytest.fixture(autouse=True)
-def _sem_llm_por_padrao(monkeypatch):
-    """Torna a disponibilidade da LLM determinística nos testes do painel."""
-    monkeypatch.setattr(
-        "flowscope.presentation.gui.charts.document_summary.llm_configurada",
-        lambda: False,
-    )
 
 
 class _LLMFake:
@@ -373,12 +363,8 @@ class TestExtracaoNoticias:
             secao=SECAO_GERAL,
             url="https://x/1",
         )
-        monkeypatch.setattr(
-            noticias_panel_mod,
-            "baixar_conteudo_vinculado",
-            lambda _texto: "texto do documento",
-        )
         painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = lambda _texto: "texto do documento"
         resultado = painel._texto_do_arquivo(arquivo)
         assert resultado == "texto do documento"
         assert "Titulo" not in resultado
@@ -400,21 +386,12 @@ class TestExtracaoNoticias:
             secao=SECAO_GERAL,
             url="https://x/1",
         )
-        monkeypatch.setattr(
-            noticias_panel_mod,
-            "baixar_conteudo_vinculado",
-            lambda _texto: None,
-        )
         painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = lambda _texto: None
         assert painel._texto_do_arquivo(arquivo) == "Corpo"
 
     def test_regulatoria_nao_baixa_vinculo(self, tmp_path, monkeypatch):
         chamadas: list = []
-        monkeypatch.setattr(
-            noticias_panel_mod,
-            "baixar_conteudo_vinculado",
-            lambda texto: chamadas.append(texto) or "x",
-        )
         caminho = tmp_path / "n.html"
         caminho.write_text(
             "<html><body><pre id='conteudoDetalhe'>Corpo</pre></body></html>",
@@ -432,6 +409,7 @@ class TestExtracaoNoticias:
             url=None,
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = lambda texto: chamadas.append(texto) or "x"
         assert painel._texto_do_arquivo(arquivo) == "Corpo"
         assert chamadas == []
 
@@ -445,6 +423,7 @@ class TestAutoRecuperacao:
         painel._summary = DocumentSummaryService(
             JsonDocumentSummaryStore(cache_dir=tmp_path), tmp_path
         )
+        painel._baixar_vinculo = lambda _texto: None
         return painel
 
     @staticmethod
@@ -508,9 +487,7 @@ class TestAutoRecuperacao:
             chamadas.append(texto)
             return None if len(chamadas) == 1 else "CONTEUDO DO DOCUMENTO"
 
-        monkeypatch.setattr(
-            noticias_panel_mod, "baixar_conteudo_vinculado", _baixar
-        )
+        painel._baixar_vinculo = _baixar
         primeiro = painel.preparar_texto(arquivo)
         assert "frmExibirArquivoIPEExterno" in primeiro
         segundo = painel.preparar_texto(arquivo)
@@ -529,9 +506,7 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        monkeypatch.setattr(
-            noticias_panel_mod, "baixar_conteudo_vinculado", lambda _texto: None
-        )
+        painel._baixar_vinculo = lambda _texto: None
         job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
         job.iniciar().join()
         assert job.sem_texto == 1
@@ -545,11 +520,7 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        monkeypatch.setattr(
-            noticias_panel_mod,
-            "baixar_conteudo_vinculado",
-            lambda _texto: "CONTEUDO DO DOCUMENTO",
-        )
+        painel._baixar_vinculo = lambda _texto: "CONTEUDO DO DOCUMENTO"
         job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
         job.iniciar().join()
         assert job.sem_texto == 0
@@ -703,17 +674,13 @@ class TestResumos:
             ),
         )
         catalogo = NoticiasCatalog(cache_dir=tmp_path)
-        monkeypatch.setattr(
-            noticias_panel_mod,
-            "baixar_conteudo_vinculado",
-            lambda _texto: "CONTEUDO DO ARQUIVO VINCULADO",
-        )
         llm = _LLMFake()
         root = tk.Tk()
         try:
             painel = NoticiasPanel(
                 root,
                 catalog=catalogo,
+                baixar_vinculo=lambda _texto: "CONTEUDO DO ARQUIVO VINCULADO",
                 llm_factory=lambda: llm,
                 llm_available=lambda: True,
                 debounce_ms=0,
@@ -758,6 +725,9 @@ class TestResumos:
         class _PainelLote:
             def preparar_texto(self, arquivo):
                 return "texto"
+
+            def persistir_no_lote(self):
+                return False
 
             def gerar_resumo_estrito(self, arquivo, texto):
                 if arquivo.nome == "B":
@@ -995,93 +965,6 @@ class TestWiringSubAba:
 
     def test_tab_content_documentado(self):
         assert ("Análise Geral", "Notícias") in TAB_CONTENT
-
-
-def _arq_noticia(
-    secao,
-    nome,
-    data="",
-    *,
-    ano=2026,
-    mes=9,
-    categoria="cat",
-    resumo=None,
-):
-    return NoticiaArquivo(
-        ticker=ESCOPO_NOTICIAS,
-        ano=ano,
-        mes=mes,
-        categoria=categoria,
-        nome=nome,
-        tipo="html",
-        caminho=Path(f"/tmp/{nome}"),
-        long_summary=resumo,
-        url="https://x/1",
-        data_publicacao=data,
-        secao=secao,
-    )
-
-
-class TestOrdemDoLote:
-    @needs_display
-    def test_ordena_por_grupo_e_data_decrescente(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(
-                root,
-                catalog=NoticiasCatalog(cache_dir=tmp_path),
-                debounce_ms=0,
-            )
-            painel._itens = {
-                "1": _arq_noticia(SECAO_GERAL, "g_old", "2026-01-05"),
-                "2": _arq_noticia(SECAO_CENSURAS, "c_old", "2026-02-01"),
-                "3": _arq_noticia(SECAO_GERAL, "g_new", "2026-09-20 10:00:00"),
-                "4": _arq_noticia(SECAO_CENSURAS, "c_new", "2026-08-01"),
-                "5": _arq_noticia(SECAO_PROGRAMAS, "p", "2026-05-05"),
-                "6": _arq_noticia(SECAO_CONDICOES, "co", "2026-03-03"),
-                "7": _arq_noticia(SECAO_GERAL, "g_resumido", resumo="x"),
-            }
-            nomes = [a.nome for a in painel.pendentes_ordenados()]
-            assert nomes == ["c_new", "c_old", "co", "p", "g_new", "g_old"]
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_data_ausente_ou_empatada_tem_ordem_estavel(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(
-                root,
-                catalog=NoticiasCatalog(cache_dir=tmp_path),
-                debounce_ms=0,
-            )
-            painel._itens = {
-                "1": _arq_noticia(
-                    SECAO_GERAL, "sem_data", "", ano=2025, mes=3, categoria="B"
-                ),
-                "2": _arq_noticia(SECAO_GERAL, "iso_data", "2026-09-20"),
-                "3": _arq_noticia(
-                    SECAO_GERAL, "iso_data_hora", "2026-09-20 10:00:00"
-                ),
-                "4": _arq_noticia(
-                    SECAO_GERAL, "empate_a", "2026-09-20", categoria="A"
-                ),
-                "5": _arq_noticia(
-                    SECAO_GERAL, "invalida", "not-a-date", ano=2024, mes=1
-                ),
-            }
-            primeira = [a.nome for a in painel.pendentes_ordenados()]
-            segunda = [a.nome for a in painel.pendentes_ordenados()]
-            assert primeira == segunda
-            assert primeira == [
-                "empate_a",
-                "iso_data",
-                "iso_data_hora",
-                "sem_data",
-                "invalida",
-            ]
-        finally:
-            root.destroy()
 
 
 class _LLMQueCancela(_LLMFake):

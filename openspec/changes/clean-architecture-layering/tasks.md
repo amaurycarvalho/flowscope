@@ -14,7 +14,7 @@ passa e o change aparece em `openspec list`.
 ## 2. Fatias de maior payoff de teste
 
 - [x] 2.1 Criar o change `refactor-documentos-layers` (entidades de catálogo para `domain`; catálogo/resumo em `application`; painéis só desenham) e verificar com `openspec validate refactor-documentos-layers`
-- [ ] 2.2 Criar o change `refactor-noticias-layers` (classificação e entidades de notícia para `domain`/`application`; painel só desenha) e verificar com `openspec validate refactor-noticias-layers`
+- [x] 2.2 Criar o change `refactor-noticias-layers` (classificação e entidades de notícia para `domain`/`application`; painel só desenha) e verificar com `openspec validate refactor-noticias-layers`
 - [ ] 2.3 Criar o change `refactor-fundamental-table-layers` (linhas, CSV e evolução dos fundamentos como view-models de `application`) e verificar com `openspec validate refactor-fundamental-table-layers`
 
 ## 3. Fatias de gráficos e indicadores

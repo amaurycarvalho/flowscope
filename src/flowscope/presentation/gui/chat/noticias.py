@@ -8,31 +8,29 @@ devolvendo o resumo e/ou o texto resolvido do item; notícias "Geral" cujo
 documento vinculado (CVM RAD/FNET) não foi baixado são sinalizadas em vez de
 apresentar a URL como conteúdo.
 
-Não há filtro por ticker na montagem: a LLM infere o ticker referido na pergunta
-e seleciona as notícias relacionadas.
+A montagem do índice é regra de aplicação; aqui apenas se injeta o catálogo e o
+store de texto e se formata o bloco. Não há filtro por ticker: a LLM infere o
+ticker referido na pergunta e seleciona as notícias relacionadas.
 """
 
-import hashlib
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import date, datetime, timezone
-from itertools import zip_longest
-from pathlib import Path
 
 from flowscope.application.chat import FonteContexto
-from flowscope.infrastructure.b3.noticias_aquisicao import (
+from flowscope.application.document_text_port import DocumentTextStore
+from flowscope.application.noticias.catalogo import NoticiasCatalogo
+from flowscope.application.noticias.fonte_chat import (
+    TETO_INDICE,
+    NoticiaEscopo,
+    escopo_de,
+    montar_indice,
+)
+from flowscope.domain.noticias import (
     ESCOPO_NOTICIAS,
     SECAO_GERAL,
-    SECOES_ORDEM,
-    data_noticia,
+    apontador_pendente,
 )
-from flowscope.infrastructure.b3.noticias_catalogo import (
-    NoticiaArquivo,
-    NoticiasCatalog,
-)
-from flowscope.infrastructure.b3.noticias_vinculo import apontador_pendente
-from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.presentation.gui.charts.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
     tem_texto,
@@ -43,16 +41,6 @@ logger = logging.getLogger("flowscope")
 
 #: Título da seção de notícias no prompt do chat.
 TITULO_FONTE = "Notícias e informações regulatórias da B3"
-
-#: Instrução de como pedir o conteúdo integral das notícias indexadas.
-INSTRUCAO_CHAVES = (
-    "As notícias abaixo estão indexadas (seção, data, tipo, título e chave). "
-    'Para ler o conteúdo integral de uma delas, inclua a sua chave no campo '
-    '"documentos" da resposta.'
-)
-
-#: Teto de caracteres do índice compacto de notícias no contexto do chat.
-TETO_INDICE = 32000
 
 #: Teto de caracteres por notícia lida na segunda camada.
 TETO_ITEM = 12000
@@ -72,50 +60,23 @@ def _hoje() -> date:
     return datetime.now(timezone.utc).date()
 
 
-def _chave_curta(chave: str) -> str:
-    """Deriva uma chave curta e estável a partir da chave relativa do item."""
-    return "n" + hashlib.sha1(chave.encode("utf-8")).hexdigest()[:10]
-
-
-def _ordem_data(valor: str) -> date:
-    """Interpreta a data de publicação para ordenação, tolerando formatos."""
-    return data_noticia(valor, date.min)
-
-
-@dataclass(frozen=True)
-class NoticiaEscopo:
-    """Notícia em cache com a chave curta usada no escalonamento do chat."""
-
-    secao: str
-    nome: str
-    data_publicacao: str
-    categoria: str
-    chave: str
-    caminho: Path
-    short_summary: str | None = None
-    long_summary: str | None = None
-
-    @property
-    def chave_curta(self: "NoticiaEscopo") -> str:
-        """Chave curta e estável exibida no índice e pedida pela LLM."""
-        return _chave_curta(self.chave)
-
-
 class FonteNoticias:
     """Oferece o índice das notícias e o conteúdo integral sob demanda."""
 
     def __init__(
         self: "FonteNoticias",
-        catalog: NoticiasCatalog | None = None,
-        text_store: JsonDocumentTextStore | None = None,
+        catalog: NoticiasCatalogo | None = None,
+        text_store: DocumentTextStore | None = None,
         reference_date_provider: Callable[[], date] | None = None,
         teto: int = TETO_INDICE,
         teto_item: int = TETO_ITEM,
         teto_leitura: int = TETO_LEITURA,
     ) -> None:
         """Guarda o catálogo, o store de textos e os limites do orçamento."""
-        self._catalog = catalog or NoticiasCatalog()
-        self._text_store = text_store or self._catalog.text_store
+        self._catalog = catalog
+        self._text_store = text_store or (
+            catalog.text_store if catalog is not None else None
+        )
         self._reference_date_provider = reference_date_provider or _hoje
         self._teto = teto
         self._teto_item = teto_item
@@ -134,44 +95,15 @@ class FonteNoticias:
     def listar(self: "FonteNoticias") -> list[NoticiaEscopo]:
         """Lista as notícias em cache como escopos, tolerando falha de leitura."""
         try:
-            arquivos = self._catalog.arquivos(self._reference_date_provider())
+            arquivos = self._catalog.arquivos()
         except Exception:  # cache frio ou falha de leitura não quebra o contexto
             logger.warning("Falha ao listar as notícias do chat", exc_info=True)
             return []
-        return [self._escopo(arquivo) for arquivo in arquivos]
-
-    def _escopo(self: "FonteNoticias", arquivo: NoticiaArquivo) -> NoticiaEscopo:
-        """Monta o escopo do chat a partir de um arquivo do catálogo."""
-        return NoticiaEscopo(
-            secao=arquivo.secao,
-            nome=arquivo.nome,
-            data_publicacao=arquivo.data_publicacao,
-            categoria=arquivo.categoria,
-            chave=self._catalog.chave(arquivo),
-            caminho=arquivo.caminho,
-            short_summary=arquivo.short_summary,
-            long_summary=arquivo.long_summary,
-        )
+        return [escopo_de(arquivo, self._catalog.chave(arquivo)) for arquivo in arquivos]
 
     def _montar(self: "FonteNoticias", escopos: list[NoticiaEscopo]) -> str:
         """Monta o índice compacto respeitando o teto de caracteres."""
-        linhas: list[str] = []
-        total = len(INSTRUCAO_CHAVES) + 1
-        for escopo in _intercalar(escopos):
-            linha = self._linha(escopo)
-            if linhas and total + len(linha) + 1 > self._teto:
-                break
-            linhas.append(linha)
-            total += len(linha) + 1
-        return "\n".join([INSTRUCAO_CHAVES, *linhas])[: self._teto]
-
-    @staticmethod
-    def _linha(escopo: NoticiaEscopo) -> str:
-        """Formata uma linha do índice com seção, data, tipo, título e chave."""
-        return (
-            f"[{escopo.secao}] {escopo.data_publicacao} — {escopo.categoria} — "
-            f"{escopo.nome} (chave: {escopo.chave_curta})"
-        )
+        return montar_indice(escopos, self._teto)
 
     # ── Segunda camada: conteúdo integral sob demanda ────────────────
 
@@ -235,38 +167,3 @@ class FonteNoticias:
         """Indica se o texto é o apontador da "Geral" ainda não resolvido."""
         corpo = texto_preview(alvo.caminho, SELETOR_CONTEUDO_DETALHE)
         return apontador_pendente(texto, corpo)
-
-
-def _intercalar(escopos: list[NoticiaEscopo]) -> list[NoticiaEscopo]:
-    """Ordena por seção (ordem fixa) e intercala, do mais recente ao mais antigo.
-
-    A intercalação garante que todas as categorias apareçam no índice mesmo com
-    orçamento curto, em vez de concentrar tudo na primeira seção.
-    """
-    por_secao = _agrupar_por_secao(escopos)
-    filas = [por_secao[secao] for secao in _ordem_secoes(por_secao)]
-    return [
-        escopo
-        for rodada in zip_longest(*filas)
-        for escopo in rodada
-        if escopo is not None
-    ]
-
-
-def _agrupar_por_secao(
-    escopos: list[NoticiaEscopo],
-) -> dict[str, list[NoticiaEscopo]]:
-    """Agrupa os escopos por seção, ordenando cada grupo do mais recente."""
-    por_secao: dict[str, list[NoticiaEscopo]] = {}
-    for escopo in escopos:
-        por_secao.setdefault(escopo.secao, []).append(escopo)
-    for lista in por_secao.values():
-        lista.sort(key=lambda e: _ordem_data(e.data_publicacao), reverse=True)
-    return por_secao
-
-
-def _ordem_secoes(por_secao: dict[str, list[NoticiaEscopo]]) -> list[str]:
-    """Ordena as seções pela ordem fixa, deixando as desconhecidas ao final."""
-    fixas = [secao for secao in SECOES_ORDEM if secao in por_secao]
-    extras = [secao for secao in por_secao if secao not in SECOES_ORDEM]
-    return fixas + extras

@@ -8,7 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
-from flowscope.infrastructure.document_catalog import (
+from flowscope.domain.documents import (
     CatalogoTicker,
     CategoriaDocumentos,
     DocumentoArquivo,

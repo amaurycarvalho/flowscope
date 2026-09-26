@@ -10,17 +10,5 @@
 
 presentation/gui/app_about_actions.py -> infrastructure
 presentation/gui/app_actions.py -> infrastructure
-presentation/gui/app_tab_layout.py -> infrastructure
-presentation/gui/charts/document_flow_mixin.py -> infrastructure
-presentation/gui/charts/document_grouping.py -> infrastructure
-presentation/gui/charts/document_guidance.py -> infrastructure
-presentation/gui/charts/document_summary.py -> infrastructure
-presentation/gui/charts/document_tree_panel.py -> infrastructure
-presentation/gui/charts/document_tree_view.py -> infrastructure
-presentation/gui/charts/noticias_panel.py -> infrastructure
-presentation/gui/charts/noticias_tree_view.py -> infrastructure
-presentation/gui/chat/documentos.py -> infrastructure
-presentation/gui/chat/noticias.py -> infrastructure
 presentation/gui/controller_fundamental.py -> infrastructure
 presentation/gui/llm/config_dialog.py -> infrastructure
-presentation/gui/resumos_job.py -> infrastructure

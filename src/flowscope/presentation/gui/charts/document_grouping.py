@@ -8,7 +8,13 @@ a mensagem de indisponibilidade.
 from dataclasses import dataclass
 from pathlib import Path
 
-from flowscope.infrastructure.document_catalog import (
+from flowscope.application.documentos.mensagens import (
+    RESUMO_INDISPONIVEL,
+    SUFIXO_LLM_AUSENTE,
+    SUFIXO_LLM_CONFIGURADA,
+    mensagem_indisponivel,
+)
+from flowscope.domain.documents import (
     AnoDocumentos,
     CatalogoTicker,
     CategoriaDocumentos,
@@ -16,23 +22,17 @@ from flowscope.infrastructure.document_catalog import (
     MesDocumentos,
 )
 
-#: Prefixo da mensagem exibida quando não há resumo disponível.
-RESUMO_INDISPONIVEL = "Resumo indisponível."
-
-#: Sufixo da mensagem de indisponibilidade com a LLM configurada.
-SUFIXO_LLM_CONFIGURADA = " Clique no documento para análise."
-
-#: Sufixo da mensagem de indisponibilidade sem a LLM configurada.
-SUFIXO_LLM_AUSENTE = " Configure a LLM via o botão I.A. e teste a comunicação."
+__all__ = [
+    "RESUMO_INDISPONIVEL",
+    "SUFIXO_LLM_AUSENTE",
+    "SUFIXO_LLM_CONFIGURADA",
+    "Agrupamento",
+    "mensagem_indisponivel",
+    "render_grupo",
+]
 
 #: Profundidade de cada tipo de agrupamento na hierarquia.
 _PROFUNDIDADE = {"ticker": 1, "ano": 2, "mes": 3, "categoria": 4}
-
-
-def mensagem_indisponivel(llm_configurada: bool) -> str:
-    """Monta a mensagem de resumo indisponível conforme a LLM esteja pronta."""
-    sufixo = SUFIXO_LLM_CONFIGURADA if llm_configurada else SUFIXO_LLM_AUSENTE
-    return RESUMO_INDISPONIVEL + sufixo
 
 
 @dataclass(frozen=True)

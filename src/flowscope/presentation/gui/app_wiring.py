@@ -5,24 +5,38 @@ em um mixin próprio, mantendo ``app.py`` restrito à composição da janela.
 """
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
 
+from flowscope.application.document_text_port import DocumentTextStore
+from flowscope.application.documentos.catalogo import (
+    ConsultarCatalogoUseCase,
+)
+from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.application.fundamental_fallback import (
     CompositeFfoProvider,
     CompositeFundamentalProvider,
 )
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
+from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
+from flowscope.domain.llm import LLMPort
 from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.emprestimos import B3ShortInterestSource
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.noticias_carga import AquisicaoNoticias
+from flowscope.infrastructure.b3.noticias_catalogo import NoticiasCatalog
+from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vinculado
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
+from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
 )
@@ -45,14 +59,118 @@ from flowscope.infrastructure.fii.fundamentus.adapter import (
 from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
     FundamentusDividendHistoryProvider,
 )
+from flowscope.infrastructure.fii.guidance_extraction import extrair_guidance
 from flowscope.infrastructure.guidance_store import JsonGuidanceStore
+from flowscope.infrastructure.llm.config import (
+    guidance_llm_disponivel,
+    llm_configurada,
+    load_llm_config,
+)
+from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
+@dataclass(frozen=True)
+class AdaptadoresDocumentos:
+    """Adaptadores e serviços da fatia de Documentos para a apresentação."""
+
+    catalogo: DocumentCatalog
+    catalogo_use_case: ConsultarCatalogoUseCase
+    summary_service: DocumentSummaryService
+    text_store: DocumentTextStore
+    guidance_service: GuidanceService
+    llm_factory: Callable[[], LLMPort]
+    llm_available: Callable[[], bool]
+
+
+def montar_adaptadores_documentos(
+    cache_dir: Path | None = None,
+) -> AdaptadoresDocumentos:
+    """Monta o grafo de dependências da fatia de Documentos.
+
+    Ponto de composição: é o único lugar que combina adaptadores de
+    infraestrutura com portas de aplicação para os documentos.
+    """
+    base = Path(cache_dir) if cache_dir is not None else CacheManager().get_cache_dir()
+    catalogo = DocumentCatalog(cache_dir=base)
+    llm_factory: Callable[[], LLMPort] = lambda: create_llm_provider(
+        load_llm_config()
+    )
+    return AdaptadoresDocumentos(
+        catalogo=catalogo,
+        catalogo_use_case=ConsultarCatalogoUseCase(catalogo),
+        summary_service=DocumentSummaryService(
+            catalogo.summary_store,
+            base,
+            llm_factory=llm_factory,
+            llm_available=llm_configurada,
+        ),
+        text_store=catalogo.text_store,
+        guidance_service=GuidanceService(
+            JsonGuidanceStore(cache_dir=base),
+            llm_factory=llm_factory,
+            llm_available=guidance_llm_disponivel,
+            extrator=extrair_guidance,
+        ),
+        llm_factory=llm_factory,
+        llm_available=llm_configurada,
+    )
+
+
+@dataclass(frozen=True)
+class AdaptadoresNoticias:
+    """Adaptadores e serviços da fatia de Notícias para a apresentação."""
+
+    catalogo: NoticiasCatalog
+    catalogo_use_case: ConsultarCatalogoNoticiasUseCase
+    summary_service: DocumentSummaryService
+    text_store: DocumentTextStore
+    baixar_vinculo: Callable[[str], str | None]
+    llm_factory: Callable[[], LLMPort]
+    llm_available: Callable[[], bool]
+
+
+def montar_adaptadores_noticias(
+    cache_dir: Path | None = None,
+) -> AdaptadoresNoticias:
+    """Monta o grafo de dependências da fatia de Notícias.
+
+    Ponto de composição: é o único lugar que combina adaptadores de
+    infraestrutura com portas de aplicação para as notícias.
+    """
+    base = Path(cache_dir) if cache_dir is not None else CacheManager().get_cache_dir()
+    catalogo = NoticiasCatalog(cache_dir=base)
+    llm_factory: Callable[[], LLMPort] = lambda: create_llm_provider(
+        load_llm_config()
+    )
+    return AdaptadoresNoticias(
+        catalogo=catalogo,
+        catalogo_use_case=ConsultarCatalogoNoticiasUseCase(catalogo),
+        summary_service=DocumentSummaryService(
+            catalogo.summary_store,
+            base,
+            llm_factory=llm_factory,
+            llm_available=llm_configurada,
+        ),
+        text_store=catalogo.text_store,
+        baixar_vinculo=baixar_conteudo_vinculado,
+        llm_factory=llm_factory,
+        llm_available=llm_configurada,
+    )
+
+
 class WiringMixin:
     """Constrói o controller e os providers usados pela janela principal."""
+
+    def _wire_documentos(self: "WiringMixin") -> None:
+        """Monta os adaptadores de documentos antes da construção das abas."""
+        self._documentos_adapters = montar_adaptadores_documentos()
+
+    def _wire_noticias(self: "WiringMixin") -> None:
+        """Monta os adaptadores de notícias antes da construção das abas."""
+        self._noticias_adapters = montar_adaptadores_noticias()
 
     def _wire_controller(self: "WiringMixin") -> None:
         """Monta o grafo de dependências e conecta a lista de tickers."""

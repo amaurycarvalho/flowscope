@@ -15,25 +15,23 @@ from pathlib import Path
 from tkinter import ttk
 
 from flowscope.application.document_text_port import DocumentTextStore
-from flowscope.domain.llm import LLMPort
-from flowscope.infrastructure.document_catalog import (
-    CatalogoTicker,
-    DocumentCatalog,
-    DocumentoArquivo,
+from flowscope.application.documentos.catalogo import (
+    CatalogoDocumentos,
+    ConsultarCatalogoUseCase,
 )
-from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
-from flowscope.infrastructure.document_texts import JsonDocumentTextStore
-from flowscope.infrastructure.guidance_store import JsonGuidanceStore
+from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.application.documentos.document_summary import DocumentSummaryService
+from flowscope.application.documentos.document_summary_port import (
+    DocumentSummaryStore,
+)
+from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
+from flowscope.domain.llm import LLMPort
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
     DocumentFlowMixin,
 )
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
-from flowscope.presentation.gui.charts.document_guidance import GuidanceService
-from flowscope.presentation.gui.charts.document_summary import (
-    DocumentSummaryService,
-)
 from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
@@ -51,8 +49,10 @@ class DocumentTreePanel(DocumentFlowMixin):
         self: "DocumentTreePanel",
         parent: tk.Widget,
         *,
-        catalog: DocumentCatalog | None = None,
-        summary_store: JsonDocumentSummaryStore | None = None,
+        catalogo_use_case: ConsultarCatalogoUseCase | None = None,
+        catalog: CatalogoDocumentos | None = None,
+        summary_service: DocumentSummaryService | None = None,
+        summary_store: DocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
         guidance_service: GuidanceService | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
@@ -65,26 +65,17 @@ class DocumentTreePanel(DocumentFlowMixin):
         resumir_ativo_callback: Callable[[], bool] | None = None,
         debounce_ms: int = 150,
     ) -> None:
-        """Constrói a árvore, a caixa de pré-visualização e os controles."""
-        self._catalog = catalog or DocumentCatalog()
-        store = (
-            summary_store
-            or getattr(self._catalog, "summary_store", None)
-            or JsonDocumentSummaryStore()
+        """Constrói a árvore, a caixa de pré-visualização e os controles.
+
+        O caso de uso do catálogo e as portas de resumo/texto chegam por
+        injeção; o painel não constrói adaptadores de infraestrutura.
+        """
+        self._catalogo_uc = self._resolver_use_case(catalogo_use_case, catalog)
+        self._summary = self._resolver_summary(
+            summary_service, summary_store, catalog, llm_factory, llm_available
         )
-        self._summary = DocumentSummaryService(
-            store, self._catalog.base_dir, llm_factory, llm_available
-        )
-        self._text_store: DocumentTextStore = (
-            text_store
-            or getattr(self._catalog, "text_store", None)
-            or JsonDocumentTextStore(cache_dir=self._catalog.base_dir)
-        )
-        self._guidance = guidance_service or GuidanceService(
-            JsonGuidanceStore(cache_dir=self._catalog.base_dir),
-            llm_factory=llm_factory,
-            llm_available=llm_available,
-        )
+        self._text_store = self._resolver_text_store(text_store, catalog)
+        self._guidance = guidance_service
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
@@ -106,6 +97,57 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._build_toolbar()
         self._build_container()
         self.reset()
+
+    @staticmethod
+    def _resolver_use_case(
+        catalogo_use_case: ConsultarCatalogoUseCase | None,
+        catalog: CatalogoDocumentos | None,
+    ) -> ConsultarCatalogoUseCase:
+        """Resolve o caso de uso do catálogo, construindo-o do repositório."""
+        if catalogo_use_case is not None:
+            return catalogo_use_case
+        if catalog is None:
+            raise ValueError(
+                "DocumentTreePanel exige 'catalogo_use_case' ou 'catalog'."
+            )
+        return ConsultarCatalogoUseCase(catalog)
+
+    @staticmethod
+    def _resolver_summary(
+        summary_service: DocumentSummaryService | None,
+        summary_store: DocumentSummaryStore | None,
+        catalog: CatalogoDocumentos | None,
+        llm_factory: Callable[[], LLMPort] | None,
+        llm_available: Callable[[], bool] | None,
+    ) -> DocumentSummaryService:
+        """Resolve o serviço de resumo, injetado ou montado do repositório."""
+        if summary_service is not None:
+            return summary_service
+        store = summary_store
+        base = None
+        if catalog is not None:
+            store = store or catalog.summary_store
+            base = catalog.base_dir
+        if store is None or base is None:
+            raise ValueError(
+                "DocumentTreePanel exige 'summary_service' ou "
+                "'summary_store' com a raiz de cache."
+            )
+        return DocumentSummaryService(store, base, llm_factory, llm_available)
+
+    @staticmethod
+    def _resolver_text_store(
+        text_store: DocumentTextStore | None,
+        catalog: CatalogoDocumentos | None,
+    ) -> DocumentTextStore:
+        """Resolve o store de texto, injetado ou obtido do repositório."""
+        if text_store is not None:
+            return text_store
+        if catalog is None:
+            raise ValueError(
+                "DocumentTreePanel exige 'text_store' ou 'catalog'."
+            )
+        return catalog.text_store
 
     def _build_toolbar(self: "DocumentTreePanel") -> None:
         """Constrói a barra com os controles de atualizar e abrir."""
@@ -183,7 +225,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         if not ticker:
             self._show_empty("Selecione um ticker")
         else:
-            catalogo = self._catalog.catalogo(ticker)
+            catalogo = self._catalogo_uc.executar(ticker)
             if catalogo.vazio:
                 self._show_empty(f"Sem documentos em cache para {ticker}")
             else:

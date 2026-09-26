@@ -17,13 +17,11 @@ from flowscope.application.cancellation import (
     OperacaoCancelada,
 )
 from flowscope.application.resumo_documento import ResumoDocumento
-from flowscope.infrastructure.document_catalog import (
-    DocumentCatalog,
-    DocumentoArquivo,
-)
+from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.llm import LLMCommunicationError
+from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
-from flowscope.domain.llm import LLMCommunicationError
 from flowscope.presentation.gui import (
     app_actions,
     app_resumos_actions,
@@ -32,9 +30,6 @@ from flowscope.presentation.gui import (
 )
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
-from flowscope.presentation.gui.charts.document_summary import (
-    DocumentSummaryService,
-)
 from flowscope.presentation.gui.documentos_job import (
     MENSAGEM_PROGRESSO,
     DocumentosJob,
@@ -76,15 +71,6 @@ needs_display = pytest.mark.skipif(
     not os.environ.get("DISPLAY"),
     reason="Test requires a display (no DISPLAY env var)",
 )
-
-
-@pytest.fixture(autouse=True)
-def _sem_llm_por_padrao(monkeypatch):
-    """Torna a disponibilidade da LLM determinística nos testes do painel."""
-    monkeypatch.setattr(
-        "flowscope.presentation.gui.charts.document_summary.llm_configurada",
-        lambda: False,
-    )
 
 
 def _touch(caminho: Path, conteudo: bytes = b"x") -> None:
@@ -948,40 +934,6 @@ class TestFachadaDocumentos:
             root.destroy()
 
 
-class TestGerarEstrito:
-    def _servico(self, tmp_path, llm):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        return DocumentSummaryService(
-            store, tmp_path, llm_factory=lambda: llm, llm_available=lambda: True
-        )
-
-    def test_propaga_llm_error(self, tmp_path):
-        class _Falha:
-            def complete(self, messages, system_prompt=None):
-                raise LLMCommunicationError("timeout")
-
-        servico = self._servico(tmp_path, _Falha())
-        with pytest.raises(LLMCommunicationError):
-            servico.gerar_estrito(_arquivo(tmp_path), "texto")
-
-    def test_propaga_excecao_inesperada(self, tmp_path):
-        class _Falha:
-            def complete(self, messages, system_prompt=None):
-                raise RuntimeError("boom")
-
-        servico = self._servico(tmp_path, _Falha())
-        with pytest.raises(RuntimeError):
-            servico.gerar_estrito(_arquivo(tmp_path), "texto")
-
-    def test_gerar_continua_tolerante(self, tmp_path):
-        class _Falha:
-            def complete(self, messages, system_prompt=None):
-                raise LLMCommunicationError("timeout")
-
-        servico = self._servico(tmp_path, _Falha())
-        assert servico.gerar(_arquivo(tmp_path), "texto") is None
-
-
 class TestAplicarResumo:
     @needs_display
     def test_grava_e_atualiza_catalogo(self, tmp_path):
@@ -1788,10 +1740,16 @@ class _PainelResumosFake:
     def preparar_texto(self, arquivo):
         return self._textos.get(arquivo.nome, "")
 
+    def persistir_no_lote(self):
+        return False
+
     def gerar_resumo_estrito(self, arquivo, texto):
         if self._falha_em == arquivo.nome:
             raise LLMCommunicationError("timeout")
         return ResumoDocumento("curto", "longo")
+
+    def avaliar_guidance(self, arquivo, texto):
+        return None
 
     def aplicar_resumo(self, arquivo, resumo):
         self.aplicados.append(arquivo.nome)
@@ -2126,15 +2084,6 @@ class TestAgrupamento:
 
 
 class TestMensagemIndisponibilidade:
-    def test_dois_sufixos(self):
-        assert mensagem_indisponivel(True) == (
-            "Resumo indisponível. Clique no documento para análise."
-        )
-        assert mensagem_indisponivel(False) == (
-            "Resumo indisponível. Configure a LLM via o botão I.A. e teste "
-            "a comunicação."
-        )
-
     @needs_display
     def test_lista_usa_sufixo_da_llm_configurada(self, tmp_path):
         root = tk.Tk()

@@ -17,13 +17,17 @@ texto vazio), sem erro, mantendo o corpo original.
 import base64
 import json
 import logging
-import re
 import time
 from urllib.parse import parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
 
+from flowscope.domain.noticias import (
+    apontador_pendente,
+    extrair_url_vinculada,
+    host_suportado,
+)
 from flowscope.infrastructure.b3.bdr.text import extrair_texto as extrair_texto_pdf
 
 logger = logging.getLogger("flowscope")
@@ -37,44 +41,17 @@ TENTATIVAS = 3
 #: Espera base (em segundos) entre tentativas, multiplicada pela tentativa.
 ESPERA = 0.5
 
-#: Regex de uma URL absoluta no corpo da notícia.
-_URL = re.compile(r"https?://[^\s<>\"']+")
-
-#: Trechos que identificam o visualizador de documentos da CVM (RAD).
-_HOST_CVM_RAD = "rad.cvm.gov.br"
-_PAGINA_CVM_RAD = "frmExibirArquivoIPEExterno.aspx"
-
-#: Trechos que identificam o visualizador de documentos do FNET.
-_HOST_FNET = "fnet.bmfbovespa.com.br"
-_PAGINA_FNET = "visualizarDocumento"
-
 #: Trecho do ``iframe`` do FNET que serve o PDF do documento.
 _IFRAME_FNET = "exibirDocumento"
 
 #: Cabeçalho padrão das requisições.
 _USER_AGENT = "Mozilla/5.0"
 
-
-def extrair_url_vinculada(texto: str) -> str | None:
-    """Retorna a primeira URL suportada (CVM RAD ou FNET) embutida no corpo."""
-    if not texto:
-        return None
-    for bruta in _URL.findall(texto):
-        url = bruta.rstrip(".,;)")
-        if _host_suportado(url) is not None:
-            return url
-    return None
-
-
-def apontador_pendente(texto: str, corpo: str) -> bool:
-    """Indica se ``texto`` ainda é o apontador não resolvido do ``corpo``.
-
-    Vale quando o texto contém uma URL suportada e é idêntico ao corpo atual do
-    ``#conteudoDetalhe`` (ou seja, o download do documento vinculado não
-    concluiu). A comparação evita tratar como pendente um documento já resolvido
-    que porventura cite uma URL suportada.
-    """
-    return bool(corpo) and texto == corpo and extrair_url_vinculada(texto) is not None
+__all__ = [
+    "apontador_pendente",
+    "baixar_conteudo_vinculado",
+    "extrair_url_vinculada",
+]
 
 
 def baixar_conteudo_vinculado(
@@ -91,7 +68,7 @@ def baixar_conteudo_vinculado(
     url = extrair_url_vinculada(texto)
     if url is None:
         return None
-    host = _host_suportado(url)
+    host = host_suportado(url)
     if host is None:
         return None
     sessao = sessao or requests.Session()
@@ -102,15 +79,6 @@ def baixar_conteudo_vinculado(
     except Exception:  # falha isolada não pode interromper a pré-visualização
         logger.warning("Falha ao baixar documento vinculado %s", url, exc_info=True)
         return None
-
-
-def _host_suportado(url: str) -> str | None:
-    """Identifica o resolvedor aplicável à URL, ou ``None``."""
-    if _HOST_CVM_RAD in url and _PAGINA_CVM_RAD in url:
-        return "cvm"
-    if _HOST_FNET in url and _PAGINA_FNET in url:
-        return "fnet"
-    return None
 
 
 def _baixar_cvm_rad(

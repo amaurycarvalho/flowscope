@@ -171,3 +171,22 @@ def check_llm_deps() -> bool:
         return importlib.util.find_spec("litellm") is not None
     except (ImportError, ValueError):
         return False
+
+
+def llm_configurada() -> bool:
+    """Indica se há provedor diferente de ``none`` e dependências presentes."""
+    try:
+        config = load_llm_config()
+        return config.get("provider", "none") != "none" and check_llm_deps()
+    except Exception:  # configuração ilegível não deve quebrar a interface
+        return False
+
+
+def guidance_llm_disponivel() -> bool:
+    """Indica se a análise de guidance via LLM está habilitada e configurada.
+
+    O flag ``llm.guidance.enabled`` (padrão desabilitado) controla o uso da LLM
+    especificamente para guidance; quando desabilitado, roda apenas a extração
+    determinística, ainda que o provedor de chat esteja configurado.
+    """
+    return load_guidance_llm_enabled() and llm_configurada()

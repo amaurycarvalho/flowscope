@@ -2,21 +2,38 @@
 
 Varre as raízes de cache das fontes de documentos — ``bdr/``,
 ``informe-mensal/`` e ``documentos-relevantes/`` — e normaliza os arquivos
-encontrados em uma hierarquia pronta para exibição. A varredura é somente
-leitura e ignora raízes inexistentes.
+encontrados em uma hierarquia pronta para exibição, delegando o agrupamento e a
+ordenação ao read-model da aplicação. A varredura é somente leitura e ignora
+raízes inexistentes.
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from pathlib import Path
 
+from flowscope.application.documentos.catalogo import chave_documento, montar_catalogo
 from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.domain.documents import (
+    AnoDocumentos,
+    CatalogoTicker,
+    CategoriaDocumentos,
+    DocumentoArquivo,
+    MesDocumentos,
+)
 from flowscope.domain.structured import nome_por_slug
 from flowscope.infrastructure.cache import CacheManager
-from flowscope.infrastructure.document_summaries import (
-    JsonDocumentSummaryStore,
-    chave_documento,
-)
+from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+
+__all__ = [
+    "AnoDocumentos",
+    "CatalogoTicker",
+    "CategoriaDocumentos",
+    "DocumentCatalog",
+    "DocumentoArquivo",
+    "MesDocumentos",
+    "chave_documento",
+    "montar_catalogo",
+]
 
 #: Raízes com categoria fixa e o tipo de arquivo esperado.
 _RAIZES_FIXAS: tuple[tuple[str, str, str], ...] = (
@@ -28,60 +45,12 @@ _RAIZES_FIXAS: tuple[tuple[str, str, str], ...] = (
 _RAIZ_DOCUMENTOS_RELEVANTES = "documentos-relevantes"
 
 
-@dataclass(frozen=True)
-class DocumentoArquivo:
-    """Arquivo de documento em cache."""
-
-    ticker: str
-    ano: int
-    mes: int
-    categoria: str
-    nome: str
-    tipo: str
-    caminho: Path
-    short_summary: str | None = None
-    long_summary: str | None = None
-
-
-@dataclass(frozen=True)
-class CategoriaDocumentos:
-    """Categoria de documentos com seus arquivos, do mais recente ao mais antigo."""
-
-    nome: str
-    arquivos: tuple[DocumentoArquivo, ...] = ()
-
-
-@dataclass(frozen=True)
-class MesDocumentos:
-    """Mês com as categorias de documentos encontradas."""
-
-    mes: int
-    categorias: tuple[CategoriaDocumentos, ...] = ()
-
-
-@dataclass(frozen=True)
-class AnoDocumentos:
-    """Ano com os meses de documentos encontrados."""
-
-    ano: int
-    meses: tuple[MesDocumentos, ...] = ()
-
-
-@dataclass(frozen=True)
-class CatalogoTicker:
-    """Catálogo hierárquico dos documentos em cache de um ticker."""
-
-    ticker: str
-    anos: tuple[AnoDocumentos, ...] = field(default_factory=tuple)
-
-    @property
-    def vazio(self: "CatalogoTicker") -> bool:
-        """Indica se o ticker não possui documentos em cache."""
-        return not self.anos
-
-
 class DocumentCatalog:
-    """Varre as raízes de cache e normaliza os documentos de um ticker."""
+    """Varre as raízes de cache e normaliza os documentos de um ticker.
+
+    Adaptador de filesystem da porta ``CatalogoRepository``: localiza os
+    arquivos e delega a montagem da hierarquia ao read-model da aplicação.
+    """
 
     def __init__(
         self: "DocumentCatalog",
@@ -217,41 +186,3 @@ def _entrada(
         tipo=tipo,
         caminho=caminho,
     )
-
-
-def montar_catalogo(
-    ticker: str, arquivos: list[DocumentoArquivo]
-) -> CatalogoTicker:
-    """Agrupa e ordena os arquivos na hierarquia ano → mês → categoria."""
-    por_ano: dict[int, dict[int, dict[str, list[DocumentoArquivo]]]] = {}
-    for arquivo in arquivos:
-        por_ano.setdefault(arquivo.ano, {}).setdefault(
-            arquivo.mes, {}
-        ).setdefault(arquivo.categoria, []).append(arquivo)
-
-    anos: list[AnoDocumentos] = []
-    for ano in sorted(por_ano, reverse=True):
-        meses: list[MesDocumentos] = []
-        for mes in sorted(por_ano[ano], reverse=True):
-            categorias = [
-                CategoriaDocumentos(nome, _ordenar_arquivos(por_ano[ano][mes][nome]))
-                for nome in sorted(por_ano[ano][mes])
-            ]
-            meses.append(MesDocumentos(mes, tuple(categorias)))
-        anos.append(AnoDocumentos(ano, tuple(meses)))
-    return CatalogoTicker(ticker, tuple(anos))
-
-
-def _ordenar_arquivos(
-    arquivos: list[DocumentoArquivo],
-) -> tuple[DocumentoArquivo, ...]:
-    """Ordena os arquivos do mais recente ao mais antigo pelo nome."""
-    return tuple(sorted(arquivos, key=_chave_arquivo, reverse=True))
-
-
-def _chave_arquivo(arquivo: DocumentoArquivo) -> tuple[int, int, str]:
-    """Chave de ordenação numérica para nomes de arquivo por id."""
-    identificador = arquivo.caminho.stem
-    if identificador.isdigit():
-        return (1, int(identificador), "")
-    return (0, 0, identificador)
