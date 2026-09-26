@@ -16,6 +16,7 @@ from flowscope.domain.strategies.flow import (
     MoneyFlowVolumeStrategy,
     SellingPressureStrategy,
 )
+from flowscope.domain.strategies.pressure import pressure_percentages
 from flowscope.domain.strategies.price import (
     MedianPriceStrategy,
     RangePercentualStrategy,
@@ -58,4 +59,5 @@ __all__ = [
     "VolumeDensityStrategy",
     "VolumeProfileStrategy",
     "WeightedCloseStrategy",
+    "pressure_percentages",
 ]

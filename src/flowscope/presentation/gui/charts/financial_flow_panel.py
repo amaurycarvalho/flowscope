@@ -8,6 +8,10 @@ from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.application.flow import (
+    build_session_metrics,
+    generate_summary,
+)
 from flowscope.domain.strategies.classifiers import classify_money_flow
 from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
@@ -18,9 +22,7 @@ from flowscope.presentation.gui.charts.financial_flow_helpers import (
     draw_bs_bar,
     draw_card,
     draw_clv_bar,
-    extract_session_metrics,
     format_accumulated_mfv,
-    generate_summary,
     tooltip_lines,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
@@ -98,38 +100,38 @@ class FinancialFlowPanel:
         all_inds = info.get("all_indicators", {})
         daily_sorted = sorted(daily, key=lambda x: x["date"])
 
-        metrics = extract_session_metrics(daily_sorted, all_inds, info)
-        score = metrics["clv"]
+        metrics = build_session_metrics(daily_sorted, all_inds, info)
+        score = metrics.clv
 
         classification = classify_money_flow(score)
         mfv_value, mfv_millions = format_accumulated_mfv(
-            metrics["accumulated_mfv"]
+            metrics.accumulated_mfv
         )
 
-        draw_card(self._ax_card, metrics["dmf"], classification, mfv_value,
-                  metrics["rp"], ticker, metrics["fin_vol_millions"],
+        draw_card(self._ax_card, metrics.dmf, classification, mfv_value,
+                  metrics.rp, ticker, metrics.fin_vol_millions,
                   mfv_millions)
-        draw_clv_bar(self._ax_clv, metrics["clv"], metrics["dmf"])
-        draw_bs_bar(self._ax_bs, metrics["bp"], metrics["sp"])
+        draw_clv_bar(self._ax_clv, metrics.clv, metrics.dmf)
+        draw_bs_bar(self._ax_bs, metrics.bp, metrics.sp)
 
         self._hover_data.append({
-            "date": metrics["last_date"],
-            "dmf": metrics["dmf"],
-            "clv": metrics["clv"],
+            "date": metrics.last_date,
+            "dmf": metrics.dmf,
+            "clv": metrics.clv,
             "score": score,
             "classification": classification.label,
-            "fin_vol": metrics["fin_vol"],
+            "fin_vol": metrics.fin_vol,
             "mfv_acum": (
-                float(metrics["accumulated_mfv"])
-                if metrics["accumulated_mfv"] else None
+                float(metrics.accumulated_mfv)
+                if metrics.accumulated_mfv else None
             ),
-            "range_pct": metrics["rp"],
+            "range_pct": metrics.rp,
         })
 
         if self._summary_callback:
-            summary = generate_summary(metrics["dmf"], classification,
-                                       metrics["clv"], metrics["bp"],
-                                       metrics["sp"])
+            summary = generate_summary(metrics.dmf, classification,
+                                       metrics.clv, metrics.bp,
+                                       metrics.sp)
             self._summary_callback(summary)
 
         with warnings.catch_warnings():
