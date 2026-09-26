@@ -83,7 +83,7 @@ class EnvioMixin:
         """Monta o contexto e consulta a LLM em thread de trabalho."""
         try:
             self._cancel_token.raise_if_cancelled()
-            contexto = self._montar_contexto(pergunta, fundamentos, watchlist)
+            contexto = self._contexto.montar(pergunta, fundamentos, watchlist)
             self._cancel_token.raise_if_cancelled()
             usecase = ConsultarChatUseCase(self._criar_llm())
             resposta = usecase.consultar(

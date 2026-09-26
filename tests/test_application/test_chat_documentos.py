@@ -7,7 +7,7 @@ import pytest
 
 from flowscope.application.documentos.catalogo import chave_documento
 from flowscope.infrastructure.document_catalog import DocumentCatalog
-from flowscope.presentation.gui.chat.documentos import (
+from flowscope.application.chat.documentos import (
     FAIXA_AUTOMATICA,
     FAIXA_LISTAR,
     FAIXA_QUANTIDADE,

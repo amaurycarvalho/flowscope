@@ -18,6 +18,11 @@ from collections.abc import Callable
 from datetime import date, datetime, timezone
 
 from flowscope.application.chat import FonteContexto
+from flowscope.application.document_preview import (
+    SELETOR_CONTEUDO_DETALHE,
+    tem_texto,
+    texto_preview,
+)
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.noticias.catalogo import NoticiasCatalogo
 from flowscope.application.noticias.fonte_chat import (
@@ -30,11 +35,6 @@ from flowscope.domain.noticias import (
     ESCOPO_NOTICIAS,
     SECAO_GERAL,
     apontador_pendente,
-)
-from flowscope.presentation.gui.charts.document_preview import (
-    SELETOR_CONTEUDO_DETALHE,
-    tem_texto,
-    texto_preview,
 )
 
 logger = logging.getLogger("flowscope")

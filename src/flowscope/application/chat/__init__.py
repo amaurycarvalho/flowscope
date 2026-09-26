@@ -7,11 +7,19 @@ from flowscope.application.chat.consultar import (
     FonteContexto,
     RespostaChat,
 )
+from flowscope.application.chat.contexto import (
+    ConfirmaLeitura,
+    FonteAdicional,
+    MontarContextoChat,
+)
 
 __all__ = [
+    "ConfirmaLeitura",
     "ConsultarChatUseCase",
     "ContextoChat",
     "ContextoDocumental",
+    "FonteAdicional",
     "FonteContexto",
+    "MontarContextoChat",
     "RespostaChat",
 ]

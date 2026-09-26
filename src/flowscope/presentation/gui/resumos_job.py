@@ -15,12 +15,12 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
+from flowscope.application.document_preview import tem_texto
 from flowscope.application.documentos.lote import (
     PainelLote,
     gerar_resumo_do_lote,
 )
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.presentation.gui.charts.document_preview import tem_texto
 
 logger = logging.getLogger("flowscope")
 

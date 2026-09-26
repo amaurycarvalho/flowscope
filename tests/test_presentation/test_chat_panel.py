@@ -17,7 +17,7 @@ from flowscope.presentation.gui.chat.chat_panel import (
     ChatPanel,
     mensagem_confirmacao,
 )
-from flowscope.presentation.gui.chat.documentos import CascataDocumentos
+from flowscope.application.chat.documentos import CascataDocumentos
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 

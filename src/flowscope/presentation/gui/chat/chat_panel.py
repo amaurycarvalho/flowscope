@@ -18,23 +18,28 @@ from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
+from flowscope import __release_date__, __version__
 from flowscope.application.chat import (
-    ContextoChat,
-    ContextoDocumental,
-    FonteContexto,
+    FonteAdicional,
+    MontarContextoChat,
 )
-from flowscope.application.documentos.catalogo import CatalogoDocumentos
-from flowscope.domain.chat import ChatMessage, ChatSession
-from flowscope.domain.llm import LLMPort, LLMUnavailableError
-from flowscope.presentation.gui.chat.conhecimento import montar_bloco_conhecimento
-from flowscope.presentation.gui.chat.documentos import (
+from flowscope.application.chat.conhecimento import montar_bloco_conhecimento
+from flowscope.application.chat.documentos import (
     FAIXA_AUTOMATICA,
     CascataDocumentos,
     faixa_confirmacao,
 )
+from flowscope.application.documentos.catalogo import CatalogoDocumentos
+from flowscope.domain.chat import ChatMessage, ChatSession
+from flowscope.domain.llm import LLMPort, LLMUnavailableError
+from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.chat.envio import EnvioMixin
-from flowscope.presentation.gui.chat.fundamentos import montar_contexto_fundamentos
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
+from flowscope.presentation.gui.widgets.about_panel import (
+    APRESENTACAO,
+    LICENCA,
+    REPOSITORIO_URL,
+)
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 from flowscope.presentation.shortcuts import _resolve_icon_path
 
@@ -51,13 +56,6 @@ TITULO_CHAT = "Chat AI — watchlist completa"
 
 #: Rótulos das mensagens exibidas na conversa.
 _ROTULOS = {"user": "Você", "assistant": "Assistente"}
-
-#: Assinatura do callback que confirma a leitura do texto integral.
-ConfirmaAlvos = Callable[[int, list[str]], bool]
-
-#: Assinatura de um provedor de fonte adicional dependente da pergunta.
-FonteAdicional = Callable[[str], FonteContexto | None]
-
 
 def mensagem_confirmacao(quantidade: int, nomes: list[str]) -> str | None:
     """Monta o texto do diálogo de confirmação conforme a faixa de quantidade."""
@@ -108,6 +106,19 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._config_callback = config_callback
         self._status_callback = status_callback
         self._fontes_adicionais = list(fontes_adicionais or [])
+        self._contexto = MontarContextoChat(
+            cascata=self._cascata,
+            fontes_adicionais=self._fontes_adicionais,
+            confirmar=self._confirmar_no_tk,
+            conhecimento=montar_bloco_conhecimento(
+                TAB_CONTENT,
+                apresentacao=APRESENTACAO,
+                licenca=LICENCA,
+                versao=__version__,
+                release_date=__release_date__,
+                repositorio=REPOSITORIO_URL,
+            ),
+        )
         self._confirmation_timeout = confirmation_timeout
         self._init_envio()
         self._disponivel = True
@@ -267,84 +278,6 @@ class ChatPanel(EnvioMixin, tk.Frame):
         if self._llm_factory is None:
             raise LLMUnavailableError("Fábrica de LLM não configurada.")
         return self._llm_factory()
-
-    def _montar_contexto(
-        self: "ChatPanel", pergunta: str, fundamentos: dict, watchlist: list[str]
-    ) -> ContextoChat:
-        """Monta o contexto documental e os blocos estáticos da pergunta.
-
-        O escopo é sempre a watchlist completa; a LLM infere o ticker referido
-        a partir da pergunta.
-        """
-        resumos, _alvos = self._cascata.montar_resumos(None, watchlist)
-        documental = ContextoDocumental(
-            resumos=resumos,
-            preparar_texto=self._preparar_texto,
-            confirmar=self._confirmar_leitura,
-        )
-        return ContextoChat(
-            conhecimento=montar_bloco_conhecimento(),
-            fundamentos=montar_contexto_fundamentos(fundamentos, None, watchlist),
-            documentos=documental,
-            fontes_adicionais=self._preparar_fontes_adicionais(pergunta),
-        )
-
-    def _preparar_fontes_adicionais(
-        self: "ChatPanel", pergunta: str
-    ) -> list[FonteContexto]:
-        """Coleta as fontes adicionais, omitindo as que falham ou vêm vazias."""
-        fontes: list[FonteContexto] = []
-        for provider in self._fontes_adicionais:
-            try:
-                fonte = provider(pergunta)
-            except Exception:
-                logger.warning(
-                    "Fonte adicional de contexto falhou; ignorando.", exc_info=True
-                )
-                continue
-            if fonte is not None and fonte.texto:
-                fontes.append(fonte)
-        return fontes
-
-    def _fontes_escalaveis(self: "ChatPanel") -> list[object]:
-        """Fontes adicionais que resolvem chaves para o conteúdo integral.
-
-        A fonte de notícias expõe ``resolver_alvos``/``preparar_texto``; fontes
-        que não implementam o escalonamento (apenas texto) são ignoradas aqui.
-        """
-        return [
-            fonte
-            for fonte in self._fontes_adicionais
-            if callable(getattr(fonte, "resolver_alvos", None))
-            and callable(getattr(fonte, "preparar_texto", None))
-        ]
-
-    def _preparar_texto(self: "ChatPanel", chaves: list[str]) -> str:
-        """Resolve as chaves nos documentos e nas fontes adicionais escaláveis."""
-        restantes = set(chaves)
-        partes: list[str] = []
-        docs = self._cascata.resolver_alvos(chaves)
-        if docs:
-            partes.append(self._cascata.preparar_texto(docs))
-            restantes -= {doc.chave for doc in docs}
-        for fonte in self._fontes_escalaveis():
-            alvos = fonte.resolver_alvos(restantes)
-            if not alvos:
-                continue
-            partes.append(fonte.preparar_texto(alvos))
-            restantes -= {alvo.chave for alvo in alvos}
-        return "\n\n".join(parte for parte in partes if parte)
-
-    def _confirmar_leitura(self: "ChatPanel", chaves: list[str]) -> bool:
-        """Aplica o gate de confirmação somando documentos e fontes adicionais."""
-        nomes = [doc.nome for doc in self._cascata.resolver_alvos(chaves)]
-        for fonte in self._fontes_escalaveis():
-            nomes.extend(alvo.nome for alvo in fonte.resolver_alvos(chaves))
-        if faixa_confirmacao(len(nomes)) == FAIXA_AUTOMATICA:
-            return True
-        return bool(
-            self._confirmar_no_tk(len(nomes), nomes if len(nomes) <= 7 else [])
-        )
 
     def _atender_confirmacao(self: "ChatPanel", mensagem: tuple) -> None:
         """Exibe o diálogo de confirmação e libera a thread de trabalho."""

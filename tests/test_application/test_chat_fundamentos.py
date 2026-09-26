@@ -2,7 +2,7 @@
 
 import pytest
 
-from flowscope.presentation.gui.chat.fundamentos import (
+from flowscope.application.chat.fundamentos import (
     ORIENTACAO_SEM_DADOS,
     montar_contexto_fundamentos,
     serializar_fundamentos,

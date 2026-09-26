@@ -3,6 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+from flowscope.application.chat.noticias import FonteNoticias
 from flowscope.presentation.gui.app_tabs import (
     ABOUT_TAB,
     CHAT_AI_TAB,
@@ -31,7 +32,6 @@ from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.chat.chat_panel import ChatPanel
-from flowscope.presentation.gui.chat.noticias import FonteNoticias
 from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
 

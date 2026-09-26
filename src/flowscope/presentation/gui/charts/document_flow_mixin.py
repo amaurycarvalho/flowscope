@@ -11,16 +11,16 @@ import queue
 import threading
 import tkinter as tk
 
+from flowscope.application.document_preview import (
+    SEM_TEXTO,
+    tem_texto,
+    texto_preview,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
     render_grupo,
-)
-from flowscope.presentation.gui.charts.document_preview import (
-    SEM_TEXTO,
-    tem_texto,
-    texto_preview,
 )
 
 logger = logging.getLogger("flowscope")

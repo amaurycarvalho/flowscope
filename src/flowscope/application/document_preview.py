@@ -1,8 +1,10 @@
-"""Extração de texto dos documentos em cache para pré-visualização.
+"""Extração de texto dos documentos em cache.
 
 O HTML é convertido localmente e o PDF é lido com ``pypdf``. Uma falha de
 leitura ou um arquivo sem texto extraível resultam em string vazia, para que
-o painel exiba uma mensagem informativa sem erro.
+os consumidores exibam uma mensagem informativa sem erro. É uma regra de
+aplicação (extração/parsing), consumida pela apresentação e pelo contexto do
+chat.
 """
 
 import logging

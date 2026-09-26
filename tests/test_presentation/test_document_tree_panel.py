@@ -47,8 +47,8 @@ from flowscope.presentation.gui.app_tabs import (
     TAB_CONFIGS,
     TAB_CONTENT,
 )
-from flowscope.presentation.gui.charts import document_preview
-from flowscope.presentation.gui.charts.document_preview import (
+from flowscope.application import document_preview
+from flowscope.application.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
     SEM_TEXTO,
     tem_texto,

@@ -1,17 +1,12 @@
 """Bloco de conhecimento do próprio FlowScope para o contexto do chat.
 
-Compõe, uma única vez, os textos de orientação das sub-abas e as informações
-institucionais da aba "Sobre". O bloco é estável entre turnos e respondido como
-contexto de sistema para perguntas sobre o próprio aplicativo.
+Compõe os textos de orientação das sub-abas e as informações institucionais da
+aba "Sobre". A montagem e a ordem das seções são regras de aplicação; os textos
+de interface (``TAB_CONTENT`` e as informações da aba "Sobre") são fornecidos
+pela apresentação como entrada.
 """
 
-from flowscope import __release_date__, __version__
-from flowscope.presentation.gui.app_tabs import TAB_CONTENT
-from flowscope.presentation.gui.widgets.about_panel import (
-    APRESENTACAO,
-    LICENCA,
-    REPOSITORIO_URL,
-)
+from collections.abc import Mapping
 
 #: Cabeçalho da seção institucional do bloco de conhecimento.
 _CABECALHO_SOBRE = "Sobre o FlowScope"
@@ -25,10 +20,12 @@ def _texto_da_orientacao(corpo: list[tuple[str, str]]) -> str:
     return "".join(texto for texto, _estilo in corpo).strip()
 
 
-def _secoes_orientacao() -> list[str]:
+def _secoes_orientacao(
+    tab_content: Mapping[object, tuple[str, list[tuple[str, str]]]],
+) -> list[str]:
     """Monta uma seção de texto por sub-aba com orientação cadastrada."""
     secoes: list[str] = []
-    for titulo, corpo in TAB_CONTENT.values():
+    for titulo, corpo in tab_content.values():
         texto = _texto_da_orientacao(corpo)
         if not texto:
             continue
@@ -36,8 +33,16 @@ def _secoes_orientacao() -> list[str]:
     return secoes
 
 
-def montar_bloco_conhecimento() -> str:
-    """Monta o bloco de conhecimento do FlowScope a partir da GUI.
+def montar_bloco_conhecimento(
+    tab_content: Mapping[object, tuple[str, list[tuple[str, str]]]],
+    *,
+    apresentacao: str,
+    licenca: str,
+    versao: str,
+    release_date: str,
+    repositorio: str,
+) -> str:
+    """Monta o bloco de conhecimento do FlowScope.
 
     Reúne a apresentação, a licença e a versão do aplicativo com os textos de
     orientação das sub-abas, em um bloco enviado como contexto de sistema na
@@ -45,12 +50,12 @@ def montar_bloco_conhecimento() -> str:
     """
     partes = [
         f"# {_CABECALHO_SOBRE}",
-        APRESENTACAO,
-        f"Licença: {LICENCA}",
-        f"Versão: v{__version__} ({__release_date__})",
-        f"Repositório: {REPOSITORIO_URL}",
+        apresentacao,
+        f"Licença: {licenca}",
+        f"Versão: v{versao} ({release_date})",
+        f"Repositório: {repositorio}",
         "",
         f"# {_CABECALHO_ORIENTACAO}",
     ]
-    partes.extend(_secoes_orientacao())
+    partes.extend(_secoes_orientacao(tab_content))
     return "\n".join(partes)

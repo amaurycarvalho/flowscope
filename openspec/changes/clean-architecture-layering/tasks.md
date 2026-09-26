@@ -31,5 +31,5 @@ passa e o change aparece em `openspec list`.
 
 ## 5. Fechamento para o estado-alvo (A)
 
-- [ ] 5.1 Criar o change `enforce-clean-architecture-boundaries` (allowlist zerada; imports de `infrastructure` restritos ao composition root) e verificar com `openspec validate enforce-clean-architecture-boundaries`
+- [x] 5.1 Criar o change `enforce-clean-architecture-boundaries` (allowlist zerada; imports de `infrastructure` restritos ao composition root) e verificar com `openspec validate enforce-clean-architecture-boundaries`
 - [ ] 5.2 Verificar a conclusão do programa: todos os changes filhos arquivados, allowlist de fronteira vazia e guardrail verde, com `make test` e `make complexity`

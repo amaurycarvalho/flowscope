@@ -14,6 +14,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from tkinter import ttk
 
+from flowscope.application.document_preview import (
+    SELETOR_CONTEUDO_DETALHE,
+    tem_texto,
+    texto_preview,
+)
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.application.documentos.document_summary_port import (
@@ -39,11 +44,6 @@ from flowscope.presentation.gui.charts.document_flow_mixin import (
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
     render_grupo,
-)
-from flowscope.presentation.gui.charts.document_preview import (
-    SELETOR_CONTEUDO_DETALHE,
-    tem_texto,
-    texto_preview,
 )
 from flowscope.presentation.gui.charts.noticias_tree_view import NoticiasTreeView
 from flowscope.presentation.gui.document_actions import abrir_url

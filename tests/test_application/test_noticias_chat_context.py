@@ -10,9 +10,10 @@ from datetime import date
 from types import SimpleNamespace
 
 from flowscope.application.chat import (
-    ContextoChat,
     ConsultarChatUseCase,
+    ContextoChat,
     FonteContexto,
+    MontarContextoChat,
 )
 from flowscope.domain.structured import CensuraPublica, NoticiaB3
 from flowscope.infrastructure.b3.noticias_aquisicao import (
@@ -38,8 +39,7 @@ from flowscope.infrastructure.b3.noticias_index import (
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
-from flowscope.presentation.gui.chat.chat_panel import ChatPanel
-from flowscope.presentation.gui.chat.noticias import TITULO_FONTE, FonteNoticias
+from flowscope.application.chat.noticias import TITULO_FONTE, FonteNoticias
 
 _REFERENCIA = date(2026, 9, 25)
 
@@ -336,12 +336,12 @@ class _CascataVazia:
 
 class TestEscalonamentoNoPainel:
     @staticmethod
-    def _painel(cascata, fontes, confirmar=None):
-        painel = ChatPanel.__new__(ChatPanel)
-        painel._cascata = cascata
-        painel._fontes_adicionais = fontes
-        painel._confirmar_no_tk = confirmar or (lambda quantidade, nomes: True)
-        return painel
+    def _montador(cascata, fontes, confirmar=None):
+        return MontarContextoChat(
+            cascata=cascata,
+            fontes_adicionais=fontes,
+            confirmar=confirmar or (lambda quantidade, nomes: True),
+        )
 
     def test_soma_documentos_e_noticias(self, tmp_path):
         fonte = _fonte(tmp_path, [_noticia()])
@@ -355,9 +355,9 @@ class TestEscalonamentoNoPainel:
             def preparar_texto(self, alvos):
                 return "conteudo do documento"
 
-        painel = self._painel(_Cascata(), [fonte])
+        montador = self._montador(_Cascata(), [fonte])
         chave = _chave_do_indice(fonte("p").texto)
-        texto = painel._preparar_texto(["doc1", chave])
+        texto = montador.preparar_texto(["doc1", chave])
         assert "conteudo do documento" in texto
         assert "Corpo PETROBRAS" in texto
 
@@ -376,6 +376,6 @@ class TestEscalonamentoNoPainel:
             chamadas.append((quantidade, nomes))
             return True
 
-        painel = self._painel(_CascataVazia(), [fonte], confirmar=_confirmar)
-        assert painel._confirmar_leitura(chaves) is True
+        montador = self._montador(_CascataVazia(), [fonte], confirmar=_confirmar)
+        assert montador.confirmar_leitura(chaves) is True
         assert chamadas and chamadas[0][0] == 4

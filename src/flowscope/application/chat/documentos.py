@@ -13,6 +13,11 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from flowscope.application.document_preview import (
+    SEM_TEXTO,
+    tem_texto,
+    texto_preview,
+)
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
     CatalogoDocumentos,
@@ -24,11 +29,6 @@ from flowscope.application.documentos.document_summary_port import (
 from flowscope.application.resumo_documento import ResumirDocumentoUseCase
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 from flowscope.domain.llm import LLMError, LLMPort
-from flowscope.presentation.gui.charts.document_preview import (
-    SEM_TEXTO,
-    tem_texto,
-    texto_preview,
-)
 
 logger = logging.getLogger("flowscope")
 
