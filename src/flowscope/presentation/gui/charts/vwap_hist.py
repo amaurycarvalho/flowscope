@@ -7,23 +7,23 @@ transferência.
 """
 
 import tkinter as tk
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 
 from matplotlib.backend_bases import MouseEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 from matplotlib.text import Annotation
 
+from flowscope.application.vwap import (
+    collect_ticker_data,
+    compute_violin_shapes,
+)
 from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
     hide_empty,
     show_empty,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
-from flowscope.presentation.gui.charts.vwap_data import (
-    collect_ticker_data,
-    compute_violin_shapes,
-)
 
 
 class VWAPHistChart:
@@ -46,10 +46,10 @@ class VWAPHistChart:
         self._all_axes = [self._axes]
         self._empty_label = create_empty(self._figure, self._all_axes)
 
-        self._hover_tickers: list[str] = []
-        self._hover_vwaps: list[float] = []
+        self._hover_tickers: Sequence[str] = []
+        self._hover_vwaps: Sequence[float] = []
         self._hover_buckets: list[list[tuple[float, float]]] = []
-        self._hover_last_pct: list[float] = []
+        self._hover_last_pct: Sequence[float] = []
         self._violin_polygons: list[tuple[int, object]] = []
         self._annot = self._create_annotation()
         self._canvas.mpl_connect("motion_notify_event", self._on_hover)
@@ -64,11 +64,11 @@ class VWAPHistChart:
 
     def _clear_hover_state(self: "VWAPHistChart") -> None:
         """Limpa o estado de inspeção acumulado na última atualização."""
-        self._hover_tickers.clear()
-        self._hover_vwaps.clear()
-        self._hover_buckets.clear()
-        self._hover_last_pct.clear()
-        self._violin_polygons.clear()
+        self._hover_tickers = []
+        self._hover_vwaps = []
+        self._hover_buckets = []
+        self._hover_last_pct = []
+        self._violin_polygons = []
 
     def _show_empty(self: "VWAPHistChart") -> None:
         """Exibe o estado vazio e redesenha a tela do gráfico."""
@@ -77,10 +77,10 @@ class VWAPHistChart:
 
     def _store_hover_state(
         self: "VWAPHistChart",
-        tickers: list[str],
-        vwap_values_abs: list[float],
-        violin_shapes: list[tuple[list[float], list[float]]],
-        last_prices_pct: list[float],
+        tickers: Sequence[str],
+        vwap_values_abs: Sequence[float],
+        violin_shapes: Sequence[tuple[Sequence[float], Sequence[float]]],
+        last_prices_pct: Sequence[float],
     ) -> None:
         """Armazena os dados necessários para a inspeção por movimento do mouse."""
         self._hover_tickers = tickers
@@ -91,7 +91,7 @@ class VWAPHistChart:
     def _draw_violins(
         self: "VWAPHistChart",
         x_positions: list[int],
-        violin_shapes: list[tuple[list[float], list[float]]],
+        violin_shapes: Sequence[tuple[Sequence[float], Sequence[float]]],
         max_vol: float,
         violin_width: float = 0.35,
     ) -> None:
@@ -115,9 +115,9 @@ class VWAPHistChart:
     def _draw_markers(
         self: "VWAPHistChart",
         x_positions: list[int],
-        min_prices_pct: list[float],
-        max_prices_pct: list[float],
-        last_prices_pct: list[float],
+        min_prices_pct: Sequence[float],
+        max_prices_pct: Sequence[float],
+        last_prices_pct: Sequence[float],
     ) -> None:
         """Desenha a linha do zero, os intervalos e os marcadores de último preço."""
         self._axes.axhline(y=0, color="gray", linestyle="--", linewidth=0.8, zorder=1)
@@ -136,10 +136,10 @@ class VWAPHistChart:
 
     def _collect_all_y(
         self: "VWAPHistChart",
-        violin_shapes: list[tuple[list[float], list[float]]],
-        min_prices_pct: list[float],
-        max_prices_pct: list[float],
-        last_prices_pct: list[float],
+        violin_shapes: Sequence[tuple[Sequence[float], Sequence[float]]],
+        min_prices_pct: Sequence[float],
+        max_prices_pct: Sequence[float],
+        last_prices_pct: Sequence[float],
     ) -> list[float]:
         """Reúne todos os valores percentuais para definir o limite do eixo Y."""
         all_y: list[float] = []
@@ -153,7 +153,7 @@ class VWAPHistChart:
     def _configure_axes(
         self: "VWAPHistChart",
         x_positions: list[int],
-        tickers: list[str],
+        tickers: Sequence[str],
         all_y: list[float],
     ) -> None:
         """Configura rótulos, título, legenda e o limite vertical da figura."""
@@ -180,21 +180,29 @@ class VWAPHistChart:
         hide_empty(self._empty_label)
         self._axes.clear()
 
-        (tickers, violin_data, vwap_values_abs, min_prices_pct,
-         max_prices_pct, last_prices_pct) = collect_ticker_data(data)
+        dados = collect_ticker_data(data)
 
-        if not tickers:
+        if not dados.tickers:
             self._show_empty()
             return
 
-        x_positions = list(range(len(tickers)))
-        violin_shapes, max_vol, _bucket_size = compute_violin_shapes(violin_data)
+        x_positions = list(range(len(dados.tickers)))
+        formas = compute_violin_shapes(dados.violin_data)
 
-        self._draw_violins(x_positions, violin_shapes, max_vol)
-        self._store_hover_state(tickers, vwap_values_abs, violin_shapes, last_prices_pct)
-        self._draw_markers(x_positions, min_prices_pct, max_prices_pct, last_prices_pct)
-        all_y = self._collect_all_y(violin_shapes, min_prices_pct, max_prices_pct, last_prices_pct)
-        self._configure_axes(x_positions, tickers, all_y)
+        self._draw_violins(x_positions, formas.shapes, formas.max_vol)
+        self._store_hover_state(
+            dados.tickers, dados.vwap_values_abs, formas.shapes,
+            dados.last_prices_pct,
+        )
+        self._draw_markers(
+            x_positions, dados.min_prices_pct, dados.max_prices_pct,
+            dados.last_prices_pct,
+        )
+        all_y = self._collect_all_y(
+            formas.shapes, dados.min_prices_pct, dados.max_prices_pct,
+            dados.last_prices_pct,
+        )
+        self._configure_axes(x_positions, dados.tickers, all_y)
 
         self._figure.tight_layout()
         self._refresh_annotation()

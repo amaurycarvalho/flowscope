@@ -13,15 +13,16 @@ from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.application.quadrant import (
+    PontoQuadrante,
+    build_trajectories,
+    compute_scatter_data,
+    generate_summary,
+)
 from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
     hide_empty,
     show_empty,
-)
-from flowscope.presentation.gui.charts.quadrant_data import (
-    build_trajectories,
-    compute_scatter_data,
-    generate_summary,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
@@ -55,7 +56,7 @@ class QuadrantChart:
         self._empty_label = create_empty(self._figure, self._all_axes)
 
         self._summary_callback = summary_callback
-        self._hover_data: list[dict] = []
+        self._hover_data: list[PontoQuadrante] = []
         self._scatter = None
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
@@ -97,7 +98,7 @@ class QuadrantChart:
         self._canvas.draw()
 
     def _plot_trajectories(self: "QuadrantChart",
-                           trajectories: list[list[dict]],
+                           trajectories: list[list[PontoQuadrante]],
                            show_arrows: bool) -> None:
         """Desenha as trajetórias e o marcador final de cada ativo."""
         if show_arrows:
@@ -118,14 +119,14 @@ class QuadrantChart:
         self._style_axes(all_y)
 
     def _draw_arrows(self: "QuadrantChart",
-                     trajectories: list[list[dict]]) -> None:
+                     trajectories: list[list[PontoQuadrante]]) -> None:
         """Desenha as setas que ligam os pontos consecutivos da trajetória."""
         for points in trajectories:
             for i in range(len(points) - 1):
                 p0, p1 = points[i], points[i + 1]
                 self._axes.arrow(
-                    p0["clv"], p0["vwap_dist"],
-                    p1["clv"] - p0["clv"], p1["vwap_dist"] - p0["vwap_dist"],
+                    p0.clv, p0.vwap_dist,
+                    p1.clv - p0.clv, p1.vwap_dist - p0.vwap_dist,
                     head_width=0.02, head_length=0.02,
                     fc="gray", ec="gray", alpha=0.3,
                     length_includes_head=True, zorder=2,
@@ -135,8 +136,8 @@ class QuadrantChart:
         """Rotula cada ponto final com o ticker do ativo correspondente."""
         for pt in self._hover_data:
             self._axes.annotate(
-                pt["ticker"],
-                xy=(pt["clv"], pt["vwap_dist"]),
+                pt.ticker,
+                xy=(pt.clv, pt.vwap_dist),
                 xytext=(5, 5), textcoords="offset points",
                 fontsize=7, alpha=0.8,
                 bbox={"boxstyle": "round,pad=0.2", "fc": "white", "ec": "none", "alpha": 0.5},
@@ -182,7 +183,7 @@ class QuadrantChart:
         )
 
     def _generate_summary(self: "QuadrantChart",
-                          trajectories: list[list[dict]]) -> str:
+                          trajectories: list[list[PontoQuadrante]]) -> str:
         """Gera o resumo textual da distribuição entre os quadrantes."""
         return generate_summary(trajectories)
 
@@ -210,8 +211,8 @@ class QuadrantChart:
         closest = None
         min_dist = 0.08
         for pt in self._hover_data:
-            dx = event.xdata - pt["clv"]
-            dy = event.ydata - pt["vwap_dist"]
+            dx = event.xdata - pt.clv
+            dy = event.ydata - pt.vwap_dist
             dist = math.sqrt(dx**2 + dy**2)
             if dist < min_dist:
                 min_dist = dist
@@ -222,18 +223,19 @@ class QuadrantChart:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self: "QuadrantChart", pt: dict, x: float, y: float) -> None:
+    def _show_tooltip(self: "QuadrantChart", pt: PontoQuadrante, x: float,
+                      y: float) -> None:
         """Preenche a anotação com os dados do ponto sob o cursor."""
         vol_str = (
-            str(pt["fin_instr_qty"])
-            if pt["fin_instr_qty"] < 1e6
-            else f"{pt['fin_instr_qty'] / 1e6:.1f}M"
+            str(pt.fin_instr_qty)
+            if pt.fin_instr_qty < 1e6
+            else f"{pt.fin_instr_qty / 1e6:.1f}M"
         )
         self._annot.set_text(
-            f"{pt['ticker']}\n"
-            f"Data: {pt['date']}\n"
-            f"CLV: {pt['clv']:+.2f}\n"
-            f"VWAP: {pt['vwap_dist']:+.2f}%\n"
+            f"{pt.ticker}\n"
+            f"Data: {pt.date}\n"
+            f"CLV: {pt.clv:+.2f}\n"
+            f"VWAP: {pt.vwap_dist:+.2f}%\n"
             f"Qtd: {vol_str}"
         )
         self._annot.xy = (x, y)

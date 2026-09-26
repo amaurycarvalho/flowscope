@@ -12,12 +12,18 @@ from flowscope.domain.strategies.classifiers.money_flow import (
     MoneyFlowClassification,
     classify_money_flow,
 )
+from flowscope.domain.strategies.classifiers.quadrant import (
+    QUADRANTES,
+    classify_quadrant,
+)
 
 __all__ = [
+    "QUADRANTES",
     "ConvictionClassification",
     "DominanceClassification",
     "MoneyFlowClassification",
     "classify_conviction",
     "classify_dominance",
     "classify_money_flow",
+    "classify_quadrant",
 ]
