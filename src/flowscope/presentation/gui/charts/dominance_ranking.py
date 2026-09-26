@@ -12,9 +12,14 @@ from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.application.dominance.hastes import bar_colors
+from flowscope.application.dominance.ranking import (
+    RankingRow,
+    build_rows,
+    stem_lengths,
+)
 from flowscope.domain.strategies.classifiers import classify_dominance
 from flowscope.presentation.gui.charts.dominance_data import (
-    bar_colors,
     draw_stems,
     find_closest_row,
 )
@@ -23,11 +28,7 @@ from flowscope.presentation.gui.charts.empty_state import (
     hide_empty,
     show_empty,
 )
-from flowscope.presentation.gui.charts.ranking_data import (
-    build_rows,
-    draw_ticker_labels,
-    stem_lengths,
-)
+from flowscope.presentation.gui.charts.ranking_data import draw_ticker_labels
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
 
@@ -58,7 +59,7 @@ class DominanceRankingChart:
         self._all_axes = [self._axes]
         self._empty_label = create_empty(self._figure, self._all_axes)
 
-        self._hover_data: list[dict] = []
+        self._hover_data: list[RankingRow] = []
         self._bars = None
         self._circles = None
         self._annot = self._axes.annotate(
@@ -97,12 +98,12 @@ class DominanceRankingChart:
         show_empty(self._figure, self._all_axes, self._empty_label)
         self._canvas.draw()
 
-    def _plot_rows(self: "DominanceRankingChart", rows: list[dict]) -> None:
+    def _plot_rows(self: "DominanceRankingChart", rows: list[RankingRow]) -> None:
         """Desenha as barras, hastes e rótulos do ranking de dominância."""
-        rows.sort(key=lambda r: r["clv"])
-        tickers = [r["ticker"] for r in rows]
-        clvs = [r["clv"] for r in rows]
-        mfvs = [r["mfv"] for r in rows]
+        rows.sort(key=lambda r: r.clv)
+        tickers = [r.ticker for r in rows]
+        clvs = [r.clv for r in rows]
+        mfvs = [r.mfv for r in rows]
         y_pos = list(range(len(rows)))
 
         self._axes.axvline(x=0, color="gray", linestyle="-", linewidth=0.8, zorder=1)
@@ -167,17 +168,17 @@ class DominanceRankingChart:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self: "DominanceRankingChart", pt: dict, x: float,
+    def _show_tooltip(self: "DominanceRankingChart", pt: RankingRow, x: float,
                       y: float) -> None:
         """Preenche a anotação com os dados do ativo sob o cursor."""
-        cls = classify_dominance(pt["clv"])
-        mfv_str = f"R$ {pt['mfv']:,.0f}" if pt["mfv"] != 0 else "N/A"
+        cls = classify_dominance(pt.clv)
+        mfv_str = f"R$ {pt.mfv:,.0f}" if pt.mfv != 0 else "N/A"
         self._annot.set_text(
-            f"{pt['ticker']}\n"
-            f"CLV: {pt['clv']:+.2f}\n"
+            f"{pt.ticker}\n"
+            f"CLV: {pt.clv:+.2f}\n"
             f"Dominância: {cls.label}\n"
             f"MFV: {mfv_str}\n"
-            f"Data: {pt['date']}"
+            f"Data: {pt.date}"
         )
         self._annot.xy = (x, y)
         self._annot.set_visible(True)

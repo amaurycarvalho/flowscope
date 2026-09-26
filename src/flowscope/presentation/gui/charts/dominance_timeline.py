@@ -12,12 +12,17 @@ from matplotlib.backend_bases import MouseEvent, PickEvent
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
 
+from flowscope.application.dominance.hastes import bar_colors
+from flowscope.application.dominance.timeline import (
+    TimelineRow,
+    build_rows,
+    direction_balance,
+)
 from flowscope.domain.strategies.classifiers import (
     classify_conviction,
     classify_dominance,
 )
 from flowscope.presentation.gui.charts.dominance_data import (
-    bar_colors,
     draw_stems,
     find_closest_row,
 )
@@ -25,10 +30,6 @@ from flowscope.presentation.gui.charts.empty_state import (
     create_empty,
     hide_empty,
     show_empty,
-)
-from flowscope.presentation.gui.charts.timeline_data import (
-    build_rows,
-    direction_balance,
 )
 from flowscope.presentation.gui.charts.toolbar import ToolbarBR
 
@@ -60,7 +61,7 @@ class DominanceTimelineChart:
         self._all_axes = [self._axes]
         self._empty_label = create_empty(self._figure, self._all_axes)
 
-        self._hover_data: list[dict] = []
+        self._hover_data: list[TimelineRow] = []
         self._bars = None
         self._annot = self._axes.annotate(
             "", xy=(0, 0), xytext=(8, 8), textcoords="offset points",
@@ -99,12 +100,12 @@ class DominanceTimelineChart:
         self._canvas.draw()
 
     def _plot_rows(self: "DominanceTimelineChart",
-                   rows: list[dict], ticker: str) -> None:
+                   rows: list[TimelineRow], ticker: str) -> None:
         """Desenha as barras, hastes e rótulos da linha do tempo."""
         y_pos = list(range(len(rows)))
-        clvs = [r["clv"] for r in rows]
-        dmfs = [r["daily_mfv"] for r in rows]
-        labels = [str(r["date"]) for r in rows]
+        clvs = [r.clv for r in rows]
+        dmfs = [r.daily_mfv for r in rows]
+        labels = [str(r.date) for r in rows]
 
         self._axes.axvline(x=0, color="gray", linestyle="-", linewidth=0.8, zorder=1)
 
@@ -128,7 +129,7 @@ class DominanceTimelineChart:
         self._annotate_balance(rows)
 
     def _annotate_balance(self: "DominanceTimelineChart",
-                          rows: list[dict]) -> None:
+                          rows: list[TimelineRow]) -> None:
         """Exibe o percentual de dias compradores e vendedores."""
         buyer_days, seller_days = direction_balance(rows)
         total_dir = buyer_days + seller_days
@@ -177,16 +178,16 @@ class DominanceTimelineChart:
             self._annot.set_visible(False)
             self._canvas.draw_idle()
 
-    def _show_tooltip(self: "DominanceTimelineChart", pt: dict, x: float,
+    def _show_tooltip(self: "DominanceTimelineChart", pt: TimelineRow, x: float,
                       y: float) -> None:
         """Preenche a anotação com os dados do pregão sob o cursor."""
-        dom_cls = classify_dominance(pt["clv"])
-        conv_cls = classify_conviction(pt["efficiency"])
-        dmf_str = f"R$ {pt['daily_mfv']:,.0f}" if pt["daily_mfv"] != 0 else "N/A"
+        dom_cls = classify_dominance(pt.clv)
+        conv_cls = classify_conviction(pt.efficiency)
+        dmf_str = f"R$ {pt.daily_mfv:,.0f}" if pt.daily_mfv != 0 else "N/A"
         self._annot.set_text(
-            f"Data: {pt['date']}\n"
-            f"Dominância: {dom_cls.label} (CLV: {pt['clv']:+.2f})\n"
-            f"Convicção: {conv_cls.label} (Efic: {pt['efficiency']*100:.1f}%)\n"
+            f"Data: {pt.date}\n"
+            f"Dominância: {dom_cls.label} (CLV: {pt.clv:+.2f})\n"
+            f"Convicção: {conv_cls.label} (Efic: {pt.efficiency*100:.1f}%)\n"
             f"MFV do pregão: {dmf_str}"
         )
         self._annot.xy = (x, y)
