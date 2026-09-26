@@ -16,6 +16,11 @@ from flowscope.domain.strategies.classifiers.quadrant import (
     QUADRANTES,
     classify_quadrant,
 )
+from flowscope.domain.strategies.classifiers.session import (
+    classify_session,
+    classify_trend,
+    median_value,
+)
 
 __all__ = [
     "QUADRANTES",
@@ -26,4 +31,7 @@ __all__ = [
     "classify_dominance",
     "classify_money_flow",
     "classify_quadrant",
+    "classify_session",
+    "classify_trend",
+    "median_value",
 ]

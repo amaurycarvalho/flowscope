@@ -23,7 +23,7 @@ passa e o change aparece em `openspec list`.
 - [x] 3.2 Criar o change `refactor-dominance-panels-layers` (construção de ranking/timeline para `application`) e verificar com `openspec validate refactor-dominance-panels-layers`
 - [x] 3.3 Criar o change `refactor-quadrant-vwap-layers` (quadrante para `domain`; dados de VWAP para `application`) e verificar com `openspec validate refactor-quadrant-vwap-layers`
 - [x] 3.4 Criar o change `refactor-price-range-layers` (classificação de pregão para `domain`; normalização e dimensionamento permanecem em `presentation`) e verificar com `openspec validate refactor-price-range-layers`
-- [ ] 3.5 Criar o change `refactor-flow-panels-layers` (extração de métricas e resumo do fluxo para `application`/`domain`) e verificar com `openspec validate refactor-flow-panels-layers`
+- [x] 3.5 Criar o change `refactor-flow-panels-layers` (extração de métricas e resumo do fluxo para `application`/`domain`) e verificar com `openspec validate refactor-flow-panels-layers`
 
 ## 4. Integração com o chat
 
