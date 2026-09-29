@@ -9,6 +9,7 @@ from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.documents.texto import SEM_TEXTO
 from flowscope.domain.fii import Guidance
+from flowscope.domain.llm import LLMResposta
 from flowscope.infrastructure.llm.config import guidance_llm_disponivel
 
 GUIDANCE = Guidance(
@@ -49,7 +50,7 @@ class _LLMFake:
 
     def complete(self, messages, system_prompt=None):
         self.chamadas.append(messages)
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 def _arquivo(

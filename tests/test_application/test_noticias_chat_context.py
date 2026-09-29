@@ -39,6 +39,7 @@ from flowscope.infrastructure.b3.noticias_index import (
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.application.document_preview import texto_preview
 from flowscope.application.chat.noticias import TITULO_FONTE, FonteNoticias
 
 _REFERENCIA = date(2026, 9, 25)
@@ -55,6 +56,17 @@ def _noticia(titulo=_TITULO, url="https://x/1"):
         url=url,
         agencia="18",
     )
+
+
+def _semear_textos(catalogo: NoticiasCatalog, tmp_path) -> None:
+    """Grava o texto cacheado de todos os itens do catálogo."""
+    store = JsonDocumentTextStore(cache_dir=tmp_path)
+    for arquivo in catalogo.arquivos():
+        store.salvar(
+            ESCOPO_NOTICIAS,
+            catalogo.chave(arquivo),
+            texto_preview(arquivo.caminho),
+        )
 
 
 def _catalogo(tmp_path, noticias):
@@ -76,6 +88,8 @@ def _catalogo(tmp_path, noticias):
                 url=noticia.url,
             ),
         )
+    catalogo = NoticiasCatalog(cache_dir=tmp_path)
+    _semear_textos(catalogo, tmp_path)
     return NoticiasCatalog(cache_dir=tmp_path)
 
 
@@ -94,6 +108,8 @@ def _registrar_item(tmp_path, item) -> None:
             url=item.url,
         ),
     )
+    catalogo = NoticiasCatalog(cache_dir=tmp_path)
+    _semear_textos(catalogo, tmp_path)
 
 
 def _fonte(tmp_path, noticias, **kwargs):
@@ -154,7 +170,7 @@ def _seed_apontador(tmp_path, *, resolvido: bool = False) -> NoticiasCatalog:
 class TestIndice:
     def test_indice_inclui_secao_data_tipo_e_chave(self, tmp_path):
         fonte = _fonte(tmp_path, [_noticia()])
-        resultado = fonte("Qualquer pergunta")
+        resultado = fonte("O que saiu sobre PETR4?")
         assert isinstance(resultado, FonteContexto)
         assert resultado.titulo == TITULO_FONTE
         texto = resultado.texto
@@ -200,7 +216,7 @@ class TestIndice:
             reference_date_provider=lambda: _REFERENCIA,
             teto=900,
         )
-        texto = fonte("pergunta").texto
+        texto = fonte("").texto
         for secao in (SECAO_CENSURAS, SECAO_CONDICOES, SECAO_PROGRAMAS, SECAO_GERAL):
             assert f"[{secao}]" in texto
 
@@ -211,12 +227,6 @@ class TestIndice:
         )
         assert fonte("pergunta") is None
 
-    def test_nao_filtra_por_ticker_na_pergunta(self, tmp_path):
-        fonte = _fonte(tmp_path, [_noticia()])
-        assert fonte("O que saiu sobre PETR4?").texto == fonte(
-            "Como está o mercado?"
-        ).texto
-
     def test_respeita_teto_de_caracteres(self, tmp_path):
         noticias = [
             _noticia(
@@ -226,13 +236,117 @@ class TestIndice:
             for indice in range(20)
         ]
         fonte = _fonte(tmp_path, noticias, teto=200)
-        assert len(fonte("pergunta").texto) <= 200
+        assert len(fonte("suspensão").texto) <= 200
+
+
+class TestRecuperaveis:
+    def test_item_sem_resumo_e_sem_texto_e_omitido(self, tmp_path):
+        catalogo = NoticiasCatalog(cache_dir=tmp_path)
+        fonte = FonteNoticias(
+            catalog=catalogo, reference_date_provider=lambda: _REFERENCIA
+        )
+        assert fonte("PETR4") is None
+
+    def test_item_so_com_resumo_e_recuperavel(self, tmp_path):
+        noticia = _noticia()
+        catalogo = _catalogo(tmp_path, [noticia])
+        chave = f"noticias/2026/09/{chave_noticia(noticia)}.html"
+        JsonDocumentSummaryStore(cache_dir=tmp_path).salvar(
+            ESCOPO_NOTICIAS, chave, "resumo curto", "resumo longo"
+        )
+        JsonDocumentTextStore(cache_dir=tmp_path).salvar(
+            ESCOPO_NOTICIAS, chave, ""
+        )
+        fonte = FonteNoticias(
+            catalog=catalogo, reference_date_provider=lambda: _REFERENCIA
+        )
+        assert fonte("PETR4") is not None
+
+
+class TestFiltroDeterministico:
+    def test_filtra_por_ticker(self, tmp_path):
+        noticias = [
+            _noticia(titulo="PETROBRAS (PETR4) - Suspensão", url="https://x/1"),
+            _noticia(titulo="VALE (VALE3) - Suspensão", url="https://x/2"),
+        ]
+        fonte = _fonte(tmp_path, noticias)
+        texto = fonte("O que saiu sobre PETR4?").texto
+        assert "PETR4" in texto
+        assert "VALE3" not in texto
+
+    def test_filtra_por_palavra_chave(self, tmp_path):
+        noticias = [
+            _noticia(titulo="Empresa A - Suspensão de negociação", url="https://x/1"),
+            _noticia(titulo="Empresa B - Recuperação judicial", url="https://x/2"),
+        ]
+        fonte = _fonte(tmp_path, noticias)
+        texto = fonte("Houve recuperação judicial?").texto
+        assert "Recuperação" in texto
+        assert "Suspensão" not in texto
+
+    def test_sem_casamento_omite_secao(self, tmp_path):
+        fonte = _fonte(tmp_path, [_noticia()])
+        assert fonte("Qual o dividendo do FII?") is None
+
+    def test_pergunta_vazia_nao_filtra(self, tmp_path):
+        fonte = _fonte(tmp_path, [_noticia()])
+        assert fonte("") is not None
+
+    def test_termos_extraidos_da_pergunta(self):
+        from flowscope.application.noticias.fonte_chat import termos_da_pergunta
+
+        termos = termos_da_pergunta("O que saiu sobre PETR4 e a suspensão?")
+        assert "petr4" in termos
+        assert "suspensao" in termos
+        assert "sobre" not in termos
+
+    def test_estimar_tokens(self):
+        from flowscope.application.noticias.fonte_chat import estimar_tokens
+
+        assert estimar_tokens("a" * 2400) == 600
+
+
+class TestGateConfirmacao:
+    def _fonte_com_noticias(self, tmp_path, limite_envio, confirmar):
+        noticias = [
+            _noticia(titulo=f"PETROBRAS (PETR4) - Suspensão {i}", url=f"https://x/{i}")
+            for i in range(5)
+        ]
+        return _fonte(
+            tmp_path,
+            noticias,
+            limite_envio=limite_envio,
+            confirmar=confirmar,
+        )
+
+    def test_abaixo_do_limite_nao_confirma(self, tmp_path):
+        chamadas: list = []
+        fonte = self._fonte_com_noticias(
+            tmp_path, 100000, lambda q, nomes: chamadas.append(q) or True
+        )
+        assert fonte("PETR4") is not None
+        assert chamadas == []
+
+    def test_acima_do_limite_confirma(self, tmp_path):
+        chamadas: list = []
+
+        def confirmar(quantidade, nomes):
+            chamadas.append((quantidade, nomes))
+            return True
+
+        fonte = self._fonte_com_noticias(tmp_path, 1, confirmar)
+        assert fonte("PETR4") is not None
+        assert chamadas and chamadas[0][0] == 5
+
+    def test_recusa_omite_secao(self, tmp_path):
+        fonte = self._fonte_com_noticias(tmp_path, 1, lambda q, nomes: False)
+        assert fonte("PETR4") is None
 
 
 class TestConteudoIntegral:
     def test_le_o_texto_por_chave(self, tmp_path):
         fonte = _fonte(tmp_path, [_noticia()])
-        chave = _chave_do_indice(fonte("pergunta").texto)
+        chave = _chave_do_indice(fonte("PETR4").texto)
         alvos = fonte.resolver_alvos([chave])
         assert len(alvos) == 1
         conteudo = fonte.preparar_texto(alvos)
@@ -250,7 +364,7 @@ class TestConteudoIntegral:
             catalog=catalogo, reference_date_provider=lambda: _REFERENCIA
         )
         conteudo = fonte.preparar_texto(
-            fonte.resolver_alvos([_chave_do_indice(fonte("p").texto)])
+            fonte.resolver_alvos([_chave_do_indice(fonte("PETR4").texto)])
         )
         assert "Resumo: resumo longo" in conteudo
 
@@ -265,20 +379,16 @@ class TestConteudoIntegral:
             catalog=catalogo, reference_date_provider=lambda: _REFERENCIA
         )
         conteudo = fonte.preparar_texto(
-            fonte.resolver_alvos([_chave_do_indice(fonte("p").texto)])
+            fonte.resolver_alvos([_chave_do_indice(fonte("PETR4").texto)])
         )
         assert "texto cacheado resolvido" in conteudo
 
-    def test_apontador_nao_baixado_e_sinalizado(self, tmp_path):
+    def test_apontador_nao_baixado_e_omitido(self, tmp_path):
         fonte = FonteNoticias(
             catalog=_seed_apontador(tmp_path),
             reference_date_provider=lambda: _REFERENCIA,
         )
-        conteudo = fonte.preparar_texto(
-            fonte.resolver_alvos([_chave_do_indice(fonte("p").texto)])
-        )
-        assert "rad.cvm.gov.br" not in conteudo
-        assert "Documento vinculado ainda não baixado" in conteudo
+        assert fonte("VALE") is None
 
     def test_documento_resolvido_e_entregue(self, tmp_path):
         fonte = FonteNoticias(
@@ -286,7 +396,7 @@ class TestConteudoIntegral:
             reference_date_provider=lambda: _REFERENCIA,
         )
         conteudo = fonte.preparar_texto(
-            fonte.resolver_alvos([_chave_do_indice(fonte("p").texto)])
+            fonte.resolver_alvos([_chave_do_indice(fonte("VALE").texto)])
         )
         assert "CONTEUDO DO DOCUMENTO DA VALE" in conteudo
         assert "rad.cvm.gov.br" not in conteudo
@@ -319,7 +429,7 @@ class TestSecaoRegulatoriaNoChat:
         fonte = FonteNoticias(
             catalog=catalogo, reference_date_provider=lambda: _REFERENCIA
         )
-        resultado = fonte("pergunta")
+        resultado = fonte("TORD")
         assert resultado is not None
         assert SECAO_CENSURAS in resultado.texto
         conteudo = fonte.preparar_texto(
@@ -358,7 +468,7 @@ class TestEscalonamentoNoPainel:
                 return "conteudo do documento"
 
         montador = self._montador(_Cascata(), [fonte])
-        chave = _chave_do_indice(fonte("p").texto)
+        chave = _chave_do_indice(fonte("PETR4").texto)
         texto = montador.preparar_texto(["doc1", chave])
         assert "conteudo do documento" in texto
         assert "Corpo PETROBRAS" in texto
@@ -371,7 +481,7 @@ class TestEscalonamentoNoPainel:
             for i in range(4)
         ]
         fonte = _fonte(tmp_path, noticias)
-        chaves = _CHAVE.findall(fonte("p").texto)
+        chaves = _CHAVE.findall(fonte("suspensão").texto)
         chamadas: list[tuple] = []
 
         def _confirmar(quantidade, nomes):

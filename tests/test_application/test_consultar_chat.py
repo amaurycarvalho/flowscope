@@ -17,7 +17,7 @@ from flowscope.application.chat.consultar import (
     interpretar_resposta,
 )
 from flowscope.domain.chat import ChatMessage
-from flowscope.domain.llm import LLMUnavailableError
+from flowscope.domain.llm import LLMResposta, LLMUnavailableError, LLMUsage
 
 
 class _FakeLLM:
@@ -27,12 +27,16 @@ class _FakeLLM:
         self.respostas = list(respostas)
         self.chamadas: list[tuple] = []
 
-    def complete(self, messages: list[dict], system_prompt: str | None = None) -> str:
+    def complete(
+        self, messages: list[dict], system_prompt: str | None = None
+    ) -> LLMResposta:
         self.chamadas.append((messages, system_prompt))
         resposta = self.respostas.pop(0)
         if isinstance(resposta, Exception):
             raise resposta
-        return resposta
+        if isinstance(resposta, LLMResposta):
+            return resposta
+        return LLMResposta(texto=resposta)
 
 
 def _documental(resumos="RESUMOS", preparar=None, confirmar=None) -> ContextoDocumental:
@@ -84,6 +88,67 @@ class TestCascata:
         resposta = usecase.consultar("pergunta", ContextoChat(documentos=None))
         assert len(llm.chamadas) == 1
         assert resposta.documentos_solicitados == ["chave"]
+
+    def test_escalada_nao_reenvia_fontes_volateis(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "", "documentos": ["chave"]}',
+                '{"resposta": "final", "documentos": []}',
+            ]
+        )
+        contexto = ContextoChat(
+            documentos=_documental(preparar=lambda chaves: "TEXTO INTEGRAL"),
+            fontes_adicionais=[
+                FonteContexto(titulo="Notícias", texto="INDICE VOLATIL")
+            ],
+        )
+        ConsultarChatUseCase(llm).consultar("pergunta", contexto)
+        assert len(llm.chamadas) == 2
+        primeiro = llm.chamadas[0][0][-1]["content"]
+        segundo = llm.chamadas[1][0][-1]["content"]
+        assert "INDICE VOLATIL" in primeiro
+        assert "INDICE VOLATIL" not in segundo
+        assert "TEXTO INTEGRAL" in segundo
+
+    def test_escalada_nao_encadeia_terceira_chamada(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "", "documentos": ["a"]}',
+                '{"resposta": "final", "documentos": ["b"]}',
+            ]
+        )
+        contexto = ContextoChat(
+            documentos=_documental(preparar=lambda chaves: "TEXTO INTEGRAL")
+        )
+        resposta = ConsultarChatUseCase(llm).consultar("pergunta", contexto)
+        assert len(llm.chamadas) == 2
+        assert resposta.texto == "final"
+        assert resposta.documentos_solicitados == []
+
+    def test_ao_uso_notificado_por_completion(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM(
+            [
+                LLMResposta(
+                    texto='{"resposta": "", "documentos": ["a"]}',
+                    uso=LLMUsage(entrada=10, saida=5),
+                ),
+                LLMResposta(
+                    texto='{"resposta": "final", "documentos": []}',
+                    uso=LLMUsage(entrada=20, saida=7),
+                ),
+            ]
+        )
+        contexto = ContextoChat(
+            documentos=_documental(preparar=lambda chaves: "TEXTO INTEGRAL")
+        )
+        ConsultarChatUseCase(llm).consultar(
+            "pergunta", contexto, ao_uso=usos.append
+        )
+        assert usos == [
+            LLMUsage(entrada=10, saida=5),
+            LLMUsage(entrada=20, saida=7),
+        ]
 
     def test_confirmacao_recusada_nao_le_texto(self):
         llm = _FakeLLM(['{"resposta": "", "documentos": ["a"]}'])

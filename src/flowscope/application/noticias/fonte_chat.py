@@ -7,12 +7,17 @@ montagem é regra de aplicação; a apresentação apenas formata o bloco final.
 """
 
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import date
 from itertools import zip_longest
 from pathlib import Path
 
-from flowscope.domain.noticias import SECOES_ORDEM, NoticiaArquivo
+from flowscope.domain.noticias import (
+    SECOES_ORDEM,
+    NoticiaArquivo,
+    normalizar_texto,
+)
 
 #: Instrução de como pedir o conteúdo integral das notícias indexadas.
 INSTRUCAO_CHAVES = (
@@ -23,6 +28,75 @@ INSTRUCAO_CHAVES = (
 
 #: Teto de caracteres do índice compacto de notícias no contexto do chat.
 TETO_INDICE = 32000
+
+#: Limite de envio automático do índice filtrado, em tokens estimados.
+LIMITE_ENVIO_NOTICIAS = 600
+
+#: Caracteres por token na estimativa grosseira do índice.
+CARACTERES_POR_TOKEN = 4
+
+#: Padrão de ticker de renda variável (código B3 com 4 letras e dígitos).
+_PADRAO_TICKER = re.compile(r"\b[A-Z]{4}\d{1,2}\b", re.IGNORECASE)
+
+#: Comprimento mínimo de uma palavra-chave extraída da pergunta.
+_MIN_PALAVRA = 4
+
+#: Palavras comuns da pergunta que não devem filtrar títulos sozinhas.
+_STOPWORDS = frozenset({
+    "aqui", "assim", "ainda", "algum", "alguma", "antes", "aquela", "aquele",
+    "aquilo", "como", "coisa", "depois", "desde", "essa", "esse", "esta",
+    "este", "estao", "existe", "fazer", "foram", "isso", "pela", "pelo",
+    "podem", "porque", "quais", "qual", "quando", "quanto", "sobre", "temos",
+    "tinha", "todo", "todos", "tudo", "vamos", "voce",
+})
+
+
+def estimar_tokens(texto: str) -> int:
+    """Estima os tokens de um texto pela razão grosseira de caracteres."""
+    return len(texto) // CARACTERES_POR_TOKEN
+
+
+def termos_da_pergunta(pergunta: str) -> list[str]:
+    """Extrai tickers e palavras-chave normalizados da pergunta.
+
+    Os tickers reusam o padrão de renda variável já usado na extração
+    estruturada; as palavras-chave são os termos normalizados com comprimento
+    mínimo, descartando palavras comuns.
+    """
+    termos: set[str] = set()
+    for bruto in _PADRAO_TICKER.findall(pergunta or ""):
+        normalizado = normalizar_texto(bruto)
+        if normalizado:
+            termos.add(normalizado)
+    for palavra in re.findall(r"[a-z0-9]+", normalizar_texto(pergunta or "")):
+        if len(palavra) >= _MIN_PALAVRA and palavra not in _STOPWORDS:
+            termos.add(palavra)
+    return sorted(termos)
+
+
+def filtrar_por_pergunta(
+    escopos: list["NoticiaEscopo"], pergunta: str
+) -> list["NoticiaEscopo"]:
+    """Filtra os escopos determinísticamente pelos termos da pergunta.
+
+    Cada termo casa com fronteira de palavra contra o título e os metadados
+    normalizados do item. Sem termos extraídos, nada é filtrado; sem casamento,
+    a lista devolvida é vazia.
+    """
+    termos = termos_da_pergunta(pergunta)
+    if not termos:
+        return list(escopos)
+    padroes = [
+        re.compile(r"\b" + re.escape(termo) + r"\b") for termo in termos
+    ]
+    filtrados: list[NoticiaEscopo] = []
+    for escopo in escopos:
+        alvo = normalizar_texto(
+            f"{escopo.nome} {escopo.categoria} {escopo.secao}"
+        )
+        if any(padrao.search(alvo) for padrao in padroes):
+            filtrados.append(escopo)
+    return filtrados
 
 
 @dataclass(frozen=True)

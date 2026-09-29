@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from flowscope.domain.llm import LLMPort
+from flowscope.domain.llm import LLMPort, LLMResposta, LLMUsage
 
 pytestmark = pytest.mark.llm
 
@@ -16,8 +16,8 @@ class _FakeProvider:
         self: "_FakeProvider",
         messages: list[dict],
         system_prompt: str | None = None,
-    ) -> str:
-        return f"{len(messages)}:{system_prompt}"
+    ) -> LLMResposta:
+        return LLMResposta(texto=f"{len(messages)}:{system_prompt}")
 
 
 class TestLLMPort:
@@ -28,10 +28,27 @@ class TestLLMPort:
 
     def test_mock_implementa_a_porta(self):
         provedor: LLMPort = _FakeProvider()
-        assert provedor.complete([{"role": "user", "content": "oi"}], "seja breve") == (
-            "1:seja breve"
-        )
+        assert provedor.complete(
+            [{"role": "user", "content": "oi"}], "seja breve"
+        ).texto == "1:seja breve"
 
     def test_mock_sem_system_prompt(self):
         provedor: LLMPort = _FakeProvider()
-        assert provedor.complete([{"role": "user", "content": "hello"}]) == "1:None"
+        assert provedor.complete([{"role": "user", "content": "hello"}]).texto == (
+            "1:None"
+        )
+
+
+class TestUsoDeTokens:
+    def test_resposta_expoe_texto_e_uso(self):
+        resposta = LLMResposta(
+            texto="ok", uso=LLMUsage(entrada=10, saida=5)
+        )
+        assert resposta.texto == "ok"
+        assert resposta.uso.entrada == 10
+        assert resposta.uso.saida == 5
+
+    def test_uso_padrao_e_zero(self):
+        resposta = LLMResposta(texto="ok")
+        assert resposta.uso.entrada == 0
+        assert resposta.uso.saida == 0

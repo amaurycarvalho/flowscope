@@ -32,10 +32,11 @@ from flowscope.application.chat.documentos import (
 )
 from flowscope.application.documentos.catalogo import CatalogoDocumentos
 from flowscope.domain.chat import ChatMessage, ChatSession
-from flowscope.domain.llm import LLMPort, LLMUnavailableError
+from flowscope.domain.llm import LLMPort, LLMUnavailableError, LLMUsage
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.background.events import Confirmacao
 from flowscope.presentation.gui.chat.envio import EnvioMixin
+from flowscope.presentation.gui.chat.tokens import ContadorTokens
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.widgets.about_panel import (
     APRESENTACAO,
@@ -90,6 +91,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         cascata: CascataDocumentos | None = None,
         config_callback: Callable[[], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
+        tokens_callback: Callable[[str], None] | None = None,
         fontes_adicionais: Iterable[FonteAdicional] | None = None,
         confirmation_timeout: float = 300.0,
     ) -> None:
@@ -102,11 +104,11 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._llm_available = llm_available or (lambda: True)
         self._cascata = cascata or CascataDocumentos(
             catalog=catalogo,
-            llm_factory=llm_factory,
             confirmar=self._confirmar_no_tk,
         )
         self._config_callback = config_callback
         self._status_callback = status_callback
+        self._tokens_callback = tokens_callback
         self._fontes_adicionais = list(fontes_adicionais or [])
         self._contexto = MontarContextoChat(
             cascata=self._cascata,
@@ -122,11 +124,13 @@ class ChatPanel(EnvioMixin, tk.Frame):
             ),
         )
         self._confirmation_timeout = confirmation_timeout
+        self._tokens = ContadorTokens()
         self._init_envio()
         self._disponivel = True
         self._icon_refs: list[ImageTk.PhotoImage] = []
         self._build()
         self.avaliar_estado()
+        self._publicar_tokens()
 
     def destroy(self: "ChatPanel") -> None:
         """Cancela os envios em background antes de destruir o painel."""
@@ -366,6 +370,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._sessao.clear()
         self._bloco_cache = None
         self._respostas.delete("1.0", tk.END)
+        self._tokens.zerar()
+        self._publicar_tokens()
         self._atualizar_controles()
 
     def _limpar_chat(self: "ChatPanel") -> None:
@@ -410,3 +416,15 @@ class ChatPanel(EnvioMixin, tk.Frame):
         """Repassa uma mensagem para a barra de status, quando houver callback."""
         if self._status_callback is not None:
             self._status_callback(msg, icon)
+
+    def _acumular_uso(self: "ChatPanel", uso: object) -> None:
+        """Soma o uso de uma completion ao total da sessão e publica o rótulo."""
+        if not isinstance(uso, LLMUsage):
+            return
+        self._tokens.acumular(uso)
+        self._publicar_tokens()
+
+    def _publicar_tokens(self: "ChatPanel") -> None:
+        """Publica o total acumulado no rótulo persistente, quando houver."""
+        if self._tokens_callback is not None:
+            self._tokens_callback(self._tokens.texto())

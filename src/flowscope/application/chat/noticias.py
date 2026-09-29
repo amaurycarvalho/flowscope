@@ -1,16 +1,19 @@
 """Fonte de contexto do chat com as notícias do Plantão B3 e da RFC-004.
 
-A fonte opera em **duas camadas**. Na primeira, monta um **índice compacto** de
-todos os itens em cache — seção, data, tipo, título e uma chave curta — cobrindo
-as quatro categorias e priorizando os itens mais recentes de cada uma, para
-caber no orçamento de contexto. Na segunda, atende às chaves que a LLM pedir,
-devolvendo o resumo e/ou o texto resolvido do item; notícias "Geral" cujo
-documento vinculado (CVM RAD/FNET) não foi baixado são sinalizadas em vez de
-apresentar a URL como conteúdo.
+A fonte opera em **duas camadas**. Na primeira, monta um **índice compacto**
+restrito aos itens recuperáveis (com resumo ou texto em cache) — seção, data,
+tipo, título e uma chave curta — cobrindo as quatro categorias e priorizando os
+itens mais recentes de cada uma. A pergunta filtra determinísticamente o índice
+por tickers e palavras-chave presentes nos títulos; sem casamento a seção é
+omitida. Quando o índice filtrado excede o limite de envio automático, pede
+confirmação antes de incluí-lo. Na segunda camada, atende às chaves que a LLM
+pedir, devolvendo o resumo e/ou o texto já resolvido e em cache do item; notícias
+"Geral" cujo documento vinculado (CVM RAD/FNET) não foi baixado não são
+recuperáveis e são omitidas em silêncio.
 
 A montagem do índice é regra de aplicação; aqui apenas se injeta o catálogo e o
-store de texto e se formata o bloco. Não há filtro por ticker: a LLM infere o
-ticker referido na pergunta e seleciona as notícias relacionadas.
+store de texto e se formata o bloco. Não há filtro por ticker fora da pergunta:
+a LLM infere o ticker referido nela e seleciona as notícias relacionadas.
 """
 
 import logging
@@ -26,9 +29,12 @@ from flowscope.application.document_preview import (
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.noticias.catalogo import NoticiasCatalogo
 from flowscope.application.noticias.fonte_chat import (
+    LIMITE_ENVIO_NOTICIAS,
     TETO_INDICE,
     NoticiaEscopo,
     escopo_de,
+    estimar_tokens,
+    filtrar_por_pergunta,
     montar_indice,
 )
 from flowscope.domain.noticias import (
@@ -54,6 +60,9 @@ SEM_DOCUMENTO = (
     '"Notícias" ou rode "Resumir pendentes" para obtê-lo.)'
 )
 
+#: Assinatura do callback que confirma o envio do índice filtrado.
+ConfirmaEnvio = Callable[[int, list[str]], bool]
+
 
 def _hoje() -> date:
     """Retorna a data corrente em UTC, usada como período padrão."""
@@ -68,9 +77,11 @@ class FonteNoticias:
         catalog: NoticiasCatalogo | None = None,
         text_store: DocumentTextStore | None = None,
         reference_date_provider: Callable[[], date] | None = None,
+        confirmar: ConfirmaEnvio | None = None,
         teto: int = TETO_INDICE,
         teto_item: int = TETO_ITEM,
         teto_leitura: int = TETO_LEITURA,
+        limite_envio: int = LIMITE_ENVIO_NOTICIAS,
     ) -> None:
         """Guarda o catálogo, o store de textos e os limites do orçamento."""
         self._catalog = catalog
@@ -78,19 +89,31 @@ class FonteNoticias:
             catalog.text_store if catalog is not None else None
         )
         self._reference_date_provider = reference_date_provider or _hoje
+        self._confirmar = confirmar
         self._teto = teto
         self._teto_item = teto_item
         self._teto_leitura = teto_leitura
+        self._limite_envio = limite_envio
 
     # ── Primeira camada: índice compacto ─────────────────────────────
 
     def __call__(self: "FonteNoticias", pergunta: str) -> FonteContexto | None:
-        """Monta o índice compacto das notícias, ou ``None`` sem conteúdo."""
-        del pergunta  # a relevância por ticker é inferida pela LLM
-        escopos = self.listar()
+        """Monta o índice compacto filtrado, ou ``None`` sem conteúdo.
+
+        Só entram itens recuperáveis; a pergunta filtra os títulos e metadados.
+        Sem casamento a seção é omitida. Quando o índice filtrado excede o
+        limite de envio automático, pede confirmação antes de incluí-lo.
+        """
+        escopos = self.listar_recuperaveis()
         if not escopos:
             return None
-        return FonteContexto(TITULO_FONTE, self._montar(escopos))
+        filtrados = filtrar_por_pergunta(escopos, pergunta)
+        if not filtrados:
+            return None
+        indice = self._montar(filtrados)
+        if self._acima_do_limite(indice) and not self._confirmar_envio(filtrados):
+            return None
+        return FonteContexto(TITULO_FONTE, indice)
 
     def listar(self: "FonteNoticias") -> list[NoticiaEscopo]:
         """Lista as notícias em cache como escopos, tolerando falha de leitura."""
@@ -101,6 +124,31 @@ class FonteNoticias:
             return []
         return [escopo_de(arquivo, self._catalog.chave(arquivo)) for arquivo in arquivos]
 
+    def listar_recuperaveis(self: "FonteNoticias") -> list[NoticiaEscopo]:
+        """Lista apenas os escopos com resumo ou texto em cache.
+
+        Itens pendentes de extração ou de resumo são omitidos em silêncio.
+        """
+        return [escopo for escopo in self.listar() if self._recuperavel(escopo)]
+
+    def _recuperavel(self: "FonteNoticias", escopo: NoticiaEscopo) -> bool:
+        """Indica se o item tem resumo ou texto utilizável no cache local."""
+        if escopo.short_summary or escopo.long_summary:
+            return True
+        return bool(self._conteudo(escopo))
+
+    def _acima_do_limite(self: "FonteNoticias", indice: str) -> bool:
+        """Indica se o índice filtrado excede o envio automático."""
+        return estimar_tokens(indice) > self._limite_envio
+
+    def _confirmar_envio(
+        self: "FonteNoticias", escopos: list[NoticiaEscopo]
+    ) -> bool:
+        """Pede confirmação para incluir o índice acima do limite."""
+        if self._confirmar is None:
+            return True
+        return bool(self._confirmar(len(escopos), [e.nome for e in escopos]))
+
     def _montar(self: "FonteNoticias", escopos: list[NoticiaEscopo]) -> str:
         """Monta o índice compacto respeitando o teto de caracteres."""
         return montar_indice(escopos, self._teto)
@@ -110,13 +158,13 @@ class FonteNoticias:
     def resolver_alvos(
         self: "FonteNoticias", chaves: set[str] | list[str]
     ) -> list[NoticiaEscopo]:
-        """Resolve as chaves curtas devolvidas pela LLM em escopos."""
+        """Resolve as chaves curtas devolvidas pela LLM em escopos recuperáveis."""
         desejadas = {c for c in chaves if c}
         if not desejadas:
             return []
         return [
             escopo
-            for escopo in self.listar()
+            for escopo in self.listar_recuperaveis()
             if escopo.chave_curta in desejadas
         ]
 
@@ -152,10 +200,13 @@ class FonteNoticias:
         return f"{cabecalho}\n{SEM_DOCUMENTO}"
 
     def _conteudo(self: "FonteNoticias", alvo: NoticiaEscopo) -> str:
-        """Obtém o texto do item do cache, sinalizando apontador não resolvido."""
+        """Obtém o texto do item apenas do cache local.
+
+        Nenhuma extração sob demanda é feita: sem texto em cache o item não tem
+        conteúdo servível. Um apontador "Geral" ainda não resolvido também é
+        tratado como ausente.
+        """
         texto = self._text_store.obter(ESCOPO_NOTICIAS, alvo.chave)
-        if texto is None:
-            texto = texto_preview(alvo.caminho, SELETOR_CONTEUDO_DETALHE)
         if not tem_texto(texto):
             return ""
         if alvo.secao == SECAO_GERAL and self._pendente(alvo, texto):
@@ -164,6 +215,10 @@ class FonteNoticias:
 
     @staticmethod
     def _pendente(alvo: NoticiaEscopo, texto: str) -> bool:
-        """Indica se o texto é o apontador da "Geral" ainda não resolvido."""
+        """Indica se o texto é o apontador da "Geral" ainda não resolvido.
+
+        A comparação com o corpo atual do ``#conteudoDetalhe`` evita tratar como
+        pendente um documento já resolvido que porventura cite uma URL.
+        """
         corpo = texto_preview(alvo.caminho, SELETOR_CONTEUDO_DETALHE)
         return apontador_pendente(texto, corpo)

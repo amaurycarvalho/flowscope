@@ -9,7 +9,7 @@ from flowscope.domain.llm.exceptions import (
     LLMServiceUnavailableError,
     LLMUnavailableError,
 )
-from flowscope.domain.llm.ports import LLMPort
+from flowscope.domain.llm.ports import LLMPort, LLMResposta, LLMUsage
 
 __all__ = [
     "LLMCommunicationError",
@@ -18,6 +18,8 @@ __all__ = [
     "LLMPort",
     "LLMProviderError",
     "LLMRateLimitError",
+    "LLMResposta",
     "LLMServiceUnavailableError",
     "LLMUnavailableError",
+    "LLMUsage",
 ]

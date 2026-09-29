@@ -127,7 +127,7 @@ class AvaliarGuidanceUseCase:
             return False, None
         except Exception:  # falha inesperada equivale a LLM não funcional
             return False, None
-        return True, self._interpretar(resposta, data_relatorio, caminho_pdf)
+        return True, self._interpretar(resposta.texto, data_relatorio, caminho_pdf)
 
     @staticmethod
     def _montar_prompt(texto: str) -> str:

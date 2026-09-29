@@ -291,7 +291,7 @@ class LLMConfigDialog(tk.Toplevel):
         except Exception as exc:
             ctx.resultado(valor=("erro", str(exc), config, exc))
         else:
-            ctx.resultado(valor=("ok", resposta, config, None))
+            ctx.resultado(valor=("ok", resposta.texto, config, None))
 
     @staticmethod
     def _registrar_falha(

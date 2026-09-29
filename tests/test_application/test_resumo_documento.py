@@ -9,7 +9,7 @@ from flowscope.application.resumo_documento import (
     ResumirDocumentoUseCase,
     ResumoDocumento,
 )
-from flowscope.domain.llm import LLMCommunicationError, LLMUnavailableError
+from flowscope.domain.llm import LLMCommunicationError, LLMResposta, LLMUnavailableError
 
 
 class _LLMFake:
@@ -21,9 +21,9 @@ class _LLMFake:
 
     def complete(
         self, messages: list[dict], system_prompt: str | None = None
-    ) -> str:
+    ) -> LLMResposta:
         self.chamadas.append((messages, system_prompt))
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 def _prompt(llm: _LLMFake) -> str:

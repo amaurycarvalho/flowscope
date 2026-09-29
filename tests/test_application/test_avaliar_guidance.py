@@ -7,6 +7,7 @@ from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
 from flowscope.domain.fii import Guidance
 from flowscope.domain.llm import (
     LLMCommunicationError,
+    LLMResposta,
     LLMUnavailableError,
 )
 
@@ -35,7 +36,7 @@ class _LLMFake:
         self.chamadas.append((messages, system_prompt))
         if self.erro is not None:
             raise self.erro
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 class _StoreFake:

@@ -17,18 +17,6 @@ from flowscope.application.chat.documentos import (
 )
 
 
-class _FakeLLM:
-    """Porta de completion de teste que devolve um par curto/longo."""
-
-    def __init__(self, resposta: str) -> None:
-        self._resposta = resposta
-        self.chamadas = 0
-
-    def complete(self, messages: list[dict], system_prompt: str | None = None) -> str:
-        self.chamadas += 1
-        return self._resposta
-
-
 def _documento(tmp_path, ticker="PETR4", nome="1.html") -> tuple:
     """Cria um informe mensal HTML em cache e devolve catálogo e arquivo."""
     pasta = tmp_path / "informe-mensal" / ticker / "2026" / "07"
@@ -91,25 +79,41 @@ class TestLeitorTextoIntegral:
         cascata = CascataDocumentos(catalog=catalogo)
         assert cascata.resolver_alvos(["inexistente"]) == []
 
-
-class TestPreparacaoSobDemanda:
-    def test_cache_frio_prepara_texto_e_resumo(self, tmp_path):
+    def test_sem_texto_em_cache_nao_extrai(self, tmp_path):
         catalogo, arquivo = _documento(tmp_path)
         chave = chave_documento(arquivo, tmp_path)
-        llm = _FakeLLM("CURTO: resumo curto\nLONGO: resumo longo")
-        cascata = CascataDocumentos(
-            catalog=catalogo, llm_factory=lambda: llm
-        )
+        cascata = CascataDocumentos(catalog=catalogo)
+
+        alvos = cascata.resolver_alvos([chave])
+        assert cascata.preparar_texto(alvos) == ""
+        assert catalogo.text_store.obter("PETR4", chave) is None
+
+
+class TestCacheSomenteLeitura:
+    def test_cache_frio_nao_gera_resumo(self, tmp_path):
+        catalogo, arquivo = _documento(tmp_path)
+        chave = chave_documento(arquivo, tmp_path)
+        cascata = CascataDocumentos(catalog=catalogo)
 
         texto, alvos = cascata.montar_resumos("PETR4", [])
-        assert "resumo curto" in texto
-        assert "resumo longo" in texto
-        assert llm.chamadas == 1
-        assert catalogo.text_store.obter("PETR4", chave) is not None
-        resumo = catalogo.summary_store.obter("PETR4", chave)
-        assert resumo is not None
-        assert resumo.long_summary == "resumo longo"
-        assert [a.chave for a in alvos] == [chave]
+        assert texto == ""
+        assert alvos == []
+        assert catalogo.summary_store.obter("PETR4", chave) is None
+        assert catalogo.text_store.obter("PETR4", chave) is None
+
+    def test_pendente_e_omitido_em_silencio(self, tmp_path):
+        catalogo, arquivo = _documento(tmp_path)
+        chave = chave_documento(arquivo, tmp_path)
+        catalogo.summary_store.salvar("PETR4", chave, "curto", "longo")
+        outro = tmp_path / "informe-mensal" / "VALE3" / "2026" / "07"
+        outro.mkdir(parents=True)
+        (outro / "2.html").write_text("<html>sem resumo</html>", encoding="utf-8")
+        cascata = CascataDocumentos(catalog=catalogo)
+
+        texto, alvos = cascata.montar_resumos(None, ["PETR4", "VALE3"])
+        assert chave in texto
+        assert [a.ticker for a in alvos] == ["PETR4"]
+        assert "2.html" not in texto
 
 
 class TestGateConfirmacao:

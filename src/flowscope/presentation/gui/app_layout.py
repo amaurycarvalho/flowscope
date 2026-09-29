@@ -10,6 +10,7 @@ from tkcalendar import DateEntry
 
 from flowscope.presentation.gui.app_constants import PAD, PAD_LARGE, PAD_SMALL
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
+from flowscope.presentation.gui.chat.tokens import formatar_tokens
 from flowscope.presentation.gui.widgets.orientation_panel import OrientationPanel
 from flowscope.presentation.gui.widgets.ticker_list import TickerList
 from flowscope.presentation.gui.widgets.tooltip import ToolTip
@@ -220,6 +221,14 @@ class LayoutMixin:
             pady=PAD_SMALL,
         )
         self._status_label.pack(side=tk.LEFT)
+
+        self._tokens_label = tk.Label(
+            self._status_frame,
+            text=formatar_tokens(0, 0),
+            anchor=tk.E,
+            padx=PAD_SMALL,
+            pady=PAD_SMALL,
+        )
 
         self._progress_bar = ttk.Progressbar(
             self._status_frame,

@@ -6,7 +6,7 @@ Define the behavior and architecture for disabling all buttons during portfolio 
 
 ### Requirement: Botões desabilitados durante processamento de índice
 
-O sistema DEVE desabilitar todos os botões da aplicação **e os comboboxes de período e amostragem** quando um botão de índice (IBOV, IDIV, IFIX) for pressionado, desde o início do download do portfólio até a finalização completa do processamento dos dados. Ao finalizar, os botões e comboboxes DEVEM retornar aos seus estados anteriores (habilitado/readonly ou desabilitado).
+O sistema DEVE desabilitar todos os botões da aplicação **e os comboboxes de período e amostragem** quando um botão de índice (IBOV, IDIV, IFIX) for pressionado, desde o início do download do portfólio até a finalização completa do processamento dos dados. Ao finalizar, os botões e comboboxes DEVEM retornar aos seus estados anteriores (habilitado/readonly ou desabilitado). Enquanto a carga principal executa em background, uma nova operação de carga distinta DEVE substituir a anterior, e o estado ocupado DEVE permanecer contínuo durante a substituição.
 
 #### Scenario: Comboboxes desabilitados durante carregamento do IBOV
 - **WHEN** o usuário clica no botão "IBOV"
@@ -21,8 +21,12 @@ O sistema DEVE desabilitar todos os botões da aplicação **e os comboboxes de 
 - **THEN** os comboboxes DEVEM ser restaurados ao estado "readonly", mesmo com a falha
 
 #### Scenario: Concorrência ignorada
-- **WHEN** o usuário clica em "IBOV" e, enquanto o processamento ocorre, clica em "IFIX"
-- **THEN** o segundo clique DEVE ser ignorado e o sistema DEVE continuar o processamento do IBOV sem interrupção
+- **WHEN** o usuário aciona repetidamente o mesmo botão de índice enquanto o processamento correspondente ocorre
+- **THEN** o acionamento repetido DEVE ser ignorado, sem iniciar carga duplicada
+
+#### Scenario: Nova operação de carga substitui a anterior
+- **WHEN** o usuário inicia uma carga (outro índice, "Carregar" ou troca de período/amostragem) enquanto uma carga principal está em andamento
+- **THEN** a carga anterior DEVE ser cancelada e descartada, e a nova carga DEVE assumir o estado ocupado sem que os controles sejam restaurados entre as duas
 
 ### Requirement: Botão Carregar também dispara loading state
 
@@ -141,7 +145,26 @@ O sistema DEVE manter todos os botões, comboboxes, data entry e a lista de tick
 #### Scenario: Controles desabilitados no disparo manual
 - **WHEN** o usuário clica em "Atualizar fundamentos"
 - **THEN** os controles DEVEM ser desabilitados durante a análise e restaurados quando ela concluir
-
 #### Scenario: Reinício da análise não deixa controles presos
+
 - **WHEN** o usuário reinicia a análise fundamentalista antes de a anterior concluir
 - **THEN** os controles DEVEM ser restaurados aos estados originais quando a última análise ativa concluir
+
+### Requirement: Estado ocupado governado pelo job de background
+
+O estado ocupado, o cursor "watch" e o bloqueio dos controles durante a carga principal DEVEM ser governados pelo ciclo de vida do job de carga em background: ao terminar por sucesso, erro ou cancelamento, o sistema DEVE restaurar controles e cursor. A transição de estado NÃO DEVE depender de um laço síncrono na thread do Tk.
+
+#### Scenario: Restauração ao término do job de carga
+
+- **WHEN** o job de carga principal termina por sucesso, erro ou cancelamento
+- **THEN** os controles DEVEM voltar aos estados anteriores e o cursor "watch" DEVE ser removido
+
+#### Scenario: Janela permanece responsiva durante a carga
+
+- **WHEN** a carga principal está em andamento
+- **THEN** a thread do Tk DEVE permanecer processando eventos, permitindo o repintar e o acionamento do botão de interromper
+
+#### Scenario: Substituição sem quebra do estado ocupado
+
+- **WHEN** uma carga é substituída por outra antes de concluir
+- **THEN** a contagem de operações ativas DEVE permanecer equilibrada e o cursor NÃO DEVE ser restaurado entre as cargas

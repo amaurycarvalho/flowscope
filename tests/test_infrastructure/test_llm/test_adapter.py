@@ -52,13 +52,14 @@ class _InternalServerError(Exception):
     pass
 
 
-def _resposta(conteudo: str) -> SimpleNamespace:
+def _resposta(conteudo: str, usage: object = None) -> SimpleNamespace:
     return SimpleNamespace(
-        choices=[SimpleNamespace(message=SimpleNamespace(content=conteudo))]
+        choices=[SimpleNamespace(message=SimpleNamespace(content=conteudo))],
+        usage=usage,
     )
 
 
-def _litellm_falso(conteudo: str = "ok") -> SimpleNamespace:
+def _litellm_falso(conteudo: str = "ok", usage: object = None) -> SimpleNamespace:
     return SimpleNamespace(
         Timeout=_Timeout,
         APIConnectionError=_APIConnectionError,
@@ -68,7 +69,7 @@ def _litellm_falso(conteudo: str = "ok") -> SimpleNamespace:
         APIError=_APIError,
         ServiceUnavailableError=_ServiceUnavailableError,
         InternalServerError=_InternalServerError,
-        completion=MagicMock(return_value=_resposta(conteudo)),
+        completion=MagicMock(return_value=_resposta(conteudo, usage)),
     )
 
 
@@ -92,7 +93,7 @@ class TestChamada:
             rate_limiter=limiter,
         )
         resultado = adapter.complete([{"role": "user", "content": "oi"}])
-        assert resultado == "ok"
+        assert resultado.texto == "ok"
         falso.completion.assert_called_once_with(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": "oi"}],
@@ -133,6 +134,23 @@ class TestChamada:
         adapter.complete([{"role": "user", "content": "oi"}])
         _, kwargs = falso.completion.call_args
         assert kwargs["messages"] == [{"role": "user", "content": "oi"}]
+
+    def test_usage_reportado(self, monkeypatch):
+        usage = SimpleNamespace(prompt_tokens=12, completion_tokens=7)
+        falso = _litellm_falso(usage=usage)
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+        assert resultado.uso.entrada == 12
+        assert resultado.uso.saida == 7
+
+    def test_usage_ausente_vira_zero(self, monkeypatch):
+        falso = _litellm_falso(usage=None)
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+        assert resultado.uso.entrada == 0
+        assert resultado.uso.saida == 0
 
 
 class TestMapeamentoExcecoes:

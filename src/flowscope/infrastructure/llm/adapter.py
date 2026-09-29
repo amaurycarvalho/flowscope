@@ -10,8 +10,10 @@ from flowscope.domain.llm import (
     LLMError,
     LLMProviderError,
     LLMRateLimitError,
+    LLMResposta,
     LLMServiceUnavailableError,
     LLMUnavailableError,
+    LLMUsage,
 )
 from flowscope.infrastructure.llm.rate_limiter import DEFAULT_RPM, RateLimiter
 
@@ -79,8 +81,8 @@ class LiteLLMChatAdapter:
         self: "LiteLLMChatAdapter",
         messages: list[dict],
         system_prompt: str | None = None,
-    ) -> str:
-        """Envia as mensagens ao provedor e retorna a resposta como string."""
+    ) -> LLMResposta:
+        """Envia as mensagens ao provedor e devolve texto e uso de tokens."""
         payload = list(messages)
         if system_prompt is not None:
             payload = [
@@ -101,4 +103,17 @@ class LiteLLMChatAdapter:
             resposta = litellm.completion(**kwargs)
         except Exception as exc:
             raise _mapear_excecao(litellm, exc) from exc
-        return resposta.choices[0].message.content
+        return LLMResposta(
+            texto=resposta.choices[0].message.content,
+            uso=_extrair_uso(resposta),
+        )
+
+
+def _extrair_uso(resposta: object) -> LLMUsage:
+    """Traduz o ``usage`` do provedor para ``LLMUsage``, tolerando ausência."""
+    usage = getattr(resposta, "usage", None)
+    if usage is None:
+        return LLMUsage()
+    entrada = getattr(usage, "prompt_tokens", 0) or 0
+    saida = getattr(usage, "completion_tokens", 0) or 0
+    return LLMUsage(entrada=int(entrada), saida=int(saida))

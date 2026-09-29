@@ -37,35 +37,52 @@ class TabActionsMixin:
         if tabs is None:
             return
         main_tab, sub_tab = tabs
-
+        self._sync_tokens_visibility(main_tab)
         if main_tab == ABOUT_TAB:
-            self._prefs["last_tab"] = main_tab
-            content = self._tab_content.get((ABOUT_TAB, ABOUT_TAB))
-            if content:
-                self._orientation_panel.set_content(*content)
-            self._verificar_nova_versao()
-            return
+            self._aplicar_aba_sobre()
+        elif main_tab == CHAT_AI_TAB:
+            self._aplicar_aba_chat(main_tab, sub_tab)
+        else:
+            self._aplicar_aba_generica(main_tab, sub_tab)
 
-        if main_tab == CHAT_AI_TAB:
-            self._prefs["last_tab"] = main_tab
-            content = self._tab_content.get((CHAT_AI_TAB, CHAT_AI_TAB))
-            if content:
-                self._orientation_panel.set_content(*content)
-            self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
-            self._sync_copy_button_for_tab(main_tab, sub_tab)
-            self._reavaliar_chat_llm()
-            return
+    def _sync_tokens_visibility(self: "TabActionsMixin", main_tab: str) -> None:
+        """Exibe o rótulo de tokens somente na aba "Chat AI"."""
+        mostrar = getattr(self, "_mostrar_tokens", None)
+        if mostrar is not None:
+            mostrar(main_tab == CHAT_AI_TAB)
 
+    def _aplicar_aba_sobre(self: "TabActionsMixin") -> None:
+        """Atualiza a orientação e a verificação de versão na aba "Sobre"."""
+        self._prefs["last_tab"] = ABOUT_TAB
+        content = self._tab_content.get((ABOUT_TAB, ABOUT_TAB))
+        if content:
+            self._orientation_panel.set_content(*content)
+        self._verificar_nova_versao()
+
+    def _aplicar_aba_chat(
+        self: "TabActionsMixin", main_tab: str, sub_tab: str
+    ) -> None:
+        """Atualiza a orientação, os botões e o estado da aba "Chat AI"."""
+        self._prefs["last_tab"] = main_tab
+        content = self._tab_content.get((CHAT_AI_TAB, CHAT_AI_TAB))
+        if content:
+            self._orientation_panel.set_content(*content)
+        self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
+        self._sync_copy_button_for_tab(main_tab, sub_tab)
+        self._reavaliar_chat_llm()
+
+    def _aplicar_aba_generica(
+        self: "TabActionsMixin", main_tab: str, sub_tab: str
+    ) -> None:
+        """Atualiza gráfico, contadores e orientação de uma aba comum."""
         chart = self._resolve_chart(main_tab, sub_tab)
         if chart is not None and self._deve_atualizar(chart):
             self._do_update(chart)
         if self._current_data:
             self._update_ticker_counter()
-
         content = self._tab_content.get((main_tab, sub_tab))
         if content:
             self._orientation_panel.set_content(*content)
-
         self._prefs["last_tab"] = main_tab
         self._prefs["last_subtab"] = sub_tab
         self._sync_fundamental_refresh_visibility(main_tab, sub_tab)

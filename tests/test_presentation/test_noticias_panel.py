@@ -18,7 +18,7 @@ from flowscope.application.cancellation import (
     OperacaoCancelada,
 )
 from flowscope.application.resumo_documento import ResumoDocumento
-from flowscope.domain.llm import LLMCommunicationError
+from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.domain.structured import CensuraPublica, NoticiaB3
 from flowscope.infrastructure.b3.noticias_aquisicao import (
     ESCOPO_NOTICIAS,
@@ -80,7 +80,7 @@ class _LLMFake:
 
     def complete(self, messages, system_prompt=None):
         self.chamadas.append(messages)
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 def _noticia(

@@ -9,7 +9,11 @@ import tkinter as tk
 import pytest
 
 from flowscope.application.chat import FonteContexto
-from flowscope.domain.llm import LLMCommunicationError, LLMUnavailableError
+from flowscope.domain.llm import (
+    LLMCommunicationError,
+    LLMResposta,
+    LLMUnavailableError,
+)
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.presentation.gui.chat import chat_panel as chat_panel_mod
 from flowscope.presentation.gui.chat.chat_panel import (
@@ -34,12 +38,14 @@ class _FakeLLM:
         self.respostas = list(respostas)
         self.chamadas: list = []
 
-    def complete(self, messages: list[dict], system_prompt: str | None = None) -> str:
+    def complete(
+        self, messages: list[dict], system_prompt: str | None = None
+    ) -> LLMResposta:
         self.chamadas.append((messages, system_prompt))
         resposta = self.respostas.pop(0)
         if isinstance(resposta, BaseException):
             raise resposta
-        return resposta
+        return LLMResposta(texto=resposta)
 
 
 class _LLMBloqueante:
@@ -50,13 +56,15 @@ class _LLMBloqueante:
         self.resposta = resposta
         self.chamadas = 0
 
-    def complete(self, messages: list[dict], system_prompt: str | None = None) -> str:
+    def complete(
+        self, messages: list[dict], system_prompt: str | None = None
+    ) -> LLMResposta:
         self.chamadas += 1
         resultado = self.resposta
         self.liberar.wait(3)
         if isinstance(resultado, BaseException):
             raise resultado
-        return resultado
+        return LLMResposta(texto=resultado)
 
 
 def _painel(root, tmp_path, **kwargs) -> ChatPanel:

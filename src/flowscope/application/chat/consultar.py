@@ -14,7 +14,7 @@ from dataclasses import dataclass, field, replace
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.domain.chat import ChatMessage
-from flowscope.domain.llm import LLMPort
+from flowscope.domain.llm import LLMPort, LLMResposta, LLMUsage
 
 #: Teto de turnos anteriores enviados à LLM.
 HISTORICO_MAX_MENSAGENS = 10
@@ -49,6 +49,9 @@ MENSAGEM_SEM_ALVO = (
 )
 
 _MARCADOR_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+#: Callback notificado com o uso de tokens de cada completion da cascata.
+AoUso = Callable[[LLMUsage], None]
 
 
 @dataclass(frozen=True)
@@ -186,6 +189,7 @@ class ConsultarChatUseCase:
         contexto: ContextoChat,
         cancel_token: CancellationToken | None = None,
         historico: Sequence[ChatMessage] | None = None,
+        ao_uso: AoUso | None = None,
     ) -> RespostaChat:
         """Consulta o contexto de resumos e escala para o texto integral se preciso."""
         self._checar(cancel_token)
@@ -195,12 +199,13 @@ class ConsultarChatUseCase:
             prefixo,
             self._montar_sufixo(pergunta, contexto.fontes_adicionais, None),
             turnos,
+            ao_uso,
         )
-        resposta = interpretar_resposta(primeira)
+        resposta = interpretar_resposta(primeira.texto)
         if not resposta.documentos_solicitados or contexto.documentos is None:
             return resposta
         return self._escalar(
-            pergunta, contexto, resposta, prefixo, turnos, cancel_token
+            pergunta, contexto, resposta, prefixo, turnos, cancel_token, ao_uso
         )
 
     def _escalar(
@@ -211,6 +216,7 @@ class ConsultarChatUseCase:
         prefixo: str,
         historico: list[dict] | None = None,
         cancel_token: CancellationToken | None = None,
+        ao_uso: AoUso | None = None,
     ) -> RespostaChat:
         """Executa a segunda chamada com o texto integral dos alvos.
 
@@ -228,10 +234,11 @@ class ConsultarChatUseCase:
         self._checar(cancel_token)
         segunda = self._completar(
             prefixo,
-            self._montar_sufixo(pergunta, contexto.fontes_adicionais, texto_integral),
+            self._montar_sufixo(pergunta, [], texto_integral),
             historico or [],
+            ao_uso,
         )
-        final = interpretar_resposta(segunda)
+        final = interpretar_resposta(segunda.texto)
         return replace(
             final,
             fontes=final.documentos_solicitados or alvos,
@@ -249,13 +256,17 @@ class ConsultarChatUseCase:
         prefixo: str,
         sufixo: str,
         historico: list[dict],
-    ) -> str:
+        ao_uso: AoUso | None = None,
+    ) -> LLMResposta:
         """Envia o prefixo estável no sistema e o sufixo no turno atual."""
         mensagens = [*historico, {"role": "user", "content": sufixo}]
-        return self._llm.complete(
+        resposta = self._llm.complete(
             mensagens,
             system_prompt=prefixo,
         )
+        if ao_uso is not None:
+            ao_uso(resposta.uso)
+        return resposta
 
     def _montar_prefixo(
         self: "ConsultarChatUseCase", contexto: ContextoChat

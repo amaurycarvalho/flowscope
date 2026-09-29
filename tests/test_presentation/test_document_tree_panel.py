@@ -18,7 +18,7 @@ from flowscope.application.cancellation import (
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.llm import LLMCommunicationError
+from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
@@ -121,11 +121,11 @@ class _LLMFake:
         self.liberar = liberar
         self.chamadas: list[list[dict]] = []
 
-    def complete(self, messages: list[dict], system_prompt=None) -> str:
+    def complete(self, messages: list[dict], system_prompt=None) -> LLMResposta:
         self.chamadas.append(messages)
         if self.liberar is not None:
             self.liberar.wait(2.0)
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 class TestAbertura:

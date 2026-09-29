@@ -13,6 +13,7 @@ from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMConfigurationError,
     LLMProviderError,
+    LLMResposta,
     LLMServiceUnavailableError,
     LLMUnavailableError,
 )
@@ -308,7 +309,7 @@ class TestTestarConexao:
     @needs_display
     def test_sucesso(self, tmp_path, monkeypatch):
         provedor = MagicMock()
-        provedor.complete.return_value = "olá mundo"
+        provedor.complete.return_value = LLMResposta(texto="olá mundo")
         port = InfrastructureLLMConfig()
         monkeypatch.setattr(port, "create_provider", lambda _c: provedor)
         root, dialog = self._dialogo(tmp_path, port)
@@ -386,7 +387,7 @@ class TestTestarConexao:
         liberar = threading.Event()
         chamadas: list[int] = []
         provedor = MagicMock()
-        provedor.complete.return_value = "ok"
+        provedor.complete.return_value = LLMResposta(texto="ok")
 
         def _lento(_config):
             chamadas.append(1)

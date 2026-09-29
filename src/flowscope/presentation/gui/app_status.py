@@ -60,6 +60,23 @@ class StatusMixin:
         self._progress_bar.pack_forget()
         self._ocultar_botao_interromper()
 
+    def _set_tokens(self: "StatusMixin", texto: str) -> None:
+        """Atualiza o rótulo persistente de tokens da barra de status."""
+        label = getattr(self, "_tokens_label", None)
+        if label is not None:
+            label.config(text=texto)
+
+    def _mostrar_tokens(self: "StatusMixin", visivel: bool) -> None:
+        """Exibe ou oculta o rótulo de tokens conforme a aba ativa."""
+        label = getattr(self, "_tokens_label", None)
+        if label is None:
+            return
+        if visivel:
+            if not label.winfo_ismapped():
+                label.pack(side=tk.RIGHT, padx=PAD_SMALL)
+        else:
+            label.pack_forget()
+
     def _set_progress(self: "StatusMixin", current: int, total: int, label: str) -> None:
         pct = int(current / max(total, 1) * 100) if total > 0 else 100
         self._status_var.set(label)

@@ -58,12 +58,14 @@ TAB_CONTENT = {
             ("Contexto enviado: ", "bold"),
             (("• Conhecimento do próprio FlowScope (orientações das sub-abas e informações da aba \"Sobre\");\n"
               "• Fundamentos da watchlist carregada;\n"
-              "• Documentos em cache, lidos em cascata (resumos curtos e longos e, se necessário, o texto integral dos alvos);\n"
-              "• Notícias e informações regulatórias da sub-aba \"Notícias\", quando houver cache do período.\n\n"), ""),
+              "• Documentos com resumo ou texto já em cache, lidos em cascata (resumos curtos e longos e, se necessário, o texto integral dos alvos); documentos pendentes de resumo ou de extração são omitidos em silêncio;\n"
+              "• Notícias e informações regulatórias da sub-aba \"Notícias\" que estejam em cache e cujos títulos casem com os termos da pergunta; pendentes são omitidas e, quando o índice filtrado é grande, o FlowScope pede confirmação antes de enviá-lo.\n\n"), ""),
             ("Como interpretar: ", "bold"),
             (("Pressione Enter para enviar (Shift+Enter quebra a linha). Enquanto a I.A. responde, o botão ao lado de \"Enviar\" cancela o envio "
               "e a conversa guarda o histórico dos turnos anteriores. \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
-              "texto exibido; \"Configuração\" abre o mesmo diálogo de LLM da sub-aba \"Documentos\". Se a resposta exigir ler o texto integral de "
+              "texto exibido; \"Configuração\" abre o mesmo diálogo de LLM da sub-aba \"Documentos\". O chat é estritamente leitor de cache: nunca "
+              "resume documentos ou notícias nem extrai texto sob demanda, de modo que itens ainda não processados ficam de fora da resposta. "
+              "O total de tokens da sessão é exibido na barra de status enquanto a aba \"Chat AI\" está ativa. Se a resposta exigir ler o texto integral de "
               "vários documentos, o FlowScope pede confirmação antes de prosseguir."), ""),
         ]
     ),

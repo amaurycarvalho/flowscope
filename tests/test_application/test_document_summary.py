@@ -13,7 +13,7 @@ from flowscope.application.documentos.document_summary_port import (
 from flowscope.application.documentos.mensagens import mensagem_indisponivel
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.llm import LLMCommunicationError
+from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 
@@ -35,7 +35,7 @@ class _LLMFake:
         self.resposta = resposta
 
     def complete(self, messages, system_prompt=None):
-        return self.resposta
+        return LLMResposta(texto=self.resposta)
 
 
 class TestGerarEstrito:

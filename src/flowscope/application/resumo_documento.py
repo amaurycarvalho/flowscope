@@ -51,7 +51,7 @@ class ResumirDocumentoUseCase:
         resposta = self._llm.complete(
             [{"role": "user", "content": self._montar_prompt(entrada)}]
         )
-        curto, longo = self._interpretar(resposta)
+        curto, longo = self._interpretar(resposta.texto)
         return ResumoDocumento(
             short_summary=curto[:LIMITE_CURTO],
             long_summary=longo[:LIMITE_LONGO],
