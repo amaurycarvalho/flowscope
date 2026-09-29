@@ -41,7 +41,7 @@ O sistema DEVE acumular, por sessão da aba "Chat AI", os tokens de entrada e de
 
 ### Requirement: Rótulo persistente de tokens na barra de status
 
-O sistema DEVE exibir o acumulado em um rótulo próprio na barra de status no formato `Tokens: <entrada> entrada / <saída> saída / <bruto> (<N>%)`, com os três valores numéricos formatados em milhares com sufixo `K` e uma casa decimal e separados por ` / `. O segmento final DEVE ser o `prompt_tokens` bruto da completion mais recente — a base do cálculo do percentual — seguido do percentual de ocupação da janela de contexto entre parênteses, sem casa decimal. Quando a janela não for conhecida, o percentual DEVE ser omitido, mas o valor bruto DEVE permanecer. O rótulo DEVE ficar visível somente quando a aba "Chat AI" estiver ativa e DEVE persistir após o término do envio. O rótulo DEVE ser atualizado durante o processamento, à medida que cada completion é concluída, e NÃO DEVE ser sobrescrito pelas mensagens de status de outras operações.
+O sistema DEVE exibir o acumulado em um rótulo próprio na barra de status no formato `Tokens: <entrada> entrada / <saída> saída / <contexto> contexto (<N>%)`, com os três valores numéricos formatados em milhares com sufixo `K` e uma casa decimal e separados por ` / `. O segmento final DEVE ser o `prompt_tokens` bruto da completion mais recente — a base do cálculo do percentual — rotulado `contexto`, seguido do percentual de ocupação da janela de contexto entre parênteses, sem casa decimal. Quando a janela não for conhecida, o percentual DEVE ser omitido, mas o valor bruto rotulado `contexto` DEVE permanecer. O rótulo DEVE ficar visível somente quando a aba "Chat AI" estiver ativa e DEVE persistir após o término do envio. O rótulo DEVE ser atualizado durante o processamento, à medida que cada completion é concluída, e NÃO DEVE ser sobrescrito pelas mensagens de status de outras operações.
 
 #### Scenario: Visível somente na aba Chat AI
 
@@ -53,12 +53,12 @@ O sistema DEVE exibir o acumulado em um rótulo próprio na barra de status no f
 #### Scenario: Formato em milhares com uma casa
 
 - **WHEN** o acumulado é de 5540 tokens de entrada e 340 de saída e a completion mais recente tem `prompt_tokens` bruto de 6400
-- **THEN** o rótulo DEVE exibir os três valores separados por ` / `, como `Tokens: 5.5K entrada / 0.3K saída / 6.4K`
+- **THEN** o rótulo DEVE exibir os três valores separados por ` / `, com o último rotulado `contexto`, como `Tokens: 5.5K entrada / 0.3K saída / 6.4K contexto`
 
 #### Scenario: Percentual da janela no rótulo
 
 - **WHEN** a completion atual reporta `prompt_tokens` e a janela de contexto do modelo é conhecida
-- **THEN** o rótulo DEVE exibir, após o valor bruto, o percentual como um inteiro entre parênteses, sem casa decimal
+- **THEN** o rótulo DEVE exibir, após o valor bruto rotulado `contexto`, o percentual como um inteiro entre parênteses, sem casa decimal
 
 #### Scenario: Atualização durante o processamento
 
@@ -74,7 +74,7 @@ O sistema DEVE exibir o acumulado em um rótulo próprio na barra de status no f
 
 ### Requirement: Percentual de ocupação da janela de contexto
 
-O sistema DEVE calcular o percentual de ocupação da janela de contexto a partir do `prompt_tokens` bruto da completion mais recente (cache incluído) dividido pela janela de contexto do modelo, arredondado para inteiro. A janela de contexto DEVE ser resolvida a partir do preset do provedor/modelo, enriquecida pela informação do liteLLM quando disponível. O valor bruto usado no cálculo DEVE integrar o rótulo, formatado como os demais. Quando a janela não for conhecida, o percentual NÃO DEVE ser exibido, mantendo o valor bruto no rótulo.
+O sistema DEVE calcular o percentual de ocupação da janela de contexto a partir do `prompt_tokens` bruto da completion mais recente (cache incluído) dividido pela janela de contexto do modelo, arredondado para inteiro. A janela de contexto DEVE ser resolvida a partir do preset do provedor/modelo, enriquecida pela informação do liteLLM quando disponível. O valor bruto usado no cálculo DEVE integrar o rótulo rotulado `contexto`, formatado como os demais. Quando a janela não for conhecida, o percentual NÃO DEVE ser exibido, mantendo o valor bruto rotulado `contexto` no rótulo.
 
 #### Scenario: Percentual a partir do prompt bruto
 
@@ -84,7 +84,7 @@ O sistema DEVE calcular o percentual de ocupação da janela de contexto a parti
 #### Scenario: Janela desconhecida omite o percentual
 
 - **WHEN** a janela de contexto do modelo não é conhecida
-- **THEN** o rótulo DEVE exibir o valor bruto da completion mais recente, sem o parêntese de percentual, e NÃO DEVE exibir apenas entrada e saída
+- **THEN** o rótulo DEVE exibir o valor bruto da completion mais recente rotulado `contexto`, sem o parêntese de percentual, e NÃO DEVE exibir apenas entrada e saída
 
 #### Scenario: Cache não altera a ocupação
 

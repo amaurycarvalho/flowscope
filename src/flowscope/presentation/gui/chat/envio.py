@@ -220,6 +220,20 @@ class EnvioMixin:
             return False
         return ctx.confirmar(quantidade, list(nomes), self._confirmation_timeout)
 
+    def _confirmar_recursos_no_tk(
+        self: "EnvioMixin", quantidade: int, nomes: list[str]
+    ) -> bool:
+        """Confirma a carga de recursos iniciais, com texto próprio."""
+        ctx = getattr(self, "_ctx_atual", None)
+        if ctx is None or ctx.cancelled:
+            return False
+        return ctx.confirmar(
+            quantidade,
+            list(nomes),
+            self._confirmation_timeout,
+            motivo="recursos",
+        )
+
     def _cancelar_envio(self: "EnvioMixin") -> None:
         """Interrompe o envio corrente e restaura os controles de imediato.
 

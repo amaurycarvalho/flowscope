@@ -92,6 +92,7 @@ class AdaptadoresDocumentos:
     context_window_provider: Callable[[], int]
     cache_support_provider: Callable[[], bool]
     token_counter_provider: Callable[[], Callable[[str], int] | None]
+    input_limitado_provider: Callable[[], bool]
 
 
 def montar_adaptadores_documentos(
@@ -133,6 +134,9 @@ def montar_adaptadores_documentos(
             load_llm_config()
         ),
         token_counter_provider=lambda: porta_llm.token_counter(
+            load_llm_config()
+        ),
+        input_limitado_provider=lambda: porta_llm.input_limitado(
             load_llm_config()
         ),
     )

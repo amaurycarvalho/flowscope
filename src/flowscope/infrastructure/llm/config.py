@@ -71,6 +71,7 @@ def _normalizar_provedor(entrada: dict | None) -> dict:
         resultado["rpm"] = int(resultado["rpm"])
     except (TypeError, ValueError):
         resultado["rpm"] = DEFAULT_LLM_CONFIG["rpm"]
+    resultado["input_limitado"] = _booleano(resultado["input_limitado"])
     return resultado
 
 

@@ -43,7 +43,7 @@ class TestFluxoContabilidade:
         )
         assert contador.entrada == 700
         assert contador.texto(7000) == (
-            "Tokens: 0.7K entrada / 0.1K saída / 1.0K (14%)"
+            "Tokens: 0.7K entrada / 0.1K saída / 1.0K contexto (14%)"
         )
 
     def test_provedor_sem_cache_usa_estimativa(self):

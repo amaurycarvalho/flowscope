@@ -80,11 +80,13 @@ class JobContext:
         quantidade: int,
         nomes: list[str],
         timeout: float | None = None,
+        motivo: str = "documentos",
     ) -> bool:
         """Pede confirmação à interface e aguarda a resposta na thread de trabalho.
 
         Publica um :class:`Confirmacao`, que a interface atende na thread do Tk,
         e bloqueia o worker até a resposta, o cancelamento do job ou o timeout.
+        ``motivo`` seleciona o texto do diálogo (documentos ou recursos).
         """
         evento = threading.Event()
         caixa: dict = {}
@@ -94,6 +96,7 @@ class JobContext:
                 nomes=list(nomes),
                 evento=evento,
                 caixa=caixa,
+                motivo=motivo,
             )
         )
         limite = None if timeout is None else time.monotonic() + timeout

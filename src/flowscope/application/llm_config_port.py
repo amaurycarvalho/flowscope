@@ -29,6 +29,10 @@ class LLMConfigPort(Protocol):
         """Indica se o provedor da configuração suporta cache de prompt."""
         ...
 
+    def input_limitado(self: "LLMConfigPort", config: dict) -> bool:
+        """Indica se o modelo da configuração tem janela de entrada limitada."""
+        ...
+
     def token_counter(
         self: "LLMConfigPort", config: dict
     ) -> Callable[[str], int] | None:

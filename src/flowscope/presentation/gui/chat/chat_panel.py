@@ -76,6 +76,19 @@ def mensagem_confirmacao(quantidade: int, nomes: list[str]) -> str | None:
     )
 
 
+def mensagem_confirmacao_recursos(nomes: list[str]) -> str:
+    """Monta o texto próprio do diálogo de confirmação da carga de recursos."""
+    if nomes:
+        return (
+            "Para responder, será necessário carregar dados iniciais do "
+            f"FlowScope ({', '.join(nomes)}). Deseja prosseguir?"
+        )
+    return (
+        "Para responder, será necessário carregar dados iniciais do FlowScope. "
+        "Deseja prosseguir?"
+    )
+
+
 class ChatPanel(EnvioMixin, tk.Frame):
     """Painel de chat da watchlist completa, com sessão em memória."""
 
@@ -96,6 +109,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         token_counter_provider: Callable[[], Callable[[str], int] | None] | None = None,
         cache_support_provider: Callable[[], bool] | None = None,
         context_window_provider: Callable[[], int] | None = None,
+        input_limitado_provider: Callable[[], bool] | None = None,
         confirmation_timeout: float = 300.0,
     ) -> None:
         """Constrói o painel, a sessão e os controles de envio e cópia."""
@@ -115,6 +129,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._token_counter_provider = token_counter_provider
         self._cache_support_provider = cache_support_provider
         self._context_window_provider = context_window_provider
+        self._input_limitado_provider = input_limitado_provider
         self._fontes_adicionais = list(fontes_adicionais or [])
         self._contexto = MontarContextoChat(
             cascata=self._cascata,
@@ -128,6 +143,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
                 release_date=__release_date__,
                 repositorio=REPOSITORIO_URL,
             ),
+            input_limitado=self._input_limitado_efetivo,
+            confirmar_recursos=self._confirmar_recursos_no_tk,
         )
         self._confirmation_timeout = confirmation_timeout
         self._tokens = ContadorTokens()
@@ -290,6 +307,16 @@ class ChatPanel(EnvioMixin, tk.Frame):
         if self._config_callback is not None:
             self._config_callback()
 
+    def _input_limitado_efetivo(self: "ChatPanel") -> bool:
+        """Indica se o modelo ativo tem janela de entrada limitada."""
+        provider = getattr(self, "_input_limitado_provider", None)
+        if provider is None:
+            return False
+        try:
+            return bool(provider())
+        except Exception:
+            return False
+
     # ── Envio e resposta ─────────────────────────────────────────────
 
     def _criar_llm(self: "ChatPanel") -> LLMPort:
@@ -303,18 +330,25 @@ class ChatPanel(EnvioMixin, tk.Frame):
     ) -> None:
         """Exibe o diálogo de confirmação do evento e libera a thread de trabalho."""
         confirmacao.caixa["ok"] = self._dialogo_confirmacao(
-            confirmacao.quantidade, list(confirmacao.nomes)
+            confirmacao.quantidade,
+            list(confirmacao.nomes),
+            confirmacao.motivo,
         )
         confirmacao.evento.set()
 
-    def _dialogo_confirmacao(self: "ChatPanel", quantidade: int, nomes: list[str]) -> bool:
-        """Exibe o diálogo de confirmação de leitura do texto integral."""
-        texto = mensagem_confirmacao(quantidade, nomes)
+    def _dialogo_confirmacao(
+        self: "ChatPanel", quantidade: int, nomes: list[str], motivo: str = "documentos"
+    ) -> bool:
+        """Exibe o diálogo de confirmação conforme o motivo (documentos ou recursos)."""
+        if motivo == "recursos":
+            texto = mensagem_confirmacao_recursos(nomes)
+            titulo = "Confirmar carga de dados iniciais"
+        else:
+            texto = mensagem_confirmacao(quantidade, nomes)
+            titulo = "Confirmar leitura de documentos"
         if texto is None:
             return True
-        return bool(
-            messagebox.askyesno("Confirmar leitura de documentos", texto, parent=self)
-        )
+        return bool(messagebox.askyesno(titulo, texto, parent=self))
 
     def _concluir_ok(self: "ChatPanel", resposta: RespostaChat) -> None:
         """Registra a resposta da consulta e sinaliza o término."""

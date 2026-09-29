@@ -48,6 +48,30 @@ MENSAGEM_SEM_ALVO = (
     "precisão."
 )
 
+#: Chaves reservadas dos recursos iniciais servidos sob demanda.
+RECURSO_CONHECIMENTO = "conhecimento"
+RECURSO_FUNDAMENTOS = "fundamentos"
+RECURSO_RESUMOS = "resumos"
+RECURSOS_INICIAIS = (
+    RECURSO_CONHECIMENTO,
+    RECURSO_FUNDAMENTOS,
+    RECURSO_RESUMOS,
+)
+
+
+def _instrucao_limitada(recursos: dict[str, str]) -> str:
+    """Monta a instrução de formato informando as chaves de recurso disponíveis."""
+    chaves = ", ".join(sorted(recursos))
+    return (
+        "Responda exclusivamente com um objeto JSON no formato "
+        '{"resposta": "<texto>", "documentos": ["<chave>", ...]}. '
+        'Deixe "documentos" vazio quando a resposta já estiver conclusiva. '
+        "Os dados iniciais do FlowScope NÃO foram carregados por limitação de "
+        "janela de entrada. Para carregá-los, preencha \"documentos\" com as "
+        f"chaves de recurso necessárias: {chaves}. Você também pode incluir "
+        "chaves de documentos cujo texto integral precise ler."
+    )
+
 _MARCADOR_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
 #: Callback notificado com o uso de tokens de cada completion da cascata.
@@ -99,6 +123,9 @@ class ContextoChat:
     documentos: ContextoDocumental | None = None
     fontes_adicionais: list[FonteContexto] = field(default_factory=list)
     prefixo_repetido: bool = False
+    input_limitado: bool = False
+    recursos: dict[str, str] = field(default_factory=dict)
+    confirmar_recursos: Callable[[list[str]], bool] | None = None
 
 
 def _documentos_validos(valor: object) -> list[str]:
@@ -213,7 +240,13 @@ class ConsultarChatUseCase:
             contexto.prefixo_repetido,
         )
         resposta = interpretar_resposta(primeira.texto)
-        if not resposta.documentos_solicitados or contexto.documentos is None:
+        if not resposta.documentos_solicitados:
+            return resposta
+        if contexto.input_limitado:
+            return self._escalar_sob_demanda(
+                pergunta, contexto, resposta, prefixo, turnos, cancel_token, ao_uso
+            )
+        if contexto.documentos is None:
             return resposta
         return self._escalar(
             pergunta, contexto, resposta, prefixo, turnos, cancel_token, ao_uso
@@ -256,6 +289,151 @@ class ConsultarChatUseCase:
             fontes=final.documentos_solicitados or alvos,
             documentos_solicitados=[],
         )
+
+    def _escalar_sob_demanda(
+        self: "ConsultarChatUseCase",
+        pergunta: str,
+        contexto: ContextoChat,
+        resposta: RespostaChat,
+        prefixo: str,
+        historico: list[dict] | None = None,
+        cancel_token: CancellationToken | None = None,
+        ao_uso: AoUso | None = None,
+    ) -> RespostaChat:
+        """Serve recursos iniciais e/ou documentos, admitindo até três chamadas.
+
+        A primeira escalada carrega os recursos pedidos (e documentos, se
+        houver); quando recursos foram carregados e a LLM então pede documentos,
+        uma terceira chamada lê o texto integral.
+        """
+        recursos, documentos = self._separar_pedidos(
+            resposta.documentos_solicitados, contexto
+        )
+        texto_recursos = self._preparar_recursos(contexto, recursos)
+        texto_docs = self._preparar_documentos(contexto, documentos)
+        if not texto_recursos and not texto_docs:
+            return replace(resposta, texto=resposta.texto or MENSAGEM_SEM_ALVO)
+        self._checar(cancel_token)
+        segunda = self._completar(
+            prefixo,
+            self._montar_sufixo(
+                pergunta,
+                [],
+                texto_docs or None,
+                texto_recursos or None,
+            ),
+            historico or [],
+            ao_uso,
+            contexto.prefixo_repetido,
+        )
+        intermediaria = interpretar_resposta(segunda.texto)
+        terceira = self._preparar_terceira(
+            contexto, intermediaria, texto_recursos
+        )
+        if terceira is not None:
+            alvos, texto_docs2 = terceira
+            return self._escalar_documentos(
+                pergunta,
+                contexto,
+                alvos,
+                texto_docs2,
+                prefixo,
+                historico,
+                cancel_token,
+                ao_uso,
+            )
+        return replace(
+            intermediaria,
+            fontes=intermediaria.documentos_solicitados or documentos,
+            documentos_solicitados=[],
+        )
+
+    @staticmethod
+    def _separar_pedidos(
+        pedidos: list[str], contexto: ContextoChat
+    ) -> tuple[list[str], list[str]]:
+        """Separa as chaves pedidas em recursos iniciais e documentos."""
+        recursos = [chave for chave in pedidos if chave in contexto.recursos]
+        documentos = [chave for chave in pedidos if chave not in contexto.recursos]
+        return recursos, documentos
+
+    def _preparar_terceira(
+        self: "ConsultarChatUseCase",
+        contexto: ContextoChat,
+        intermediaria: RespostaChat,
+        texto_recursos: str,
+    ) -> tuple[list[str], str] | None:
+        """Prepara a terceira chamada quando a resposta pede documentos.
+
+        Só se aplica quando recursos foram carregados e a LLM então indica
+        documentos-alvo; devolve ``None`` quando não há terceira chamada.
+        """
+        if not texto_recursos or not intermediaria.documentos_solicitados:
+            return None
+        if contexto.documentos is None:
+            return None
+        alvos = intermediaria.documentos_solicitados
+        texto_docs = self._preparar_documentos(contexto, alvos)
+        if not texto_docs:
+            return None
+        return alvos, texto_docs
+
+    def _escalar_documentos(
+        self: "ConsultarChatUseCase",
+        pergunta: str,
+        contexto: ContextoChat,
+        alvos: list[str],
+        texto_docs: str,
+        prefixo: str,
+        historico: list[dict] | None,
+        cancel_token: CancellationToken | None,
+        ao_uso: AoUso | None,
+    ) -> RespostaChat:
+        """Executa a terceira chamada com o texto integral dos documentos."""
+        self._checar(cancel_token)
+        terceira = self._completar(
+            prefixo,
+            self._montar_sufixo(pergunta, [], texto_docs, None),
+            historico or [],
+            ao_uso,
+            contexto.prefixo_repetido,
+        )
+        final = interpretar_resposta(terceira.texto)
+        return replace(
+            final,
+            fontes=final.documentos_solicitados or alvos,
+            documentos_solicitados=[],
+        )
+
+    def _preparar_recursos(
+        self: "ConsultarChatUseCase",
+        contexto: ContextoChat,
+        chaves: list[str],
+    ) -> str:
+        """Confirma e resolve os recursos iniciais pedidos, omitindo os vazios."""
+        if not chaves:
+            return ""
+        confirmar = contexto.confirmar_recursos
+        if confirmar is not None and not confirmar(list(chaves)):
+            return ""
+        partes = [
+            contexto.recursos[chave]
+            for chave in chaves
+            if contexto.recursos.get(chave)
+        ]
+        return "\n\n".join(partes)
+
+    def _preparar_documentos(
+        self: "ConsultarChatUseCase",
+        contexto: ContextoChat,
+        chaves: list[str],
+    ) -> str:
+        """Confirma e resolve o texto integral dos documentos pedidos."""
+        if not chaves or contexto.documentos is None:
+            return ""
+        if not contexto.documentos.confirmar(chaves):
+            return ""
+        return contexto.documentos.preparar_texto(chaves)
 
     @staticmethod
     def _checar(cancel_token: CancellationToken | None) -> None:
@@ -314,7 +492,11 @@ class ConsultarChatUseCase:
         self: "ConsultarChatUseCase", contexto: ContextoChat
     ) -> str:
         """Monta o prefixo estável: instruções e contexto cacheável."""
-        partes = [self._system_prompt, INSTRUCAO_FORMATO]
+        partes = [self._system_prompt]
+        if contexto.input_limitado and contexto.recursos:
+            partes.append(_instrucao_limitada(contexto.recursos))
+        else:
+            partes.append(INSTRUCAO_FORMATO)
         if contexto.bloco_estavel:
             partes.append(contexto.bloco_estavel)
         return "\n\n".join(partes)
@@ -324,9 +506,12 @@ class ConsultarChatUseCase:
         pergunta: str,
         fontes: Sequence[FonteContexto],
         texto_integral: str | None,
+        texto_recursos: str | None = None,
     ) -> str:
-        """Monta o sufixo volátil: texto integral, fontes e pergunta atual."""
+        """Monta o sufixo volátil: recursos, texto integral, fontes e pergunta."""
         partes: list[str] = []
+        if texto_recursos:
+            partes.extend(["## Recursos iniciais", texto_recursos, ""])
         if texto_integral:
             partes.extend(
                 ["## Texto integral dos documentos-alvo", texto_integral, ""]

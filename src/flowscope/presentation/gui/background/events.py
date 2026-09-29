@@ -55,6 +55,7 @@ class Confirmacao:
     nomes: list[str] = field(default_factory=list)
     evento: threading.Event = field(default_factory=threading.Event)
     caixa: dict = field(default_factory=dict)
+    motivo: str = "documentos"
 
 
 #: União dos eventos que um job pode publicar.

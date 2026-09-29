@@ -11,6 +11,9 @@ import logging
 from collections.abc import Callable, Iterable, Mapping
 
 from flowscope.application.chat.consultar import (
+    RECURSO_CONHECIMENTO,
+    RECURSO_FUNDAMENTOS,
+    RECURSO_RESUMOS,
     ContextoChat,
     ContextoDocumental,
     FonteContexto,
@@ -33,6 +36,18 @@ ConfirmaLeitura = Callable[[int, list[str]], bool]
 #: Teto de nomes listados no diálogo de confirmação.
 _MAX_NOMES_LISTADOS = 7
 
+#: Manifesto dos recursos exibido quando a janela de entrada é limitada.
+MANIFESTO_RECURSOS = (
+    "## Recursos disponíveis sob demanda\n"
+    "Este provedor/modelo tem janela de entrada limitada; os dados iniciais "
+    "NÃO foram carregados no prefixo. Os recursos a seguir podem ser "
+    'solicitados na lista "documentos" da resposta:\n'
+    "- conhecimento: textos de orientação das sub-abas e informações da aba "
+    "Sobre;\n"
+    "- fundamentos: tabela de fundamentos da watchlist carregada;\n"
+    "- resumos: resumos dos documentos da watchlist."
+)
+
 
 def assinatura_bloco(conhecimento: str, fundamentos: str, resumos: str) -> str:
     """Deriva a assinatura determinística do bloco estável a partir do conteúdo."""
@@ -52,12 +67,26 @@ class MontarContextoChat:
         fontes_adicionais: Iterable[FonteAdicional] | None = None,
         confirmar: ConfirmaLeitura | None = None,
         conhecimento: str = "",
+        input_limitado: bool | Callable[[], bool] = False,
+        confirmar_recursos: ConfirmaLeitura | None = None,
     ) -> None:
-        """Guarda a cascata, as fontes adicionais e o callback de confirmação."""
+        """Guarda a cascata, as fontes, o conhecimento e os callbacks de gate."""
         self._cascata = cascata
         self._fontes_adicionais = list(fontes_adicionais or [])
         self._confirmar = confirmar
         self._conhecimento = conhecimento
+        self._input_limitado = input_limitado
+        self._confirmar_recursos = confirmar_recursos
+
+    def _input_limitado_ativo(self: "MontarContextoChat") -> bool:
+        """Resolve o flag de janela de entrada limitada, tolerando callables."""
+        valor = self._input_limitado
+        if callable(valor):
+            try:
+                return bool(valor())
+            except Exception:
+                return False
+        return bool(valor)
 
     def montar(
         self: "MontarContextoChat",
@@ -87,12 +116,43 @@ class MontarContextoChat:
             preparar_texto=self.preparar_texto,
             confirmar=self.confirmar_leitura,
         )
+        recursos = self._montar_recursos(fundamentos_txt, resumos)
         return ContextoChat(
             bloco_estavel=bloco,
             assinatura=assinatura,
             documentos=documental,
             fontes_adicionais=self.preparar_fontes_adicionais(pergunta),
             prefixo_repetido=repetido,
+            input_limitado=bool(recursos),
+            recursos=recursos,
+            confirmar_recursos=(
+                self._confirmar_recursos_leitura if recursos else None
+            ),
+        )
+
+    def _montar_recursos(
+        self: "MontarContextoChat", fundamentos_txt: str, resumos: str
+    ) -> dict[str, str]:
+        """Mapeia as chaves dos recursos iniciais para o seu conteúdo."""
+        if not self._input_limitado_ativo():
+            return {}
+        candidatos = {
+            RECURSO_CONHECIMENTO: self._conhecimento,
+            RECURSO_FUNDAMENTOS: fundamentos_txt,
+            RECURSO_RESUMOS: resumos,
+        }
+        return {
+            chave: texto for chave, texto in candidatos.items() if texto
+        }
+
+    def _confirmar_recursos_leitura(
+        self: "MontarContextoChat", chaves: list[str]
+    ) -> bool:
+        """Aplica o gate de confirmação próprio dos recursos iniciais."""
+        if self._confirmar_recursos is None:
+            return True
+        return bool(
+            self._confirmar_recursos(len(chaves), list(chaves))
         )
 
     def montar_bloco(
@@ -119,15 +179,20 @@ class MontarContextoChat:
         """Computa os componentes estáveis e a assinatura derivada do conteúdo."""
         resumos, _alvos = self._cascata.montar_resumos(ticker, watchlist)
         fundamentos_txt = montar_contexto_fundamentos(fundamentos, ticker, watchlist)
-        assinatura = assinatura_bloco(
-            self._conhecimento, fundamentos_txt, resumos
-        )
+        if self._input_limitado_ativo():
+            assinatura = assinatura_bloco(MANIFESTO_RECURSOS, "", "")
+        else:
+            assinatura = assinatura_bloco(
+                self._conhecimento, fundamentos_txt, resumos
+            )
         return fundamentos_txt, resumos, assinatura
 
     def _renderizar_bloco(
         self: "MontarContextoChat", fundamentos: str, resumos: str
     ) -> str:
         """Renderiza o bloco estável, em ordem determinística."""
+        if self._input_limitado_ativo():
+            return MANIFESTO_RECURSOS
         partes: list[str] = []
         if self._conhecimento:
             partes.extend(["## Conhecimento do FlowScope", self._conhecimento, ""])

@@ -213,6 +213,7 @@ class TabsLayoutMixin:
             token_counter_provider=documentos.token_counter_provider,
             cache_support_provider=documentos.cache_support_provider,
             context_window_provider=documentos.context_window_provider,
+            input_limitado_provider=documentos.input_limitado_provider,
         )
 
     def _criar_fonte_noticias(self: "TabsLayoutMixin") -> FonteNoticias:

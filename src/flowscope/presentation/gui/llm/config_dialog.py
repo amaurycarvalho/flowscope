@@ -71,6 +71,7 @@ class LLMConfigDialog(tk.Toplevel):
         self._model_var = tk.StringVar()
         self._api_key_var = tk.StringVar()
         self._rpm_var = tk.StringVar()
+        self._input_limitado_var = tk.BooleanVar()
         self._status_var = tk.StringVar()
         self._build()
         self._carregar()
@@ -109,6 +110,9 @@ class LLMConfigDialog(tk.Toplevel):
             corpo, "Chave de API", self._api_key_var, show="*"
         )
         self._rpm_spin = self._add_spin(corpo, "RPM", self._rpm_var)
+        self._input_limitado_check = self._add_check(
+            corpo, "Janela de entrada limitada", self._input_limitado_var
+        )
 
         botoes = ttk.Frame(corpo)
         botoes.pack(fill=tk.X, pady=(8, 0))
@@ -183,6 +187,18 @@ class LLMConfigDialog(tk.Toplevel):
         self._widgets_config.append(spin)
         return spin
 
+    def _add_check(
+        self: "LLMConfigDialog",
+        parent: tk.Widget,
+        rotulo: str,
+        var: tk.BooleanVar,
+    ) -> ttk.Checkbutton:
+        """Adiciona uma linha de caixa de seleção e a registra para bloqueio."""
+        check = ttk.Checkbutton(parent, text=rotulo, variable=var)
+        check.pack(fill=tk.X, pady=2)
+        self._widgets_config.append(check)
+        return check
+
     def _carregar(self: "LLMConfigDialog") -> None:
         """Preenche os campos com a configuração salva do provedor ativo."""
         self._working = self._port.load_provider_configs(self._config_path)
@@ -193,6 +209,7 @@ class LLMConfigDialog(tk.Toplevel):
         self._model_var.set(config["model"])
         self._api_key_var.set(config["api_key"])
         self._rpm_var.set(str(config["rpm"]))
+        self._input_limitado_var.set(bool(config.get("input_limitado", False)))
 
     def _on_preset_change(
         self: "LLMConfigDialog", event: tk.Event | None = None
@@ -215,6 +232,7 @@ class LLMConfigDialog(tk.Toplevel):
             "model": self._model_var.get().strip(),
             "api_key": self._api_key_var.get().strip(),
             "rpm": self._rpm(),
+            "input_limitado": bool(self._input_limitado_var.get()),
         }
 
     def _carregar_provedor(self: "LLMConfigDialog", provider: str) -> None:
@@ -224,6 +242,7 @@ class LLMConfigDialog(tk.Toplevel):
             self._model_var.set("")
             self._api_key_var.set("")
             self._rpm_var.set(str(self._port.default_config()["rpm"]))
+            self._input_limitado_var.set(False)
             return
         entrada = self._working.get(provider)
         if entrada is not None:
@@ -231,12 +250,14 @@ class LLMConfigDialog(tk.Toplevel):
             self._model_var.set(str(entrada["model"]))
             self._api_key_var.set(str(entrada["api_key"]))
             self._rpm_var.set(str(entrada["rpm"]))
+            self._input_limitado_var.set(bool(entrada.get("input_limitado", False)))
             return
         preset = self._presets.get(provider)
         self._api_url_var.set(str(preset["api_url"]) if preset else "")
         self._model_var.set(str(preset["model"]) if preset else "")
         self._api_key_var.set("")
         self._rpm_var.set(str(self._port.default_config()["rpm"]))
+        self._input_limitado_var.set(False)
 
     def _rpm(self: "LLMConfigDialog") -> int:
         """Retorna o RPM informado, caindo no padrão 5 quando inválido."""
@@ -253,6 +274,7 @@ class LLMConfigDialog(tk.Toplevel):
             "model": self._model_var.get().strip(),
             "api_key": self._api_key_var.get().strip(),
             "rpm": self._rpm(),
+            "input_limitado": bool(self._input_limitado_var.get()),
         }
 
     def _salvar(self: "LLMConfigDialog") -> None:

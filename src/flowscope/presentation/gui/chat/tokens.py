@@ -26,10 +26,10 @@ def formatar_tokens(
     """Formata entrada, saída e o prompt bruto da janela, separados por ``/``.
 
     O último segmento é o ``prompt_tokens`` bruto da completion mais recente
-    (base do percentual), seguido do percentual da janela entre parênteses
-    quando conhecido.
+    (base do percentual), rotulado ``contexto`` e seguido do percentual da
+    janela entre parênteses quando conhecido.
     """
-    janela = formatar_k(bruto)
+    janela = f"{formatar_k(bruto)} contexto"
     if contexto_pct is not None:
         janela += f" ({round(contexto_pct)}%)"
     return (

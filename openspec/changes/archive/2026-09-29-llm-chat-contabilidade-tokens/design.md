@@ -30,7 +30,7 @@ Adicionar campos com default zero em `LLMUsage` (`domain/llm/ports.py`): `entrad
 - A **entrada acumulada** na barra de status passa a somar `entrada_real = prompt_tokens - cached_tokens`.
 - O **% da janela** usa o `prompt_tokens` **bruto** da completion atual (cache incluído), pois cache ainda ocupa espaço no contexto.
 
-Decisão confirmada com o usuário (opção A). São dois números derivados do mesmo `LLMUsage`. O rótulo passa a exibir três valores separados por ` / `, no formato `Tokens: X entrada / Y saída / Z (N%)`, em que `Z` é o `prompt_tokens` bruto da completion mais recente (base do percentual), formatado como os demais. Quando a janela é desconhecida, o percentual é omitido, mas `Z` permanece.
+Decisão confirmada com o usuário (opção A). São dois números derivados do mesmo `LLMUsage`. O rótulo passa a exibir três valores separados por ` / `, no formato `Tokens: X entrada / Y saída / Z contexto (N%)`, em que `Z` é o `prompt_tokens` bruto da completion mais recente (base do percentual), rotulado `contexto` e formatado como os demais. Quando a janela é desconhecida, o percentual é omitido, mas `Z contexto` permanece.
 
 **Alternativas descartadas:** `%` sobre a entrada ajustada (subestima a ocupação) e `%` sobre o acumulado da sessão (ultrapassa 100% e não representa a janela).
 

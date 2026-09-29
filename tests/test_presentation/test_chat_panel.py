@@ -20,6 +20,7 @@ from flowscope.presentation.gui.chat.chat_panel import (
     TITULO_CHAT,
     ChatPanel,
     mensagem_confirmacao,
+    mensagem_confirmacao_recursos,
 )
 from flowscope.application.chat.documentos import CascataDocumentos
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
@@ -393,9 +394,22 @@ class TestConfirmacao:
         else:
             assert esperado in texto
 
+    def test_mensagem_recursos(self):
+        texto = mensagem_confirmacao_recursos(["conhecimento", "resumos"])
+        assert "dados iniciais do FlowScope" in texto
+        assert "conhecimento" in texto
+        assert "resumos" in texto
+
     @needs_display
     def test_dialogo_confirmacao(self, tmp_path, monkeypatch):
         root = tk.Tk()
+        capturado: dict = {}
+
+        def fake(titulo, texto, **kwargs):
+            capturado["titulo"] = titulo
+            capturado["texto"] = texto
+            return True
+
         try:
             painel = _painel(root, tmp_path, llm_available=lambda: True)
             monkeypatch.setattr(
@@ -406,6 +420,12 @@ class TestConfirmacao:
                 chat_panel_mod.messagebox, "askyesno", lambda *a, **k: False
             )
             assert painel._dialogo_confirmacao(9, []) is False
+            monkeypatch.setattr(chat_panel_mod.messagebox, "askyesno", fake)
+            assert painel._dialogo_confirmacao(
+                1, ["conhecimento"], "recursos"
+            ) is True
+            assert capturado["titulo"] == "Confirmar carga de dados iniciais"
+            assert "dados iniciais do FlowScope" in capturado["texto"]
         finally:
             root.destroy()
 
