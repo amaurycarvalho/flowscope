@@ -1,0 +1,10 @@
+# Baseline do orçamento de testes de UI (gated por DISPLAY ou criando Tk).
+#
+# Contagem verificada por `tests/architecture/test_ui_test_budget.py`. O teto só
+# encolhe: um aumento reprova o guardrail e uma queda exige atualizar este
+# arquivo explicitamente para o valor novo. O critério objetivo é contado por
+# AST: declarações decoradas com `@needs_display` (funções e classes) e funções
+# de teste que criam `tk.Tk`/`tk.Toplevel` sem gating.
+#
+# Valor inicial herdado da fatia `background-job-manager` (250).
+236

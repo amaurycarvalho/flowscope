@@ -68,6 +68,8 @@ class ActionsMixin:
         self._controller.on_load_data()
 
     def _on_load_data(self: "ActionsMixin") -> None:
+        if getattr(self, "_inicializando", False):
+            return
         self._controller.on_load_data()
 
     def _on_atualizar_fundamentos(self: "ActionsMixin") -> None:

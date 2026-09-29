@@ -1,5 +1,6 @@
 """Construção das abas e restauração do estado do layout da interface."""
 
+import logging
 import tkinter as tk
 from tkinter import ttk
 
@@ -251,23 +252,32 @@ class TabsLayoutMixin:
 
     def _restore_tabs(self: "TabsLayoutMixin", last_tab: str, last_subtab: str) -> None:
         try:
-            for i in range(self._main_notebook.index("end")):
-                if self._main_notebook.tab(i, "text") == last_tab:
-                    self._main_notebook.select(i)
-                    break
-            if last_tab in ("Análise Geral", "Análise do Ticker"):
-                notebook = (
-                    self._general_notebook
-                    if last_tab == "Análise Geral"
-                    else self._ticker_notebook
-                )
-                for i in range(notebook.index("end")):
-                    if notebook.tab(i, "text") == last_subtab:
-                        notebook.select(i)
+            try:
+                for i in range(self._main_notebook.index("end")):
+                    if self._main_notebook.tab(i, "text") == last_tab:
+                        self._main_notebook.select(i)
                         break
-        except tk.TclError:
-            pass
-        self._on_tab_changed()
+                if last_tab in ("Análise Geral", "Análise do Ticker"):
+                    notebook = (
+                        self._general_notebook
+                        if last_tab == "Análise Geral"
+                        else self._ticker_notebook
+                    )
+                    for i in range(notebook.index("end")):
+                        if notebook.tab(i, "text") == last_subtab:
+                            notebook.select(i)
+                            break
+            except tk.TclError:
+                pass
+            self._on_tab_changed()
+        except Exception:
+            logging.getLogger("flowscope").exception(
+                "Falha ao restaurar o estado inicial de abas/painéis"
+            )
+        finally:
+            finalizar = getattr(self, "finalizar_gate", None)
+            if finalizar is not None:
+                finalizar()
 
     def _restore_sashes(self: "TabsLayoutMixin", positions: list[int]) -> None:
         try:

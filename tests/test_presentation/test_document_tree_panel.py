@@ -44,6 +44,7 @@ from flowscope.application.document_preview import (
     texto_de_pdf,
     texto_preview,
 )
+from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 from flowscope.presentation.gui.charts.document_grouping import (
     mensagem_indisponivel,
 )
@@ -555,107 +556,6 @@ class TestPreviewEmThread:
             root.destroy()
 
 
-class TestCacheTextoPreview:
-    def _painel(self, root, tmp_path, monkeypatch, texto_convertido):
-        store = JsonDocumentTextStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        chamadas = []
-        monkeypatch.setattr(
-            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-            lambda caminho: chamadas.append(caminho) or texto_convertido,
-        )
-        painel = DocumentTreePanel(
-            root, catalog=catalogo, text_store=store, debounce_ms=0
-        )
-        painel.update("ALZR11")
-        return painel, store, chamadas
-
-    @needs_display
-    def test_miss_converte_e_grava_no_cache(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            painel, store, chamadas = self._painel(
-                root, tmp_path, monkeypatch, "extraído"
-            )
-            no = _no_arquivo(painel, "10.pdf")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root, lambda: "extraído" in painel._preview.get("1.0", "end-1c")
-            )
-            assert len(chamadas) == 1
-            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == "extraído"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_miss_sem_texto_grava_marcador(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            painel, store, _ = self._painel(root, tmp_path, monkeypatch, "")
-            no = _no_arquivo(painel, "10.pdf")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
-            )
-            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == SEM_TEXTO
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_hit_usa_cache_sem_converter(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            store = JsonDocumentTextStore(cache_dir=tmp_path)
-            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "do cache")
-            catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
-            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-            chamadas = []
-            monkeypatch.setattr(
-                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-                lambda caminho: chamadas.append(caminho) or "convertido",
-            )
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, text_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            painel._tree.selection_set(no)
-            esperado = f"{mensagem_indisponivel(False)}\n\n---\n\ndo cache"
-            assert _pump(
-                root, lambda: painel._preview.get("1.0", "end-1c") == esperado
-            )
-            assert chamadas == []
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_marcador_em_cache_nao_reconverte(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            store = JsonDocumentTextStore(cache_dir=tmp_path)
-            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", SEM_TEXTO)
-            catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
-            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-            chamadas = []
-            monkeypatch.setattr(
-                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-                lambda caminho: chamadas.append(caminho) or "convertido",
-            )
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, text_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
-            )
-            assert chamadas == []
-        finally:
-            root.destroy()
-
-
 class TestAberturaSemTexto:
     @needs_display
     def test_abertura_permanece_funcional_sem_texto(self, tmp_path):
@@ -813,54 +713,49 @@ class TestFachadaDocumentos:
         finally:
             root.destroy()
 
-    @needs_display
-    def test_preparar_texto_miss_converte_e_grava(self, tmp_path, monkeypatch):
+
+class _FluxoDocumentosHeadless(DocumentFlowMixin):
+    """Host headless de ``preparar_texto`` (não toca em widgets)."""
+
+    def __init__(self, text_store, summary) -> None:
+        self._text_store = text_store
+        self._summary = summary
+        self._preview_cache: dict = {}
+
+
+class TestPrepararTextoHeadless:
+    def _host(self, tmp_path):
         store = JsonDocumentTextStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        summary = MagicMock()
+        summary.chave.return_value = "bdr/ALZR11/2026/02/10.pdf"
+        return _FluxoDocumentosHeadless(store, summary), store
+
+    def test_miss_converte_e_grava(self, tmp_path, monkeypatch):
+        host, store = self._host(tmp_path)
+        arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
             "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
             lambda caminho: chamadas.append(caminho) or "extraído",
         )
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, text_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            assert painel.preparar_texto(arquivo) == "extraído"
-            assert chamadas == [arquivo.caminho]
-            assert store.obter(
-                "ALZR11", "bdr/ALZR11/2026/02/10.pdf"
-            ) == "extraído"
-            assert painel._preview_cache[arquivo.caminho] == "extraído"
-        finally:
-            root.destroy()
 
-    @needs_display
-    def test_preparar_texto_hit_nao_converte(self, tmp_path, monkeypatch):
-        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        assert host.preparar_texto(arquivo) == "extraído"
+        assert chamadas == [arquivo.caminho]
+        assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == "extraído"
+        assert host._preview_cache[arquivo.caminho] == "extraído"
+
+    def test_hit_nao_converte(self, tmp_path, monkeypatch):
+        host, store = self._host(tmp_path)
         store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "do cache")
-        catalogo = DocumentCatalog(cache_dir=tmp_path, text_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
+        arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
             "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
             lambda caminho: chamadas.append(caminho) or "convertido",
         )
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, text_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            assert painel.preparar_texto(arquivo) == "do cache"
-            assert chamadas == []
-        finally:
-            root.destroy()
+
+        assert host.preparar_texto(arquivo) == "do cache"
+        assert chamadas == []
 
 
 class TestAplicarResumo:

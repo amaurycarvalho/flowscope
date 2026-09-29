@@ -76,6 +76,8 @@ class CsvMixin:
         return f"{sd.isoformat()};{ticker};;;;;;;"
 
     def _copy_data(self: "CsvMixin") -> None:
+        if getattr(self, "_inicializando", False):
+            return
         texto = self._texto_para_copiar()
         if not texto:
             return

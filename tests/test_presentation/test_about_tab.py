@@ -49,13 +49,29 @@ class TestResolucaoDeGrafico:
         host._ticker_notebook.tab.assert_not_called()
 
 
+class _HostAbaSobre(TabActionsMixin):
+    """Host headless da aba "Sobre" com colaboradores mockados."""
+
+    def __init__(self) -> None:
+        self._prefs: dict = {}
+        self._tab_content = {
+            (ABOUT_TAB, ABOUT_TAB): (
+                "Sobre — Informações do FlowScope",
+                [("texto", "")],
+            )
+        }
+        self._orientation_panel = MagicMock()
+        self._verificar_nova_versao = MagicMock()
+        self._resolve_chart = MagicMock()
+
+    def _current_tabs(self):
+        return (ABOUT_TAB, ABOUT_TAB)
+
+
 class TestOnTabChanged:
     def test_sobre_preenche_orientacao_sem_resolver_grafico(self):
-        host = MagicMock()
-        host._prefs = {}
-        host._current_tabs = MagicMock(return_value=(ABOUT_TAB, ABOUT_TAB))
-        conteudo = ("Sobre — Informações do FlowScope", [("texto", "")])
-        host._tab_content = {(ABOUT_TAB, ABOUT_TAB): conteudo}
+        host = _HostAbaSobre()
+        conteudo = host._tab_content[(ABOUT_TAB, ABOUT_TAB)]
 
         TabActionsMixin._on_tab_changed(host)
 

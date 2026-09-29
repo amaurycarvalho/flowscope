@@ -19,4 +19,4 @@
 
 - [ ] 4.1 Validar o change (`openspec validate descarregar-tk-io-restante`) e confirmar os deltas de `documentos-ticker-panel`, `clipboard-export` e `noticias-panel`
 - [ ] 4.2 Rodar a suíte de aplicação e apresentação, `ruff`, flake8, complexidade (`xenon`/`radon`) e a checagem de fronteiras, confirmando ausência de novas violações
-- [ ] 4.3 Confirmar que a contagem de `@needs_display` não aumentou (guardrail de teto de UI) e que nenhum teste novo exige `DISPLAY`
+- [ ] 4.3 Confirmar que a contagem de `@needs_display` não aumentou (guardrail de teto de UI), que todos os testes `@needs_display` preexistentes ligados aos objetos modificados nessa change foram avaliados se podem tornar-se headless (devem ser transformados em headless se a avaliação mostrar ser possível) e que nenhum teste novo exige `DISPLAY`
