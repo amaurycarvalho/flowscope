@@ -81,13 +81,15 @@ class FonteContexto:
 class ContextoChat:
     """Contexto completo recebido pela LLM em uma pergunta.
 
-    ``fontes_adicionais`` é o ponto de extensão para changes futuras
-    (``noticias-b3``, ``llm-chat-rag``): cada fonte entra como uma seção
-    própria, sem alterar a ordem da cascata de documentos.
+    ``bloco_estavel`` é o prefixo cacheável (conhecimento, fundamentos e
+    resumos) e ``assinatura`` identifica o seu conteúdo. ``fontes_adicionais``
+    é o ponto de extensão para changes futuras (``noticias-b3``,
+    ``llm-chat-rag``): cada fonte entra no sufixo volátil, sem alterar a ordem
+    da cascata de documentos.
     """
 
-    conhecimento: str = ""
-    fundamentos: str = ""
+    bloco_estavel: str = ""
+    assinatura: str = ""
     documentos: ContextoDocumental | None = None
     fontes_adicionais: list[FonteContexto] = field(default_factory=list)
 
@@ -188,23 +190,33 @@ class ConsultarChatUseCase:
         """Consulta o contexto de resumos e escala para o texto integral se preciso."""
         self._checar(cancel_token)
         turnos = _selecionar_historico(historico)
+        prefixo = self._montar_prefixo(contexto)
         primeira = self._completar(
-            self._montar_prompt(pergunta, contexto, None), turnos
+            prefixo,
+            self._montar_sufixo(pergunta, contexto.fontes_adicionais, None),
+            turnos,
         )
         resposta = interpretar_resposta(primeira)
         if not resposta.documentos_solicitados or contexto.documentos is None:
             return resposta
-        return self._escalar(pergunta, contexto, resposta, cancel_token, turnos)
+        return self._escalar(
+            pergunta, contexto, resposta, prefixo, turnos, cancel_token
+        )
 
     def _escalar(
         self: "ConsultarChatUseCase",
         pergunta: str,
         contexto: ContextoChat,
         resposta: RespostaChat,
-        cancel_token: CancellationToken | None = None,
+        prefixo: str,
         historico: list[dict] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> RespostaChat:
-        """Executa a segunda chamada com o texto integral dos alvos."""
+        """Executa a segunda chamada com o texto integral dos alvos.
+
+        Reaproveita o mesmo prefixo estável e o mesmo histórico da primeira
+        chamada; apenas o sufixo muda, acrescentando o texto integral.
+        """
         alvos = resposta.documentos_solicitados
         if not contexto.documentos.confirmar(alvos):
             return replace(
@@ -215,7 +227,8 @@ class ConsultarChatUseCase:
         texto_integral = contexto.documentos.preparar_texto(alvos)
         self._checar(cancel_token)
         segunda = self._completar(
-            self._montar_prompt(pergunta, contexto, texto_integral),
+            prefixo,
+            self._montar_sufixo(pergunta, contexto.fontes_adicionais, texto_integral),
             historico or [],
         )
         final = interpretar_resposta(segunda)
@@ -232,38 +245,40 @@ class ConsultarChatUseCase:
             cancel_token.raise_if_cancelled()
 
     def _completar(
-        self: "ConsultarChatUseCase", prompt: str, historico: list[dict]
+        self: "ConsultarChatUseCase",
+        prefixo: str,
+        sufixo: str,
+        historico: list[dict],
     ) -> str:
-        """Envia o histórico e a pergunta atual, com o sistema estável."""
-        mensagens = [*historico, {"role": "user", "content": prompt}]
+        """Envia o prefixo estável no sistema e o sufixo no turno atual."""
+        mensagens = [*historico, {"role": "user", "content": sufixo}]
         return self._llm.complete(
             mensagens,
-            system_prompt=self._system_prompt,
+            system_prompt=prefixo,
         )
 
-    @staticmethod
-    def _montar_prompt(
-        pergunta: str, contexto: ContextoChat, texto_integral: str | None
+    def _montar_prefixo(
+        self: "ConsultarChatUseCase", contexto: ContextoChat
     ) -> str:
-        """Monta o prompt com o conhecimento, fundamentos e documentos."""
-        partes = [INSTRUCAO_FORMATO, ""]
-        if contexto.conhecimento:
-            partes.extend(["## Conhecimento do FlowScope", contexto.conhecimento, ""])
-        if contexto.fundamentos:
-            partes.extend(["## Fundamentos carregados", contexto.fundamentos, ""])
-        if contexto.documentos and contexto.documentos.resumos:
-            partes.extend(
-                [
-                    "## Resumos de documentos",
-                    contexto.documentos.resumos,
-                    "",
-                ]
-            )
+        """Monta o prefixo estável: instruções e contexto cacheável."""
+        partes = [self._system_prompt, INSTRUCAO_FORMATO]
+        if contexto.bloco_estavel:
+            partes.append(contexto.bloco_estavel)
+        return "\n\n".join(partes)
+
+    @staticmethod
+    def _montar_sufixo(
+        pergunta: str,
+        fontes: Sequence[FonteContexto],
+        texto_integral: str | None,
+    ) -> str:
+        """Monta o sufixo volátil: texto integral, fontes e pergunta atual."""
+        partes: list[str] = []
         if texto_integral:
             partes.extend(
                 ["## Texto integral dos documentos-alvo", texto_integral, ""]
             )
-        for fonte in contexto.fontes_adicionais:
+        for fonte in fontes:
             partes.extend([f"## {fonte.titulo}", fonte.texto, ""])
         partes.extend(["## Pergunta", pergunta])
         return "\n".join(partes)

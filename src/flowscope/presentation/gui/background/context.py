@@ -6,12 +6,15 @@ publicação (progresso, resultado, erro e término), sem acesso a widgets nem a
 estruturas exclusivas da thread do Tk.
 """
 
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.presentation.gui.background.events import (
+    Confirmacao,
     Erro,
     Evento,
     Progresso,
@@ -71,3 +74,33 @@ class JobContext:
     def erro(self: "JobContext", excecao: BaseException, dados: object = None) -> None:
         """Publica uma falha do trabalho ou de um item."""
         self.publicar(Erro(excecao=excecao, dados=dados))
+
+    def confirmar(
+        self: "JobContext",
+        quantidade: int,
+        nomes: list[str],
+        timeout: float | None = None,
+    ) -> bool:
+        """Pede confirmação à interface e aguarda a resposta na thread de trabalho.
+
+        Publica um :class:`Confirmacao`, que a interface atende na thread do Tk,
+        e bloqueia o worker até a resposta, o cancelamento do job ou o timeout.
+        """
+        evento = threading.Event()
+        caixa: dict = {}
+        self.publicar(
+            Confirmacao(
+                quantidade=quantidade,
+                nomes=list(nomes),
+                evento=evento,
+                caixa=caixa,
+            )
+        )
+        limite = None if timeout is None else time.monotonic() + timeout
+        while True:
+            if evento.wait(0.05):
+                return bool(caixa.get("ok", False))
+            if self.cancelled:
+                return False
+            if limite is not None and time.monotonic() >= limite:
+                return False

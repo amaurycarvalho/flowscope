@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.presentation.gui.background.events import (
+    Confirmacao,
     Erro,
     Evento,
     Progresso,
@@ -57,6 +58,7 @@ class JobCallbacks:
     resultado: Callback | None = None
     erro: Callback | None = None
     termino: Callback | None = None
+    evento: Callback | None = None
 
     def para(self: "JobCallbacks", evento: Evento) -> Callback | None:
         """Retorna o callback correspondente ao evento, se houver."""
@@ -66,6 +68,8 @@ class JobCallbacks:
             return self.resultado
         if isinstance(evento, Erro):
             return self.erro
+        if isinstance(evento, Confirmacao):
+            return self.evento
         return None
 
 

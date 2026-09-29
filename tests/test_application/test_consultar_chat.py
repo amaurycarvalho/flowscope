@@ -48,7 +48,7 @@ class TestCascata:
         llm = _FakeLLM(['{"resposta": "resposta pronta", "documentos": []}'])
         usecase = ConsultarChatUseCase(llm)
         contexto = ContextoChat(
-            conhecimento="K", fundamentos="F", documentos=_documental()
+            bloco_estavel="K\nF", documentos=_documental()
         )
         resposta = usecase.consultar("pergunta", contexto)
         assert resposta.texto == "resposta pronta"
@@ -171,26 +171,29 @@ class TestPrompt:
         llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
         ConsultarChatUseCase(llm).consultar("pergunta", ContextoChat())
         _mensagens, system_prompt = llm.chamadas[0]
-        assert system_prompt == SYSTEM_PROMPT
+        assert system_prompt.startswith(SYSTEM_PROMPT)
+        assert "Responda exclusivamente com um objeto JSON" in system_prompt
         assert "apenas com base no contexto" in system_prompt
         assert "Cite as fontes" in system_prompt
         assert "Identifique o ticker" in system_prompt
         assert "peça esclarecimento" in system_prompt
         assert "admita a limitação" in system_prompt
 
-    def test_prompt_inclui_blocos_de_contexto(self):
+    def test_prompt_inclui_blocos_de_contexto_no_prefixo(self):
         llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
         contexto = ContextoChat(
-            conhecimento="CONHECIMENTO",
-            fundamentos="FUNDAMENTOS",
-            documentos=_documental(resumos="RESUMOS"),
+            bloco_estavel=(
+                "## Conhecimento do FlowScope\nCONHECIMENTO\n\n"
+                "## Fundamentos carregados\nFUNDAMENTOS\n\n"
+                "## Resumos de documentos\nRESUMOS"
+            ),
         )
         ConsultarChatUseCase(llm).consultar("Pergunta?", contexto)
-        prompt = llm.chamadas[0][0][0]["content"]
-        assert "CONHECIMENTO" in prompt
-        assert "FUNDAMENTOS" in prompt
-        assert "RESUMOS" in prompt
-        assert "Pergunta?" in prompt
+        _mensagens, system_prompt = llm.chamadas[0]
+        assert "CONHECIMENTO" in system_prompt
+        assert "FUNDAMENTOS" in system_prompt
+        assert "RESUMOS" in system_prompt
+        assert "Pergunta?" in llm.chamadas[0][0][-1]["content"]
 
     def test_prompt_inclui_fontes_adicionais(self):
         llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
@@ -206,6 +209,72 @@ class TestPrompt:
         assert "NOTICIA PETR4" in prompt
         assert "## RAG" in prompt
         assert "TRECHO RELEVANTE" in prompt
+
+
+class TestFormaDoPrefixo:
+    def test_prefixo_identico_entre_turnos(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "x", "documentos": []}',
+                '{"resposta": "y", "documentos": []}',
+            ]
+        )
+        contexto = ContextoChat(bloco_estavel="## Contexto\nESTAVEL")
+        usecase = ConsultarChatUseCase(llm)
+        usecase.consultar("primeira", contexto)
+        usecase.consultar("segunda", contexto)
+        assert llm.chamadas[0][1] == llm.chamadas[1][1]
+        assert "ESTAVEL" in llm.chamadas[0][1]
+
+    def test_volateis_ficam_no_sufixo(self):
+        llm = _FakeLLM(['{"resposta": "x", "documentos": []}'])
+        contexto = ContextoChat(
+            bloco_estavel="## Contexto\nESTAVEL",
+            fontes_adicionais=[FonteContexto("RAG", "TRECHO VETORIAL")],
+        )
+        ConsultarChatUseCase(llm).consultar("Pergunta atual", contexto)
+        mensagens, system_prompt = llm.chamadas[0]
+        assert "TRECHO VETORIAL" not in system_prompt
+        assert "Pergunta atual" not in system_prompt
+        ultima = mensagens[-1]["content"]
+        assert "## RAG" in ultima
+        assert "TRECHO VETORIAL" in ultima
+        assert "## Pergunta" in ultima
+
+    def test_contexto_alterado_reconstroi_prefixo(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "x", "documentos": []}',
+                '{"resposta": "y", "documentos": []}',
+            ]
+        )
+        usecase = ConsultarChatUseCase(llm)
+        usecase.consultar("p", ContextoChat(bloco_estavel="ANTES"))
+        usecase.consultar("p", ContextoChat(bloco_estavel="DEPOIS"))
+        assert "ANTES" in llm.chamadas[0][1]
+        assert "DEPOIS" in llm.chamadas[1][1]
+        assert llm.chamadas[0][1] != llm.chamadas[1][1]
+
+    def test_cascata_compartilha_prefixo_e_historico(self):
+        llm = _FakeLLM(
+            [
+                '{"resposta": "", "documentos": ["chave"]}',
+                '{"resposta": "final", "documentos": []}',
+            ]
+        )
+        historico = [ChatMessage(role="user", content="turno antigo")]
+        contexto = ContextoChat(
+            bloco_estavel="ESTAVEL",
+            documentos=_documental(preparar=lambda chaves: "TEXTO INTEGRAL"),
+        )
+        ConsultarChatUseCase(llm).consultar(
+            "pergunta", contexto, historico=historico
+        )
+        assert len(llm.chamadas) == 2
+        assert llm.chamadas[0][1] == llm.chamadas[1][1]
+        assert llm.chamadas[0][0][0] == llm.chamadas[1][0][0]
+        assert "TEXTO INTEGRAL" not in llm.chamadas[0][0][-1]["content"]
+        assert "TEXTO INTEGRAL" in llm.chamadas[1][0][-1]["content"]
 
 
 class TestHistorico:

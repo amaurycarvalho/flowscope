@@ -1,10 +1,10 @@
 """Widget de chat com I.A. da aba de topo "Chat AI".
 
 O painel mantém a sessão em memória, exibe a conversa em um campo
-somente-leitura copiável e envia cada pergunta para uma thread de trabalho que
-monta o contexto e consome a porta ``LLMPort``. A thread publica o desfecho em
-uma fila consumida na thread do Tk, inclusive os pedidos de confirmação de
-leitura do texto integral.
+somente-leitura copiável e submete cada pergunta a um ``BackgroundManager``
+local que monta o contexto e consome a porta ``LLMPort``. O manager publica o
+desfecho na thread do Tk, inclusive os pedidos de confirmação de leitura do
+texto integral pelo evento ``Confirmacao``.
 
 O contexto cobre sempre a watchlist completa: não há seletor de escopo e a LLM
 infere o ticker referido a partir da pergunta. Fontes adicionais de contexto
@@ -22,6 +22,7 @@ from flowscope import __release_date__, __version__
 from flowscope.application.chat import (
     FonteAdicional,
     MontarContextoChat,
+    RespostaChat,
 )
 from flowscope.application.chat.conhecimento import montar_bloco_conhecimento
 from flowscope.application.chat.documentos import (
@@ -33,6 +34,7 @@ from flowscope.application.documentos.catalogo import CatalogoDocumentos
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
+from flowscope.presentation.gui.background.events import Confirmacao
 from flowscope.presentation.gui.chat.envio import EnvioMixin
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.widgets.about_panel import (
@@ -125,6 +127,13 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._icon_refs: list[ImageTk.PhotoImage] = []
         self._build()
         self.avaliar_estado()
+
+    def destroy(self: "ChatPanel") -> None:
+        """Cancela os envios em background antes de destruir o painel."""
+        background = getattr(self, "_background", None)
+        if background is not None:
+            background.cancel_all()
+        super().destroy()
 
     # ── Construção da interface ──────────────────────────────────────
 
@@ -279,11 +288,14 @@ class ChatPanel(EnvioMixin, tk.Frame):
             raise LLMUnavailableError("Fábrica de LLM não configurada.")
         return self._llm_factory()
 
-    def _atender_confirmacao(self: "ChatPanel", mensagem: tuple) -> None:
-        """Exibe o diálogo de confirmação e libera a thread de trabalho."""
-        _tipo, quantidade, nomes, evento, caixa = mensagem
-        caixa["ok"] = self._dialogo_confirmacao(quantidade, nomes)
-        evento.set()
+    def _atender_confirmacao(
+        self: "ChatPanel", confirmacao: Confirmacao
+    ) -> None:
+        """Exibe o diálogo de confirmação do evento e libera a thread de trabalho."""
+        confirmacao.caixa["ok"] = self._dialogo_confirmacao(
+            confirmacao.quantidade, list(confirmacao.nomes)
+        )
+        confirmacao.evento.set()
 
     def _dialogo_confirmacao(self: "ChatPanel", quantidade: int, nomes: list[str]) -> bool:
         """Exibe o diálogo de confirmação de leitura do texto integral."""
@@ -294,19 +306,17 @@ class ChatPanel(EnvioMixin, tk.Frame):
             messagebox.askyesno("Confirmar leitura de documentos", texto, parent=self)
         )
 
-    def _concluir(self: "ChatPanel", mensagem: tuple) -> None:
-        """Aplica o desfecho da consulta e reabilita a entrada."""
-        _geracao, tipo, payload = mensagem
-        self._processando = False
-        if tipo == "ok":
-            resposta = payload
-            self._registrar("assistant", resposta.texto, resposta.fontes)
-            self._status("Pronto.", "")
-        elif tipo == "indisponivel":
-            self._on_indisponivel(payload)
+    def _concluir_ok(self: "ChatPanel", resposta: RespostaChat) -> None:
+        """Registra a resposta da consulta e sinaliza o término."""
+        self._registrar("assistant", resposta.texto, resposta.fontes)
+        self._status("Pronto.", "")
+
+    def _concluir_erro(self: "ChatPanel", dados: object, exc: BaseException) -> None:
+        """Trata a falha do job conforme a origem (LLM indisponível ou erro)."""
+        if dados == "indisponivel":
+            self._on_indisponivel(exc)
         else:
-            self._on_falha(payload)
-        self._atualizar_controles()
+            self._on_falha(exc)
 
     def _on_indisponivel(self: "ChatPanel", exc: BaseException) -> None:
         """Marca o painel como não configurado e exibe a orientação."""
@@ -352,8 +362,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._atualizar_controles()
 
     def limpar(self: "ChatPanel") -> None:
-        """Reinicia a sessão e limpa a área de mensagens."""
+        """Reinicia a sessão, o bloco estável memoizado e a área de mensagens."""
         self._sessao.clear()
+        self._bloco_cache = None
         self._respostas.delete("1.0", tk.END)
         self._atualizar_controles()
 

@@ -7,6 +7,7 @@ duplicada de thread/fila/watchdog dos jobs da camada de apresentação.
 
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import (
+    Confirmacao,
     Erro,
     Evento,
     Progresso,
@@ -23,6 +24,7 @@ from flowscope.presentation.gui.background.manager import BackgroundManager
 
 __all__ = [
     "BackgroundManager",
+    "Confirmacao",
     "Erro",
     "EstadoJob",
     "Evento",

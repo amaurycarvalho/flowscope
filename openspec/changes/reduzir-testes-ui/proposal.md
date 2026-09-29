@@ -1,6 +1,6 @@
 ## Why
 
-A suíte de apresentação tem ~253 testes decorados com `@needs_display`, muitos cobrindo processamento ou lógica pura que não dependem de Tk. O spec `layer-boundaries` define um orçamento de testes de UI (wiring, estado de widget, empty-state e ciclo de thread/queue), mas nada o verifica automaticamente, e os testes estão fisicamente misturados nos módulos de UI (ex.: `TestPreview` de `flowscope.application.document_preview` em `test_document_tree_panel.py`). As fatias A/B/C param de adicionar processamento à UI, mas não reduzem o estoque existente. Esta change reduz a contagem de testes de UI ao mínimo estritamente necessário e trava um teto que só diminui.
+A suíte de apresentação tem ~253 testes decorados com `@needs_display`, muitos cobrindo processamento ou lógica pura que não dependem de Tk. O spec `layer-boundaries` define um orçamento de testes de UI (wiring, estado de widget, empty-state e ciclo de thread/queue), mas nada o verifica automaticamente, e os testes estão fisicamente misturados nos módulos de UI (ex.: `TestPreview` de `flowscope.application.document_preview` em `test_document_tree_panel.py`). As fatias A/B/C param de adicionar processamento à UI, mas não reduzem o estoque existente. A change `cache-prompt-chat` estendeu a migração ao transporte do chat (envio via `BackgroundManager` local ao painel), tornando também essa orquestração testável sem Tk. Esta change reduz a contagem de testes de UI ao mínimo estritamente necessário e trava um teto que só diminui.
 
 A fatia A (`background-job-manager`) já entregou uma **primeira versão** desse mecanismo: o guardrail `tests/architecture/test_ui_test_budget.py` com a constante `BASELINE_NEEDS_DISPLAY = 250` (só reprova aumento), a migração do `TestPreview` para `tests/test_application` e a conversão de parte da orquestração de jobs para headless. Esta change **parte de 250**, completa o teto (ratchet: queda exige atualização do baseline), move o baseline para um arquivo commitado e continua a redução do estoque.
 
@@ -8,6 +8,7 @@ A fatia A (`background-job-manager`) já entregou uma **primeira versão** desse
 
 - Migra testes de lógica pura de `tests/test_presentation` para `tests/test_application`/`tests/test_domain`, eliminando o gate `@needs_display` desnecessário.
 - Converte para headless, via fakes de mixin/manager, os testes de UI que só exercitavam processamento (preview em thread, cache de texto, lote, geração de resumo).
+- Converte para headless os testes de orquestração do envio do chat portado por `cache-prompt-chat` (submissão, cancelamento cooperativo e descarte do desfecho tardio), preservando a paridade de mensagens e de estados de botão; a costura do manager local (`_background.jobs_ativos`) deixa de ser acessada por teste gated.
 - Consolida testes de estado de widget duplicados, mantendo um representante por comportamento observável.
 - Introduz um **teto enforced** para os testes de UI: um baseline commitado da contagem de `@needs_display`, verificado por teste arquitetural que reprova aumento e exige queda — mesmo padrão da allowlist de fronteiras.
 - Reconcilia `presentation-test-coverage` com o comportamento pós-A/B/C, exigindo verificação headless do processamento.
@@ -26,5 +27,7 @@ A fatia A (`background-job-manager`) já entregou uma **primeira versão** desse
 
 - Reorganização de `tests/test_presentation/**` (migração para `tests/test_application`/`tests/test_domain` e conversão para headless).
 - `tests/architecture/test_ui_test_budget.py` (entregue por A) passa a ler o baseline commitado em `tests/architecture/ui_test_budget.txt` e a aplicar o ratchet; o baseline inicial é **250**.
+- `tests/test_presentation/test_chat_panel.py`: os testes de envio/cancelamento que hoje alcançam `painel._background.jobs_ativos` passam a usar um fake de manager headless.
 - Deltas em `openspec/specs/layer-boundaries/spec.md` e `openspec/specs/presentation-test-coverage/spec.md`.
-- Sem impacto em `src/`. Depende das fatias A, B e C (a estrutura de jobs/leituras precisa estar estável).
+- Sem impacto em `src/`. Depende das fatias A, B, C e de `cache-prompt-chat` (a estrutura de jobs/leituras e o transporte do chat precisam estar estáveis).
+- **Coordenação com `bloquear-ui-inicializacao`**: aquela change adiciona um teste `@needs_display` do overlay. Com o baseline em **250** e o ratchet "só encolhe", esta change DEVE ser aplicada antes (baixando o baseline) ou reservar folga para o +1; caso contrário a contagem sobe para 251 e o guardrail reprova.

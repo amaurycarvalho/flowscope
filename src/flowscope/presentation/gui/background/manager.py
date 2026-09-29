@@ -91,6 +91,7 @@ class BackgroundManager:
         ao_resultado: Callback | None = None,
         ao_erro: Callback | None = None,
         ao_termino: Callback | None = None,
+        ao_evento: Callback | None = None,
     ) -> JobHandle:
         """Submete um trabalho e retorna o identificador do job."""
         handle = JobHandle(
@@ -104,6 +105,7 @@ class BackgroundManager:
                 resultado=ao_resultado,
                 erro=ao_erro,
                 termino=ao_termino,
+                evento=ao_evento,
             ),
             trabalho=trabalho,
         )

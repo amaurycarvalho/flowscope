@@ -21,8 +21,10 @@ Na versão compilada com PyInstaller, a janela é mapeada antes de o `mainloop` 
 ## Impact
 
 - `src/flowscope/presentation/gui/app.py`: marcar o início do gate após o wiring e liberar no fim da restauração inicial.
-- `src/flowscope/presentation/gui/app_layout.py`: `_restore_tabs` passa a sinalizar o término da restauração inicial ao gate.
-- `src/flowscope/presentation/gui/app_status.py` / novo módulo de gate: escudo, flag `_inicializando` e gate dos atalhos (`_bind_shortcuts`/handlers).
+- `src/flowscope/presentation/gui/app_tab_layout.py`: `_restore_tabs` (definido em `app_tab_layout.py:241`, não em `app_layout.py`) passa a sinalizar o término da restauração inicial ao gate.
+- `src/flowscope/presentation/gui/app_status.py` / novo módulo de gate: escudo, flag `_inicializando` e gate dos atalhos (`_bind_shortcuts`/handlers; `_bind_shortcuts` fica em `app_layout.py:241`).
 - Delta em `openspec/specs/loading-state-management/spec.md`.
 - Sem impacto em `domain`, `application` e `infrastructure`.
+- **Interação com B/C**: como `_restore_tabs` → `_on_tab_changed` agora apenas **submete** as leituras de catálogo/séries ao `BackgroundManager`, o release do gate é rápido; porém esses jobs chamam `presenter.enter()` via listeners globais, de modo que `finalizar_gate()` pode não zerar o contador de operações. O escudo é removido, mas controles/cursor permanecem ocupados até o último job terminar — o que é o comportamento correto e coerente com o cenário "Estado ocupado contabilizado como uma operação".
+- **Coordenação com `reduzir-testes-ui`**: o teste de UI do overlay adiciona 1 `@needs_display`. Com o baseline em 250/250 e o ratchet "só encolhe" daquela change, este change DEVE ser aplicado depois dela (ou com folga prévia no baseline), sob risco de reprovar o guardrail de teto.
 - **Dependências**: `background-job-manager` (autoridade de estado e lifecycle), `carga-principal-background` e `leituras-catalogo-background` (tornam o instante de "pronto" determinístico), `reduzir-testes-ui` (estratégia de teste headless e orçamento de UI).

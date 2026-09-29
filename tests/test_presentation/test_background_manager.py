@@ -250,6 +250,50 @@ class TestPoliticaSerialize:
         manager.drenar()
 
 
+class TestConfirmacao:
+    def test_handshake_despachado_na_thread_do_agendamento(self):
+        agendador = _AgendadorFake()
+        manager = BackgroundManager(agendador)
+        principal = threading.current_thread()
+        vistos = []
+        recebido = []
+
+        def trabalho(ctx):
+            recebido.append(ctx.confirmar(4, ["a", "b"], timeout=2))
+
+        def ao_evento(evento):
+            vistos.append(
+                (threading.current_thread(), evento.quantidade, evento.nomes)
+            )
+            evento.caixa["ok"] = True
+            evento.evento.set()
+
+        handle = manager.submit(trabalho, grupo="g", ao_evento=ao_evento)
+        agendador.esgotar()
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert recebido == [True]
+        assert vistos == [(principal, 4, ["a", "b"])]
+
+    def test_cancelamento_libera_worker_bloqueado_na_confirmacao(self):
+        manager = BackgroundManager()
+        iniciado = threading.Event()
+        recebido = []
+
+        def trabalho(ctx):
+            iniciado.set()
+            recebido.append(ctx.confirmar(4, ["a"], timeout=5))
+
+        handle = manager.submit(trabalho, grupo="g", ao_evento=lambda evento: None)
+        assert iniciado.wait(2)
+
+        manager.cancel(handle.id)
+        handle.thread.join(2)
+
+        assert recebido == [False]
+
+
 class TestCancelamento:
     def _manager_com_jobs(self):
         manager = BackgroundManager()

@@ -34,6 +34,8 @@ Restrições:
 
 **Escolha**: `iniciar_gate()` chama `presenter.on_operation_started()` (que desabilita botões e aplica o cursor de espera) e coloca o escudo; `finalizar_gate()` remove o escudo e chama `presenter.on_operation_finished()`.
 
+Como `_on_tab_changed` da restauração inicial agora **submete** leituras de catálogo/séries ao `BackgroundManager` (B/C), esses jobs disparam `presenter.enter()` via os listeners globais (`app_wiring.py`). O `exit()` de `finalizar_gate()` reduz o contador, mas ele só chega a zero quando o último job terminar: a remoção do escudo é **independente** da restauração dos controles/cursor. O design não deve assumir que `finalizar_gate()` restaura o estado ocupado; ele apenas libera a entrada.
+
 **Alternativas**: gerenciar cursor/controles diretamente no `FlowScopeGUI`, fora do presenter.
 
 **Razão**: mantém a regra de operações concorrentes (o gate é uma operação como outra qualquer) e a restauração de baseline; uma operação em background iniciada durante a inicialização é contabilizada corretamente.
@@ -48,7 +50,7 @@ Restrições:
 
 ### Decisão 4: Coordenador `StartupGate` e ponto de liberação
 
-**Escolha**: extrair um coordenador enxuto (`iniciar()`/`finalizar()`) que concentra escudo, flag e chamadas ao presenter. `_restore_tabs` (`app_layout.py:241`) chama `finalizar()` ao final, depois de `_on_tab_changed()`, dentro de um `try/finally` para liberar mesmo em falha; o release agenda a remoção do escudo e só então a restauração do estado.
+**Escolha**: extrair um coordenador enxuto (`iniciar()`/`finalizar()`) que concentra escudo, flag e chamadas ao presenter. `_restore_tabs` (definido em `app_tab_layout.py:241`) chama `finalizar()` ao final, depois de `_on_tab_changed()`, dentro de um `try/finally` para liberar mesmo em falha; o release agenda a remoção do escudo e, quando o contador de operações zerar, a restauração do estado. (`_bind_shortcuts`, mencionado na Decisão 3, fica em `app_layout.py:241`.)
 
 **Alternativas**: liberar no primeiro `after_idle` após o `mainloop`; liberar do próprio `app.py`.
 
@@ -72,6 +74,8 @@ Restrições:
 - **[Risco]** Um clique enfileirado ser drenado logo após o release e acionar uma aba → **Mitigação**: liberar somente quando a fila relevante já tiver sido processada (logo após `_restore_tabs`); o intervalo é mínimo e os testes cobrem o comportamento.
 - **[Risco]** `_restore_tabs` não ser executado (ex.: `after` cancelado) e o gate nunca liberar → **Mitigação**: `finally` e, como rede, um `after` de segurança com timeout curto que força o release.
 - **[Risco]** `enter_busy` custar a varredura de widgets no startup → **Trade-off** aceito; já é usado em toda operação.
+- **[Risco]** O teste de UI do overlay (+1 `@needs_display`) reprovar o ratchet de `reduzir-testes-ui` (baseline 250 sem folga) → **Mitigação**: aplicar `reduzir-testes-ui` antes, ou reservar a folga reduzindo o baseline previamente.
+- **[Risco]** O escudo sumir enquanto um job de catálogo disparado na restauração ainda roda, confundindo "liberado" com "ocioso" → **Mitigação**: o contador de operações mantém o cursor/botões ocupados; o cenário "Estado ocupado contabilizado como uma operação" do spec cobre esse caso.
 - **[Trade-off]** Um overlay a mais na árvore de widgets → **Benefício**: cobertura total de entrada sem depender do toolkit.
 
 ## Migration Plan

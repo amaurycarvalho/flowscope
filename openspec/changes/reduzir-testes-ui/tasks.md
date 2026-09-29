@@ -1,3 +1,8 @@
+<!-- Ordenação: esta change DEVE ser aplicada antes de `bloquear-ui-inicializacao`.
+     Aquela adiciona um teste `@needs_display` do overlay; com o baseline em 250
+     (sem folga) e o ratchet "só encolhe", o +1 reprovaria o guardrail. Se já
+     houver redução aplicada aqui, o overlay pode consumir a folga. -->
+
 ## 1. Baseline e guardrail do teto de UI
 
 - [ ] 1.1 Extrair o baseline da constante `BASELINE_NEEDS_DISPLAY` entregue por A em `tests/architecture/test_ui_test_budget.py` (valor corrente **250**) para `tests/architecture/ui_test_budget.txt` e fazer o guardrail lê-lo, verificando com teste que o arquivo é a fonte do teto
@@ -15,6 +20,7 @@
 - [ ] 3.2 Converter os testes de leitura de catálogo/séries e de lote do painel de notícias para headless
 - [ ] 3.3 Converter os testes de integração de evolução dos fundamentos que só exercitam processamento para headless
 - [ ] 3.4 Confirmar que os fluxos de job/orquestração cobertos por A/B/C são testados sem Tk (A já converteu fundamental/resumos; B/C convertem a carga e as leituras) e baixar o baseline
+- [ ] 3.5 Converter os testes de envio/cancelamento do `ChatPanel` — transporte portado por `cache-prompt-chat` (manager local, grupo `"chat"`, `latest_wins`, `Confirmacao`) — para um fake de manager headless, preservando paridade de mensagens, estados de botão e histórico, e baixar o baseline
 
 ## 4. Consolidar testes de widget
 

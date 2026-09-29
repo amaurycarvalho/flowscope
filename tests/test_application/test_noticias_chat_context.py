@@ -297,10 +297,12 @@ class TestPromptDoChat:
         fonte = _fonte(tmp_path, [_noticia()])
         resultado = fonte("O que saiu sobre PETR4?")
         contexto = ContextoChat(fontes_adicionais=[resultado])
-        prompt = ConsultarChatUseCase._montar_prompt("O que saiu?", contexto, None)
-        assert f"## {TITULO_FONTE}" in prompt
-        assert _TITULO in prompt
-        assert "## Pergunta" in prompt
+        sufixo = ConsultarChatUseCase._montar_sufixo(
+            "O que saiu?", contexto.fontes_adicionais, None
+        )
+        assert f"## {TITULO_FONTE}" in sufixo
+        assert _TITULO in sufixo
+        assert "## Pergunta" in sufixo
 
 
 class TestSecaoRegulatoriaNoChat:

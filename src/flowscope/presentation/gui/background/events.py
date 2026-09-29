@@ -5,7 +5,8 @@ aos callbacks na thread do Tk pelo pump do gerenciador. Eles são o único canal
 de comunicação entre o worker e a interface.
 """
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -42,5 +43,19 @@ class Termino:
     cancelado: bool = False
 
 
+@dataclass(frozen=True)
+class Confirmacao:
+    """Pedido de confirmação do worker à interface, com resposta síncrona.
+
+    O worker publica o evento e bloqueia em ``evento``; a interface atende o
+    pedido na thread do Tk, grava a resposta em ``caixa`` e libera o worker.
+    """
+
+    quantidade: int
+    nomes: list[str] = field(default_factory=list)
+    evento: threading.Event = field(default_factory=threading.Event)
+    caixa: dict = field(default_factory=dict)
+
+
 #: União dos eventos que um job pode publicar.
-Evento = Progresso | Resultado | Erro | Termino
+Evento = Progresso | Resultado | Erro | Termino | Confirmacao

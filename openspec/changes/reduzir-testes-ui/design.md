@@ -2,7 +2,7 @@
 
 Ver `proposal.md - Why`. O `tests/architecture` já usa o padrão de allowlist que "só encolhe" (`allowlist.txt` + `guardrail.py` + `test_layer_boundaries.py`). O gating de UI é feito por um `@needs_display` por arquivo (definido em cada módulo) e não há verificação agregada. As fatias A/B/C deixam a orquestração de background no `BackgroundManager`, o que torna a maior parte do processamento testável com fakes headless.
 
-A fatia A já materializou uma **primeira fatia** deste escopo: `tests/architecture/test_ui_test_budget.py` conta `@needs_display` e reprova aumento contra a constante `BASELINE_NEEDS_DISPLAY = 250`; `TestPreview` já foi migrado para `tests/test_application`; e os testes de coreografia de jobs (fundamental/resumos) já foram reduzidos a trabalho puro. Esta change parte desse estado e completa o desenho.
+A fatia A já materializou uma **primeira fatia** deste escopo: `tests/architecture/test_ui_test_budget.py` conta `@needs_display` e reprova aumento contra a constante `BASELINE_NEEDS_DISPLAY = 250`; `TestPreview` já foi migrado para `tests/test_application`; e os testes de coreografia de jobs (fundamental/resumos) já foram reduzidos a trabalho puro. A change `cache-prompt-chat` portou o envio do chat para um `BackgroundManager` local ao painel (grupo `"chat"`, `latest_wins`), de modo que a orquestração do chat (submissão, cancelamento, descarte do desfecho tardio) também é exercitável com um fake de manager, sem Tk. Esta change parte desse estado e completa o desenho.
 
 ## Goals / Non-Goals
 
@@ -31,6 +31,8 @@ A fatia A já materializou uma **primeira fatia** deste escopo: `tests/architect
 - extrai o valor para `tests/architecture/ui_test_budget.txt`, inicializado em **250**, e faz o guardrail lê-lo (mesmo padrão do `allowlist.txt`);
 - adiciona o **ratchet**: contagem menor que o baseline reprova e exige a atualização do arquivo para o valor novo (o teto só encolhe);
 - aproveita o ponto de partida já reduzido por A; o baseline inicial desta change é 250 (não ~253).
+
+**Coordenação com `bloquear-ui-inicializacao`**: a contagem corrente é **exatamente 250**, sem folga. Como aquele change adiciona um teste `@needs_display` para o overlay e o ratchet aqui proíbe aumento, esta change DEVE ser aplicada primeiro (ou já ter baixado o baseline) antes daquele; alternativamente, o baseline deve ser explicitamente atualizado para acomodar o overlay, decisão que quebra a intenção "só encolhe" e por isso é evitada.
 
 ### Decisão 2: Critério objetivo de "teste de UI"
 
@@ -64,11 +66,20 @@ A fatia A já materializou uma **primeira fatia** deste escopo: `tests/architect
 
 **Razão**: sem isso, o teto não tem âncora normativa e a cobertura continuaria descrevendo o modelo síncrono.
 
+### Decisão 6: Transporte do chat coberto headless
+
+**Escolha**: os testes do `ChatPanel` que exercitam o ciclo do job de envio — `TestCancelarEnvio` (desfecho tardio, falha tardia, novo envio após cancelar) e o despacho de `Confirmacao` — passam a usar um `BackgroundManager` fake (ou o manager real com `_AgendadorFake`, como em `test_background_manager.py`), sem instanciar `tk.Tk`. Permanecem sob UI apenas o estado dos botões, a exibição da conversa e a existência do campo somente-leitura.
+
+**Alternativas**: manter os testes gated acessando `painel._background.jobs_ativos[0].thread`.
+
+**Razão**: `cache-prompt-chat` tornou o envio um job de manager com token por job e política `latest_wins`; o cancelamento e o descarte do desfecho tardio são lógica de manager (já coberta headless em `TestConfirmacao`), não comportamento de widget. É a mesma regra de `presentation-test-coverage`: processamento sem Tk, UI restrita ao widget.
+
 ## Risks / Trade-offs
 
 - **[Risco]** Cobertura efetiva cair ao converter/remover testes → **Mitigação**: preservar o teste de mutação e exigir que cada comportamento convertido tenha equivalente headless; paridade observável como critério de aceite.
 - **[Risco]** Baseline frágil, mudando a cada refatoração → **Mitigação**: o guardrail exige atualização explícita do baseline; a queda é bem-vinda e o aumento é bloqueado.
 - **[Risco]** Classificação errônea de um teste como headless → **Mitigação**: o critério da Decisão 2 é objetivo (cria Tk/gate); o guardrail detecta por AST.
+- **[Risco]** `bloquear-ui-inicializacao` adicionar um `@needs_display` sem folga no baseline (250/250) e o ratchet reprovar → **Mitigação**: aplicar esta change antes daquela ou baixar o baseline antes de introduzir o overlay.
 - **[Trade-off]** Conversão em massa gera um diff grande de testes → **Benefício**: suíte mais rápida, determinística e alinhada ao orçamento.
 
 ## Migration Plan

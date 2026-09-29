@@ -39,11 +39,12 @@ class TestMontar:
             "pergunta", {"PETR4": None}, ["PETR4", "VALE3"]
         )
 
-        assert contexto.conhecimento == "CONHECIMENTO"
+        assert "CONHECIMENTO" in contexto.bloco_estavel
+        assert "RESUMOS" in contexto.bloco_estavel
+        assert "[PETR4]" in contexto.bloco_estavel
         assert contexto.documentos is not None
         assert contexto.documentos.resumos == "RESUMOS"
         assert contexto.fontes_adicionais == [FonteContexto("Notícias", "conteudo")]
-        assert "[PETR4]" in contexto.fundamentos
         assert cascata.chamadas_montar == [(None, ["PETR4", "VALE3"])]
 
     def test_documental_usa_escalonamento_e_gate_do_montador(self):
@@ -55,6 +56,58 @@ class TestMontar:
             "TEXTO DOS DOCUMENTOS"
         )
         assert contexto.documentos.confirmar(["c1"]) is True
+
+
+class TestBlocoEstavelMemoizado:
+    def _montador(self, cascata, **kwargs) -> MontarContextoChat:
+        kwargs.setdefault("conhecimento", "CONHECIMENTO")
+        return MontarContextoChat(cascata=cascata, **kwargs)
+
+    def test_bloco_deterministico(self):
+        montador = self._montador(_CascataFake(resumos="RESUMOS"))
+        primeiro = montador.montar_bloco({"PETR4": None}, ["PETR4"])
+        segundo = montador.montar_bloco({"PETR4": None}, ["PETR4"])
+        assert primeiro == segundo
+        assert primeiro[0].encode("utf-8") == segundo[0].encode("utf-8")
+
+    def test_reuso_nao_renderiza_de_novo(self, monkeypatch):
+        montador = self._montador(_CascataFake(resumos="RESUMOS"))
+        bloco, assinatura = montador.montar_bloco({"PETR4": None}, ["PETR4"])
+        renderizacoes: list = []
+        original = montador._renderizar_bloco
+        monkeypatch.setattr(
+            montador,
+            "_renderizar_bloco",
+            lambda *args: renderizacoes.append(1) or original(*args),
+        )
+
+        bloco2, assinatura2 = montador.montar_bloco(
+            {"PETR4": None}, ["PETR4"], cache=(assinatura, bloco)
+        )
+
+        assert (bloco2, assinatura2) == (bloco, assinatura)
+        assert renderizacoes == []
+
+    def test_assinatura_muda_com_fundamentos(self):
+        montador = self._montador(_CascataFake(resumos="RESUMOS"))
+        _b1, a1 = montador.montar_bloco({"PETR4": None}, ["PETR4"])
+        _b2, a2 = montador.montar_bloco({"VALE3": None}, ["VALE3"])
+        assert a1 != a2
+
+    def test_assinatura_muda_com_watchlist(self):
+        montador = self._montador(_CascataFake(resumos="RESUMOS"))
+        dados = {"PETR4": None, "VALE3": None}
+        _b1, a1 = montador.montar_bloco(dados, ["PETR4"])
+        _b2, a2 = montador.montar_bloco(dados, ["PETR4", "VALE3"])
+        assert a1 != a2
+
+    def test_assinatura_muda_com_resumos(self):
+        cascata = _CascataFake(resumos="RESUMOS 1")
+        montador = self._montador(cascata)
+        _b1, a1 = montador.montar_bloco({}, [])
+        cascata.resumos = "RESUMOS 2"
+        _b2, a2 = montador.montar_bloco({}, [])
+        assert a1 != a2
 
 
 class TestFontesAdicionais:
@@ -78,6 +131,22 @@ class TestFontesAdicionais:
         assert montador.preparar_fontes_adicionais("p") == [
             FonteContexto("Boa", "conteudo")
         ]
+
+    def test_fonte_volatil_nao_afeta_assinatura_nem_bloco(self):
+        fonte = lambda pergunta: FonteContexto("RAG", f"trecho {pergunta}")
+        montador = MontarContextoChat(
+            cascata=_CascataFake(resumos="RESUMOS"),
+            fontes_adicionais=[fonte],
+            conhecimento="CONHECIMENTO",
+        )
+
+        primeiro = montador.montar("pergunta A", {"PETR4": None}, ["PETR4"])
+        segundo = montador.montar("pergunta B", {"PETR4": None}, ["PETR4"])
+
+        assert primeiro.assinatura == segundo.assinatura
+        assert primeiro.bloco_estavel == segundo.bloco_estavel
+        assert primeiro.fontes_adicionais != segundo.fontes_adicionais
+        assert "trecho pergunta A" not in primeiro.bloco_estavel
 
 
 class TestGateConfirmacao:

@@ -646,9 +646,11 @@ class TestCancelarEnvio:
             with caplog.at_level(logging.ERROR, logger="flowscope"):
                 painel._enviar()
                 _aguardar_ate(root, lambda: llm.chamadas == 1)
+                job = painel._background.jobs_ativos[0]
                 painel._cancelar_envio()
                 liberar.set()
-                _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+                job.thread.join(2)
+                root.update()
             assert "resposta tardia" not in painel.conteudo_sessao()
             assert not any(
                 "Falha no chat" in registro.getMessage()
@@ -677,9 +679,11 @@ class TestCancelarEnvio:
             with caplog.at_level(logging.ERROR, logger="flowscope"):
                 painel._enviar()
                 _aguardar_ate(root, lambda: llm.chamadas == 1)
+                job = painel._background.jobs_ativos[0]
                 painel._cancelar_envio()
                 liberar.set()
-                _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+                job.thread.join(2)
+                root.update()
             assert not any(
                 "Falha no chat" in registro.getMessage()
                 for registro in caplog.records
@@ -706,15 +710,16 @@ class TestCancelarEnvio:
             painel._texto_entrada_set("um")
             painel._enviar()
             _aguardar_ate(root, lambda: llm.chamadas == 1)
+            job = painel._background.jobs_ativos[0]
             painel._cancelar_envio()
             llm.resposta = '{"resposta": "segunda", "documentos": []}'
             liberar.set()
-            _aguardar_ate(root, lambda: painel._trabalhadores == 0)
+            job.thread.join(2)
+            root.update()
 
             painel._texto_entrada_set("dois")
             painel._enviar()
             _aguardar(root, painel)
-            _aguardar_ate(root, lambda: painel._trabalhadores == 0)
             conteudo = painel.conteudo_sessao()
             assert "segunda" in conteudo
             assert "primeira" not in conteudo

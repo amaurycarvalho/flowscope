@@ -6,6 +6,7 @@ o texto integral e o gate de confirmação por quantidade são regras de
 aplicação; o diálogo de confirmação é delegado a um callback da apresentação.
 """
 
+import hashlib
 import logging
 from collections.abc import Callable, Iterable, Mapping
 
@@ -33,6 +34,15 @@ ConfirmaLeitura = Callable[[int, list[str]], bool]
 _MAX_NOMES_LISTADOS = 7
 
 
+def assinatura_bloco(conhecimento: str, fundamentos: str, resumos: str) -> str:
+    """Deriva a assinatura determinística do bloco estável a partir do conteúdo."""
+    digest = hashlib.sha256()
+    for parte in (conhecimento, fundamentos, resumos):
+        digest.update(parte.encode("utf-8"))
+        digest.update(b"\x00")
+    return digest.hexdigest()
+
+
 class MontarContextoChat:
     """Monta o ``ContextoChat`` de uma pergunta a partir das fontes de dados."""
 
@@ -55,20 +65,75 @@ class MontarContextoChat:
         fundamentos: Mapping[str, object],
         watchlist: Iterable[str],
         ticker: str | None = None,
+        cache: tuple[str, str] | None = None,
     ) -> ContextoChat:
-        """Monta o contexto completo de uma pergunta do chat."""
-        resumos, _alvos = self._cascata.montar_resumos(ticker, watchlist)
+        """Monta o contexto completo de uma pergunta do chat.
+
+        ``cache`` é o último ``(assinatura, bloco)`` memoizado; quando a
+        assinatura coincide, o texto do bloco é reusado byte-a-byte, sem
+        recomputar o prefixo. As fontes adicionais, dependentes da pergunta,
+        ficam de fora do bloco estável e da assinatura.
+        """
+        fundamentos_txt, resumos, assinatura = self._componentes(
+            fundamentos, watchlist, ticker
+        )
+        if cache is not None and cache[0] == assinatura:
+            bloco = cache[1]
+        else:
+            bloco = self._renderizar_bloco(fundamentos_txt, resumos)
         documental = ContextoDocumental(
             resumos=resumos,
             preparar_texto=self.preparar_texto,
             confirmar=self.confirmar_leitura,
         )
         return ContextoChat(
-            conhecimento=self._conhecimento,
-            fundamentos=montar_contexto_fundamentos(fundamentos, ticker, watchlist),
+            bloco_estavel=bloco,
+            assinatura=assinatura,
             documentos=documental,
             fontes_adicionais=self.preparar_fontes_adicionais(pergunta),
         )
+
+    def montar_bloco(
+        self: "MontarContextoChat",
+        fundamentos: Mapping[str, object],
+        watchlist: Iterable[str],
+        ticker: str | None = None,
+        cache: tuple[str, str] | None = None,
+    ) -> tuple[str, str]:
+        """Monta o bloco estável e a sua assinatura, reusando o cache se casar."""
+        fundamentos_txt, resumos, assinatura = self._componentes(
+            fundamentos, watchlist, ticker
+        )
+        if cache is not None and cache[0] == assinatura:
+            return cache[1], assinatura
+        return self._renderizar_bloco(fundamentos_txt, resumos), assinatura
+
+    def _componentes(
+        self: "MontarContextoChat",
+        fundamentos: Mapping[str, object],
+        watchlist: Iterable[str],
+        ticker: str | None,
+    ) -> tuple[str, str, str]:
+        """Computa os componentes estáveis e a assinatura derivada do conteúdo."""
+        resumos, _alvos = self._cascata.montar_resumos(ticker, watchlist)
+        fundamentos_txt = montar_contexto_fundamentos(fundamentos, ticker, watchlist)
+        assinatura = assinatura_bloco(
+            self._conhecimento, fundamentos_txt, resumos
+        )
+        return fundamentos_txt, resumos, assinatura
+
+    def _renderizar_bloco(
+        self: "MontarContextoChat", fundamentos: str, resumos: str
+    ) -> str:
+        """Renderiza o bloco estável, em ordem determinística."""
+        partes: list[str] = []
+        if self._conhecimento:
+            partes.extend(["## Conhecimento do FlowScope", self._conhecimento, ""])
+        if fundamentos:
+            partes.extend(["## Fundamentos carregados", fundamentos, ""])
+        if resumos:
+            partes.extend(["## Resumos de documentos", resumos, ""])
+        return "\n".join(partes).rstrip("\n")
 
     def preparar_fontes_adicionais(
         self: "MontarContextoChat", pergunta: str
