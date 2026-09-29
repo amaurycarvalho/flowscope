@@ -22,25 +22,36 @@ def _arquivo() -> DocumentoArquivo:
 
 
 class _GuidanceFake:
-    def __init__(self, erro: Exception | None = None) -> None:
+    def __init__(
+        self,
+        erro: Exception | None = None,
+        erro_avaliar: Exception | None = None,
+        precisa: bool = True,
+    ) -> None:
         self.chamadas: list[tuple[DocumentoArquivo, str | None]] = []
         self.erro = erro
+        self.erro_avaliar = erro_avaliar
+        self._precisa = precisa
 
     def avaliar(self, arquivo, texto):
         self.chamadas.append((arquivo, texto))
-        if self.erro is not None:
-            raise self.erro
+        if self.erro_avaliar is not None:
+            raise self.erro_avaliar
         return None
 
     def precisa(self, arquivo):
         if self.erro is not None:
             raise self.erro
-        return True
+        return self._precisa
 
 
 class _SummaryFake:
-    def __init__(self) -> None:
+    def __init__(self, precisa: bool = True) -> None:
         self.gerados: list[tuple[DocumentoArquivo, str]] = []
+        self._precisa = precisa
+
+    def precisa_resumo(self, arquivo, texto):
+        return self._precisa
 
     def gerar(self, arquivo, texto):
         self.gerados.append((arquivo, texto))
@@ -65,42 +76,52 @@ def _contexto():
 
 
 class TestTrabalhar:
-    def test_avalia_guidance_e_gera_resumo(self):
+    def test_le_cache_avalia_guidance_e_gera_resumo(self):
         summary = _SummaryFake()
         guidance = _GuidanceFake()
         fluxo = _FlowFake(summary, guidance)
         ctx, eventos = _contexto()
-        fluxo._trabalhar(ctx, _arquivo(), None)
+        fluxo._trabalhar(ctx, _arquivo())
+        assert fluxo.preparos == 1
         assert guidance.chamadas == [(_arquivo(), "texto preparado")]
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", None))]
+        assert eventos == [Resultado(valor=("texto preparado", True, None))]
 
-    def test_usa_texto_conhecido_sem_repreparar(self):
+    def test_guidance_nao_necessario_pula_avaliacao(self):
         summary = _SummaryFake()
-        guidance = _GuidanceFake()
+        guidance = _GuidanceFake(precisa=False)
         fluxo = _FlowFake(summary, guidance)
         ctx, eventos = _contexto()
-        fluxo._trabalhar(ctx, _arquivo(), "texto do cache")
-        assert fluxo.preparos == 0
-        assert guidance.chamadas == [(_arquivo(), "texto do cache")]
-        assert eventos == [Resultado(valor=("texto do cache", None))]
+        fluxo._trabalhar(ctx, _arquivo())
+        assert guidance.chamadas == []
+        assert summary.gerados == [(_arquivo(), "texto preparado")]
+        assert eventos == [Resultado(valor=("texto preparado", True, None))]
 
-    def test_falha_de_guidance_nao_interrompe_o_resumo(self):
+    def test_falha_ao_consultar_guidance_nao_interrompe_o_resumo(self):
         summary = _SummaryFake()
         guidance = _GuidanceFake(erro=RuntimeError("falha"))
         fluxo = _FlowFake(summary, guidance)
         ctx, eventos = _contexto()
-        fluxo._trabalhar(ctx, _arquivo(), "texto")
-        assert summary.gerados == [(_arquivo(), "texto")]
-        assert eventos == [Resultado(valor=("texto", None))]
+        fluxo._trabalhar(ctx, _arquivo())
+        assert summary.gerados == [(_arquivo(), "texto preparado")]
+        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+
+    def test_falha_ao_avaliar_guidance_nao_interrompe_o_resumo(self):
+        summary = _SummaryFake()
+        guidance = _GuidanceFake(erro_avaliar=RuntimeError("falha"))
+        fluxo = _FlowFake(summary, guidance)
+        ctx, eventos = _contexto()
+        fluxo._trabalhar(ctx, _arquivo())
+        assert summary.gerados == [(_arquivo(), "texto preparado")]
+        assert eventos == [Resultado(valor=("texto preparado", True, None))]
 
     def test_sem_servico_de_guidance_nao_quebra(self):
         summary = _SummaryFake()
         fluxo = _FlowFake(summary, None)
         ctx, eventos = _contexto()
-        fluxo._trabalhar(ctx, _arquivo(), "texto")
-        assert summary.gerados == [(_arquivo(), "texto")]
-        assert eventos == [Resultado(valor=("texto", None))]
+        fluxo._trabalhar(ctx, _arquivo())
+        assert summary.gerados == [(_arquivo(), "texto preparado")]
+        assert eventos == [Resultado(valor=("texto preparado", True, None))]
 
 
 class TestPrecisaGuidance:

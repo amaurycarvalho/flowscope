@@ -18,7 +18,7 @@ from flowscope.application.cancellation import (
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.llm import LLMCommunicationError, LLMResposta
+from flowscope.domain.llm import LLMResposta
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
@@ -187,41 +187,6 @@ class TestMontagemArvore:
             assert [painel._tree.item(no, "text") for no in arquivos] == ["10.pdf"]
         finally:
             root.destroy()
-
-    @needs_display
-    def test_selecao_de_arquivo_dispara_preview_cacheada(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            painel._preview_cache[arquivo.caminho] = "conteúdo cacheado"
-            painel._iniciar_preview(arquivo)
-            esperado = (
-                f"{mensagem_indisponivel(False)}\n\n---\n\nconteúdo cacheado"
-            )
-            assert painel._preview.get("1.0", "end-1c") == esperado
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_preview_sem_texto_exibe_mensagem(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            painel._tree.selection_set(no)
-            painel._aplicar_preview(arquivo, "   ")
-            assert painel._preview.get("1.0", "end-1c") == SEM_TEXTO
-        finally:
-            root.destroy()
-
 
 class TestAberturaNaArvore:
     @needs_display
@@ -525,33 +490,6 @@ class TestBotaoIA:
                 root, catalog=_catalogo(tmp_path), debounce_ms=0
             )
             painel._on_ia()
-        finally:
-            root.destroy()
-
-
-class TestPreviewEmThread:
-    @needs_display
-    def test_carregando_e_aplicacao(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            monkeypatch.setattr(
-                "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-                lambda _caminho: "extraído",
-            )
-            painel._tree.selection_set(no)
-            esperado = f"{mensagem_indisponivel(False)}\n\n---\n\nextraído"
-            for _ in range(200):
-                root.update()
-                if painel._preview.get("1.0", "end-1c") == esperado:
-                    break
-                time.sleep(0.01)
-            assert painel._preview.get("1.0", "end-1c") == esperado
         finally:
             root.destroy()
 
@@ -1426,137 +1364,6 @@ class TestMensagemIndisponibilidade:
             root.destroy()
 
 
-class TestGeracaoDeResumo:
-    def _painel(self, root, tmp_path, llm, disponivel=True):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(
-            catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026" / "02"
-            / "20.html",
-            b"<html><body>Conteudo do informe</body></html>",
-        )
-        painel = DocumentTreePanel(
-            root, catalog=catalogo, summary_store=store,
-            llm_available=lambda: disponivel, llm_factory=lambda: llm,
-            debounce_ms=0,
-        )
-        painel.update("ALZR11")
-        return painel, store
-
-    @needs_display
-    def test_preview_composta_com_resumo_longo(self, tmp_path):
-        root = tk.Tk()
-        try:
-            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-            store.salvar(
-                "ALZR11", "informe-mensal/ALZR11/2026/02/20.html",
-                "curto", "resumo longo",
-            )
-            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-            _touch(
-                catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026"
-                / "02" / "20.html",
-                b"<html><body>Conteudo do informe</body></html>",
-            )
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "20.html")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root,
-                lambda: painel._preview.get("1.0", "end-1c")
-                == "resumo longo\n\n---\n\nConteudo do informe",
-            )
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_gera_resumo_persiste_e_atualiza_catalogo(self, tmp_path):
-        root = tk.Tk()
-        try:
-            llm = _LLMFake("CURTO: curto\nLONGO: longo")
-            painel, store = self._painel(root, tmp_path, llm)
-            no = _no_arquivo(painel, "20.html")
-            painel._tree.selection_set(no)
-            assert _pump(root, lambda: "longo" in painel._preview.get("1.0", "end-1c"))
-            texto = painel._preview.get("1.0", "end-1c")
-            assert texto == "longo\n\n---\n\nConteudo do informe"
-            assert painel._itens[no].short_summary == "curto"
-            assert painel._itens[no].long_summary == "longo"
-            assert len(llm.chamadas) == 1
-            chave = "informe-mensal/ALZR11/2026/02/20.html"
-            assert store.obter("ALZR11", chave).long_summary == "longo"
-            painel._tree.selection_set(_no_grupo(painel, "ticker"))
-            root.update()
-            assert "- 20.html — curto" in painel._preview.get("1.0", "end-1c")
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_sem_llm_exibe_mensagem_sem_chamar(self, tmp_path):
-        root = tk.Tk()
-        try:
-            llm = _LLMFake("CURTO: curto\nLONGO: longo")
-            painel, store = self._painel(root, tmp_path, llm, disponivel=False)
-            no = _no_arquivo(painel, "20.html")
-            painel._tree.selection_set(no)
-            esperado = (
-                f"{mensagem_indisponivel(False)}\n\n---\n\nConteudo do informe"
-            )
-            assert _pump(root, lambda: painel._preview.get("1.0", "end-1c") == esperado)
-            assert llm.chamadas == []
-            assert store.resumos("ALZR11") == {}
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_sem_texto_nao_chama_llm_nem_persiste(self, tmp_path):
-        root = tk.Tk()
-        try:
-            llm = _LLMFake("CURTO: curto\nLONGO: longo")
-            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-            text_store = JsonDocumentTextStore(cache_dir=tmp_path)
-            catalogo = DocumentCatalog(
-                cache_dir=tmp_path, summary_store=store, text_store=text_store
-            )
-            _touch(
-                catalogo.base_dir / "informe-mensal" / "ALZR11" / "2026"
-                / "02" / "20.html",
-                b"<html><body></body></html>",
-            )
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store,
-                text_store=text_store, llm_available=lambda: True,
-                llm_factory=lambda: llm, debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "20.html")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root, lambda: painel._preview.get("1.0", "end-1c") == SEM_TEXTO
-            )
-            assert llm.chamadas == []
-            assert store.resumos("ALZR11") == {}
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_falha_tipada_exibe_mensagem(self, tmp_path):
-        root = tk.Tk()
-        try:
-            class _Falha:
-                def complete(self, messages, system_prompt=None):
-                    raise LLMCommunicationError("timeout")
-
-            painel, _ = self._painel(root, tmp_path, _Falha())
-            no = _no_arquivo(painel, "20.html")
-            painel._tree.selection_set(no)
-            assert _pump(
-                root,
-                lambda: mensagem_indisponivel(True)
-                in painel._preview.get("1.0", "end-1c"),
-            )
-        finally:
-            root.destroy()
+# Os cenários de geração de resumo e composição da pré-visualização foram
+# convertidos para headless em test_document_preview_flow.py (fakes de
+# manager/JobContext), sem instanciar Tk.

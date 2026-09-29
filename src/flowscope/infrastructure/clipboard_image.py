@@ -15,27 +15,60 @@ class ClipboardError(Exception):
     """Erro ao tentar copiar uma imagem para a área de transferência."""
 
 
-def copy_image_to_clipboard(figure: Figure) -> None:
-    """Salva a figura como imagem PNG e a copia para a área de transferência conforme o SO."""
+#: Caminho temporário padrão do PNG do gráfico.
+TMP_PATH = Path("/tmp") / "flowscope_chart.png"
+
+
+def salvar_png(figure: Figure, path: Path | None = None) -> Path:
+    """Renderiza a figura como PNG e retorna o caminho do arquivo.
+
+    Deve rodar na thread da interface: o backend do matplotlib não é seguro
+    contra rendering concorrente com o desenho dos charts.
+    """
+    destino = path if path is not None else TMP_PATH
+    figure.savefig(destino, format="png", dpi=150, bbox_inches="tight")
+    return destino
+
+
+def transferir_png(path: Path) -> None:
+    """Transfere o arquivo PNG informado para o clipboard conforme o SO.
+
+    Pode rodar fora da thread da interface: só executa o comando nativo.
+    """
     system = platform.system()
-    tmp_path = Path("/tmp") / "flowscope_chart.png"
-
-    figure.savefig(tmp_path, format="png", dpi=150, bbox_inches="tight")
-
     if system == "Linux":
-        _copy_linux(tmp_path)
+        _copy_linux(path)
     elif system == "Windows":
-        _copy_windows(tmp_path)
+        _copy_windows(path)
     elif system == "Darwin":
-        _copy_macos(tmp_path)
+        _copy_macos(path)
     else:
         raise ClipboardError(
             f"Clipboard de imagem não suportado em {system}"
         )
 
 
+def copy_image_to_clipboard(figure: Figure) -> None:
+    """Salva a figura como imagem PNG e a copia para a área de transferência conforme o SO."""
+    transferir_png(salvar_png(figure))
+
+
 class ClipboardImageAdapter:
     """Adaptador da porta de clipboard sobre o clipboard do sistema."""
+
+    def salvar_png(self: "ClipboardImageAdapter", figure: Figure) -> Path:
+        """Renderiza a figura, traduzindo o erro de infraestrutura."""
+        try:
+            return salvar_png(figure)
+        except ClipboardError as exc:
+            raise ClipboardPortError(str(exc)) from exc
+
+    def transferir_png(self: "ClipboardImageAdapter", path: Path) -> None:
+        """Transfere o PNG, traduzindo o erro de infraestrutura."""
+        try:
+            transferir_png(path)
+        except ClipboardError as exc:
+            raise ClipboardPortError(str(exc)) from exc
 
     def copy_image(self: "ClipboardImageAdapter", figure: Figure) -> None:
         """Copia a figura, traduzindo o erro de infraestrutura para a aplicação."""

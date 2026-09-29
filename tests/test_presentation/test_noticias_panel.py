@@ -786,13 +786,19 @@ class _HostNoticias(ActionsMixin, NoticiasActionsMixin):
         self._background = BackgroundManager()
         self._data = _REFERENCIA
         self.status: list[tuple] = []
+        self.pendentes: list = []
 
     def _data_referencia(self):
         return self._data
 
     def after(self, ms, callback):
-        callback()
+        self.pendentes.append((ms, callback))
         return "id"
+
+    def _rodar_pendentes(self):
+        pendentes, self.pendentes = self.pendentes, []
+        for _, callback in pendentes:
+            callback()
 
     def _set_status(self, msg, icon=""):
         self.status.append((msg, icon))
@@ -801,16 +807,16 @@ class _HostNoticias(ActionsMixin, NoticiasActionsMixin):
         self.status.append((msg, icon))
 
 
-def _drenar(host, rounds: int = 5) -> None:
-    """Aguarda as threads e drena os eventos, repetindo se novos jobs surgirem."""
+def _drenar(host, rounds: int = 10) -> None:
+    """Aguarda as threads, drena eventos e roda os callbacks ``after(0)``."""
     for _ in range(rounds):
-        handles = list(host._background.jobs_ativos)
-        if not handles:
-            break
-        for handle in handles:
+        for handle in list(host._background.jobs_ativos):
             if handle.thread is not None:
                 handle.thread.join(2)
         host._background.drenar()
+        host._rodar_pendentes()
+        if not host._background.jobs_ativos and not host.pendentes:
+            break
 
 
 class TestNoticiasActions:
@@ -853,59 +859,38 @@ class TestNoticiasActions:
         _drenar(host)
         painel.aplicar_secoes.assert_called_once()
 
-    def test_cancelamento_reagenda_remontagem_apos_worker(self):
+    def test_cancelamento_agenda_remontagem_sem_polling(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
 
-        class _Thread:
-            def __init__(self):
-                self.chamadas = 0
+        host._finalizar_noticias(cancelado=True)
 
-            def is_alive(self):
-                self.chamadas += 1
-                return self.chamadas == 1
-
-        class _Handle:
-            def __init__(self):
-                self.thread = _Thread()
-
-        host._finalizar_noticias(_Handle(), cancelado=True)
+        assert len(host.pendentes) == 1
+        assert host.pendentes[0][0] == 0
         _drenar(host)
 
-        assert painel.carregar_secoes.call_count == 2
+        assert painel.carregar_secoes.call_count == 1
         painel.aplicar_secoes.assert_called_once()
 
-    def test_cancelamento_nao_sobrescreve_novo_job(self):
+    def test_remontagem_nao_sobrescreve_carga_nova(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
-        pendentes: list = []
-        host.after = lambda ms, cb: pendentes.append(cb)
-
-        class _Thread:
-            def __init__(self):
-                self.chamadas = 0
-
-            def is_alive(self):
-                self.chamadas += 1
-                return self.chamadas == 1
-
-        class _Handle:
-            def __init__(self):
-                self.thread = _Thread()
-
-        host._finalizar_noticias(_Handle(), cancelado=True)
-        _drenar(host)
-        assert painel.carregar_secoes.call_count == 1
-        assert pendentes
+        liberar = threading.Event()
 
         host._background.submit(
-            lambda ctx: None,
+            lambda ctx: liberar.wait(2),
             grupo=noticias_actions.GRUPO,
             politica=noticias_actions.POLITICA,
         )
-        pendentes.pop(0)()
+        assert host._background.tem_ativo(noticias_actions.GRUPO) is True
+
+        host._finalizar_noticias(cancelado=True)
+        host._rodar_pendentes()
+
+        assert painel.carregar_secoes.call_count == 0
+
+        liberar.set()
         _drenar(host)
-        assert painel.carregar_secoes.call_count == 1
 
 
 

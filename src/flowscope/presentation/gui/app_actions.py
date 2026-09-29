@@ -20,6 +20,10 @@ from flowscope.presentation.gui.documentos_job import (
 GRUPO_LEITURA_DOCUMENTOS = "documentos-leitura"
 POLITICA_LEITURA = Politica.LATEST_WINS
 
+#: Grupo e política da transferência assíncrona de gráficos ao clipboard.
+GRUPO_CLIPBOARD = "clipboard"
+POLITICA_CLIPBOARD = Politica.LATEST_WINS
+
 
 class ActionsMixin:
     """Lida com eventos de seleção de período, amostragem e atualização dos gráficos."""
@@ -290,8 +294,40 @@ class ActionsMixin:
             self._ticker_selecionado = next(iter(dados), None)
 
     def _copy_chart(self: "ActionsMixin", figure: object) -> None:
+        """Copia o gráfico: rendering no Tk e transferência em background.
+
+        O rendering permanece serializado com a thread da interface; apenas a
+        transferência do PNG ao sistema é submetida ao gerenciador de background,
+        que governa o estado ocupado e publica sucesso/erro por eventos.
+        """
         if self._clipboard is None:
             return
+        background = getattr(self, "_background", None)
+        if background is None:
+            self._copiar_grafico_sincrono(figure)
+            return
+        with self._presenter.busy():
+            try:
+                caminho = self._clipboard.salvar_png(figure)
+            except ClipboardError as e:
+                self._set_status(f"Erro: {e}", "⚠")
+                return
+            background.submit(
+                lambda ctx: ctx.resultado(
+                    valor=self._clipboard.transferir_png(caminho)
+                ),
+                grupo=GRUPO_CLIPBOARD,
+                politica=POLITICA_CLIPBOARD,
+                ao_resultado=lambda evento: self._flash_status(
+                    "Gráfico copiado!"
+                ),
+                ao_erro=lambda evento: self._set_status(
+                    f"Erro: {evento.excecao}", "⚠"
+                ),
+            )
+
+    def _copiar_grafico_sincrono(self: "ActionsMixin", figure: object) -> None:
+        """Copia o gráfico na própria thread do Tk (hosts sem background)."""
         with self._presenter.busy():
             try:
                 self._clipboard.copy_image(figure)

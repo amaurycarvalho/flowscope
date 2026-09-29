@@ -6,6 +6,8 @@ import pytest
 from flowscope.infrastructure.clipboard_image import (
     ClipboardError,
     copy_image_to_clipboard,
+    salvar_png,
+    transferir_png,
 )
 
 EXPECTED_TMP_PATH = Path("/tmp") / "flowscope_chart.png"
@@ -94,6 +96,57 @@ class TestCopyImageToClipboard:
         with patch("flowscope.infrastructure.clipboard_image.platform.system", return_value="Darwin"):
             with pytest.raises(ClipboardError, match="osascript"):
                 copy_image_to_clipboard(make_figure())
+
+
+class TestSalvarPng:
+    def test_renderiza_e_retorna_caminho(self):
+        fig = make_figure()
+        with patch.object(fig, "savefig") as mock_savefig:
+            caminho = salvar_png(fig)
+        assert caminho == EXPECTED_TMP_PATH
+        mock_savefig.assert_called_once()
+        assert mock_savefig.call_args.kwargs["format"] == "png"
+
+    @patch("flowscope.infrastructure.clipboard_image.subprocess.run")
+    def test_nao_transfere(self, mock_run):
+        fig = make_figure()
+        with patch.object(fig, "savefig"):
+            salvar_png(fig)
+        mock_run.assert_not_called()
+
+
+class TestTransferirPng:
+    @patch("flowscope.infrastructure.clipboard_image.subprocess.run")
+    def test_linux_transfere_sem_rendering(self, mock_run):
+        with patch(
+            "flowscope.infrastructure.clipboard_image.platform.system",
+            return_value="Linux",
+        ):
+            transferir_png(EXPECTED_TMP_PATH)
+        mock_run.assert_called_once()
+        assert mock_run.call_args.args[0][0] == "xclip"
+
+    @patch(
+        "flowscope.infrastructure.clipboard_image.subprocess.run",
+        side_effect=FileNotFoundError,
+    )
+    def test_linux_sem_xclip_levanta_erro(self, mock_run):
+        with patch(
+            "flowscope.infrastructure.clipboard_image.platform.system",
+            return_value="Linux",
+        ):
+            with pytest.raises(ClipboardError, match="xclip"):
+                transferir_png(EXPECTED_TMP_PATH)
+
+    @patch("flowscope.infrastructure.clipboard_image.subprocess.run")
+    def test_sistema_nao_suportado_levanta_erro(self, mock_run):
+        with patch(
+            "flowscope.infrastructure.clipboard_image.platform.system",
+            return_value="SomeOS",
+        ):
+            with pytest.raises(ClipboardError, match="não suportado"):
+                transferir_png(EXPECTED_TMP_PATH)
+        mock_run.assert_not_called()
 
 
 class TestCopyWindows:

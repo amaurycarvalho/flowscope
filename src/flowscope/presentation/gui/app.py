@@ -134,8 +134,10 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
         self._build_top_bar()
         self._wire_documentos()
         self._wire_noticias()
-        self._build_main_area()
+        # A barra de status é empacotada antes da área principal expansível para
+        # não ser cortada pelo tamanho requisitado dos painéis (matplotlib).
         self._build_statusbar()
+        self._build_main_area()
         self._build_action_buttons()
         self._bind_shortcuts()
 

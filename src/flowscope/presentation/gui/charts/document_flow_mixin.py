@@ -152,27 +152,21 @@ class DocumentFlowMixin:
     def _iniciar_preview(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
     ) -> None:
-        """Exibe o carregamento e inicia extração/resumo em background."""
+        """Exibe o carregamento e inicia extração/resumo em background.
+
+        Não lê o cache de texto nem avalia resumo/guidance na thread do Tk:
+        apenas publica o estado de carregamento e submete o trabalho. A leitura
+        do cache e a decisão de resumo/guidance ocorrem no worker.
+        """
         self._after_id = None
-        texto = self._texto_cacheado(arquivo)
-        if (
-            texto is not None
-            and not self._summary.precisa_resumo(arquivo, texto)
-            and not self._precisa_guidance(arquivo)
-        ):
-            self._mostrar_documento(
-                texto, self._summary.resumo_para_exibir(arquivo, texto)
-            )
-            return
-        precisa = self._summary.precisa_resumo(arquivo, texto)
-        self._set_preview_text(GERANDO_RESUMO if precisa else CARREGANDO)
+        self._set_preview_text(CARREGANDO)
         self._preview_background().submit(
-            lambda ctx: self._trabalhar(ctx, arquivo, texto),
+            lambda ctx: self._trabalhar(ctx, arquivo),
             grupo=GRUPO_PREVIEW,
             politica=Politica.LATEST_WINS,
             chave=arquivo.caminho,
             ao_resultado=lambda evento: self._aplicar_preview(
-                arquivo, evento.valor[0], evento.valor[1]
+                arquivo, *evento.valor
             ),
         )
 
@@ -188,17 +182,19 @@ class DocumentFlowMixin:
         self: "DocumentFlowMixin",
         ctx: "JobContext",
         arquivo: DocumentoArquivo,
-        texto_conhecido: str | None,
     ) -> None:
-        """Extrai o texto, avalia o guidance e, se preciso, gera o resumo."""
-        texto = (
-            texto_conhecido
-            if texto_conhecido is not None
-            else self.preparar_texto(arquivo)
-        )
-        self.avaliar_guidance(arquivo, texto)
+        """Extrai o texto, avalia o guidance e, se preciso, gera o resumo.
+
+        Executa fora da thread do Tk: lê o cache persistente de texto, decide se
+        o resumo é necessário e avalia o guidance, devolvendo texto, decisão e
+        resumo no resultado do job.
+        """
+        texto = self.preparar_texto(arquivo)
+        precisa = self._summary.precisa_resumo(arquivo, texto)
+        if self._precisa_guidance(arquivo):
+            self.avaliar_guidance(arquivo, texto)
         resumo = self._summary.gerar(arquivo, texto)
-        ctx.resultado(valor=(texto, resumo))
+        ctx.resultado(valor=(texto, precisa, resumo))
 
     def _precisa_guidance(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
@@ -238,16 +234,28 @@ class DocumentFlowMixin:
         self: "DocumentFlowMixin",
         arquivo: DocumentoArquivo,
         texto: str,
+        precisa_resumo: bool,
         resumo: ResumoDocumento | None = None,
     ) -> None:
-        """Cacheia o texto e exibe a pré-visualização se o arquivo seguir selecionado."""
+        """Cacheia o texto e exibe a pré-visualização se o arquivo seguir selecionado.
+
+        Recebe o texto, a decisão de resumo e o resumo gerado pelo worker. Um
+        documento já resumido tem ``precisa_resumo`` falso e reutiliza o resumo
+        em memória; quando o resumo era necessário mas a geração falhou, exibe a
+        mensagem de indisponibilidade.
+        """
         self._preview_cache[arquivo.caminho] = texto
         if self._arquivo_selecionado() is not arquivo:
             return
-        long_summary = self._summary.resumo_para_exibir(arquivo, texto)
         if resumo is not None:
             self._atualizar_resumo(self._summary.persistir(arquivo, resumo))
-            long_summary = resumo.long_summary
+            self._mostrar_documento(texto, resumo.long_summary)
+            return
+        long_summary = (
+            self._summary.mensagem_indisponivel()
+            if precisa_resumo
+            else self._summary.resumo_para_exibir(arquivo, texto)
+        )
         self._mostrar_documento(texto, long_summary)
 
     def _atualizar_resumo(

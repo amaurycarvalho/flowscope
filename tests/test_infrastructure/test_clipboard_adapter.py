@@ -34,3 +34,41 @@ class TestClipboardImageAdapter:
 
         with pytest.raises(PortClipboardError, match="xclip ausente"):
             ClipboardImageAdapter().copy_image(object())
+
+    def test_salvar_png_delega(self, monkeypatch):
+        caminho = clipboard_image.TMP_PATH
+        monkeypatch.setattr(
+            clipboard_image, "salvar_png", lambda figure: caminho
+        )
+
+        assert ClipboardImageAdapter().salvar_png(object()) == caminho
+
+    def test_transferir_png_delega(self, monkeypatch):
+        chamadas: list = []
+        monkeypatch.setattr(
+            clipboard_image,
+            "transferir_png",
+            lambda path: chamadas.append(path),
+        )
+
+        ClipboardImageAdapter().transferir_png(clipboard_image.TMP_PATH)
+
+        assert chamadas == [clipboard_image.TMP_PATH]
+
+    def test_salvar_png_traduz_erro(self, monkeypatch):
+        def _falha(_figure):
+            raise ClipboardError("sem espaço")
+
+        monkeypatch.setattr(clipboard_image, "salvar_png", _falha)
+
+        with pytest.raises(PortClipboardError, match="sem espaço"):
+            ClipboardImageAdapter().salvar_png(object())
+
+    def test_transferir_png_traduz_erro(self, monkeypatch):
+        def _falha(_path):
+            raise ClipboardError("xclip ausente")
+
+        monkeypatch.setattr(clipboard_image, "transferir_png", _falha)
+
+        with pytest.raises(PortClipboardError, match="xclip ausente"):
+            ClipboardImageAdapter().transferir_png(clipboard_image.TMP_PATH)

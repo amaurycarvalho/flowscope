@@ -7,6 +7,7 @@ Apenas a existência/remoção do overlay e a cobertura de cliques exigem Tk.
 
 import logging
 import os
+import time
 import tkinter as tk
 from unittest.mock import MagicMock
 
@@ -344,6 +345,24 @@ class TestEscudoUI:
         try:
             assert janela._inicializando is True
             assert janela._escudo is not None
+        finally:
+            janela.destroy()
+
+    def test_statusbar_permanece_visivel_apos_o_release(self, monkeypatch):
+        from flowscope.presentation.gui import app as app_mod
+
+        monkeypatch.setattr(
+            app_mod, "load_preferences", lambda: dict(app_mod.DEFAULT_CONFIG)
+        )
+        janela = app_mod.FlowScopeGUI()
+        try:
+            for _ in range(50):
+                janela.update()
+                time.sleep(0.01)
+            janela.finalizar_gate()
+            janela.update()
+            assert janela._escudo is None
+            assert janela._status_frame.winfo_ismapped() == 1
         finally:
             janela.destroy()
 
