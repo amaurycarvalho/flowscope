@@ -1,9 +1,11 @@
 """Testes da integração do gatilho de guidance ao fluxo de leitura."""
 
-import queue
 from pathlib import Path
 
 from flowscope.domain.documents import DocumentoArquivo
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Resultado
+from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 
 
@@ -56,39 +58,49 @@ class _FlowFake(DocumentFlowMixin):
         return "texto preparado"
 
 
+def _contexto():
+    handle = JobHandle(id=1, grupo="preview", politica=Politica.LATEST_WINS)
+    eventos = []
+    return JobContext(handle, eventos.append), eventos
+
+
 class TestTrabalhar:
     def test_avalia_guidance_e_gera_resumo(self):
         summary = _SummaryFake()
         guidance = _GuidanceFake()
         fluxo = _FlowFake(summary, guidance)
-        fila: queue.Queue = queue.Queue()
-        fluxo._trabalhar(_arquivo(), fila, None)
+        ctx, eventos = _contexto()
+        fluxo._trabalhar(ctx, _arquivo(), None)
         assert guidance.chamadas == [(_arquivo(), "texto preparado")]
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert fila.get_nowait() == ("texto preparado", None)
+        assert eventos == [Resultado(valor=("texto preparado", None))]
 
     def test_usa_texto_conhecido_sem_repreparar(self):
         summary = _SummaryFake()
         guidance = _GuidanceFake()
         fluxo = _FlowFake(summary, guidance)
-        fluxo._trabalhar(_arquivo(), queue.Queue(), "texto do cache")
+        ctx, eventos = _contexto()
+        fluxo._trabalhar(ctx, _arquivo(), "texto do cache")
         assert fluxo.preparos == 0
         assert guidance.chamadas == [(_arquivo(), "texto do cache")]
+        assert eventos == [Resultado(valor=("texto do cache", None))]
 
     def test_falha_de_guidance_nao_interrompe_o_resumo(self):
         summary = _SummaryFake()
         guidance = _GuidanceFake(erro=RuntimeError("falha"))
         fluxo = _FlowFake(summary, guidance)
-        fila: queue.Queue = queue.Queue()
-        fluxo._trabalhar(_arquivo(), fila, "texto")
+        ctx, eventos = _contexto()
+        fluxo._trabalhar(ctx, _arquivo(), "texto")
         assert summary.gerados == [(_arquivo(), "texto")]
-        assert fila.get_nowait() == ("texto", None)
+        assert eventos == [Resultado(valor=("texto", None))]
 
     def test_sem_servico_de_guidance_nao_quebra(self):
         summary = _SummaryFake()
         fluxo = _FlowFake(summary, None)
-        fluxo._trabalhar(_arquivo(), queue.Queue(), "texto")
+        ctx, eventos = _contexto()
+        fluxo._trabalhar(ctx, _arquivo(), "texto")
         assert summary.gerados == [(_arquivo(), "texto")]
+        assert eventos == [Resultado(valor=("texto", None))]
 
 
 class TestPrecisaGuidance:

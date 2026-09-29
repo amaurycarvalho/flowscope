@@ -1,6 +1,6 @@
 # FlowScope
 
-FlowScope é uma ferramenta open source de análise quantitativa de fluxo de ordens baseada nos dados públicos consolidados de negociações (pregões) disponibilizados pela bolsa de valores B3.
+FlowScope é uma plataforma open source de análise de ativos da B3 que reúne a leitura do fluxo de ordens dos pregões, a consolidação de fundamentos de ações e FIIs, o acompanhamento de dividendos, short interest e documentos corporativos, e a curadoria de notícias e informações regulatórias — com recursos opcionais de IA para resumir documentos e conversar sobre os dados.
 
 [![Spec-Driven Development](https://img.shields.io/badge/SDD-OpenSpec-yellow)](openspec/specs/project-constitution/spec.md)
 

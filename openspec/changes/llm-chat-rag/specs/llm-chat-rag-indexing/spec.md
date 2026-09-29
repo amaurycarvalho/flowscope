@@ -59,3 +59,19 @@ O sistema DEVE construir o prompt RAG combinando um system prompt fixo com os ch
 #### Scenario: Prompt com contexto e pergunta
 - **WHEN** o prompt é construído com 3 chunks e a pergunta "Qual o último rendimento?"
 - **THEN** o prompt final DEVE conter as instruções do sistema, os 3 chunks formatados com fonte e data e a pergunta do usuário
+
+### Requirement: Fonte vetorial volátil no sufixo do prompt
+
+A consulta vetorial DEVE ser oferecida à aba "Chat AI" como fonte adicional **dependente da pergunta** e, conforme a `cache-prompt-chat`, DEVE compor o **sufixo volátil** do prompt. Ela NÃO DEVE integrar o prefixo estável cacheável nem a assinatura do contexto estável, e a presença ou ausência da fonte RAG NÃO DEVE alterar o prefixo estável para o mesmo contexto.
+
+#### Scenario: Fonte RAG no sufixo
+- **WHEN** a consulta vetorial retorna chunks relevantes para a pergunta
+- **THEN** esses chunks DEVEM compor o sufixo do prompt, após o histórico, e NÃO DEVEM integrar o prefixo estável
+
+#### Scenario: Prefixo estável inalterado com e sem RAG
+- **WHEN** a mesma pergunta e o mesmo contexto são processados com e sem a fonte RAG
+- **THEN** o prefixo estável DEVE permanecer byte-a-byte idêntico
+
+#### Scenario: Índice vazio preserva o prefixo estável
+- **WHEN** não há documentos indexados e a fonte RAG retorna vazio
+- **THEN** o prefixo estável DEVE permanecer inalterado e o chat DEVE seguir com a cascata lexical

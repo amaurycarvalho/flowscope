@@ -36,6 +36,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         fundamental_guidance_store: object | None = None,
         fundamental_short_interest_provider: object | None = None,
         fundamental_mercado_factory: object | None = None,
+        background: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -57,8 +58,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
             fundamental_short_interest_provider
         )
         self._fundamental_mercado_factory = fundamental_mercado_factory
-        self._fundamental_generation = 0
-        self._fundamental_job = None
+        self._background = background
 
     def on_today(self: "FlowScopeController") -> None:
         """Carrega os dados para a data atual."""

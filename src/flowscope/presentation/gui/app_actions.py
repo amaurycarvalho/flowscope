@@ -1,8 +1,5 @@
 """Ações de configuração e atualização de gráficos da interface gráfica."""
 
-import logging
-import queue
-import time
 import tkinter as tk
 from datetime import date, datetime, timezone
 
@@ -13,14 +10,10 @@ from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.documentos_job import (
-    MENSAGEM_PROGRESSO,
-    DocumentosJob,
+    GRUPO,
+    POLITICA,
+    executar_documentos,
 )
-
-logger = logging.getLogger("flowscope")
-
-#: Tempo máximo sem progresso antes de encerrar a aquisição de documentos.
-_LIMITE_INATIVIDADE_DOCUMENTOS_S = 120.0
 
 
 class ActionsMixin:
@@ -184,7 +177,7 @@ class ActionsMixin:
         painel.update(self._ticker_apresentado())
 
     def _adquirir_documentos(self: "ActionsMixin", ticker: str) -> None:
-        """Adquire os documentos do ticker em thread e remonta a árvore."""
+        """Adquire os documentos do ticker em background e remonta a árvore."""
         painel = getattr(self, "_documents_panel", None)
         aquisicao = getattr(self, "_aquisicao_documentos", None)
         if painel is None:
@@ -192,122 +185,34 @@ class ActionsMixin:
         if aquisicao is None or not ticker:
             painel.update(ticker)
             return
-        if getattr(self, "_documentos_job", None) is not None:
+        background = getattr(self, "_background", None)
+        if background is None or background.tem_ativo(GRUPO):
             return
         painel.mostrar_carregando(ticker)
-        job = DocumentosJob(
-            aquisicao,
-            ticker,
-            self._data_referencia(),
-            cancel_token=self._presenter.cancel_token,
-        )
-        self._documentos_job = job
-        self._presenter.on_operation_started()
-        self._presenter.job_cancelavel_iniciado()
-        self._documentos_ultima_atividade = time.monotonic()
-        try:
-            job.iniciar()
-        except Exception:
-            logger.warning(
-                "Falha ao iniciar a aquisição de documentos de %s",
-                ticker,
-                exc_info=True,
-            )
-            if getattr(self, "_documentos_job", None) is job:
-                self._documentos_job = None
-            self._presenter.job_cancelavel_finalizado()
-            self._presenter.on_operation_finished()
-            return
-        self._poll_documentos_job(job, ticker)
-
-    def _cancelamento_solicitado(self: "ActionsMixin") -> bool:
-        """Indica se o usuário solicitou a interrupção do processamento."""
-        token = getattr(self._presenter, "cancel_token", None)
-        return token is not None and token.is_set is True
-
-    def _poll_documentos_job(self: "ActionsMixin", job: DocumentosJob, ticker: str) -> None:
-        """Consome a fila do job na thread do Tk até a aquisição concluir.
-
-        Cada mensagem é tratada dentro de ``try/except``: um erro ao processar
-        o progresso é registrado no log e não interrompe o esvaziamento da fila,
-        de modo que a mensagem terminal ainda encerra o job e libera o cursor.
-        """
-        terminou = self._drenar_fila_documentos(job, ticker)
-        if not terminou and self._cancelamento_solicitado():
-            terminou = True
-        if not terminou and self._documentos_job_travado(job):
-            logger.warning(
-                "Aquisição de documentos de %s sem progresso; encerrando para "
-                "restaurar a interface.",
-                ticker,
-            )
-            terminou = True
-        if terminou:
-            self._finalizar_documentos_job(job, ticker)
-            return
-        self.after(50, lambda: self._poll_documentos_job(job, ticker))
-
-    def _drenar_fila_documentos(
-        self: "ActionsMixin", job: DocumentosJob, ticker: str
-    ) -> bool:
-        """Esvazia a fila do job e informa se ele foi concluído."""
-        terminou = False
-        try:
-            while True:
-                mensagem = job.fila.get_nowait()
-                if self._mensagem_de_progresso(mensagem):
-                    self._tratar_progresso_documentos(mensagem, ticker)
-                else:
-                    terminou = True
-        except queue.Empty:
-            pass
-        return terminou
-
-    @staticmethod
-    def _mensagem_de_progresso(mensagem: object) -> bool:
-        """Indica se a mensagem é de progresso da aquisição de documentos."""
-        return (
-            isinstance(mensagem, tuple)
-            and bool(mensagem)
-            and mensagem[0] == MENSAGEM_PROGRESSO
+        background.submit(
+            lambda ctx: executar_documentos(
+                ctx, aquisicao, ticker, self._data_referencia()
+            ),
+            grupo=GRUPO,
+            politica=POLITICA,
+            cancelavel=True,
+            ao_progresso=lambda evento: self._presenter.on_progress(
+                evento.atual, evento.total, evento.detalhe
+            ),
+            ao_termino=lambda evento: self._finalizar_documentos(
+                ticker, evento.cancelado
+            ),
         )
 
-    def _tratar_progresso_documentos(
-        self: "ActionsMixin", mensagem: tuple, ticker: str
+    def _finalizar_documentos(
+        self: "ActionsMixin", ticker: str, cancelado: bool
     ) -> None:
-        """Repassa o progresso ao presenter, registrando falhas sem abortar."""
-        try:
-            _tipo, current, total, label = mensagem
-            self._documentos_ultima_atividade = time.monotonic()
-            self._presenter.on_progress(current, total, label)
-        except Exception:
-            logger.exception(
-                "Erro ao tratar progresso da aquisição de %s", ticker
-            )
-
-    def _finalizar_documentos_job(
-        self: "ActionsMixin", job: DocumentosJob, ticker: str
-    ) -> None:
-        """Encerra o job, remonta a árvore e libera o estado ocupado."""
-        if getattr(self, "_documentos_job", None) is job:
-            self._documentos_job = None
+        """Remonta a árvore e informa o desfecho da aquisição."""
         painel = getattr(self, "_documents_panel", None)
         if painel is not None:
             painel.update(ticker)
-        self._presenter.job_cancelavel_finalizado()
-        self._presenter.on_operation_finished()
-        if not self._cancelamento_solicitado():
+        if not cancelado:
             self._flash_status("Documentos atualizados!")
-
-    def _documentos_job_travado(self: "ActionsMixin", job: DocumentosJob) -> bool:
-        """Indica se o job morreu ou ficou sem progresso por tempo demais."""
-        thread = getattr(job, "thread", None)
-        if thread is not None and not thread.is_alive() and job.fila.empty():
-            return True
-        ultima = getattr(self, "_documentos_ultima_atividade", None)
-        if ultima is None:
-            return False
-        return time.monotonic() - ultima > _LIMITE_INATIVIDADE_DOCUMENTOS_S
 
     def _data_referencia(self: "ActionsMixin") -> date:
         """Retorna a data de referência selecionada, ou a data corrente."""

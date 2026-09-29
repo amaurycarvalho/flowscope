@@ -36,7 +36,7 @@ TAB_CONTENT = {
             ("Responde a pergunta: ", "bold"),
             ("\"O que é o FlowScope, qual a versão que estou usando e onde encontro o código e o log?\"\n\n", "italic"),
             ("Conteúdo: ", "bold"),
-            (("• Apresentação do projeto: ferramenta open source de análise quantitativa de fluxo de ordens sobre dados públicos da B3, com interface gráfica e linha de comando;\n"
+            (("• Apresentação do projeto: plataforma open source de análise de ativos da B3 que reúne fluxo de ordens, fundamentos de ações e FIIs, dividendos, short interest, documentos corporativos e notícias regulatórias, com recursos opcionais de IA;\n"
               "• Versão e data de release, licença (GNU GPLv3) e endereço do repositório oficial;\n"
               "• Aviso de nova versão disponível, quando houver, com atalho para a página da release.\n\n"), ""),
             ("Como interpretar: ", "bold"),

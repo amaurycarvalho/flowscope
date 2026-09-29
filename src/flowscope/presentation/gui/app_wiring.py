@@ -72,6 +72,8 @@ from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
 from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
 from flowscope.infrastructure.releases import obter_ultima_release
+from flowscope.presentation.gui.background.job import JobHandle
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
@@ -182,6 +184,18 @@ class WiringMixin:
         """Monta os adaptadores de notícias antes da construção das abas."""
         self._noticias_adapters = montar_adaptadores_noticias()
 
+    def _on_background_iniciado(self: "WiringMixin", handle: "JobHandle") -> None:
+        """Reflete o início de um job no estado ocupado do apresentador."""
+        self._presenter.enter()
+        if handle.cancelavel:
+            self._presenter.job_cancelavel_iniciado()
+
+    def _on_background_terminado(self: "WiringMixin", handle: "JobHandle") -> None:
+        """Reflete o término de um job no estado ocupado do apresentador."""
+        if handle.cancelavel:
+            self._presenter.job_cancelavel_finalizado()
+        self._presenter.exit()
+
     def _wire_controller(self: "WiringMixin") -> None:
         """Monta o grafo de dependências e conecta a lista de tickers."""
         repo = B3DataRepository(B3Client())
@@ -190,6 +204,11 @@ class WiringMixin:
         analyze = AnalyzeTickersUseCase(repo)
         presenter = FlowScopePresenter(view=self)
         self._presenter = presenter
+        background = BackgroundManager(agendar=self.agendar)
+        background.ao_iniciar(self._on_background_iniciado)
+        background.ao_terminar(self._on_background_terminado)
+        presenter.attach_background(background)
+        self._background = background
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
         cache = CacheManager()
         self._aquisicao_documentos = AquisicaoDocumentos(cache=cache)
@@ -243,6 +262,7 @@ class WiringMixin:
             fundamental_guidance_store=self._guidance_store,
             fundamental_short_interest_provider=fundamental_short_interest_provider,
             fundamental_mercado_factory=B3MarketPriceFromResult,
+            background=background,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

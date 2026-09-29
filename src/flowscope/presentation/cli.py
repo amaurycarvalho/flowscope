@@ -14,7 +14,10 @@ def build_parser() -> argparse.ArgumentParser:
     """Constrói o parser de argumentos da linha de comando."""
     parser = argparse.ArgumentParser(
         prog="flowscope",
-        description="Plataforma de análise quantitativa de fluxo de ordens",
+        description=(
+            "Plataforma open source de análise de ativos da B3: fluxo de ordens, "
+            "fundamentos de ações e FIIs, documentos e notícias regulatórias, com IA opcional"
+        ),
         epilog="Documentação: https://github.com/amaurycarvalho/flowscope",
     )
     parser.add_argument(

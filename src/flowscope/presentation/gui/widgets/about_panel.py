@@ -10,9 +10,12 @@ from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 
 #: Texto de apresentação derivado da seção de descrição do README.md.
 APRESENTACAO = (
-    "O FlowScope é uma ferramenta open source de análise quantitativa de fluxo "
-    "de ordens baseada nos dados públicos consolidados de negociações "
-    "disponibilizados pela bolsa de valores B3. Desenvolvido em Python, oferece "
+    "O FlowScope é uma plataforma open source de análise de ativos da B3 que "
+    "reúne a leitura do fluxo de ordens dos pregões, a consolidação de "
+    "fundamentos de ações e FIIs (com dividendos, short interest e métricas de "
+    "FFO), a gestão de documentos corporativos e a curadoria de notícias e "
+    "informações regulatórias, além de recursos opcionais de IA para resumir "
+    "documentos e conversar sobre os dados. Desenvolvido em Python, oferece "
     "interface gráfica (GUI) e linha de comando (CLI), com suporte "
     "multiplataforma para Linux, Windows e macOS."
 )

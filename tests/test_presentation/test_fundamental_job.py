@@ -1,19 +1,19 @@
+"""Testes headless do trabalho puro da análise fundamentalista."""
+
 import logging
-import time
 from datetime import date
-from unittest.mock import MagicMock
 
 from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
-from flowscope.presentation.gui.controller import FlowScopeController
-from flowscope.presentation.gui.fundamental_job import (
-    MENSAGEM_PROGRESSO,
-    MENSAGEM_RESULTADO,
-    FundamentalJob,
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
+from flowscope.presentation.gui.background.job import (
+    JobHandle,
+    Politica,
 )
-from flowscope.presentation.gui.presenter import FlowScopePresenter
+from flowscope.presentation.gui.fundamental_job import executar_fundamental
 
 REFERENCIA = date(2026, 9, 4)
 
@@ -38,350 +38,85 @@ class _CasoFake:
         return [_Analise(ticker) for ticker in tickers]
 
 
-class TestFundamentalJob:
-    def test_publica_progresso_e_resultado_na_fila(self):
-        job = FundamentalJob(_CasoFake(), ["HGBS11", "HGLG11"], REFERENCIA, 1)
-        thread = job.iniciar()
-        thread.join(timeout=2)
+def _contexto():
+    handle = JobHandle(
+        id=1, grupo="fundamental", politica=Politica.LATEST_WINS
+    )
+    eventos = []
+    return JobContext(handle, eventos.append), eventos
 
-        mensagens = []
-        while not job.fila.empty():
-            mensagens.append(job.fila.get_nowait())
-        tipos = [mensagem[0] for mensagem in mensagens]
-        assert MENSAGEM_PROGRESSO in tipos
-        assert MENSAGEM_RESULTADO in tipos
 
-        resultado = [m for m in mensagens if m[0] == MENSAGEM_RESULTADO][0]
-        assert set(resultado[1].keys()) == {"HGBS11", "HGLG11"}
+class TestExecutarFundamental:
+    def test_publica_progresso_e_resultado(self):
+        ctx, eventos = _contexto()
+
+        executar_fundamental(
+            ctx, _CasoFake(), ["HGBS11", "HGLG11"], REFERENCIA
+        )
+
+        progressos = [e for e in eventos if isinstance(e, Progresso)]
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert [p.atual for p in progressos] == [1, 2]
+        assert [p.total for p in progressos] == [2, 2]
+        assert len(resultados) == 1
+        assert set(resultados[0].valor.keys()) == {"HGBS11", "HGLG11"}
 
     def test_token_e_repassado_ao_caso_de_uso(self):
+        ctx, _ = _contexto()
         caso = _CasoFake()
-        token = CancellationToken()
-        job = FundamentalJob(
-            caso, ["HGBS11"], REFERENCIA, 1, cancel_token=token
-        )
-        job.iniciar().join(timeout=2)
-        assert caso.cancel_token is token
+
+        executar_fundamental(ctx, caso, ["HGBS11"], REFERENCIA)
+
+        assert caso.cancel_token is ctx.token
 
     def test_cancelamento_nao_publica_erro(self, caplog):
         class _CasoCancelado:
-            houve_falha_recuperavel = False
-
             def execute(self, *args, **kwargs):
                 raise OperacaoCancelada()
 
-        token = CancellationToken()
-        token.request()
-        job = FundamentalJob(
-            _CasoCancelado(), ["HGBS11"], REFERENCIA, 1, cancel_token=token
-        )
+        ctx, eventos = _contexto()
+        ctx.token.request()
         with caplog.at_level(logging.WARNING, logger="flowscope"):
-            job.iniciar().join(timeout=2)
+            executar_fundamental(ctx, _CasoCancelado(), ["HGBS11"], REFERENCIA)
 
-        assert job.fila.empty()
+        assert not any(isinstance(e, Erro) for e in eventos)
         assert "Falha na análise fundamentalista" not in caplog.text
 
-    def test_erro_publica_mensagem_de_erro(self):
+    def test_erro_publica_evento_de_erro(self):
         class _CasoComErro:
             def execute(self, *args, **kwargs):
                 raise RuntimeError("boom")
 
-        job = FundamentalJob(_CasoComErro(), ["HGBS11"], REFERENCIA, 1)
-        thread = job.iniciar()
-        thread.join(timeout=2)
-        tipo = job.fila.get_nowait()[0]
-        assert tipo == "erro"
+        ctx, eventos = _contexto()
+        executar_fundamental(ctx, _CasoComErro(), ["HGBS11"], REFERENCIA)
 
-    def test_progresso_carrega_current_e_total(self):
-        job = FundamentalJob(_CasoFake(), ["HGBS11", "HGLG11"], REFERENCIA, 1)
-        thread = job.iniciar()
-        thread.join(timeout=2)
+        erros = [e for e in eventos if isinstance(e, Erro)]
+        assert len(erros) == 1
+        assert isinstance(erros[0].excecao, RuntimeError)
 
-        mensagens = []
-        while not job.fila.empty():
-            mensagens.append(job.fila.get_nowait())
-        progressos = [m for m in mensagens if m[0] == MENSAGEM_PROGRESSO]
-        assert [m[3] for m in progressos] == [1, 2]
-        assert [m[4] for m in progressos] == [2, 2]
-
-
-class TestGenerationToken:
-    def _controller(self, generation):
-        presenter = MagicMock()
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        controller._fundamental_generation = generation
-        return controller, presenter
-
-    def test_resultado_obsoleto_e_descartado(self):
-        controller, presenter = self._controller(generation=2)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_result.assert_not_called()
-
-    def test_resultado_atual_e_aplicado(self):
-        controller, presenter = self._controller(generation=3)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 3)
-        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_result.assert_called_once()
-
-    def test_resultado_propaga_flag_de_falha(self):
-        controller, presenter = self._controller(generation=1)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}, True))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        assert presenter.on_fundamental_result.call_args[0][1] is True
-
-    def test_progresso_repassa_current_e_total(self):
-        controller, presenter = self._controller(generation=1)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False, 1, 3))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_progress.assert_called_once_with(
-            "Analisando HGBS11", 1, 3
-        )
-
-    def test_progresso_formato_antigo_nao_quebra(self):
-        controller, presenter = self._controller(generation=1)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_progress.assert_called_once_with(
-            "Analisando HGBS11"
-        )
-
-    def test_drenar_encerra_cursor_no_resultado(self):
-        controller, presenter = self._controller(generation=1)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put(("resultado", {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_finished.assert_called_once()
-
-    def test_drenar_erro_notifica_presenter_e_encerra_cursor(self):
-        controller, presenter = self._controller(generation=1)
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put(("erro", "boom"))
-        controller._fundamental_job = job
-        controller._drenar_fundamental(job)
-        presenter.on_fundamental_error.assert_called_once()
-        presenter.on_fundamental_finished.assert_called_once()
-
-
-class TestDrenarResiliente:
-    def test_erro_ao_tratar_resultado_ainda_encerra_job(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        controller._fundamental_generation = 1
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-        presenter.on_fundamental_result = MagicMock(
-            side_effect=RuntimeError("render boom")
-        )
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        assert presenter._operacoes_ativas == 0
-        view.exit_busy.assert_called_once()
-
-    def test_erro_na_consumicao_da_fila_ainda_encerra_job(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-        controller._consumir_fila = MagicMock(
-            side_effect=RuntimeError("queue boom")
-        )
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        assert presenter._operacoes_ativas == 0
-        view.exit_busy.assert_called_once()
-
-    def test_job_sem_progresso_e_encerrado_por_timeout(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        controller._fundamental_job = job
-        controller._fundamental_ultima_atividade = time.monotonic() - 1000.0
-        presenter.on_fundamental_started()
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        assert presenter._operacoes_ativas == 0
-        view.exit_busy.assert_called_once()
-
-    def test_job_com_thread_morta_e_encerrado(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.thread = MagicMock()
-        job.thread.is_alive.return_value = False
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        assert presenter._operacoes_ativas == 0
-
-    def test_erro_em_progresso_nao_interrompe_drenagem(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        controller._fundamental_generation = 1
-        job = FundamentalJob(_CasoFake(), ["HGBS11"], REFERENCIA, 1)
-        job.fila.put((MENSAGEM_PROGRESSO, "Analisando HGBS11", False, 1, 1))
-        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-        presenter.on_fundamental_progress = MagicMock(
-            side_effect=RuntimeError("progress boom")
-        )
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        view.set_fundamental_data.assert_called_once()
-        assert presenter._operacoes_ativas == 0
-
-
-class TestCancelamentoFundamental:
-    def _controller(self, view):
-        presenter = FlowScopePresenter(view)
-        controller = FlowScopeController(
-            guard=MagicMock(),
-            load_portfolio=MagicMock(),
-            analyze=MagicMock(),
-            presenter=presenter,
-            logger=MagicMock(),
-            fundamental_repo=object(),
-        )
-        controller._fundamental_generation = 1
-        return controller, presenter
-
-    def test_cancelamento_descarta_resultado_e_encerra(self):
-        view = MagicMock()
-        controller, presenter = self._controller(view)
-        job = FundamentalJob(
-            _CasoFake(), ["HGBS11"], REFERENCIA, 1,
-            cancel_token=presenter.cancel_token,
-        )
-        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-        presenter.job_cancelavel_iniciado()
-        presenter.request_cancel()
-
-        controller._drenar_fundamental(job)
-
-        assert controller._fundamental_job is None
-        view.set_fundamental_data.assert_not_called()
-        assert presenter._operacoes_ativas == 0
-        view.set_status.assert_called_with("Processamento interrompido.", "⚠")
-        view.set_cancellable.assert_called_with(False)
-
-    def test_sem_cancelamento_aplica_resultado(self):
-        view = MagicMock()
-        controller, presenter = self._controller(view)
-        job = FundamentalJob(
-            _CasoFake(), ["HGBS11"], REFERENCIA, 1,
-            cancel_token=presenter.cancel_token,
-        )
-        job.fila.put((MENSAGEM_RESULTADO, {"HGBS11": _Analise("HGBS11")}))
-        controller._fundamental_job = job
-        presenter.on_fundamental_started()
-        presenter.job_cancelavel_iniciado()
-
-        controller._drenar_fundamental(job)
-
-        view.set_fundamental_data.assert_called_once()
-
-
-class TestJobFalhaRecuperavel:
-    def test_job_publica_falha_recuperavel(self):
+    def test_falha_recuperavel_marca_resultado(self):
         class _CasoComFalha(_CasoFake):
             houve_falha_recuperavel = True
 
-        job = FundamentalJob(_CasoComFalha(), ["HGBS11"], REFERENCIA, 1)
-        thread = job.iniciar()
-        thread.join(timeout=2)
-        mensagens = []
-        while not job.fila.empty():
-            mensagens.append(job.fila.get_nowait())
-        resultado = [m for m in mensagens if m[0] == MENSAGEM_RESULTADO][0]
-        assert resultado[2] is True
+        ctx, eventos = _contexto()
+        executar_fundamental(ctx, _CasoComFalha(), ["HGBS11"], REFERENCIA)
 
+        resultado = [e for e in eventos if isinstance(e, Resultado)][0]
+        assert resultado.falhou is True
 
-class TestForceRefreshJob:
-    def test_job_encaminha_force_refresh(self):
+    def test_encaminha_force_refresh(self):
+        ctx, _ = _contexto()
         caso = _CasoFake()
-        job = FundamentalJob(caso, ["HGBS11"], REFERENCIA, 1, force_refresh=True)
-        thread = job.iniciar()
-        thread.join(timeout=2)
+
+        executar_fundamental(ctx, caso, ["HGBS11"], REFERENCIA, force_refresh=True)
+
         assert caso.force_refresh is True
 
-    def test_job_default_sem_force(self):
-        caso = _CasoFake()
-        job = FundamentalJob(caso, ["HGBS11"], REFERENCIA, 1)
-        thread = job.iniciar()
-        thread.join(timeout=2)
-        assert caso.force_refresh is False
+    def test_token_limpo_apos_substituicao(self):
+        handle = JobHandle(
+            id=2, grupo="fundamental", politica=Politica.LATEST_WINS
+        )
+        token = CancellationToken()
+        handle.token = token
+        ctx = JobContext(handle, lambda evento: None)
+        assert ctx.cancelled is False

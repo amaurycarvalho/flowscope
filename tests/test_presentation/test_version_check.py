@@ -4,19 +4,10 @@ import webbrowser
 from unittest.mock import MagicMock, patch
 
 from flowscope.presentation.gui.app_about_actions import AboutActionsMixin
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.widgets.about_panel import REPOSITORIO_URL
 
 _MODULO = "flowscope.presentation.gui.app_about_actions"
-
-
-class _ThreadImediata:
-    """Executa o alvo da thread de forma síncrona, evitando corridas nos testes."""
-
-    def __init__(self, target=None, daemon=None, **kwargs):
-        self._target = target
-
-    def start(self):
-        self._target()
 
 
 class _Host(AboutActionsMixin):
@@ -24,13 +15,11 @@ class _Host(AboutActionsMixin):
         self._update_checked = False
         self._about_panel = panel if panel is not None else MagicMock()
         self._release_checker = release_checker or (lambda: None)
+        self._background = BackgroundManager()
         self.status = []
 
     def _set_status(self, msg, icon=""):
         self.status.append(msg)
-
-    def after(self, _ms, callback):
-        callback()
 
 
 class _Contador:
@@ -45,10 +34,17 @@ class _Contador:
         return self._resultado
 
 
+def _drenar(host):
+    """Aguarda os jobs da verificação e finaliza o desfecho."""
+    for handle in host._background.jobs_ativos:
+        handle.thread.join(2)
+    host._background.drenar()
+
+
 def _executar_verificacao(resultado=None):
     host = _Host(release_checker=lambda: resultado)
-    with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-        host._verificar_nova_versao()
+    host._verificar_nova_versao()
+    _drenar(host)
     return host
 
 
@@ -56,9 +52,9 @@ class TestVerificacaoUmaVezPorSessao:
     def test_primeira_verificacao_memoiza(self):
         checker = _Contador()
         host = _Host(release_checker=checker)
-        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-            host._verificar_nova_versao()
-            host._verificar_nova_versao()
+        host._verificar_nova_versao()
+        host._verificar_nova_versao()
+        _drenar(host)
         assert checker.chamadas == 1
         assert host._update_checked is True
 
@@ -88,17 +84,17 @@ class TestNotificacaoDeNovaVersao:
             raise RuntimeError("boom")
 
         host = _Host(release_checker=_falha)
-        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-            host._verificar_nova_versao()
+        host._verificar_nova_versao()
+        _drenar(host)
         host._about_panel.show_update.assert_not_called()
 
     def test_botao_da_release_abre_url(self):
         host = _Host(release_checker=lambda: ("9.9.9", "http://release"))
-        with patch(f"{_MODULO}.threading.Thread", _ThreadImediata):
-            with patch(f"{_MODULO}.webbrowser.open") as abrir:
-                host._verificar_nova_versao()
-                callback = host._about_panel.show_update.call_args.args[1]
-                callback()
+        with patch(f"{_MODULO}.webbrowser.open") as abrir:
+            host._verificar_nova_versao()
+            _drenar(host)
+            callback = host._about_panel.show_update.call_args.args[1]
+            callback()
         abrir.assert_called_once_with("http://release")
 
     def test_sem_painel_nao_falha(self):

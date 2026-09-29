@@ -1,20 +1,15 @@
 """Aquisição das notícias da sub-aba "Notícias" em segundo plano.
 
-O mixin conduz o job de aquisição em uma thread, drena a fila na thread do Tk,
-traduz o progresso para a barra de status e remonta a árvore ao final. Vive
-separado de :mod:`app_actions` para manter a complexidade sob controle.
+O mixin submete a aquisição ao gerenciador de background, traduz o progresso
+para a barra de status e remonta a árvore ao final. Vive separado de
+:mod:`app_actions` para manter a complexidade sob controle.
 """
 
-import logging
-import queue
-import time
-
-from flowscope.presentation.gui.noticias_job import MENSAGEM_PROGRESSO, NoticiasJob
-
-logger = logging.getLogger("flowscope")
-
-#: Tempo máximo sem progresso antes de encerrar a aquisição de notícias.
-_LIMITE_INATIVIDADE_NOTICIAS_S = 120.0
+from flowscope.presentation.gui.noticias_job import (
+    GRUPO,
+    POLITICA,
+    executar_noticias,
+)
 
 #: Número máximo de reagendamentos da remontagem após cancelamento (~30s).
 _LIMITE_REMONTAGEM = 300
@@ -30,7 +25,7 @@ class NoticiasActionsMixin:
             painel.update(self._data_referencia())
 
     def _adquirir_noticias(self: "NoticiasActionsMixin") -> None:
-        """Adquire as notícias do período em thread e remonta a árvore."""
+        """Adquire as notícias do período em background e remonta a árvore."""
         painel = getattr(self, "_noticias_panel", None)
         aquisicao = getattr(self, "_aquisicao_noticias", None)
         if painel is None:
@@ -38,82 +33,29 @@ class NoticiasActionsMixin:
         if aquisicao is None:
             painel.update(self._data_referencia())
             return
-        if getattr(self, "_noticias_job", None) is not None:
+        background = getattr(self, "_background", None)
+        if background is None or background.tem_ativo(GRUPO):
             return
         painel.mostrar_carregando()
-        job = NoticiasJob(
-            aquisicao,
-            self._data_referencia(),
-            cancel_token=self._presenter.cancel_token,
-        )
-        self._noticias_job = job
-        self._presenter.on_operation_started()
-        self._presenter.job_cancelavel_iniciado()
-        self._noticias_ultima_atividade = time.monotonic()
-        try:
-            job.iniciar()
-        except Exception:
-            logger.warning(
-                "Falha ao iniciar a aquisição de notícias", exc_info=True
-            )
-            if getattr(self, "_noticias_job", None) is job:
-                self._noticias_job = None
-            self._presenter.job_cancelavel_finalizado()
-            self._presenter.on_operation_finished()
-            return
-        self._poll_noticias_job(job)
-
-    def _poll_noticias_job(self: "NoticiasActionsMixin", job: NoticiasJob) -> None:
-        """Consome a fila do job na thread do Tk até a aquisição concluir."""
-        terminou = self._drenar_fila_noticias(job)
-        if not terminou and self._cancelamento_solicitado():
-            terminou = True
-        if not terminou and self._noticias_job_travado(job):
-            logger.warning(
-                "Aquisição de notícias sem progresso; encerrando para "
-                "restaurar a interface."
-            )
-            terminou = True
-        if terminou:
-            self._finalizar_noticias_job(job)
-            return
-        self.after(50, lambda: self._poll_noticias_job(job))
-
-    def _drenar_fila_noticias(self: "NoticiasActionsMixin", job: NoticiasJob) -> bool:
-        """Esvazia a fila do job e informa se ele foi concluído."""
-        terminou = False
-        try:
-            while True:
-                mensagem = job.fila.get_nowait()
-                if self._mensagem_de_progresso_noticias(mensagem):
-                    self._tratar_progresso_noticias(mensagem)
-                else:
-                    terminou = True
-        except queue.Empty:
-            pass
-        return terminou
-
-    @staticmethod
-    def _mensagem_de_progresso_noticias(mensagem: object) -> bool:
-        """Indica se a mensagem é de progresso da aquisição de notícias."""
-        return (
-            isinstance(mensagem, tuple)
-            and bool(mensagem)
-            and mensagem[0] == MENSAGEM_PROGRESSO
+        referencia: dict = {}
+        referencia["handle"] = background.submit(
+            lambda ctx: executar_noticias(
+                ctx, aquisicao, self._data_referencia()
+            ),
+            grupo=GRUPO,
+            politica=POLITICA,
+            cancelavel=True,
+            ao_progresso=lambda evento: self._presenter.on_progress(
+                evento.atual, evento.total, evento.detalhe
+            ),
+            ao_termino=lambda evento: self._finalizar_noticias(
+                referencia.get("handle"), evento.cancelado
+            ),
         )
 
-    def _tratar_progresso_noticias(
-        self: "NoticiasActionsMixin", mensagem: tuple
+    def _finalizar_noticias(
+        self: "NoticiasActionsMixin", handle: object, cancelado: bool
     ) -> None:
-        """Repassa o progresso ao presenter, registrando falhas sem abortar."""
-        try:
-            _tipo, current, total, label = mensagem
-            self._noticias_ultima_atividade = time.monotonic()
-            self._presenter.on_progress(current, total, label)
-        except Exception:
-            logger.exception("Erro ao tratar progresso da aquisição de notícias")
-
-    def _finalizar_noticias_job(self: "NoticiasActionsMixin", job: NoticiasJob) -> None:
         """Encerra o job, remonta a árvore e libera o estado ocupado.
 
         Em cancelamento, o worker pode ainda estar terminando o item corrente e
@@ -121,13 +63,9 @@ class NoticiasActionsMixin:
         remontagem é repetida quando a thread encerrar, refletindo a carga
         parcial recém-persistida.
         """
-        if getattr(self, "_noticias_job", None) is job:
-            self._noticias_job = None
         self._remontar_noticias()
-        self._presenter.job_cancelavel_finalizado()
-        self._presenter.on_operation_finished()
-        if self._cancelamento_solicitado():
-            self._reagendar_remontagem(job)
+        if cancelado:
+            self._reagendar_remontagem(handle)
         else:
             self._flash_status("Notícias atualizadas!")
 
@@ -138,7 +76,7 @@ class NoticiasActionsMixin:
             painel.update(self._data_referencia())
 
     def _reagendar_remontagem(
-        self: "NoticiasActionsMixin", job: NoticiasJob, tentativas: int = 0
+        self: "NoticiasActionsMixin", handle: object, tentativas: int = 0
     ) -> None:
         """Remonta a árvore de novo quando o worker de cancelamento encerrar.
 
@@ -147,25 +85,16 @@ class NoticiasActionsMixin:
         nenhum novo "Atualizar" tenha começado, para não sobrescrever a carga
         mais recente.
         """
-        thread = getattr(job, "thread", None)
+        thread = getattr(handle, "thread", None)
         if (
             thread is not None
             and thread.is_alive()
             and tentativas < _LIMITE_REMONTAGEM
         ):
             self.after(
-                100, lambda: self._reagendar_remontagem(job, tentativas + 1)
+                100, lambda: self._reagendar_remontagem(handle, tentativas + 1)
             )
             return
-        if getattr(self, "_noticias_job", None) is None:
+        background = getattr(self, "_background", None)
+        if background is None or not background.tem_ativo(GRUPO):
             self._remontar_noticias()
-
-    def _noticias_job_travado(self: "NoticiasActionsMixin", job: NoticiasJob) -> bool:
-        """Indica se o job morreu ou ficou sem progresso por tempo demais."""
-        thread = getattr(job, "thread", None)
-        if thread is not None and not thread.is_alive() and job.fila.empty():
-            return True
-        ultima = getattr(self, "_noticias_ultima_atividade", None)
-        if ultima is None:
-            return False
-        return time.monotonic() - ultima > _LIMITE_INATIVIDADE_NOTICIAS_S

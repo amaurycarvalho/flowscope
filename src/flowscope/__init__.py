@@ -1,4 +1,4 @@
-"""Pacote principal do FlowScope, plataforma de análise quantitativa de fluxo de ordens."""
+"""Pacote principal do FlowScope, plataforma open source de análise de ativos da B3."""
 
-__version__ = "1.3.1"
-__release_date__ = "2026-09-26"
+__version__ = "1.3.2"
+__release_date__ = "2026-09-29"

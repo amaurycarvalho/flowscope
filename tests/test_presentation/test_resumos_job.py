@@ -1,4 +1,4 @@
-"""Testes do job de resumo em lote dos documentos pendentes."""
+"""Testes headless do trabalho puro do resumo em lote."""
 
 from datetime import date
 from decimal import Decimal
@@ -15,13 +15,15 @@ from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import Guidance
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
+from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.resumos_job import (
     FASE_PREPARAR,
     FASE_RESUMIR,
-    MENSAGEM_ERRO,
-    MENSAGEM_PROGRESSO,
-    MENSAGEM_RESULTADO,
-    ResumosPendentesJob,
+    _preparar_textos,
+    _resumir,
+    executar_resumos,
 )
 
 GUIDANCE = Guidance(
@@ -42,6 +44,16 @@ def _arquivo(nome: str) -> DocumentoArquivo:
         tipo="pdf",
         caminho=Path("/tmp") / nome,
     )
+
+
+def _contexto(token=None):
+    handle = JobHandle(
+        id=1, grupo="resumos", politica=Politica.LATEST_WINS
+    )
+    if token is not None:
+        handle.token = token
+    eventos = []
+    return JobContext(handle, eventos.append), eventos
 
 
 class _PainelFake:
@@ -81,41 +93,32 @@ class _PainelFake:
         self.guidances.append((arquivo.nome, texto))
 
 
-def _mensagens(job):
-    mensagens = []
-    while not job.fila.empty():
-        mensagens.append(job.fila.get_nowait())
-    return mensagens
-
-
-class TestResumosPendentesJob:
+class TestResumosPendentes:
     def test_duas_fases_com_progresso_e_resultados(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
+        ctx, eventos = _contexto()
 
-        progressos = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_PROGRESSO]
-        resultados = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO]
-        assert {m[1] for m in progressos} == {1, 2}
-        assert any(m[1] == 1 and m[4] == FASE_PREPARAR for m in progressos)
-        assert any(m[1] == 2 and m[4] == FASE_RESUMIR for m in progressos)
-        assert [m[1].nome for m in resultados] == ["10.pdf", "20.pdf"]
-        assert mensagens[-1] is True
-        assert job.total == 2
-        assert job.sem_texto == 0
+        sem_texto = executar_resumos(ctx, painel, arquivos)
+
+        progressos = [e for e in eventos if isinstance(e, Progresso)]
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert {p.dados for p in progressos} == {1, 2}
+        assert any(p.dados == 1 and p.detalhe == FASE_PREPARAR for p in progressos)
+        assert any(p.dados == 2 and p.detalhe == FASE_RESUMIR for p in progressos)
+        assert [r.dados.nome for r in resultados] == ["10.pdf", "20.pdf"]
+        assert sem_texto == 0
 
     def test_pula_documento_sem_texto(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto", "20.pdf": ""})
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
+        ctx, eventos = _contexto()
 
-        resultados = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO]
-        assert [m[1].nome for m in resultados] == ["10.pdf"]
-        assert job.sem_texto == 1
+        sem_texto = executar_resumos(ctx, painel, arquivos)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert [r.dados.nome for r in resultados] == ["10.pdf"]
+        assert sem_texto == 1
 
     def test_erro_na_preparacao_interrompe(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
@@ -123,16 +126,15 @@ class TestResumosPendentesJob:
             {"10.pdf": "texto", "20.pdf": "texto"},
             falha_preparar="20.pdf",
         )
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
+        ctx, eventos = _contexto()
 
-        erros = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_ERRO]
-        resultados = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO]
-        assert [m[1].nome for m in erros] == ["20.pdf"]
+        executar_resumos(ctx, painel, arquivos)
+
+        erros = [e for e in eventos if isinstance(e, Erro)]
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert [e.dados.nome for e in erros] == ["20.pdf"]
         assert resultados == []
         assert painel.gerados == []
-        assert mensagens[-1] is True
 
     def test_erro_no_resumo_interrompe_sem_processar_seguintes(self):
         arquivos = [
@@ -142,31 +144,34 @@ class TestResumosPendentesJob:
             {"10.pdf": "t", "20.pdf": "t", "30.pdf": "t"},
             falha_resumir="20.pdf",
         )
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
+        ctx, eventos = _contexto()
 
-        resultados = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO]
-        erros = [m for m in mensagens if isinstance(m, tuple) and m[0] == MENSAGEM_ERRO]
-        assert [m[1].nome for m in resultados] == ["10.pdf"]
-        assert [m[1].nome for m in erros] == ["20.pdf"]
+        executar_resumos(ctx, painel, arquivos)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        erros = [e for e in eventos if isinstance(e, Erro)]
+        assert [r.dados.nome for r in resultados] == ["10.pdf"]
+        assert [e.dados.nome for e in erros] == ["20.pdf"]
         assert "30.pdf" not in painel.gerados
-        assert mensagens[-1] is True
 
 
 class TestGuidanceNoLote:
     def test_avalia_guidance_apos_preparar_texto(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
         assert painel.guidances == [("10.pdf", "texto A"), ("20.pdf", "texto B")]
 
     def test_sem_texto_nao_avalia_guidance(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto", "20.pdf": ""})
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
         assert painel.guidances == [("10.pdf", "texto")]
 
     def test_falha_na_avaliacao_nao_interrompe_o_lote(self):
@@ -175,15 +180,12 @@ class TestGuidanceNoLote:
             {"10.pdf": "texto A", "20.pdf": "texto B"},
             falha_guidance="20.pdf",
         )
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
-        resultados = [
-            m
-            for m in mensagens
-            if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO
-        ]
-        assert [m[1].nome for m in resultados] == ["10.pdf", "20.pdf"]
+        ctx, eventos = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert [r.dados.nome for r in resultados] == ["10.pdf", "20.pdf"]
         assert painel.guidances == [("10.pdf", "texto A")]
 
 
@@ -211,18 +213,14 @@ class TestPersistenciaNoWorker:
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         store: dict = {}
         painel = _PainelPersistente({"10.pdf": "A", "20.pdf": "B"}, store)
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
-        mensagens = _mensagens(job)
+        ctx, eventos = _contexto()
 
-        resultados = [
-            m
-            for m in mensagens
-            if isinstance(m, tuple) and m[0] == MENSAGEM_RESULTADO
-        ]
+        executar_resumos(ctx, painel, arquivos)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert set(store) == {"10.pdf", "20.pdf"}
-        for _tipo, arquivo, resumo in resultados:
-            assert store[arquivo.nome] is resumo
+        for evento in resultados:
+            assert store[evento.dados.nome] is evento.valor
 
     def test_cancelamento_preserva_resumos_ja_gerados(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf"), _arquivo("30.pdf")]
@@ -231,8 +229,9 @@ class TestPersistenciaNoWorker:
         painel = _PainelPersistente(
             {"10.pdf": "A", "20.pdf": "B", "30.pdf": "C"}, store, token
         )
-        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
-        job.iniciar().join()
+        ctx, _ = _contexto(token)
+
+        executar_resumos(ctx, painel, arquivos)
 
         assert set(store) == {"10.pdf"}
 
@@ -291,8 +290,10 @@ class TestGuidanceRealNoLote:
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         painel = _PainelComGuidance({"10.pdf": "texto"}, store, extrator)
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
         assert [ticker for ticker, _ in store.salvos] == ["ALZR11"]
 
     def test_documento_sem_texto_nao_avalia(self):
@@ -300,8 +301,10 @@ class TestGuidanceRealNoLote:
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         painel = _PainelComGuidance({"10.pdf": ""}, store, extrator)
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
         assert store.salvos == []
         assert extrator.chamadas == []
 
@@ -310,8 +313,10 @@ class TestGuidanceRealNoLote:
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         painel = _PainelComGuidance({"10.pdf": "texto"}, store, extrator)
-        job = ResumosPendentesJob(painel, arquivos)
-        job.iniciar().join()
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
         assert store.salvos == []
 
 
@@ -340,10 +345,10 @@ class TestCancelamento:
         painel = _PainelQueCancela(
             {"10.pdf": "texto A", "20.pdf": "texto B"}, token
         )
-        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+        ctx, _ = _contexto(token)
 
         with pytest.raises(OperacaoCancelada):
-            job._preparar_textos()
+            _preparar_textos(ctx, painel, arquivos, False)
 
         assert painel.preparados == ["10.pdf"]
 
@@ -354,23 +359,22 @@ class TestCancelamento:
             {"10.pdf": "texto A", "20.pdf": "texto B"}, token
         )
         com_texto = [(a, painel._textos[a.nome]) for a in arquivos]
-        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
+        ctx, _ = _contexto(token)
 
         with pytest.raises(OperacaoCancelada):
-            job._resumir(com_texto)
+            _resumir(ctx, painel, com_texto, False)
 
         assert painel.gerados == ["10.pdf"]
 
-    def test_job_cancelado_encerra_limpo(self):
+    def test_execucao_cancelada_encerra_limpo(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         token = CancellationToken()
         painel = _PainelQueCancela(
             {"10.pdf": "texto A", "20.pdf": "texto B"}, token
         )
-        job = ResumosPendentesJob(painel, arquivos, cancel_token=token)
-        thread = job.iniciar()
-        thread.join(timeout=2)
+        ctx, eventos = _contexto(token)
 
-        assert not thread.is_alive()
-        assert _mensagens(job)[-1] is True
+        executar_resumos(ctx, painel, arquivos)
+
         assert painel.gerados == []
+        assert not any(isinstance(e, Erro) for e in eventos)

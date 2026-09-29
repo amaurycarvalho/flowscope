@@ -4,6 +4,8 @@ Ver `proposal.md` — Why. A change `llm-chat` fornece o chat não vetorial e a 
 
 As portas `DocumentoIndexavel` e `DocumentSource` vivem em `domain/chat/ports.py` e já existem as fontes `MaterialFactsSource` e `NoticiasSource`.
 
+Esta change **depende de** `cache-prompt-chat`: o prompt do chat passa a ter um **prefixo estável cacheável** (instruções + contexto: conhecimento, fundamentos e resumos) e um **sufixo volátil** (fontes por pergunta + pergunta). A recuperação vetorial depende da pergunta, portanto entra no sufixo e NÃO pode compor o prefixo nem a assinatura do contexto estável.
+
 ## Goals / Non-Goals
 
 **Goals:**
@@ -12,9 +14,10 @@ As portas `DocumentoIndexavel` e `DocumentSource` vivem em `domain/chat/ports.py
 - Pipeline de indexação unificado sobre `DocumentSource` e consulta RAG consumindo `LLMPort`.
 - Extração de texto (HTML→texto, PDF→`pypdf`) e chunker sem `langchain`.
 - Configuração de embedding em `llm.embedding` e CLI `--index`.
+- Fonte vetorial posicionada no sufixo volátil, sem afetar o prefixo estável cacheável.
 
 **Non-Goals:**
-- Chat, aba de chat e montagem de contexto (propriedade da `llm-chat`).
+- Chat, aba de chat e montagem de contexto (propriedade da `llm-chat`; o layout prefixo/sufixo é da `cache-prompt-chat`).
 - Cliente de LLM, presets de completion e diálogo de configuração (propriedade da `llm-core`).
 - Aquisição/download dos documentos (changes de extração e `noticias-b3`).
 
@@ -48,9 +51,9 @@ A configuração de embedding ocupa o sub-bloco `llm.embedding` do `~/.flowscope
 
 A `llm-core` define `[llm]` com `litellm`; esta change estende com `fastembed` (`pypdf` já é base). O binário base não cresce.
 
-### 7. Integração com o Chat AI via ponto de extensão
+### 7. Integração com o Chat AI via fonte adicional volátil
 
-A consulta RAG é oferecida à aba "Chat AI" como fonte adicional de contexto, pelo ponto de extensão da `llm-chat`, recebendo a pergunta para a recuperação semântica. A indexação permanece manual (CLI `--index` da `llm-chat-rag`). Sem documentos indexados, a fonte retorna vazio e o chat segue com a cascata lexical.
+A consulta RAG é oferecida à aba "Chat AI" como fonte adicional de contexto, pelo ponto de extensão da `llm-chat`, recebendo a pergunta para a recuperação semântica. Por **depender da pergunta**, ela é **volátil**: pela `cache-prompt-chat`, entra no **sufixo** do prompt e NÃO compõe o prefixo estável cacheável nem a assinatura do contexto estável. A indexação permanece manual (CLI `--index` da `llm-chat-rag`). Sem documentos indexados, a fonte retorna vazio e o chat segue com a cascata lexical.
 
 Alternativa considerada: substituir a cascata de documentos pela busca vetorial — descartada por tornar o RAG obrigatório e quebrar o fallback quando não há índice.
 
@@ -59,15 +62,17 @@ Alternativa considerada: substituir a cascata de documentos pela busca vetorial 
 - **[Risco] fastembed não instala** → fallback para embedding via API, configurável no diálogo.
 - **[Risco] PDFs sem texto extraível** → a fonte retorna metadados/vazio sem interromper a indexação.
 - **[Risco] Busca O(n)** → aceitável para o volume atual; reavaliar se o número de chunks crescer muito.
+- **[Risco] Fonte vetorial no prefixo estável invalidar o cache de prompt a cada turno** → **Mitigação**: pela `cache-prompt-chat`, a fonte RAG entra no sufixo, fora da assinatura do contexto estável; teste headless garante que o prefixo não muda com a RAG ativa.
 - **[Trade-off] Indexação manual** → o usuário dispara via GUI/CLI, sem indexação automática em background.
 
 ## Migration Plan
 
 1. Confirmar que a `llm-chat` e a `llm-core` estão implementadas.
-2. Reconciliar as portas e fontes já existentes.
-3. Implementar VectorStore, embeddings, extração, indexação e consulta RAG.
-4. Expor a configuração de embedding e o CLI `--index`.
-5. Rollback: mudanças aditivas e opcionais via `[llm]`.
+2. Confirmar que a `cache-prompt-chat` está implementada (prefixo estável cacheável + sufixo volátil).
+3. Reconciliar as portas e fontes já existentes, posicionando a fonte RAG no sufixo, fora da assinatura do contexto estável.
+4. Implementar VectorStore, embeddings, extração, indexação e consulta RAG.
+5. Expor a configuração de embedding e o CLI `--index`.
+6. Rollback: mudanças aditivas e opcionais via `[llm]`.
 
 ## Open Questions
 

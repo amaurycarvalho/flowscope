@@ -6,8 +6,6 @@ de trabalho, publicando o desfecho na thread do Tk por fila.
 """
 
 import logging
-import queue
-import threading
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
@@ -15,9 +13,16 @@ from tkinter import ttk
 
 from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.domain.llm import LLMError
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Resultado
+from flowscope.presentation.gui.background.job import Politica
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 
 logger = logging.getLogger("flowscope")
+
+#: Grupo de exclusão do teste de conexão da LLM.
+GRUPO_TESTE = "llm_teste"
 
 #: Mensagem exibida quando as dependências opcionais não estão instaladas.
 MENSAGEM_DEPS = (
@@ -44,6 +49,7 @@ class LLMConfigDialog(tk.Toplevel):
         config_port: LLMConfigPort,
         config_path: Path | None = None,
         on_saved: Callable[[], None] | None = None,
+        background: BackgroundManager | None = None,
     ) -> None:
         """Constrói o diálogo, carrega a configuração salva e aplica as deps."""
         super().__init__(parent)
@@ -55,7 +61,9 @@ class LLMConfigDialog(tk.Toplevel):
         self._widgets_config: list[tk.Widget] = []
         self._working: dict[str, dict] = {}
         self._provider_atual = "none"
-        self._fila: queue.Queue = queue.Queue()
+        self._background = (
+            background if background is not None else BackgroundManager(self.after)
+        )
         self._testando = False
         self._deps_ok = True
         self._provider_var = tk.StringVar()
@@ -75,6 +83,13 @@ class LLMConfigDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self.focus_set()
+
+    def destroy(self: "LLMConfigDialog") -> None:
+        """Cancela os testes em background antes de destruir o diálogo."""
+        background = getattr(self, "_background", None)
+        if background is not None:
+            background.cancel_all()
+        super().destroy()
 
     def _build(self: "LLMConfigDialog") -> None:
         """Constrói os campos, os botões e a área de status."""
@@ -254,31 +269,29 @@ class LLMConfigDialog(tk.Toplevel):
         self._testando = True
         self._atualizar_botao_teste()
         self._status_var.set(MENSAGEM_TESTANDO)
-        fila: queue.Queue = queue.Queue()
-        self._fila = fila
         config = self._coletar_config()
-        threading.Thread(
-            target=self._executar_teste,
-            args=(config, fila),
-            daemon=True,
-        ).start()
-        self.after(0, lambda: self._verificar_teste(fila))
+        self._background.submit(
+            lambda ctx: self._executar_teste(ctx, config),
+            grupo=GRUPO_TESTE,
+            politica=Politica.PARALLEL,
+            ao_resultado=self._aplicar_resultado_teste,
+        )
 
     def _executar_teste(
-        self: "LLMConfigDialog", config: dict, fila: queue.Queue
+        self: "LLMConfigDialog", ctx: JobContext, config: dict
     ) -> None:
-        """Executa a completion de teste em thread de trabalho."""
+        """Executa a completion de teste fora da thread do Tk."""
         try:
             provedor = self._port.create_provider(config)
             resposta = provedor.complete(
                 [{"role": "user", "content": TEXTO_TESTE}]
             )
         except LLMError as exc:
-            fila.put(("erro", str(exc), config, exc))
+            ctx.resultado(valor=("erro", str(exc), config, exc))
         except Exception as exc:
-            fila.put(("erro", str(exc), config, exc))
+            ctx.resultado(valor=("erro", str(exc), config, exc))
         else:
-            fila.put(("ok", resposta, config, None))
+            ctx.resultado(valor=("ok", resposta, config, None))
 
     @staticmethod
     def _registrar_falha(
@@ -299,15 +312,11 @@ class LLMConfigDialog(tk.Toplevel):
             exc,
         )
 
-    def _verificar_teste(
-        self: "LLMConfigDialog", fila: queue.Queue
+    def _aplicar_resultado_teste(
+        self: "LLMConfigDialog", evento: Resultado
     ) -> None:
-        """Consome o desfecho do teste na thread do Tk, reabilitando o botão."""
-        try:
-            estado, mensagem, config, exc = fila.get_nowait()
-        except queue.Empty:
-            self.after(20, lambda: self._verificar_teste(fila))
-            return
+        """Aplica o desfecho do teste na thread do Tk, reabilitando o botão."""
+        estado, mensagem, config, exc = evento.valor
         self._testando = False
         self._atualizar_botao_teste()
         if estado == "ok":

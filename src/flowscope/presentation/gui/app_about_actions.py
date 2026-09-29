@@ -1,16 +1,20 @@
 """Ações da aba "Sobre": atalhos externos e verificação de nova versão."""
 
 import logging
-import threading
 import webbrowser
 
 from flowscope import __version__
 from flowscope.application.releases import ReleaseChecker, verificar_nova_versao
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
 from flowscope.presentation.gui.widgets.about_panel import REPOSITORIO_URL
 from flowscope.presentation.log_paths import log_file_path
 
 logger = logging.getLogger("flowscope")
+
+#: Grupo de exclusão da verificação de nova versão.
+GRUPO_VERSAO = "versao"
 
 
 class AboutActionsMixin:
@@ -46,12 +50,20 @@ class AboutActionsMixin:
         if getattr(self, "_update_checked", False):
             return
         self._update_checked = True
-        threading.Thread(
-            target=self._consultar_versao_publicada, daemon=True
-        ).start()
+        background = getattr(self, "_background", None)
+        if background is None:
+            return
+        background.submit(
+            self._consultar_versao_publicada,
+            grupo=GRUPO_VERSAO,
+            politica=Politica.PARALLEL,
+            ao_resultado=lambda evento: self._notificar_nova_versao(
+                *evento.valor
+            ),
+        )
 
-    def _consultar_versao_publicada(self: "AboutActionsMixin") -> None:
-        """Consulta a última release e publica o aviso na thread da interface."""
+    def _consultar_versao_publicada(self: "AboutActionsMixin", ctx: JobContext) -> None:
+        """Consulta a última release e publica o aviso como evento."""
         checker = self._release_checker
         if checker is None:
             return
@@ -62,8 +74,7 @@ class AboutActionsMixin:
             return
         if resultado is None:
             return
-        versao, url = resultado
-        self.after(0, lambda: self._notificar_nova_versao(versao, url))
+        ctx.resultado(valor=resultado)
 
     def _notificar_nova_versao(
         self: "AboutActionsMixin", versao: str, url: str

@@ -1,76 +1,47 @@
-"""Execução em background da aquisição de documentos (design §4).
+"""Trabalho em background da aquisição de documentos.
 
-A thread de trabalho apenas executa a aquisição e publica o término em uma
-fila; a thread do Tk consome a fila e remonta a árvore, respeitando a
+A função de trabalho apenas executa a aquisição e publica progresso e o
+término; a thread do Tk remonta a árvore pelo gerenciador, respeitando a
 thread-safety.
 """
 
 import logging
-import queue
-import threading
 from datetime import date
 
-from flowscope.application.cancellation import (
-    CancellationToken,
-    OperacaoCancelada,
-)
+from flowscope.application.cancellation import OperacaoCancelada
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.job import Politica
 
 logger = logging.getLogger("flowscope")
 
-#: Tipo da mensagem de progresso publicada na fila.
-MENSAGEM_PROGRESSO = "progresso"
+#: Grupo de exclusão e política do trabalho de documentos.
+GRUPO = "documentos"
+POLITICA = Politica.LATEST_WINS
 
 
-class DocumentosJob:
-    """Executa a aquisição de documentos em thread e publica o término."""
+def executar_documentos(
+    ctx: JobContext,
+    aquisicao: object,
+    ticker: str,
+    reference_date: date,
+) -> None:
+    """Executa a aquisição, publicando progresso e o término."""
 
-    def __init__(
-        self: "DocumentosJob",
-        aquisicao: object,
-        ticker: str,
-        reference_date: date,
-        cancel_token: CancellationToken | None = None,
-    ) -> None:
-        """Inicializa o job com o orquestrador, o ticker e a data de referência."""
-        self._aquisicao = aquisicao
-        self._ticker = ticker
-        self._reference_date = reference_date
-        self._cancel_token = cancel_token
-        self.fila: queue.Queue = queue.Queue()
-        self.thread: threading.Thread | None = None
+    def _progresso(current: int, total: int, label: str) -> None:
+        ctx.progress(detalhe=label, atual=current, total=total)
 
-    def iniciar(self: "DocumentosJob") -> threading.Thread:
-        """Inicia a thread de trabalho e a retorna."""
-        thread = threading.Thread(
-            target=self._executar, name="flowscope-documentos", daemon=True
+    try:
+        aquisicao.adquirir(
+            ticker,
+            reference_date,
+            progress=_progresso,
+            cancel_token=ctx.token,
         )
-        self.thread = thread
-        thread.start()
-        return thread
-
-    def _executar(self: "DocumentosJob") -> None:
-        """Executa a aquisição, publicando progresso e o término."""
-
-        def _progresso(current: int, total: int, label: str) -> None:
-            self.fila.put((MENSAGEM_PROGRESSO, current, total, label))
-
-        try:
-            self._aquisicao.adquirir(
-                self._ticker,
-                self._reference_date,
-                progress=_progresso,
-                cancel_token=self._cancel_token,
-            )
-        except OperacaoCancelada:
-            logger.debug(
-                "Aquisição de documentos de %s interrompida pelo usuário",
-                self._ticker,
-            )
-        except Exception:  # falha inesperada não deve travar a interface
-            logger.warning(
-                "Falha na aquisição de documentos de %s",
-                self._ticker,
-                exc_info=True,
-            )
-        finally:
-            self.fila.put(True)
+    except OperacaoCancelada:
+        logger.debug(
+            "Aquisição de documentos de %s interrompida pelo usuário", ticker
+        )
+    except Exception:  # falha inesperada não deve travar a interface
+        logger.warning(
+            "Falha na aquisição de documentos de %s", ticker, exc_info=True
+        )

@@ -7,8 +7,6 @@ de cada módulo sob controle.
 """
 
 import logging
-import queue
-import threading
 import tkinter as tk
 
 from flowscope.application.document_preview import (
@@ -18,6 +16,9 @@ from flowscope.application.document_preview import (
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.job import Politica
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
     render_grupo,
@@ -30,6 +31,9 @@ CARREGANDO = "Carregando…"
 
 #: Texto exibido enquanto o resumo é gerado em segundo plano.
 GERANDO_RESUMO = "Gerando resumo…"
+
+#: Grupo de exclusão da pré-visualização de documentos.
+GRUPO_PREVIEW = "preview"
 
 
 class DocumentFlowMixin:
@@ -148,9 +152,8 @@ class DocumentFlowMixin:
     def _iniciar_preview(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
     ) -> None:
-        """Exibe o estado de carregamento e inicia extração/resumo em thread."""
+        """Exibe o carregamento e inicia extração/resumo em background."""
         self._after_id = None
-        req = self._req_id
         texto = self._texto_cacheado(arquivo)
         if (
             texto is not None
@@ -163,19 +166,28 @@ class DocumentFlowMixin:
             return
         precisa = self._summary.precisa_resumo(arquivo, texto)
         self._set_preview_text(GERANDO_RESUMO if precisa else CARREGANDO)
-        fila: queue.Queue = queue.Queue()
-        self._fila = fila
-        threading.Thread(
-            target=self._trabalhar,
-            args=(arquivo, fila, texto),
-            daemon=True,
-        ).start()
-        self._agendar_poll(arquivo, fila, req)
+        self._preview_background().submit(
+            lambda ctx: self._trabalhar(ctx, arquivo, texto),
+            grupo=GRUPO_PREVIEW,
+            politica=Politica.LATEST_WINS,
+            chave=arquivo.caminho,
+            ao_resultado=lambda evento: self._aplicar_preview(
+                arquivo, evento.valor[0], evento.valor[1]
+            ),
+        )
+
+    def _preview_background(self: "DocumentFlowMixin") -> BackgroundManager:
+        """Retorna o gerenciador de background da pré-visualização."""
+        gerenciador = getattr(self, "_preview_manager", None)
+        if gerenciador is None:
+            gerenciador = BackgroundManager(self.frame.after)
+            self._preview_manager = gerenciador
+        return gerenciador
 
     def _trabalhar(
         self: "DocumentFlowMixin",
+        ctx: "JobContext",
         arquivo: DocumentoArquivo,
-        fila: queue.Queue,
         texto_conhecido: str | None,
     ) -> None:
         """Extrai o texto, avalia o guidance e, se preciso, gera o resumo."""
@@ -186,7 +198,7 @@ class DocumentFlowMixin:
         )
         self.avaliar_guidance(arquivo, texto)
         resumo = self._summary.gerar(arquivo, texto)
-        fila.put((texto, resumo))
+        ctx.resultado(valor=(texto, resumo))
 
     def _precisa_guidance(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
@@ -221,26 +233,6 @@ class DocumentFlowMixin:
             logger.warning(
                 "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
             )
-
-    def _agendar_poll(
-        self: "DocumentFlowMixin",
-        arquivo: DocumentoArquivo,
-        fila: queue.Queue,
-        req: int,
-    ) -> None:
-        """Consome a fila na thread do Tk até o resultado estar disponível."""
-
-        def _verificar() -> None:
-            try:
-                texto, resumo = fila.get_nowait()
-            except queue.Empty:
-                self.frame.after(20, _verificar)
-                return
-            if req != self._req_id:
-                return
-            self._aplicar_preview(arquivo, texto, resumo)
-
-        self.frame.after(0, _verificar)
 
     def _aplicar_preview(
         self: "DocumentFlowMixin",

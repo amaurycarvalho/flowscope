@@ -114,6 +114,11 @@ class FlowScopePresenter:
         self._dados_disponiveis = False
         self._cancel_token = CancellationToken()
         self._jobs_cancelaveis = 0
+        self._background = None
+
+    def attach_background(self: "FlowScopePresenter", background: object) -> None:
+        """Vincula o gerenciador de background ao apresentador."""
+        self._background = background
 
     @property
     def cancel_token(self: "FlowScopePresenter") -> CancellationToken:
@@ -123,6 +128,8 @@ class FlowScopePresenter:
     def request_cancel(self: "FlowScopePresenter") -> None:
         """Solicita o cancelamento de todos os processamentos em background."""
         self._cancel_token.request()
+        if self._background is not None:
+            self._background.cancel_all()
 
     def job_cancelavel_iniciado(self: "FlowScopePresenter") -> None:
         """Contabiliza o início de um job cancelável e exibe o botão."""

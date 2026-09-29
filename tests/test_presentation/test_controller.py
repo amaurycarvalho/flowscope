@@ -1,9 +1,12 @@
+import threading
 from datetime import date
 from unittest.mock import MagicMock, call, patch
 
 from flowscope.application.load_portfolio_use_case import (
     PortfolioNotFoundError,
 )
+from flowscope.presentation.gui import controller_fundamental
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
@@ -347,8 +350,13 @@ class TestAtualizarFundamentos:
         presenter = MagicMock()
         presenter.get_current_tickers.return_value = ["HGBS11"]
         presenter.get_reference_date.return_value = date(2026, 9, 4)
-        controller = _make_controller(presenter=presenter, fundamental_repo=object())
-        controller._fundamental_job = object()
+        background = MagicMock()
+        background.tem_ativo.return_value = True
+        controller = _make_controller(
+            presenter=presenter,
+            fundamental_repo=object(),
+            background=background,
+        )
 
         with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
             controller.on_atualizar_fundamentos()
@@ -367,76 +375,89 @@ class TestSubstituicaoJobFundamental:
         guard.acquire.return_value = _mock_context(True)
         analyze = MagicMock()
         analyze.execute.return_value = {"PETR4": {"daily_data": []}}
+        background = BackgroundManager()
+        background.ao_iniciar(lambda handle: presenter.enter())
+        background.ao_terminar(lambda handle: presenter.exit())
         controller = _make_controller(
             guard=guard,
             load_portfolio=MagicMock(),
             analyze=analyze,
             presenter=presenter,
             fundamental_repo=object(),
+            background=background,
         )
-        return controller, presenter, view
+        return controller, presenter, view, background
 
     def test_job_substituido_balanceia_contador_e_libera_cursor(self):
-        controller, presenter, view = self._controller()
-        with patch.object(controller, "_drenar_fundamental"), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental"
-                    ".FundamentalAnalysisUseCase"
-                ), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
-                ):
+        controller, presenter, view, background = self._controller()
+        bloqueio = threading.Event()
+        with patch.object(
+            controller_fundamental,
+            "executar_fundamental",
+            lambda *args, **kwargs: bloqueio.wait(2),
+        ), patch.object(
+            controller_fundamental, "FundamentalAnalysisUseCase"
+        ):
             controller._iniciar_analise_fundamental(
                 ["PETR4"], date(2026, 9, 4), {}
             )
+            handle1 = background.jobs_ativos[0]
             controller._iniciar_analise_fundamental(
                 ["PETR4"], date(2026, 9, 4), {}
             )
             assert presenter._operacoes_ativas == 1
-            presenter.on_fundamental_finished()
+            assert len(background.jobs_ativos) == 1
+
+            bloqueio.set()
+            handle1.thread.join(2)
+            handle2 = background.jobs_ativos[0]
+            handle2.thread.join(2)
+            background.drenar()
 
         assert presenter._operacoes_ativas == 0
-        view.exit_busy.assert_called_once()
-        view.restore_all_buttons.assert_called_once()
+        view.exit_busy.assert_called()
 
-    def test_callback_do_job_substituido_nao_altera_contagem(self):
-        controller, presenter, view = self._controller()
-        with patch.object(controller, "_drenar_fundamental"), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental"
-                    ".FundamentalAnalysisUseCase"
-                ), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
-                ):
+    def test_falha_balanceia_contador_e_libera_cursor(self):
+        controller, presenter, view, background = self._controller()
+
+        def _falha(ctx, *args, **kwargs):
+            ctx.erro(RuntimeError("boom"))
+
+        with patch.object(
+            controller_fundamental, "executar_fundamental", _falha
+        ), patch.object(controller_fundamental, "FundamentalAnalysisUseCase"):
             controller._iniciar_analise_fundamental(
                 ["PETR4"], date(2026, 9, 4), {}
             )
-            job_substituido = controller._fundamental_job
-            controller._iniciar_analise_fundamental(
-                ["PETR4"], date(2026, 9, 4), {}
-            )
-            ativo = presenter._operacoes_ativas
-            controller._drenar_fundamental(job_substituido)
+            handle = background.jobs_ativos[0]
+            handle.thread.join(2)
+            background.drenar()
 
-        assert presenter._operacoes_ativas == ativo
+        assert presenter._operacoes_ativas == 0
+        view.exit_busy.assert_called()
 
     def test_carga_substitui_job_ativo_e_balanceia(self):
-        controller, presenter, view = self._controller()
-        with patch.object(controller, "_drenar_fundamental"), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental"
-                    ".FundamentalAnalysisUseCase"
-                ), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
-                ):
+        controller, presenter, view, background = self._controller()
+        bloqueio = threading.Event()
+        with patch.object(
+            controller_fundamental,
+            "executar_fundamental",
+            lambda *args, **kwargs: bloqueio.wait(2),
+        ), patch.object(
+            controller_fundamental, "FundamentalAnalysisUseCase"
+        ):
             controller._iniciar_analise_fundamental(
                 ["PETR4"], date(2026, 9, 4), {}
             )
             controller.on_load_data()
             assert presenter._operacoes_ativas == 1
-            presenter.on_fundamental_finished()
+
+            for handle in background.jobs_ativos:
+                handle.token.request()
+            bloqueio.set()
+            for handle in background.jobs_ativos:
+                handle.thread.join(2)
+            background.drenar()
 
         assert presenter._operacoes_ativas == 0
         view.exit_busy.assert_called()
@@ -451,14 +472,10 @@ class TestWiringHistorico:
             fundamental_history_store="STORE",
         )
 
-        with patch.object(controller, "_drenar_fundamental"), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental"
-                    ".FundamentalAnalysisUseCase"
-                ) as caso, \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
-                ):
+        with patch(
+            "flowscope.presentation.gui.controller_fundamental"
+            ".FundamentalAnalysisUseCase"
+        ) as caso:
             controller._iniciar_analise_fundamental(
                 ["HGBS11"], date(2026, 9, 4), {}
             )
@@ -475,14 +492,10 @@ class TestWiringGuidance:
             fundamental_guidance_store="GUIDANCE_STORE",
         )
 
-        with patch.object(controller, "_drenar_fundamental"), \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental"
-                    ".FundamentalAnalysisUseCase"
-                ) as caso, \
-                patch(
-                    "flowscope.presentation.gui.controller_fundamental.FundamentalJob"
-                ):
+        with patch(
+            "flowscope.presentation.gui.controller_fundamental"
+            ".FundamentalAnalysisUseCase"
+        ) as caso:
             controller._iniciar_analise_fundamental(
                 ["HGBS11"], date(2026, 9, 4), {}
             )

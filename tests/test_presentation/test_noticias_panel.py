@@ -52,17 +52,14 @@ from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.application.documentos.document_summary import DocumentSummaryService
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
+from flowscope.presentation.gui.background.job import JobHandle, Politica
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
 from flowscope.presentation.gui.noticias_actions import NoticiasActionsMixin
-from flowscope.presentation.gui.noticias_job import (
-    MENSAGEM_PROGRESSO,
-    NoticiasJob,
-)
-from flowscope.presentation.gui.resumos_job import (
-    MENSAGEM_ERRO,
-    MENSAGEM_RESULTADO,
-    ResumosPendentesJob,
-)
+from flowscope.presentation.gui.noticias_job import executar_noticias
+from flowscope.presentation.gui.resumos_job import executar_resumos
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
 needs_display = pytest.mark.skipif(
@@ -129,15 +126,15 @@ def _pump(root, condicao, timeout=3.0):
     return condicao()
 
 
-def _tipos_do_job(job):
-    """Drena a fila de um job e retorna os tipos de mensagem publicados."""
-    tipos: list[str] = []
-    while True:
-        mensagem = job.fila.get_nowait()
-        if mensagem is True:
-            break
-        tipos.append(mensagem[0])
-    return tipos
+def _executar_lote(painel, arquivos, continuar=True, token=None):
+    """Executa o trabalho puro do lote e retorna (sem_texto, eventos)."""
+    handle = JobHandle(id=1, grupo="resumos", politica=Politica.LATEST_WINS)
+    if token is not None:
+        handle.token = token
+    eventos = []
+    ctx = JobContext(handle, eventos.append)
+    sem_texto = executar_resumos(ctx, painel, arquivos, continuar)
+    return sem_texto, eventos
 
 
 def _no_arquivo(painel, nome):
@@ -507,11 +504,10 @@ class TestAutoRecuperacao:
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
         painel._baixar_vinculo = lambda _texto: None
-        job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
-        job.iniciar().join()
-        assert job.sem_texto == 1
+        sem_texto, eventos = _executar_lote(painel, [arquivo])
+        assert sem_texto == 1
         assert llm.chamadas == []
-        assert MENSAGEM_RESULTADO not in _tipos_do_job(job)
+        assert not any(isinstance(e, Resultado) for e in eventos)
         chave = chave_documento(arquivo.caminho, tmp_path)
         assert store.obter(ESCOPO_NOTICIAS, chave) is None
 
@@ -521,12 +517,11 @@ class TestAutoRecuperacao:
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
         painel._baixar_vinculo = lambda _texto: "CONTEUDO DO DOCUMENTO"
-        job = ResumosPendentesJob(painel, [arquivo], continuar_em_erro=True)
-        job.iniciar().join()
-        assert job.sem_texto == 0
+        sem_texto, eventos = _executar_lote(painel, [arquivo])
+        assert sem_texto == 0
         assert llm.chamadas
         assert "CONTEUDO DO DOCUMENTO" in llm.chamadas[0][0]["content"]
-        assert MENSAGEM_RESULTADO in _tipos_do_job(job)
+        assert any(isinstance(e, Resultado) for e in eventos)
 
 
 class TestAbertura:
@@ -686,10 +681,7 @@ class TestResumos:
                 debounce_ms=0,
             )
             painel.update(_REFERENCIA)
-            job = ResumosPendentesJob(
-                painel, list(painel._itens.values()), continuar_em_erro=True
-            )
-            job.iniciar().join()
+            _executar_lote(painel, list(painel._itens.values()))
             prompt = llm.chamadas[0][0]["content"]
             assert "CONTEUDO DO ARQUIVO VINCULADO" in prompt
             assert "frmExibirArquivoIPEExterno" not in prompt
@@ -737,19 +729,11 @@ class TestResumos:
             def avaliar_guidance(self, arquivo, texto):
                 return None
 
-        job = ResumosPendentesJob(
-            _PainelLote(), arquivos, continuar_em_erro=True
-        )
-        job.iniciar().join()
-
-        tipos: list[str] = []
-        while True:
-            mensagem = job.fila.get_nowait()
-            if mensagem is True:
-                break
-            tipos.append(mensagem[0])
-        assert tipos.count(MENSAGEM_RESULTADO) == 2
-        assert tipos.count(MENSAGEM_ERRO) == 1
+        sem_texto, eventos = _executar_lote(_PainelLote(), arquivos)
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        erros = [e for e in eventos if isinstance(e, Erro)]
+        assert len(resultados) == 2
+        assert len(erros) == 1
 
 
 def _arquivo_lote(nome, caminho):
@@ -765,50 +749,32 @@ def _arquivo_lote(nome, caminho):
     )
 
 
-class TestNoticiasJob:
-    def test_publica_progresso_e_termino(self):
+class TestExecutarNoticias:
+    def test_publica_progresso(self):
         class _Aquisicao:
             def adquirir(self, reference_date, progress=None, cancel_token=None):
                 progress(1, 2, "• Notícias (1/2)")
 
-        job = NoticiasJob(_Aquisicao(), _REFERENCIA)
-        job.iniciar().join()
-        assert job.fila.get_nowait() == (
-            MENSAGEM_PROGRESSO,
-            1,
-            2,
-            "• Notícias (1/2)",
-        )
-        assert job.fila.get_nowait() is True
+        handle = JobHandle(id=1, grupo="noticias", politica=Politica.LATEST_WINS)
+        eventos = []
+        ctx = JobContext(handle, eventos.append)
+        executar_noticias(ctx, _Aquisicao(), _REFERENCIA)
+        assert eventos == [Progresso("• Notícias (1/2)", 1, 2)]
 
     def test_cancelamento_nao_loga_falha(self, caplog):
         class _AquisicaoCancelada:
             def adquirir(self, reference_date, progress=None, cancel_token=None):
                 raise OperacaoCancelada()
 
-        token = CancellationToken()
-        token.request()
-        job = NoticiasJob(_AquisicaoCancelada(), _REFERENCIA, cancel_token=token)
+        handle = JobHandle(id=1, grupo="noticias", politica=Politica.LATEST_WINS)
+        handle.token.request()
         with caplog.at_level(logging.WARNING, logger="flowscope"):
-            job.iniciar().join()
-        assert job.fila.get_nowait() is True
+            executar_noticias(
+                JobContext(handle, lambda evento: None),
+                _AquisicaoCancelada(),
+                _REFERENCIA,
+            )
         assert "Falha na aquisição" not in caplog.text
-
-
-class _NoticiasJobFake:
-    def __init__(self, aquisicao, reference_date, cancel_token=None):
-        self._aquisicao = aquisicao
-        self._reference_date = reference_date
-        self.cancel_token = cancel_token
-        self.fila = queue.Queue()
-
-    def iniciar(self):
-        try:
-            self._aquisicao.adquirir(self._reference_date)
-        except Exception:
-            pass
-        finally:
-            self.fila.put(True)
 
 
 class _HostNoticias(ActionsMixin, NoticiasActionsMixin):
@@ -816,7 +782,7 @@ class _HostNoticias(ActionsMixin, NoticiasActionsMixin):
         self._noticias_panel = painel
         self._aquisicao_noticias = MagicMock()
         self._presenter = MagicMock()
-        self._noticias_job = None
+        self._background = BackgroundManager()
         self._data = _REFERENCIA
         self.status: list[tuple] = []
 
@@ -841,15 +807,16 @@ class TestNoticiasActions:
         host._update_noticias()
         painel.update.assert_called_once_with(_REFERENCIA)
 
-    def test_adquirir_executa_e_remonta(self, monkeypatch):
+    def test_adquirir_executa_e_remonta(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
-        monkeypatch.setattr(noticias_actions, "NoticiasJob", _NoticiasJobFake)
         host._adquirir_noticias()
-        host._aquisicao_noticias.adquirir.assert_called_once_with(_REFERENCIA)
+        handle = host._background.jobs_ativos[0]
+        handle.thread.join(2)
+        host._background.drenar()
+        assert host._aquisicao_noticias.adquirir.call_args.args == (_REFERENCIA,)
         painel.mostrar_carregando.assert_called_once()
         painel.update.assert_called_once_with(_REFERENCIA)
-        assert host._noticias_job is None
 
     def test_sem_aquisicao_apenas_atualiza(self):
         painel = MagicMock()
@@ -857,21 +824,6 @@ class TestNoticiasActions:
         host._aquisicao_noticias = None
         host._adquirir_noticias()
         painel.update.assert_called_once_with(_REFERENCIA)
-
-    def test_falha_ao_iniciar_libera_cursor(self, monkeypatch):
-        class _JobFalhaInicio:
-            def __init__(self, *args, **kwargs):
-                self.fila = queue.Queue()
-
-            def iniciar(self):
-                raise RuntimeError("thread boom")
-
-        painel = MagicMock()
-        host = _HostNoticias(painel)
-        monkeypatch.setattr(noticias_actions, "NoticiasJob", _JobFalhaInicio)
-        host._adquirir_noticias()
-        host._presenter.on_operation_finished.assert_called_once()
-        assert host._noticias_job is None
 
     def test_cancelamento_reagenda_remontagem_apos_worker(self):
         painel = MagicMock()
@@ -885,20 +837,13 @@ class TestNoticiasActions:
                 self.chamadas += 1
                 return self.chamadas == 1
 
-        class _Job:
+        class _Handle:
             def __init__(self):
-                self.fila = queue.Queue()
                 self.thread = _Thread()
 
-        host._cancelamento_solicitado = lambda: True
-        job = _Job()
-        host._noticias_job = job
-        host._finalizar_noticias_job(job)
+        host._finalizar_noticias(_Handle(), cancelado=True)
 
-        assert host._noticias_job is None
         assert painel.update.call_count == 2
-        host._presenter.job_cancelavel_finalizado.assert_called_once()
-        host._presenter.on_operation_finished.assert_called_once()
 
     def test_cancelamento_nao_sobrescreve_novo_job(self):
         painel = MagicMock()
@@ -914,21 +859,22 @@ class TestNoticiasActions:
                 self.chamadas += 1
                 return self.chamadas == 1
 
-        class _Job:
+        class _Handle:
             def __init__(self):
-                self.fila = queue.Queue()
                 self.thread = _Thread()
 
-        host._cancelamento_solicitado = lambda: True
-        job = _Job()
-        host._noticias_job = job
-        host._finalizar_noticias_job(job)
+        host._finalizar_noticias(_Handle(), cancelado=True)
         assert painel.update.call_count == 1
         assert pendentes
 
-        host._noticias_job = object()  # um novo "Atualizar" começou
+        host._background.submit(
+            lambda ctx: None,
+            grupo=noticias_actions.GRUPO,
+            politica=noticias_actions.POLITICA,
+        )
         pendentes.pop(0)()
         assert painel.update.call_count == 1
+
 
 
 class _HostAbas(TabsLayoutMixin):
@@ -1011,10 +957,7 @@ class TestPersistenciaImediataNoticias:
             painel.update(_REFERENCIA)
             assert painel.persistir_no_lote() is True
 
-            job = ResumosPendentesJob(
-                painel, painel.pendentes_ordenados(), continuar_em_erro=True
-            )
-            job.iniciar().join()
+            _executar_lote(painel, painel.pendentes_ordenados())
 
             assert len(store.resumos(ESCOPO_NOTICIAS)) == 2
         finally:
@@ -1048,13 +991,7 @@ class TestPersistenciaImediataNoticias:
                 debounce_ms=0,
             )
             painel.update(_REFERENCIA)
-            job = ResumosPendentesJob(
-                painel,
-                painel.pendentes_ordenados(),
-                cancel_token=token,
-                continuar_em_erro=True,
-            )
-            job.iniciar().join()
+            _executar_lote(painel, painel.pendentes_ordenados(), token=token)
 
             assert len(store.resumos(ESCOPO_NOTICIAS)) == 1
         finally:
