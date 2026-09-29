@@ -9,8 +9,10 @@ import threading
 import time
 from types import SimpleNamespace
 
+from flowscope.domain.llm import LLMUsage
 from flowscope.presentation.gui.background import BackgroundManager, EstadoJob
 from flowscope.presentation.gui.chat.envio import EnvioMixin
+from flowscope.presentation.gui.chat.tokens import ContadorTokens
 
 
 class _CtxFake:
@@ -129,6 +131,73 @@ class _HostEnvio(EnvioMixin):
 
     def _atender_confirmacao(self, confirmacao) -> None:
         return None
+
+
+class _HostTokens(EnvioMixin):
+    """Host headless para o acúmulo e a publicação do rótulo de tokens."""
+
+    def __init__(self, *, janela: int = 0, cache: bool = False, contar=None) -> None:
+        self._tokens = ContadorTokens()
+        self.rotulos: list[str] = []
+        self._tokens_callback = self.rotulos.append
+        self._context_window_provider = lambda: janela
+        self._cache_support_provider = lambda: cache
+        self._token_counter_provider = lambda: contar
+
+
+class _HostSemProviders(EnvioMixin):
+    """Host headless sem os provedores de perfil de LLM."""
+
+
+class TestTokensHeadless:
+    def test_publica_rotulo_com_cache_e_percentual(self):
+        host = _HostTokens(janela=128000, cache=True)
+        host._acumular_uso(
+            LLMUsage(entrada=6400, saida=100, entrada_cache=2400)
+        )
+        assert host.rotulos[-1] == (
+            "Tokens: 4.0K entrada / 0.1K saída / 6.4K (5%)"
+        )
+
+    def test_sem_janela_omite_percentual(self):
+        host = _HostTokens()
+        host._acumular_uso(LLMUsage(entrada=1000, saida=10))
+        assert host.rotulos[-1] == (
+            "Tokens: 1.0K entrada / 0.0K saída / 1.0K"
+        )
+
+    def test_uso_nao_llm_e_ignorado(self):
+        host = _HostTokens()
+        host._acumular_uso("nao-e-uso")
+        assert host.rotulos == []
+
+    def test_accessores_toleram_ausencia_de_providers(self):
+        host = _HostSemProviders()
+        assert host._contar_tokens() is None
+        assert host._cache_suportado() is False
+        assert host._janela_contexto() == 0
+
+    def test_accessores_toleram_provider_com_erro(self):
+        host = _HostSemProviders()
+
+        def explodir():
+            raise RuntimeError("boom")
+
+        host._context_window_provider = explodir
+        host._token_counter_provider = explodir
+        host._cache_support_provider = explodir
+        assert host._contar_tokens() is None
+        assert host._cache_suportado() is False
+        assert host._janela_contexto() == 0
+
+    def test_contador_e_suporte_resolvidos(self):
+        def contar(texto: str) -> int:
+            return len(texto)
+
+        host = _HostTokens(janela=1000, cache=True, contar=contar)
+        assert host._contar_tokens()("abc") == 3
+        assert host._cache_suportado() is True
+        assert host._janela_contexto() == 1000
 
 
 class TestTransicaoEnvio:

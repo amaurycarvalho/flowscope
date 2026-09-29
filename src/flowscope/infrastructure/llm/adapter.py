@@ -109,6 +109,46 @@ class LiteLLMChatAdapter:
         )
 
 
+def _campo(objeto: object, nome: str) -> object:
+    """Lê um campo de um objeto ou dicionário, devolvendo ``None`` se ausente."""
+    if isinstance(objeto, dict):
+        return objeto.get(nome)
+    return getattr(objeto, nome, None)
+
+
+def _inteiro(valor: object) -> int:
+    """Retorna o valor de token convertido em inteiro não negativo."""
+    try:
+        return max(0, int(valor))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
+
+
+def _detalhes_cache(usage: object) -> tuple[int, int]:
+    """Extrai ``(cache_hit, cache_write)`` do ``usage``, tolerando formatos.
+
+    Prefere ``prompt_tokens_details`` e cai nos nomes nativos do liteLLM
+    (``cache_read_input_tokens``, ``prompt_cache_hit_tokens`` e
+    ``cache_creation_input_tokens``) quando os detalhes não estão presentes.
+    """
+    detalhes = _campo(usage, "prompt_tokens_details")
+    if detalhes is None:
+        hit = _campo(usage, "cached_tokens")
+        if hit is None:
+            hit = _campo(usage, "cache_read_input_tokens")
+        if hit is None:
+            hit = _campo(usage, "prompt_cache_hit_tokens")
+        write = _campo(usage, "cache_creation_input_tokens")
+        if write is None:
+            write = _campo(usage, "cache_write_tokens")
+        return _inteiro(hit), _inteiro(write)
+    hit = _campo(detalhes, "cached_tokens")
+    write = _campo(detalhes, "cache_creation_tokens")
+    if write is None:
+        write = _campo(detalhes, "cache_write_tokens")
+    return _inteiro(hit), _inteiro(write)
+
+
 def _extrair_uso(resposta: object) -> LLMUsage:
     """Traduz o ``usage`` do provedor para ``LLMUsage``, tolerando ausência."""
     usage = getattr(resposta, "usage", None)
@@ -116,4 +156,10 @@ def _extrair_uso(resposta: object) -> LLMUsage:
         return LLMUsage()
     entrada = getattr(usage, "prompt_tokens", 0) or 0
     saida = getattr(usage, "completion_tokens", 0) or 0
-    return LLMUsage(entrada=int(entrada), saida=int(saida))
+    entrada_cache, cache_write = _detalhes_cache(usage)
+    return LLMUsage(
+        entrada=int(entrada),
+        saida=int(saida),
+        entrada_cache=entrada_cache,
+        cache_write=cache_write,
+    )

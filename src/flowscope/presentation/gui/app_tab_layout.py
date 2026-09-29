@@ -210,6 +210,9 @@ class TabsLayoutMixin:
             status_callback=getattr(self, "_set_status", None),
             tokens_callback=getattr(self, "_set_tokens", None),
             fontes_adicionais=[self._criar_fonte_noticias()],
+            token_counter_provider=documentos.token_counter_provider,
+            cache_support_provider=documentos.cache_support_provider,
+            context_window_provider=documentos.context_window_provider,
         )
 
     def _criar_fonte_noticias(self: "TabsLayoutMixin") -> FonteNoticias:

@@ -77,7 +77,8 @@ class MontarContextoChat:
         fundamentos_txt, resumos, assinatura = self._componentes(
             fundamentos, watchlist, ticker
         )
-        if cache is not None and cache[0] == assinatura:
+        repetido = cache is not None and cache[0] == assinatura
+        if repetido:
             bloco = cache[1]
         else:
             bloco = self._renderizar_bloco(fundamentos_txt, resumos)
@@ -91,6 +92,7 @@ class MontarContextoChat:
             assinatura=assinatura,
             documentos=documental,
             fontes_adicionais=self.preparar_fontes_adicionais(pergunta),
+            prefixo_repetido=repetido,
         )
 
     def montar_bloco(

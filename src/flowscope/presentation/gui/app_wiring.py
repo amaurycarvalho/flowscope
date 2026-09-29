@@ -89,6 +89,9 @@ class AdaptadoresDocumentos:
     guidance_service: GuidanceService
     llm_factory: Callable[[], LLMPort]
     llm_available: Callable[[], bool]
+    context_window_provider: Callable[[], int]
+    cache_support_provider: Callable[[], bool]
+    token_counter_provider: Callable[[], Callable[[str], int] | None]
 
 
 def montar_adaptadores_documentos(
@@ -101,6 +104,7 @@ def montar_adaptadores_documentos(
     """
     base = Path(cache_dir) if cache_dir is not None else CacheManager().get_cache_dir()
     catalogo = DocumentCatalog(cache_dir=base)
+    porta_llm = InfrastructureLLMConfig()
     llm_factory: Callable[[], LLMPort] = lambda: create_llm_provider(
         load_llm_config()
     )
@@ -122,6 +126,15 @@ def montar_adaptadores_documentos(
         ),
         llm_factory=llm_factory,
         llm_available=llm_configurada,
+        context_window_provider=lambda: porta_llm.context_window(
+            load_llm_config()
+        ),
+        cache_support_provider=lambda: porta_llm.cache_suportado(
+            load_llm_config()
+        ),
+        token_counter_provider=lambda: porta_llm.token_counter(
+            load_llm_config()
+        ),
     )
 
 

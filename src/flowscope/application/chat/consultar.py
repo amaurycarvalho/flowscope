@@ -53,6 +53,9 @@ _MARCADOR_JSON = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 #: Callback notificado com o uso de tokens de cada completion da cascata.
 AoUso = Callable[[LLMUsage], None]
 
+#: Contador determinístico de tokens de um texto.
+ContarTokens = Callable[[str], int]
+
 
 @dataclass(frozen=True)
 class RespostaChat:
@@ -95,6 +98,7 @@ class ContextoChat:
     assinatura: str = ""
     documentos: ContextoDocumental | None = None
     fontes_adicionais: list[FonteContexto] = field(default_factory=list)
+    prefixo_repetido: bool = False
 
 
 def _documentos_validos(valor: object) -> list[str]:
@@ -178,10 +182,16 @@ class ConsultarChatUseCase:
         self: "ConsultarChatUseCase",
         llm: LLMPort,
         system_prompt: str = SYSTEM_PROMPT,
+        contar_tokens: ContarTokens | None = None,
+        cache_suportado: bool = False,
     ) -> None:
-        """Guarda a porta de completion e o prompt de sistema."""
+        """Guarda a porta, o prompt, o contador de tokens e o suporte a cache."""
         self._llm = llm
         self._system_prompt = system_prompt
+        self._contar_tokens = contar_tokens
+        self._cache_suportado = cache_suportado
+        self._prefixos_enviados: set[str] = set()
+        self._cache_estimado: dict[str, int] = {}
 
     def consultar(
         self: "ConsultarChatUseCase",
@@ -200,6 +210,7 @@ class ConsultarChatUseCase:
             self._montar_sufixo(pergunta, contexto.fontes_adicionais, None),
             turnos,
             ao_uso,
+            contexto.prefixo_repetido,
         )
         resposta = interpretar_resposta(primeira.texto)
         if not resposta.documentos_solicitados or contexto.documentos is None:
@@ -237,6 +248,7 @@ class ConsultarChatUseCase:
             self._montar_sufixo(pergunta, [], texto_integral),
             historico or [],
             ao_uso,
+            contexto.prefixo_repetido,
         )
         final = interpretar_resposta(segunda.texto)
         return replace(
@@ -257,6 +269,7 @@ class ConsultarChatUseCase:
         sufixo: str,
         historico: list[dict],
         ao_uso: AoUso | None = None,
+        prefixo_repetido: bool = False,
     ) -> LLMResposta:
         """Envia o prefixo estável no sistema e o sufixo no turno atual."""
         mensagens = [*historico, {"role": "user", "content": sufixo}]
@@ -264,9 +277,38 @@ class ConsultarChatUseCase:
             mensagens,
             system_prompt=prefixo,
         )
+        uso = self._ajustar_uso(resposta.uso, prefixo, prefixo_repetido)
         if ao_uso is not None:
-            ao_uso(resposta.uso)
-        return resposta
+            ao_uso(uso)
+        return replace(resposta, uso=uso)
+
+    def _ajustar_uso(
+        self: "ConsultarChatUseCase",
+        uso: LLMUsage,
+        prefixo: str,
+        prefixo_repetido: bool,
+    ) -> LLMUsage:
+        """Estima o cache-hit do prefixo quando o provedor não o reporta.
+
+        Só estima com um contador injetado, provedor que suporta cache e o
+        prefixo já enviado (idêntico ao de uma completion anterior). O valor é
+        memoizado por prefixo para não recontar a cada turno.
+        """
+        ja_enviado = prefixo in self._prefixos_enviados
+        self._prefixos_enviados.add(prefixo)
+        if uso.entrada_cache > 0:
+            return uso
+        if self._contar_tokens is None or not self._cache_suportado:
+            return uso
+        if not prefixo_repetido and not ja_enviado:
+            return uso
+        estimado = self._cache_estimado.get(prefixo)
+        if estimado is None:
+            estimado = max(0, int(self._contar_tokens(prefixo)))
+            self._cache_estimado[prefixo] = estimado
+        if estimado <= 0:
+            return uso
+        return replace(uso, entrada_cache=estimado)
 
     def _montar_prefixo(
         self: "ConsultarChatUseCase", contexto: ContextoChat

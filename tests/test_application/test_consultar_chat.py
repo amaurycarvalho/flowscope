@@ -276,6 +276,152 @@ class TestPrompt:
         assert "TRECHO RELEVANTE" in prompt
 
 
+class TestEstimativaCache:
+    def _resposta(self, **uso_kwargs) -> LLMResposta:
+        return LLMResposta(
+            texto='{"resposta": "x", "documentos": []}',
+            uso=LLMUsage(**uso_kwargs),
+        )
+
+    def test_cache_reportado_tem_precedencia(self):
+        usos: list[LLMUsage] = []
+        contagens: list[str] = []
+        llm = _FakeLLM([self._resposta(entrada=100, saida=5, entrada_cache=30)])
+        usecase = ConsultarChatUseCase(
+            llm,
+            contar_tokens=lambda t: contagens.append(t) or 999,
+            cache_suportado=True,
+        )
+        usecase.consultar(
+            "p",
+            ContextoChat(bloco_estavel="E", prefixo_repetido=True),
+            ao_uso=usos.append,
+        )
+        assert usos[0].entrada_cache == 30
+        assert contagens == []
+
+    def test_prefixo_repetido_estima(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM([self._resposta(entrada=100, saida=5)])
+        usecase = ConsultarChatUseCase(
+            llm, contar_tokens=lambda t: 40, cache_suportado=True
+        )
+        usecase.consultar(
+            "p",
+            ContextoChat(bloco_estavel="E", prefixo_repetido=True),
+            ao_uso=usos.append,
+        )
+        assert usos[0].entrada_cache == 40
+        assert usos[0].entrada == 100
+
+    def test_primeira_completion_nao_estima(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM([self._resposta(entrada=100, saida=5)])
+        usecase = ConsultarChatUseCase(
+            llm, contar_tokens=lambda t: 40, cache_suportado=True
+        )
+        usecase.consultar(
+            "p", ContextoChat(bloco_estavel="E"), ao_uso=usos.append
+        )
+        assert usos[0].entrada_cache == 0
+
+    def test_prefixo_alterado_nao_estima(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM(
+            [self._resposta(entrada=100, saida=5), self._resposta(entrada=100, saida=5)]
+        )
+        usecase = ConsultarChatUseCase(
+            llm, contar_tokens=lambda t: 40, cache_suportado=True
+        )
+        usecase.consultar("p", ContextoChat(bloco_estavel="E1"), ao_uso=usos.append)
+        usecase.consultar("p", ContextoChat(bloco_estavel="E2"), ao_uso=usos.append)
+        assert usos[1].entrada_cache == 0
+
+    def test_provedor_sem_suporte_nao_estima(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM([self._resposta(entrada=100, saida=5)])
+        usecase = ConsultarChatUseCase(
+            llm, contar_tokens=lambda t: 40, cache_suportado=False
+        )
+        usecase.consultar(
+            "p",
+            ContextoChat(bloco_estavel="E", prefixo_repetido=True),
+            ao_uso=usos.append,
+        )
+        assert usos[0].entrada_cache == 0
+
+    def test_sem_contador_nao_estima(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM([self._resposta(entrada=100, saida=5)])
+        usecase = ConsultarChatUseCase(llm, cache_suportado=True)
+        usecase.consultar(
+            "p",
+            ContextoChat(bloco_estavel="E", prefixo_repetido=True),
+            ao_uso=usos.append,
+        )
+        assert usos[0].entrada_cache == 0
+
+    def test_cascata_estima_a_segunda_chamada(self):
+        usos: list[LLMUsage] = []
+        llm = _FakeLLM(
+            [
+                LLMResposta(
+                    texto='{"resposta": "", "documentos": ["a"]}',
+                    uso=LLMUsage(entrada=100, saida=5),
+                ),
+                LLMResposta(
+                    texto='{"resposta": "final", "documentos": []}',
+                    uso=LLMUsage(entrada=120, saida=6),
+                ),
+            ]
+        )
+        contexto = ContextoChat(
+            bloco_estavel="E",
+            documentos=ContextoDocumental(
+                resumos="R",
+                preparar_texto=lambda chaves: "TEXTO",
+                confirmar=lambda chaves: True,
+            ),
+        )
+        ConsultarChatUseCase(
+            llm, contar_tokens=lambda t: 40, cache_suportado=True
+        ).consultar("p", contexto, ao_uso=usos.append)
+        assert usos[0].entrada_cache == 0
+        assert usos[1].entrada_cache == 40
+
+    def test_estimativa_memoizada_por_prefixo(self):
+        contagens: list[str] = []
+        llm = _FakeLLM(
+            [
+                LLMResposta(
+                    texto='{"resposta": "", "documentos": ["a"]}',
+                    uso=LLMUsage(entrada=100, saida=5),
+                ),
+                LLMResposta(
+                    texto='{"resposta": "final", "documentos": []}',
+                    uso=LLMUsage(entrada=120, saida=6),
+                ),
+            ]
+        )
+        contexto = ContextoChat(
+            bloco_estavel="E",
+            documentos=ContextoDocumental(
+                resumos="R",
+                preparar_texto=lambda chaves: "TEXTO",
+                confirmar=lambda chaves: True,
+            ),
+        )
+
+        def contar(texto: str) -> int:
+            contagens.append(texto)
+            return 40
+
+        ConsultarChatUseCase(
+            llm, contar_tokens=contar, cache_suportado=True
+        ).consultar("p", contexto)
+        assert len(contagens) == 1
+
+
 class TestFormaDoPrefixo:
     def test_prefixo_identico_entre_turnos(self):
         llm = _FakeLLM(

@@ -152,6 +152,44 @@ class TestChamada:
         assert resultado.uso.entrada == 0
         assert resultado.uso.saida == 0
 
+    def test_usage_com_cache_reportado(self, monkeypatch):
+        usage = SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=20,
+            prompt_tokens_details=SimpleNamespace(
+                cached_tokens=40, cache_creation_tokens=5
+            ),
+        )
+        falso = _litellm_falso(usage=usage)
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+        assert resultado.uso.entrada == 100
+        assert resultado.uso.entrada_cache == 40
+        assert resultado.uso.cache_write == 5
+
+    def test_usage_com_detalhes_em_dict(self, monkeypatch):
+        usage = {
+            "prompt_tokens": 50,
+            "completion_tokens": 10,
+            "prompt_tokens_details": {"cached_tokens": 30},
+        }
+        falso = _litellm_falso(usage=usage)
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+        assert resultado.uso.entrada_cache == 30
+        assert resultado.uso.cache_write == 0
+
+    def test_usage_sem_detalhes_de_cache(self, monkeypatch):
+        usage = SimpleNamespace(prompt_tokens=12, completion_tokens=7)
+        falso = _litellm_falso(usage=usage)
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+        assert resultado.uso.entrada_cache == 0
+        assert resultado.uso.cache_write == 0
+
 
 class TestMapeamentoExcecoes:
     @pytest.mark.parametrize(

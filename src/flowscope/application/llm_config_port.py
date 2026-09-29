@@ -6,6 +6,7 @@ dependências e cria o provedor por meio desta porta, implementada em
 ``infrastructure``.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -16,8 +17,22 @@ from flowscope.domain.llm import LLMPort
 class LLMConfigPort(Protocol):
     """Contrato de leitura/gravação e construção do provedor de LLM."""
 
-    def get_presets(self: "LLMConfigPort") -> dict[str, dict[str, str]]:
+    def get_presets(self: "LLMConfigPort") -> dict[str, dict[str, object]]:
         """Retorna os presets de provedores disponíveis."""
+        ...
+
+    def context_window(self: "LLMConfigPort", config: dict) -> int:
+        """Retorna a janela de contexto do modelo da configuração."""
+        ...
+
+    def cache_suportado(self: "LLMConfigPort", config: dict) -> bool:
+        """Indica se o provedor da configuração suporta cache de prompt."""
+        ...
+
+    def token_counter(
+        self: "LLMConfigPort", config: dict
+    ) -> Callable[[str], int] | None:
+        """Retorna um contador de tokens do modelo, ou ``None`` sem provedor."""
         ...
 
     def load_provider_configs(

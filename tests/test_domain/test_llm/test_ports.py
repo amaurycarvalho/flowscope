@@ -52,3 +52,13 @@ class TestUsoDeTokens:
         resposta = LLMResposta(texto="ok")
         assert resposta.uso.entrada == 0
         assert resposta.uso.saida == 0
+        assert resposta.uso.entrada_cache == 0
+        assert resposta.uso.cache_write == 0
+
+    def test_uso_com_cache(self):
+        resposta = LLMResposta(
+            texto="ok",
+            uso=LLMUsage(entrada=100, saida=10, entrada_cache=40, cache_write=5),
+        )
+        assert resposta.uso.entrada_cache == 40
+        assert resposta.uso.cache_write == 5

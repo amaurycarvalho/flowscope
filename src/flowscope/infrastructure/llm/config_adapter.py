@@ -5,6 +5,7 @@ gravação, presets e dependências de ``infrastructure.llm.config`` e à fábri
 ``create_llm_provider``.
 """
 
+from collections.abc import Callable
 from pathlib import Path
 
 from flowscope.domain.llm import LLMPort
@@ -17,14 +18,39 @@ from flowscope.infrastructure.llm.config import (
     save_llm_config,
 )
 from flowscope.infrastructure.llm.factory import create_llm_provider
+from flowscope.infrastructure.llm.presets import (
+    cache_suportado,
+    resolve_context_window,
+    token_counter_for,
+)
 
 
 class InfrastructureLLMConfig:
     """Implementação de ``LLMConfigPort`` sobre a infraestrutura de LLM."""
 
-    def get_presets(self: "InfrastructureLLMConfig") -> dict[str, dict[str, str]]:
+    def get_presets(self: "InfrastructureLLMConfig") -> dict[str, dict[str, object]]:
         """Retorna os presets de provedores disponíveis."""
         return get_presets()
+
+    def context_window(self: "InfrastructureLLMConfig", config: dict) -> int:
+        """Retorna a janela de contexto do modelo da configuração."""
+        provider = str(config.get("provider") or "none")
+        model = str(config.get("model") or "")
+        return resolve_context_window(provider, model)
+
+    def cache_suportado(self: "InfrastructureLLMConfig", config: dict) -> bool:
+        """Indica se o provedor da configuração suporta cache de prompt."""
+        return cache_suportado(str(config.get("provider") or "none"))
+
+    def token_counter(
+        self: "InfrastructureLLMConfig", config: dict
+    ) -> Callable[[str], int] | None:
+        """Retorna um contador de tokens do modelo, ou ``None`` sem provedor."""
+        provider = str(config.get("provider") or "none")
+        model = str(config.get("model") or "")
+        if provider == "none" or not model:
+            return None
+        return token_counter_for(model)
 
     def load_provider_configs(
         self: "InfrastructureLLMConfig", path: Path | None = None,

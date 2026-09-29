@@ -62,14 +62,24 @@ class TestFormatacao:
 
     def test_texto_completo(self):
         assert formatar_tokens(5540, 340) == (
-            "Tokens: 5.5K entrada · 0.3K saída"
+            "Tokens: 5.5K entrada / 0.3K saída / 0.0K"
+        )
+
+    def test_texto_com_bruto_e_percentual(self):
+        assert formatar_tokens(5540, 340, 6400, 72.4) == (
+            "Tokens: 5.5K entrada / 0.3K saída / 6.4K (72%)"
+        )
+
+    def test_percentual_arredonda_para_inteiro(self):
+        assert formatar_tokens(0, 0, 0, 55.5) == (
+            "Tokens: 0.0K entrada / 0.0K saída / 0.0K (56%)"
         )
 
 
 class TestContadorTokens:
     def test_inicia_zerado(self):
         contador = ContadorTokens()
-        assert contador.texto() == "Tokens: 0.0K entrada · 0.0K saída"
+        assert contador.texto() == "Tokens: 0.0K entrada / 0.0K saída / 0.0K"
 
     def test_soma_uma_completion(self):
         contador = ContadorTokens()
@@ -84,19 +94,57 @@ class TestContadorTokens:
         assert contador.entrada == 300
         assert contador.saida == 50
 
+    def test_cache_descontado_da_entrada(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=100, saida=20, entrada_cache=30))
+        assert contador.entrada == 70
+        assert contador.saida == 20
+
+    def test_cache_maior_que_entrada_nao_fica_negativo(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=10, saida=5, entrada_cache=40))
+        assert contador.entrada == 0
+
+    def test_ultimo_prompt_guarda_valor_bruto(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=100, saida=20, entrada_cache=30))
+        assert contador.ultimo_prompt == 100
+
+    def test_percentual_da_janela(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=64000, saida=1))
+        assert contador.percentual(128000) == 50.0
+        assert contador.percentual(None) is None
+        assert contador.percentual(0) is None
+
+    def test_texto_com_percentual_da_janela(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=1260, saida=10))
+        assert contador.texto(1000) == (
+            "Tokens: 1.3K entrada / 0.0K saída / 1.3K (126%)"
+        )
+
+    def test_texto_sem_janela_omite_percentual(self):
+        contador = ContadorTokens()
+        contador.acumular(LLMUsage(entrada=1000, saida=10))
+        assert contador.texto() == "Tokens: 1.0K entrada / 0.0K saída / 1.0K"
+
     def test_zerar_reinicia(self):
         contador = ContadorTokens()
         contador.acumular(LLMUsage(entrada=100, saida=20))
         contador.zerar()
         assert contador.entrada == 0
         assert contador.saida == 0
+        assert contador.ultimo_prompt == 0
 
 
 class TestRotuloStatus:
     def test_set_tokens_atualiza_texto(self):
         host = _HostStatus()
-        host._set_tokens("Tokens: 5.5K entrada · 0.3K saída")
-        assert host._tokens_label.texto == "Tokens: 5.5K entrada · 0.3K saída"
+        host._set_tokens("Tokens: 5.5K entrada / 0.3K saída / 6.4K (5%)")
+        assert host._tokens_label.texto == (
+            "Tokens: 5.5K entrada / 0.3K saída / 6.4K (5%)"
+        )
 
     def test_mostrar_tokens_empacota_a_direita(self):
         host = _HostStatus()

@@ -24,10 +24,18 @@ DEFAULT_LLM_CONFIG: dict = {
     "model": "",
     "api_key": "",
     "rpm": 5,
+    "input_limitado": False,
 }
 
 #: Campos guardados por provedor no mapa ``llm.chat.providers``.
-_CHAT_FIELDS = ("api_url", "model", "api_key", "rpm")
+_CHAT_FIELDS = ("api_url", "model", "api_key", "rpm", "input_limitado")
+
+
+def _booleano(valor: object) -> bool:
+    """Normaliza um valor em booleano, aceitando strings comuns de configuração."""
+    if isinstance(valor, str):
+        return valor.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(valor)
 
 #: Valor padrão do flag de análise de guidance via LLM (desabilitado).
 DEFAULT_GUIDANCE_ENABLED = False
@@ -160,7 +168,7 @@ def save_guidance_llm_enabled(enabled: bool, path: Path | None = None) -> None:
     destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
 
 
-def get_presets() -> dict[str, dict[str, str]]:
+def get_presets() -> dict[str, dict[str, object]]:
     """Retorna os presets de provedores suportados."""
     return PROVIDER_PRESETS
 

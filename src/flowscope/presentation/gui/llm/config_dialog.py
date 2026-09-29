@@ -233,8 +233,8 @@ class LLMConfigDialog(tk.Toplevel):
             self._rpm_var.set(str(entrada["rpm"]))
             return
         preset = self._presets.get(provider)
-        self._api_url_var.set(preset["api_url"] if preset else "")
-        self._model_var.set(preset["model"] if preset else "")
+        self._api_url_var.set(str(preset["api_url"]) if preset else "")
+        self._model_var.set(str(preset["model"]) if preset else "")
         self._api_key_var.set("")
         self._rpm_var.set(str(self._port.default_config()["rpm"]))
 

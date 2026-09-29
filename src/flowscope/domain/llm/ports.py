@@ -14,10 +14,15 @@ class LLMUsage:
     """Uso de tokens reportado pelo provedor em uma completion.
 
     ``entrada`` e ``saida`` valem zero quando o provedor não reporta o dado.
+    ``entrada_cache`` são os tokens de entrada servidos por cache de prompt
+    (leitura) e ``cache_write`` os de criação de cache, também zero quando
+    ausentes.
     """
 
     entrada: int = 0
     saida: int = 0
+    entrada_cache: int = 0
+    cache_write: int = 0
 
 
 @dataclass(frozen=True)

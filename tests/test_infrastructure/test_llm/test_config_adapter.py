@@ -38,3 +38,22 @@ class TestInfrastructureLLMConfig:
             "prov",
             config,
         )
+
+    def test_context_window_e_cache(self):
+        port = InfrastructureLLMConfig()
+        assert port.context_window({"provider": "none"}) == 0
+        assert port.cache_suportado({"provider": "openai"}) is True
+        assert port.cache_suportado({"provider": "none"}) is False
+
+    def test_token_counter_sem_provedor(self):
+        port = InfrastructureLLMConfig()
+        assert port.token_counter({"provider": "none"}) is None
+        assert port.token_counter({"provider": "openai", "model": ""}) is None
+
+    def test_token_counter_com_modelo(self):
+        port = InfrastructureLLMConfig()
+        contador = port.token_counter(
+            {"provider": "openai", "model": "gpt-4o-mini"}
+        )
+        assert contador is not None
+        assert contador("hello world") >= 0

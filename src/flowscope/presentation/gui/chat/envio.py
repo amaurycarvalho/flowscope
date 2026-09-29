@@ -11,11 +11,11 @@ nunca o global de ``app_wiring``) preserva o cursor e os botões da janela.
 import contextlib
 import threading
 import tkinter as tk
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from flowscope.application.cancellation import OperacaoCancelada
 from flowscope.application.chat import ConsultarChatUseCase
-from flowscope.domain.llm import LLMError, LLMUnavailableError
+from flowscope.domain.llm import LLMError, LLMUnavailableError, LLMUsage
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
@@ -42,6 +42,49 @@ class EnvioMixin:
         self._bloco_cache: tuple[str, str] | None = None
         self._enviando = False
         self._heartbeat_intervalo = HEARTBEAT_INTERVALO_S
+
+    def _contar_tokens(self: "EnvioMixin") -> Callable[[str], int] | None:
+        """Obtém o contador de tokens do provedor ativo, tolerando ausência."""
+        provider = getattr(self, "_token_counter_provider", None)
+        if provider is None:
+            return None
+        try:
+            return provider()
+        except Exception:
+            return None
+
+    def _cache_suportado(self: "EnvioMixin") -> bool:
+        """Indica se o provedor ativo suporta cache de prompt."""
+        provider = getattr(self, "_cache_support_provider", None)
+        if provider is None:
+            return False
+        try:
+            return bool(provider())
+        except Exception:
+            return False
+
+    def _janela_contexto(self: "EnvioMixin") -> int:
+        """Obtém a janela de contexto do modelo ativo, ou zero se desconhecida."""
+        provider = getattr(self, "_context_window_provider", None)
+        if provider is None:
+            return 0
+        try:
+            return int(provider())
+        except Exception:
+            return 0
+
+    def _acumular_uso(self: "EnvioMixin", uso: object) -> None:
+        """Soma o uso de uma completion ao total da sessão e publica o rótulo."""
+        if not isinstance(uso, LLMUsage):
+            return
+        self._tokens.acumular(uso)
+        self._publicar_tokens()
+
+    def _publicar_tokens(self: "EnvioMixin") -> None:
+        """Publica o total acumulado no rótulo persistente, quando houver."""
+        callback = getattr(self, "_tokens_callback", None)
+        if callback is not None:
+            callback(self._tokens.texto(self._janela_contexto()))
 
     def _on_job_iniciado(self: "EnvioMixin") -> None:
         """Fecha a janela de envio assim que o job entra no manager."""
@@ -117,7 +160,11 @@ class EnvioMixin:
                 )
                 self._bloco_cache = (contexto.assinatura, contexto.bloco_estavel)
                 ctx.raise_if_cancelled()
-                usecase = ConsultarChatUseCase(self._criar_llm())
+                usecase = ConsultarChatUseCase(
+                    self._criar_llm(),
+                    contar_tokens=self._contar_tokens(),
+                    cache_suportado=self._cache_suportado(),
+                )
                 resposta = usecase.consultar(
                     pergunta,
                     contexto,

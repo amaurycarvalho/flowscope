@@ -109,6 +109,19 @@ class TestBlocoEstavelMemoizado:
         _b2, a2 = montador.montar_bloco({}, [])
         assert a1 != a2
 
+    def test_prefixo_repetido_sinalizado(self):
+        montador = self._montador(_CascataFake(resumos="RESUMOS"))
+        bloco, assinatura = montador.montar_bloco({"PETR4": None}, ["PETR4"])
+        primeiro = montador.montar("p", {"PETR4": None}, ["PETR4"])
+        assert primeiro.prefixo_repetido is False
+        segundo = montador.montar(
+            "p2",
+            {"PETR4": None},
+            ["PETR4"],
+            cache=(assinatura, bloco),
+        )
+        assert segundo.prefixo_repetido is True
+
 
 class TestFontesAdicionais:
     def test_omite_fontes_vazias_ausentes_e_com_falha(self):

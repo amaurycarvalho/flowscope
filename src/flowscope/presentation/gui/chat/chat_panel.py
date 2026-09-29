@@ -32,7 +32,7 @@ from flowscope.application.chat.documentos import (
 )
 from flowscope.application.documentos.catalogo import CatalogoDocumentos
 from flowscope.domain.chat import ChatMessage, ChatSession
-from flowscope.domain.llm import LLMPort, LLMUnavailableError, LLMUsage
+from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.background.events import Confirmacao
 from flowscope.presentation.gui.chat.envio import EnvioMixin
@@ -93,6 +93,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         status_callback: Callable[[str, str], None] | None = None,
         tokens_callback: Callable[[str], None] | None = None,
         fontes_adicionais: Iterable[FonteAdicional] | None = None,
+        token_counter_provider: Callable[[], Callable[[str], int] | None] | None = None,
+        cache_support_provider: Callable[[], bool] | None = None,
+        context_window_provider: Callable[[], int] | None = None,
         confirmation_timeout: float = 300.0,
     ) -> None:
         """Constrói o painel, a sessão e os controles de envio e cópia."""
@@ -109,6 +112,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._config_callback = config_callback
         self._status_callback = status_callback
         self._tokens_callback = tokens_callback
+        self._token_counter_provider = token_counter_provider
+        self._cache_support_provider = cache_support_provider
+        self._context_window_provider = context_window_provider
         self._fontes_adicionais = list(fontes_adicionais or [])
         self._contexto = MontarContextoChat(
             cascata=self._cascata,
@@ -416,15 +422,3 @@ class ChatPanel(EnvioMixin, tk.Frame):
         """Repassa uma mensagem para a barra de status, quando houver callback."""
         if self._status_callback is not None:
             self._status_callback(msg, icon)
-
-    def _acumular_uso(self: "ChatPanel", uso: object) -> None:
-        """Soma o uso de uma completion ao total da sessão e publica o rótulo."""
-        if not isinstance(uso, LLMUsage):
-            return
-        self._tokens.acumular(uso)
-        self._publicar_tokens()
-
-    def _publicar_tokens(self: "ChatPanel") -> None:
-        """Publica o total acumulado no rótulo persistente, quando houver."""
-        if self._tokens_callback is not None:
-            self._tokens_callback(self._tokens.texto())
