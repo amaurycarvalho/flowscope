@@ -335,6 +335,20 @@ class FundamentalEvolutionPanel:
             if anotacao is not None:
                 anotacao.set_visible(False)
 
+    def mostrar_carregando(
+        self: "FundamentalEvolutionPanel", ticker: str | None = None
+    ) -> None:
+        """Exibe o estado de carregamento enquanto as séries são montadas."""
+        if ticker:
+            self._empty_label.set_text(f"Carregando evolução de {ticker}…")
+        else:
+            self._empty_label.set_text("Carregando evolução…")
+        self._figure.suptitle("")
+        show_empty(self._figure, self._all_axes, self._empty_label)
+        self._anotacoes = [None] * len(self._axes)
+        self._series_plot = [None] * len(self._axes)
+        self._canvas.draw()
+
     def _show_empty(
         self: "FundamentalEvolutionPanel", ticker: str | None = None
     ) -> None:

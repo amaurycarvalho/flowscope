@@ -5,11 +5,16 @@ para a barra de status e remonta a árvore ao final. Vive separado de
 :mod:`app_actions` para manter a complexidade sob controle.
 """
 
+from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.noticias_job import (
     GRUPO,
     POLITICA,
     executar_noticias,
 )
+
+#: Grupo e política da leitura do cache local das notícias.
+GRUPO_LEITURA = "noticias-leitura"
+POLITICA_LEITURA = Politica.LATEST_WINS
 
 #: Número máximo de reagendamentos da remontagem após cancelamento (~30s).
 _LIMITE_REMONTAGEM = 300
@@ -19,10 +24,28 @@ class NoticiasActionsMixin:
     """Adquire as notícias e mantém a sub-aba "Notícias" atualizada."""
 
     def _update_noticias(self: "NoticiasActionsMixin") -> None:
-        """Preenche o painel de notícias a partir do cache do período."""
+        """Lê o cache local fora da thread do Tk e remonta a árvore por evento."""
+        self._submeter_leitura_noticias(self._data_referencia())
+
+    def _submeter_leitura_noticias(
+        self: "NoticiasActionsMixin", reference_date: object
+    ) -> None:
+        """Submete a leitura do cache local das notícias ao gerenciador."""
         painel = getattr(self, "_noticias_panel", None)
-        if painel is not None:
-            painel.update(self._data_referencia())
+        if painel is None:
+            return
+        painel.definir_referencia(reference_date)
+        background = getattr(self, "_background", None)
+        if background is None:
+            painel.update(reference_date)
+            return
+        painel.mostrar_carregando()
+        background.submit(
+            lambda ctx: ctx.resultado(valor=painel.carregar_secoes()),
+            grupo=GRUPO_LEITURA,
+            politica=POLITICA_LEITURA,
+            ao_resultado=lambda evento: painel.aplicar_secoes(evento.valor),
+        )
 
     def _adquirir_noticias(self: "NoticiasActionsMixin") -> None:
         """Adquire as notícias do período em background e remonta a árvore."""
@@ -31,7 +54,7 @@ class NoticiasActionsMixin:
         if painel is None:
             return
         if aquisicao is None:
-            painel.update(self._data_referencia())
+            self._submeter_leitura_noticias(self._data_referencia())
             return
         background = getattr(self, "_background", None)
         if background is None or background.tem_ativo(GRUPO):
@@ -70,10 +93,8 @@ class NoticiasActionsMixin:
             self._flash_status("Notícias atualizadas!")
 
     def _remontar_noticias(self: "NoticiasActionsMixin") -> None:
-        """Remonta a árvore de notícias a partir do cache local."""
-        painel = getattr(self, "_noticias_panel", None)
-        if painel is not None:
-            painel.update(self._data_referencia())
+        """Relê e remonta a árvore de notícias a partir do cache local."""
+        self._submeter_leitura_noticias(self._data_referencia())
 
     def _reagendar_remontagem(
         self: "NoticiasActionsMixin", handle: object, tentativas: int = 0

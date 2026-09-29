@@ -125,3 +125,35 @@ class TestSource:
         source = _source(tmp_path, fetch=fetch)
         source.obter_acoes_alugadas("PETR4", REFERENCIA)
         assert urls and "/2026-09-22/2026-09-22/1/" in urls[0]
+
+
+class TestCachePublicacao:
+    def test_mapa_vazio_nao_e_cacheado(self, tmp_path):
+        source = _source(
+            tmp_path, fetch=lambda _url: {"table": {"values": []}}
+        )
+        assert source.obter_acoes_alugadas("PETR4", REFERENCIA) is None
+        assert not list(tmp_path.glob("b3_emprestimos_btb-v1_*.json"))
+
+    def test_cache_vazio_e_reconsultado(self, tmp_path):
+        source = _source(tmp_path)
+        cache = CacheManager(cache_dir=tmp_path)
+        chave = f"b3_emprestimos_btb-v1_{REFERENCIA.isoformat()}"
+        cache.write_meta(chave, {"data": {}})
+
+        assert source.obter_acoes_alugadas("PETR4", REFERENCIA) == Decimal(
+            194503553
+        )
+        assert cache.read_meta(chave)["data"]
+
+    def test_bust_remove_vazios_e_preserva_com_dados(self, tmp_path):
+        cache = CacheManager(cache_dir=tmp_path)
+        vazio = "b3_emprestimos_btb-v1_2026-09-23"
+        cheio = "b3_emprestimos_btb-v1_2026-09-22"
+        cache.write_meta(vazio, {"data": {}})
+        cache.write_meta(cheio, {"data": {"PETR4": "10"}})
+
+        _source(tmp_path)  # o construtor descarta cache vazio
+
+        assert cache.read_meta(vazio) is None
+        assert cache.read_meta(cheio) is not None

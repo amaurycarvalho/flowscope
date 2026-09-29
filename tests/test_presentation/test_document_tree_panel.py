@@ -1368,7 +1368,7 @@ class TestUpdateDocuments:
         host._ticker_charts = set()
         host._documents_panel = MagicMock()
         host._do_update(host._documents_panel)
-        host._documents_panel.update.assert_called_once()
+        host._documents_panel.aplicar_catalogo.assert_called_once_with(None, None)
 
     def test_sem_painel_nao_falha(self):
         host = ActionsMixin()

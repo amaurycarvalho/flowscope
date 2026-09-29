@@ -16,6 +16,7 @@ mais recente dentro de uma janela de dias, conforme a retenção ``D-21`` da
 tabela.
 """
 
+import json
 import logging
 from collections.abc import Callable
 from datetime import date, timedelta
@@ -167,6 +168,35 @@ class B3ShortInterestSource:
         self._fetch = fetch or self._baixar
         self._url = url
         self._page_size = page_size
+        self._bust_stale_empty_cache()
+
+    def _bust_stale_empty_cache(self: "B3ShortInterestSource") -> None:
+        """Descarta mapas vazios gravados antes da publicação da B3.
+
+        Um dia consultado antes de a B3 publicar as Posições em Aberto era
+        gravado como mapa vazio e nunca revisto, o que prendia o ticker em
+        ``N/A``. Remover esses arquivos permite que a leitura volte a baixar o
+        dia quando ele estiver disponível.
+        """
+        padrao = f"b3_emprestimos_{_CACHE_VERSAO}_*.json"
+        try:
+            caminhos = list(self._cache.get_cache_dir().glob(padrao))
+        except OSError:
+            return
+        for caminho in caminhos:
+            try:
+                dados = json.loads(caminho.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            if (
+                isinstance(dados, dict)
+                and isinstance(dados.get("data"), dict)
+                and not dados["data"]
+            ):
+                try:
+                    caminho.unlink()
+                except OSError:
+                    pass
 
     def obter_acoes_alugadas(
         self: "B3ShortInterestSource", ticker: str, reference_date: date
@@ -200,7 +230,11 @@ class B3ShortInterestSource:
         chave = f"b3_emprestimos_{_CACHE_VERSAO}_{reference_date.isoformat()}"
         cacheado = self._cache.read_meta(chave)
         if cacheado is not None and isinstance(cacheado.get("data"), dict):
-            return self._mapa_de_payload(cacheado["data"])
+            mapa = self._mapa_de_payload(cacheado["data"])
+            if mapa:
+                return mapa
+            # Cache vazio: o dia pode ter sido consultado antes da publicação.
+            # Ignora o registro e tenta baixar novamente.
         colunas: list[str] = []
         linhas: list[list] = []
         pagina = 1
@@ -215,7 +249,10 @@ class B3ShortInterestSource:
                 break
             pagina += 1
         mapa = agregar_por_ticker(colunas, linhas)
-        self._cache.write_meta(chave, {"data": {k: str(v) for k, v in mapa.items()}})
+        if mapa:
+            self._cache.write_meta(
+                chave, {"data": {k: str(v) for k, v in mapa.items()}}
+            )
         return mapa
 
     @staticmethod

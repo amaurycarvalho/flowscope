@@ -4,9 +4,10 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 
 from flowscope.application.clipboard_port import ClipboardError, ImageClipboardPort
-from flowscope.application.fundamental.evolucao import montar_series
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.presentation.gui import evolucao_job
 from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
+from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.documentos_job import (
@@ -14,6 +15,10 @@ from flowscope.presentation.gui.documentos_job import (
     POLITICA,
     executar_documentos,
 )
+
+#: Grupo e política da leitura do catálogo de documentos (fora da aquisição).
+GRUPO_LEITURA_DOCUMENTOS = "documentos-leitura"
+POLITICA_LEITURA = Politica.LATEST_WINS
 
 
 class ActionsMixin:
@@ -150,31 +155,78 @@ class ActionsMixin:
             self._ticker_selecionado = None
 
     def _update_fundamental_evolution(self: "ActionsMixin") -> None:
-        """Preenche o painel de evolução a partir do cache histórico."""
-        painel = self._fundamental_evolution_panel
+        """Submete a leitura do cache histórico e preenche o painel de evolução."""
+        painel = getattr(self, "_fundamental_evolution_panel", None)
+        if painel is None:
+            return
         ticker = self._ticker_apresentado()
         store = getattr(self, "_fundamental_history_store", None)
-        if not ticker or store is None:
-            painel.update((), ticker=ticker)
+        background = getattr(self, "_background", None)
+        if background is None:
+            painel.update(evolucao_job.preparar_series(store, ticker), ticker=ticker)
             return
-        datas = store.datas(ticker)
-        if not datas:
-            painel.update((), ticker=ticker)
+        painel.mostrar_carregando(ticker)
+        background.submit(
+            lambda ctx: ctx.resultado(valor=evolucao_job.preparar_series(store, ticker)),
+            grupo=evolucao_job.GRUPO,
+            politica=evolucao_job.POLITICA,
+            chave=ticker,
+            ao_resultado=lambda evento: self._aplicar_evolucao(
+                ticker, evento.valor
+            ),
+        )
+
+    def _aplicar_evolucao(
+        self: "ActionsMixin", ticker: str | None, series: object
+    ) -> None:
+        """Aplica as séries da evolução se o ticker apresentado não mudou."""
+        painel = getattr(self, "_fundamental_evolution_panel", None)
+        if painel is None or ticker != self._ticker_apresentado():
             return
-        observacoes = store.historico(ticker, datas[0], datas[-1])
-        painel.update(montar_series(observacoes), ticker=ticker)
+        painel.update(series, ticker=ticker)
 
     def _update_documents(self: "ActionsMixin") -> None:
-        """Preenche o painel de documentos a partir do cache do ticker.
+        """Submete a leitura do catálogo de documentos do ticker apresentado.
 
         O ticker é o mesmo apresentado na sub-aba "Evolução dos Fundamentos",
         mantendo as duas sub-abas sincronizadas. A exibição é somente-leitura;
-        a aquisição de novos documentos ocorre apenas no botão "Atualizar".
+        a aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
         """
+        self._submeter_leitura_documentos(self._ticker_apresentado())
+
+    def _submeter_leitura_documentos(
+        self: "ActionsMixin", ticker: str | None
+    ) -> None:
+        """Lê o catálogo do ticker fora da thread do Tk e remonta por evento."""
         painel = getattr(self, "_documents_panel", None)
         if painel is None:
             return
-        painel.update(self._ticker_apresentado())
+        if not ticker:
+            painel.aplicar_catalogo(None, None)
+            return
+        background = getattr(self, "_background", None)
+        if background is None:
+            painel.update(ticker)
+            return
+        painel.mostrar_carregando(ticker)
+        background.submit(
+            lambda ctx: ctx.resultado(valor=painel.carregar_catalogo(ticker)),
+            grupo=GRUPO_LEITURA_DOCUMENTOS,
+            politica=POLITICA_LEITURA,
+            chave=ticker,
+            ao_resultado=lambda evento: self._aplicar_catalogo_documentos(
+                ticker, evento.valor
+            ),
+        )
+
+    def _aplicar_catalogo_documentos(
+        self: "ActionsMixin", ticker: str | None, catalogo: object
+    ) -> None:
+        """Aplica o catálogo lido se o ticker apresentado não mudou."""
+        painel = getattr(self, "_documents_panel", None)
+        if painel is None or ticker != self._ticker_apresentado():
+            return
+        painel.aplicar_catalogo(ticker, catalogo)
 
     def _adquirir_documentos(self: "ActionsMixin", ticker: str) -> None:
         """Adquire os documentos do ticker em background e remonta a árvore."""
@@ -183,7 +235,7 @@ class ActionsMixin:
         if painel is None:
             return
         if aquisicao is None or not ticker:
-            painel.update(ticker)
+            self._submeter_leitura_documentos(ticker)
             return
         background = getattr(self, "_background", None)
         if background is None or background.tem_ativo(GRUPO):
@@ -207,10 +259,9 @@ class ActionsMixin:
     def _finalizar_documentos(
         self: "ActionsMixin", ticker: str, cancelado: bool
     ) -> None:
-        """Remonta a árvore e informa o desfecho da aquisição."""
-        painel = getattr(self, "_documents_panel", None)
-        if painel is not None:
-            painel.update(ticker)
+        """Relê o catálogo e informa o desfecho da aquisição."""
+        if ticker == self._ticker_apresentado():
+            self._submeter_leitura_documentos(ticker)
         if not cancelado:
             self._flash_status("Documentos atualizados!")
 

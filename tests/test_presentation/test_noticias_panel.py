@@ -3,6 +3,7 @@
 import logging
 import os
 import queue
+import threading
 import time
 import tkinter as tk
 from datetime import date
@@ -800,30 +801,57 @@ class _HostNoticias(ActionsMixin, NoticiasActionsMixin):
         self.status.append((msg, icon))
 
 
+def _drenar(host, rounds: int = 5) -> None:
+    """Aguarda as threads e drena os eventos, repetindo se novos jobs surgirem."""
+    for _ in range(rounds):
+        handles = list(host._background.jobs_ativos)
+        if not handles:
+            break
+        for handle in handles:
+            if handle.thread is not None:
+                handle.thread.join(2)
+        host._background.drenar()
+
+
 class TestNoticiasActions:
     def test_atualiza_painel_com_data_de_referencia(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
         host._update_noticias()
-        painel.update.assert_called_once_with(_REFERENCIA)
+        _drenar(host)
+        painel.definir_referencia.assert_called_once_with(_REFERENCIA)
+        painel.mostrar_carregando.assert_called_once()
+        painel.aplicar_secoes.assert_called_once()
+
+    def test_update_noticias_nao_bloqueia_com_leitura_lenta(self):
+        painel = MagicMock()
+        liberar = threading.Event()
+        painel.carregar_secoes.side_effect = lambda: (
+            liberar.wait(2), "catalogo"
+        )[1]
+        host = _HostNoticias(painel)
+        host._update_noticias()
+        assert host._background.tem_ativo(noticias_actions.GRUPO_LEITURA) is True
+        liberar.set()
+        _drenar(host)
+        painel.aplicar_secoes.assert_called_once_with("catalogo")
 
     def test_adquirir_executa_e_remonta(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
         host._adquirir_noticias()
-        handle = host._background.jobs_ativos[0]
-        handle.thread.join(2)
-        host._background.drenar()
+        _drenar(host)
         assert host._aquisicao_noticias.adquirir.call_args.args == (_REFERENCIA,)
-        painel.mostrar_carregando.assert_called_once()
-        painel.update.assert_called_once_with(_REFERENCIA)
+        painel.mostrar_carregando.assert_called()
+        painel.aplicar_secoes.assert_called_once()
 
-    def test_sem_aquisicao_apenas_atualiza(self):
+    def test_sem_aquisicao_apenas_le_cache(self):
         painel = MagicMock()
         host = _HostNoticias(painel)
         host._aquisicao_noticias = None
         host._adquirir_noticias()
-        painel.update.assert_called_once_with(_REFERENCIA)
+        _drenar(host)
+        painel.aplicar_secoes.assert_called_once()
 
     def test_cancelamento_reagenda_remontagem_apos_worker(self):
         painel = MagicMock()
@@ -842,8 +870,10 @@ class TestNoticiasActions:
                 self.thread = _Thread()
 
         host._finalizar_noticias(_Handle(), cancelado=True)
+        _drenar(host)
 
-        assert painel.update.call_count == 2
+        assert painel.carregar_secoes.call_count == 2
+        painel.aplicar_secoes.assert_called_once()
 
     def test_cancelamento_nao_sobrescreve_novo_job(self):
         painel = MagicMock()
@@ -864,7 +894,8 @@ class TestNoticiasActions:
                 self.thread = _Thread()
 
         host._finalizar_noticias(_Handle(), cancelado=True)
-        assert painel.update.call_count == 1
+        _drenar(host)
+        assert painel.carregar_secoes.call_count == 1
         assert pendentes
 
         host._background.submit(
@@ -873,7 +904,8 @@ class TestNoticiasActions:
             politica=noticias_actions.POLITICA,
         )
         pendentes.pop(0)()
-        assert painel.update.call_count == 1
+        _drenar(host)
+        assert painel.carregar_secoes.call_count == 1
 
 
 

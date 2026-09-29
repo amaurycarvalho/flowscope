@@ -212,6 +212,35 @@ class DocumentTreePanel(DocumentFlowMixin):
         vincular_roda(self._preview, self._preview)
         return quadro
 
+    def carregar_catalogo(
+        self: "DocumentTreePanel", ticker: str | None
+    ) -> CatalogoTicker | None:
+        """Lê o catálogo do ticker no cache local.
+
+        Não toca em widgets: é seguro executar na thread de trabalho do job de
+        leitura. Retorna ``None`` quando não há ticker apresentado.
+        """
+        if not ticker:
+            return None
+        return self._catalogo_uc.executar(ticker)
+
+    def aplicar_catalogo(
+        self: "DocumentTreePanel",
+        ticker: str | None,
+        catalogo: CatalogoTicker | None,
+    ) -> None:
+        """Aplica o catálogo lido, remontando a árvore na thread do Tk."""
+        self._current_ticker = ticker
+        self._limpar()
+        if not ticker:
+            self._show_empty("Selecione um ticker")
+        elif catalogo is None or catalogo.vazio:
+            self._show_empty(f"Sem documentos em cache para {ticker}")
+        else:
+            self._show_content()
+            self._popular(catalogo)
+        self.refresh_resumir_button()
+
     def update(
         self: "DocumentTreePanel", ticker: str | None
     ) -> None:
@@ -220,18 +249,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         A exibição é somente-leitura: nenhuma aquisição é acionada aqui. A
         aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
         """
-        self._current_ticker = ticker
-        self._limpar()
-        if not ticker:
-            self._show_empty("Selecione um ticker")
-        else:
-            catalogo = self._catalogo_uc.executar(ticker)
-            if catalogo.vazio:
-                self._show_empty(f"Sem documentos em cache para {ticker}")
-            else:
-                self._show_content()
-                self._popular(catalogo)
-        self.refresh_resumir_button()
+        self.aplicar_catalogo(ticker, self.carregar_catalogo(ticker))
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""

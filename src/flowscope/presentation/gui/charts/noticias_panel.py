@@ -227,6 +227,30 @@ class NoticiasPanel(DocumentFlowMixin):
         vincular_roda(self._preview, self._preview)
         return quadro
 
+    def carregar_secoes(self: "NoticiasPanel") -> CatalogoNoticias:
+        """Lê o índice e o cache local das notícias.
+
+        Não toca em widgets: é seguro executar na thread de trabalho do job de
+        leitura. Nenhuma consulta à B3 é feita aqui.
+        """
+        return self._catalogo_uc.secoes()
+
+    def definir_referencia(
+        self: "NoticiasPanel", reference_date: date | None
+    ) -> None:
+        """Guarda a data de referência usada pelo fluxo de aquisição."""
+        self._reference_date = reference_date
+
+    def aplicar_secoes(self: "NoticiasPanel", catalogo: CatalogoNoticias) -> None:
+        """Remonta a árvore com as seções lidas, na thread do Tk."""
+        self._limpar()
+        if catalogo.vazio:
+            self._show_empty("Sem notícias em cache")
+        else:
+            self._show_content()
+            self._popular(catalogo)
+        self.refresh_resumir_button()
+
     def update(self: "NoticiasPanel", reference_date: date) -> None:
         """Remonta a árvore a partir do cache local.
 
@@ -236,14 +260,7 @@ class NoticiasPanel(DocumentFlowMixin):
         data de referência é guardada para o fluxo de aquisição.
         """
         self._reference_date = reference_date
-        self._limpar()
-        catalogo = self._catalogo_uc.secoes()
-        if catalogo.vazio:
-            self._show_empty("Sem notícias em cache")
-        else:
-            self._show_content()
-            self._popular(catalogo)
-        self.refresh_resumir_button()
+        self.aplicar_secoes(self.carregar_secoes())
 
     def _texto_cacheado(
         self: "NoticiasPanel", arquivo: DocumentoArquivo
