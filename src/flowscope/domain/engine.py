@@ -25,8 +25,14 @@ class IndicatorEngine:
     def execute(
         self: "IndicatorEngine", trades: list[TradeDay],
         progress_callback: Callable[[str, bool], None] | None = None,
+        cancel_callback: Callable[[], bool] | None = None,
     ) -> dict[str, dict[str, Any]]:
-        """Executa todos os indicadores registrados e retorna o cache de resultados."""
+        """Executa todos os indicadores registrados e retorna o cache de resultados.
+
+        ``cancel_callback``, quando informado, é consultado antes de cada
+        indicador; ao retornar ``True``, a execução para e devolve o cache
+        parcial acumulado, cabendo ao caso de uso descartá-lo.
+        """
         if not self._registry:
             return {}
 
@@ -34,6 +40,8 @@ class IndicatorEngine:
         cache: dict[str, dict[str, Any]] = {}
 
         for indicator_id in order:
+            if cancel_callback is not None and cancel_callback():
+                break
             strategy = self._registry[indicator_id]
             deps = {
                 dep_id: cache[dep_id]

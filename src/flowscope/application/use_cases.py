@@ -3,11 +3,27 @@
 from collections.abc import Callable
 from datetime import date, timedelta
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
 from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.indicators import default_engine
 from flowscope.domain.sampling import SamplingConfig
+
+
+def _checar(cancel_token: CancellationToken | None) -> None:
+    """Lança ``OperacaoCancelada`` quando o cancelamento foi solicitado."""
+    if cancel_token is not None:
+        cancel_token.raise_if_cancelled()
+
+
+def _cancel_callback(
+    cancel_token: CancellationToken | None,
+) -> Callable[[], bool] | None:
+    """Adapta o token a um callback de cancelamento entendido pelo domínio."""
+    if cancel_token is None:
+        return None
+    return lambda: cancel_token.is_set
 
 
 class AnalyzeTickersUseCase:
@@ -26,29 +42,48 @@ class AnalyzeTickersUseCase:
         self: "AnalyzeTickersUseCase", ref_date: date, tickers: list[str] | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
         config: SamplingConfig | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> dict:
         """Executa a análise, agregando resultados e dados diários por ticker."""
+        _checar(cancel_token)
         dates = self._repository.get_available_dates(ref_date, config=config)
+        _checar(cancel_token)
         cache_only = (config.period_days > 30) if config else False
         trades = self._repository.fetch_trades(dates, tickers,
                                                progress_callback=progress_callback,
-                                               cache_only=cache_only)
+                                               cache_only=cache_only,
+                                               cancel_token=cancel_token)
+        _checar(cancel_token)
 
+        cancel_callback = _cancel_callback(cancel_token)
         if not tickers:
-            tickers = _derive_tickers(self._engine, trades)
+            tickers = _derive_tickers(self._engine, trades, cancel_callback)
 
         filtered = [t for t in trades if t.ticker.value in tickers]
         sampling_dates, filtered = _resolve_sampling_dates(
-            dates, filtered, set(tickers), self._repository, cache_only, ref_date
+            dates, filtered, set(tickers), self._repository, cache_only, ref_date,
+            cancel_token,
         )
-        results = self._engine.execute(filtered, progress_callback=progress_callback)
+        _checar(cancel_token)
+        results = self._engine.execute(
+            filtered,
+            progress_callback=progress_callback,
+            cancel_callback=cancel_callback,
+        )
+        _checar(cancel_token)
         daily_data = _build_daily_data(filtered)
         return _build_result(tickers, results, daily_data, sampling_dates)
 
 
-def _derive_tickers(engine: IndicatorEngine, trades: list[TradeDay]) -> list[str]:
+def _derive_tickers(
+    engine: IndicatorEngine,
+    trades: list[TradeDay],
+    cancel_callback: Callable[[], bool] | None = None,
+) -> list[str]:
     """Deriva a lista de tickers analisados a partir dos resultados do motor."""
-    top = engine.execute(trades, progress_callback=None)
+    top = engine.execute(
+        trades, progress_callback=None, cancel_callback=cancel_callback
+    )
     return top.get("top_tickers", {}).get("_all", [])
 
 
@@ -59,6 +94,7 @@ def _find_replacement_date(
     repository: DataRepository,
     cache_only: bool,
     ref_date: date,
+    cancel_token: CancellationToken | None = None,
 ) -> tuple[date | None, list[TradeDay]]:
     """Procura uma data próxima com negociações para substituir uma data sem dados.
 
@@ -70,9 +106,11 @@ def _find_replacement_date(
             candidate = d + timedelta(days=delta * sign)
             if candidate > ref_date or candidate in seen or candidate.weekday() >= 5:
                 continue
+            _checar(cancel_token)
             new_trades = repository.fetch_trades(
                 [candidate], list(ticker_set),
                 progress_callback=None, cache_only=cache_only,
+                cancel_token=cancel_token,
             )
             if new_trades:
                 return candidate, new_trades
@@ -86,6 +124,7 @@ def _resolve_sampling_dates(
     repository: DataRepository,
     cache_only: bool,
     ref_date: date,
+    cancel_token: CancellationToken | None = None,
 ) -> tuple[list[date], list[TradeDay]]:
     """Substitui datas de amostragem sem negociações por datas próximas com dados."""
     dates_with_trades = {t.date for t in filtered}
@@ -93,10 +132,11 @@ def _resolve_sampling_dates(
     seen = set(dates)
 
     for i, d in enumerate(sampling_dates):
+        _checar(cancel_token)
         if d in dates_with_trades:
             continue
         replacement, new_trades = _find_replacement_date(
-            d, seen, ticker_set, repository, cache_only, ref_date
+            d, seen, ticker_set, repository, cache_only, ref_date, cancel_token
         )
         if replacement:
             filtered.extend(new_trades)

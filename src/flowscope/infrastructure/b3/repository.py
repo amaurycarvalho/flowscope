@@ -4,6 +4,7 @@ import logging
 from collections.abc import Callable, Iterable
 from datetime import date
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.sampling import SamplingConfig
@@ -12,6 +13,12 @@ from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.parser import ParseError, parse_csv
 
 logger = logging.getLogger(__name__)
+
+
+def _checar(cancel_token: CancellationToken | None) -> None:
+    """Lança ``OperacaoCancelada`` quando o cancelamento foi solicitado."""
+    if cancel_token is not None:
+        cancel_token.raise_if_cancelled()
 
 
 class B3DataRepository(DataRepository):
@@ -50,18 +57,22 @@ class B3DataRepository(DataRepository):
         return len(lines) > data_start + 1
 
     def get_index_tickers(self: "B3DataRepository", index: str,
-                          progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
+                          progress_callback: Callable[[str, bool], None] | None = None,
+                          cancel_token: CancellationToken | None = None) -> list[str]:
         """Retorna a lista de tickers do índice, informando o progresso via callback."""
+        _checar(cancel_token)
         return self._client.fetch_portfolio(index, progress_callback=progress_callback)
 
     def fetch_trades(
         self: "B3DataRepository", date_range: Iterable[date], tickers: list[str] | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
         cache_only: bool = False,
+        cancel_token: CancellationToken | None = None,
     ) -> list[TradeDay]:
         """Baixa e combina as negociações das datas informadas, filtrando por tickers quando indicado."""
         all_trades: list[TradeDay] = []
         for d in date_range:
+            _checar(cancel_token)
             try:
                 content = self._client.fetch_file(
                     d, progress_callback=progress_callback, cache_only=cache_only,

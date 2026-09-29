@@ -4,6 +4,7 @@ from collections.abc import Callable, Iterable
 from datetime import date
 from typing import Protocol
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.sampling import SamplingConfig
 
@@ -15,6 +16,7 @@ class DataRepository(Protocol):
         self: "DataRepository", date_range: Iterable[date], tickers: list[str] | None = None,
         progress_callback: Callable[[str, bool], None] | None = None,
         cache_only: bool = False,
+        cancel_token: CancellationToken | None = None,
     ) -> list[TradeDay]:
         """Retorna as negociações das datas informadas, filtrando por tickers quando indicado."""
         ...
@@ -27,6 +29,7 @@ class DataRepository(Protocol):
     def get_index_tickers(
         self: "DataRepository", index: str,
         progress_callback: Callable[[str, bool], None] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> list[str]:
         """Retorna a lista de tickers do índice informado."""
         ...

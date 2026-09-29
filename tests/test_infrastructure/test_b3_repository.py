@@ -3,6 +3,10 @@ from unittest.mock import patch
 
 import pytest
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.repository import B3DataRepository
 
@@ -198,3 +202,31 @@ class TestGetIndexTickers:
         )
         assert tickers == ["PETR4", "VALE3", "ITUB4"]
         assert calls
+
+    def test_cancelamento_antes_do_download_levanta(self, repo: B3DataRepository):
+        token = CancellationToken()
+        token.request()
+        with pytest.raises(OperacaoCancelada):
+            repo.get_index_tickers("IBOV", cancel_token=token)
+        repo._client.fetch_portfolio.assert_not_called()
+
+
+class TestCancelamentoFetchTrades:
+    def test_cancelamento_entre_datas_levanta(
+        self, repo: B3DataRepository, sample_csv
+    ):
+        repo._client.fetch_file.return_value = sample_csv
+        token = CancellationToken()
+        processadas = []
+
+        def _fetch_file(d, **kwargs):
+            processadas.append(d)
+            token.request()
+            return sample_csv
+
+        repo._client.fetch_file.side_effect = _fetch_file
+        with pytest.raises(OperacaoCancelada):
+            repo.fetch_trades(
+                [date(2026, 6, 25), date(2026, 6, 24)], cancel_token=token
+            )
+        assert processadas == [date(2026, 6, 25)]

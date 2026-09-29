@@ -36,6 +36,12 @@
 
 ## 6. Orçamento de testes de UI
 
+<!-- Esta seção entrega a primeira fatia do orçamento (baseline 250 + guardrail
+     que só reprova aumento + migração do TestPreview + conversão headless dos
+     jobs). O `reduzir-testes-ui` completa o desenho: move o baseline para
+     `ui_test_budget.txt`, adiciona o ratchet (queda exige atualização) e segue
+     baixando o teto a partir de 250. -->
+
 - [x] 6.1 Registrar a contagem baseline de testes decorados com `@needs_display` e adicionar guardrail (teste arquitetural) que reprova o aumento dessa contagem
 - [x] 6.2 Migrar testes de lógica pura hoje em `tests/test_presentation` (ex.: `TestPreview` de `flowscope.application.document_preview`) para `tests/test_application`/`tests/test_domain`, e verificar que rodam sem `DISPLAY`
 - [x] 6.3 Substituir por headless os testes de UI que só exercitavam processamento (preview em thread, cache de texto, lote no painel) e confirmar que a contagem de `@needs_display` não aumentou

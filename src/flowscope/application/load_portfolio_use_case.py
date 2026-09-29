@@ -2,6 +2,7 @@
 
 from collections.abc import Callable
 
+from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
 
 
@@ -26,6 +27,7 @@ class LoadIndexPortfolioUseCase:
     def execute(
         self: "LoadIndexPortfolioUseCase", index: str,
         progress_callback: Callable[[str, bool], None] | None = None,
+        cancel_token: CancellationToken | None = None,
     ) -> list[str]:
         """Valida o índice e retorna os tickers da carteira, informando o progresso via callback."""
         if index not in VALID_INDICES:
@@ -33,9 +35,11 @@ class LoadIndexPortfolioUseCase:
                 f"Invalid index: {index}. Valid indices: {', '.join(sorted(VALID_INDICES))}"
             )
 
+        _checar(cancel_token)
         tickers = self._repository.get_index_tickers(
-            index, progress_callback=progress_callback,
+            index, progress_callback=progress_callback, cancel_token=cancel_token,
         )
+        _checar(cancel_token)
 
         if not tickers:
             raise PortfolioNotFoundError(
@@ -43,3 +47,9 @@ class LoadIndexPortfolioUseCase:
             )
 
         return tickers
+
+
+def _checar(cancel_token: CancellationToken | None) -> None:
+    """Lança ``OperacaoCancelada`` quando o cancelamento foi solicitado."""
+    if cancel_token is not None:
+        cancel_token.raise_if_cancelled()

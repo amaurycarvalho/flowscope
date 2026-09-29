@@ -2,6 +2,12 @@ from datetime import date
 from decimal import Decimal
 from unittest.mock import MagicMock
 
+import pytest
+
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.use_cases import AnalyzeTickersUseCase, ExportVWAPUseCase
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.value_objects import Price, Ticker, Volume
@@ -120,3 +126,27 @@ class TestAnalyzeTickersUseCase:
         result = uc.execute(ref_date=date(2026, 6, 26), tickers=["PETR4"])
         assert "PETR4" in result
         assert result["PETR4"]["daily_data"] == []
+
+    def test_execute_repassa_cancel_token_ao_repositorio(self, mock_trades):
+        repo = _make_mock_repo(mock_trades)
+        uc = AnalyzeTickersUseCase(repo)
+        token = CancellationToken()
+        uc.execute(
+            ref_date=date(2026, 6, 26),
+            tickers=["PETR4"],
+            cancel_token=token,
+        )
+        assert repo.fetch_trades.call_args.kwargs["cancel_token"] is token
+
+    def test_cancelamento_antes_da_primeira_fase_levanta(self, mock_trades):
+        repo = _make_mock_repo(mock_trades)
+        uc = AnalyzeTickersUseCase(repo)
+        token = CancellationToken()
+        token.request()
+        with pytest.raises(OperacaoCancelada):
+            uc.execute(
+                ref_date=date(2026, 6, 26),
+                tickers=["PETR4"],
+                cancel_token=token,
+            )
+        repo.get_available_dates.assert_not_called()

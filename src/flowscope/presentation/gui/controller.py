@@ -4,12 +4,14 @@ from datetime import datetime, timezone
 
 from flowscope.application.load_portfolio_use_case import (
     LoadIndexPortfolioUseCase,
-    PortfolioNotFoundError,
 )
 from flowscope.application.logging_port import LogPort
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
-from flowscope.presentation.gui.controller_data import DataLoadMixin
+from flowscope.presentation.gui.controller_data import (
+    ORIGEM_PORTFOLIO,
+    DataLoadMixin,
+)
 from flowscope.presentation.gui.controller_fundamental import FundamentalMixin
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
@@ -69,17 +71,12 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         """Atualiza a análise ao editar a lista de tickers."""
         tickers = self._presenter.get_current_tickers()
         if not tickers:
-            try:
-                tickers = self._load_portfolio.execute("IDIV")
-            except PortfolioNotFoundError:
-                self._presenter._gui._flash_status(
-                    "Não foi possível carregar a carteira IDIV.", "⚠",
-                )
-                return
-            self._presenter.on_portfolio_loaded(tickers)
-        self._presenter._gui._tickers = list(tickers)
-        with self._presenter.busy():
-            current = self._presenter._gui._resolve_current_chart()
-            if current and self._presenter._gui._deve_atualizar(current):
-                self._presenter._gui._do_update(current)
+            self._submeter_carga(
+                self._montar_instrucao(
+                    ORIGEM_PORTFOLIO, "IDIV", [], None,
+                ),
+                usar_guard=False,
+            )
+            return
+        self._aplicar_carteira(tickers, anunciar=False)
         self._presenter._gui._flash_status("Filtro aplicado!", "ℹ")

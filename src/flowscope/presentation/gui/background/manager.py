@@ -111,12 +111,17 @@ class BackgroundManager:
         if decisao is Decisao.DESCARTAR:
             handle.estado = EstadoJob.DESCARTADO
             return handle
-        if decisao is Decisao.SUBSTITUIR:
-            ativo = self._scheduler.ativo(handle.grupo)
-            if ativo is not None:
-                self.cancel(ativo.id)
         if decisao is Decisao.ENFILEIRAR:
             self._scheduler.enfileirar(handle)
+            return handle
+        if decisao is Decisao.SUBSTITUIR:
+            # Inicia o substituto antes de finalizar o anterior para que a
+            # contagem de operações ativas não atravesse o zero e os controles
+            # não sejam restaurados entre as duas cargas.
+            ativo = self._scheduler.ativo(handle.grupo)
+            self._iniciar(handle)
+            if ativo is not None:
+                self.cancel(ativo.id)
             return handle
         self._iniciar(handle)
         return handle

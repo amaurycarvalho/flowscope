@@ -2,6 +2,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from flowscope.application.cancellation import (
+    CancellationToken,
+    OperacaoCancelada,
+)
 from flowscope.application.load_portfolio_use_case import (
     InvalidIndexError,
     LoadIndexPortfolioUseCase,
@@ -37,5 +41,24 @@ class TestLoadIndexPortfolioUseCase:
         cb = MagicMock()
         uc.execute("IBOV", progress_callback=cb)
         repo.get_index_tickers.assert_called_once_with(
-            "IBOV", progress_callback=cb,
+            "IBOV", progress_callback=cb, cancel_token=None,
         )
+
+    def test_executa_repassa_cancel_token(self):
+        repo = MagicMock()
+        repo.get_index_tickers.return_value = ["PETR4"]
+        uc = LoadIndexPortfolioUseCase(repo)
+        token = CancellationToken()
+        uc.execute("IBOV", cancel_token=token)
+        repo.get_index_tickers.assert_called_once_with(
+            "IBOV", progress_callback=None, cancel_token=token,
+        )
+
+    def test_cancelamento_antes_de_buscar_levanta(self):
+        repo = MagicMock()
+        uc = LoadIndexPortfolioUseCase(repo)
+        token = CancellationToken()
+        token.request()
+        with pytest.raises(OperacaoCancelada):
+            uc.execute("IBOV", cancel_token=token)
+        repo.get_index_tickers.assert_not_called()

@@ -98,6 +98,33 @@ class TestIndicatorEngine:
         with pytest.raises(ValueError, match="depends on unknown"):
             engine.execute([])
 
+    def test_cancel_callback_interrompe_e_devolve_cache_parcial(self):
+        from typing import ClassVar
+
+        from flowscope.domain.strategies.base import IndicatorStrategy
+
+        class A(IndicatorStrategy):
+            id = "a"
+            dependencies: ClassVar[list[str]] = []
+            def compute(self, trades, dep_results): return {"a": 1}
+
+        class B(IndicatorStrategy):
+            id = "b"
+            dependencies: ClassVar[list[str]] = ["a"]
+            def compute(self, trades, dep_results): return {"b": 2}
+
+        engine = IndicatorEngine()
+        engine.register(A(), B())
+        chamadas = {"n": 0}
+
+        def _cancelar() -> bool:
+            chamadas["n"] += 1
+            return chamadas["n"] >= 2
+
+        result = engine.execute([], cancel_callback=_cancelar)
+        assert "a" in result
+        assert "b" not in result
+
 
 class TestRangeStrategy:
     def test_positive(self, mock_trades):
