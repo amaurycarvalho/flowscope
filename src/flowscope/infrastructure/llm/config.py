@@ -24,18 +24,12 @@ DEFAULT_LLM_CONFIG: dict = {
     "model": "",
     "api_key": "",
     "rpm": 5,
-    "input_limitado": False,
 }
 
 #: Campos guardados por provedor no mapa ``llm.chat.providers``.
-_CHAT_FIELDS = ("api_url", "model", "api_key", "rpm", "input_limitado")
+#: A chave antiga ``input_limitado`` é ignorada na leitura e não é mais gravada.
+_CHAT_FIELDS = ("api_url", "model", "api_key", "rpm")
 
-
-def _booleano(valor: object) -> bool:
-    """Normaliza um valor em booleano, aceitando strings comuns de configuração."""
-    if isinstance(valor, str):
-        return valor.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(valor)
 
 #: Valor padrão do flag de análise de guidance via LLM (desabilitado).
 DEFAULT_GUIDANCE_ENABLED = False
@@ -71,7 +65,6 @@ def _normalizar_provedor(entrada: dict | None) -> dict:
         resultado["rpm"] = int(resultado["rpm"])
     except (TypeError, ValueError):
         resultado["rpm"] = DEFAULT_LLM_CONFIG["rpm"]
-    resultado["input_limitado"] = _booleano(resultado["input_limitado"])
     return resultado
 
 

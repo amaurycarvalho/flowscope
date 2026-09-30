@@ -4,7 +4,6 @@ import logging
 import tkinter as tk
 from tkinter import ttk
 
-from flowscope.application.chat.noticias import FonteNoticias
 from flowscope.presentation.gui.app_tabs import (
     ABOUT_TAB,
     CHAT_AI_TAB,
@@ -206,34 +205,14 @@ class TabsLayoutMixin:
             llm_factory=documentos.llm_factory,
             llm_available=documentos.llm_available,
             catalogo=documentos.catalogo,
+            noticias_catalog=self._adaptadores_noticias().catalogo,
             config_callback=getattr(self, "_abrir_config_llm", None),
             status_callback=getattr(self, "_set_status", None),
             tokens_callback=getattr(self, "_set_tokens", None),
-            fontes_adicionais=[self._criar_fonte_noticias()],
             token_counter_provider=documentos.token_counter_provider,
             cache_support_provider=documentos.cache_support_provider,
             context_window_provider=documentos.context_window_provider,
-            input_limitado_provider=documentos.input_limitado_provider,
         )
-
-    def _criar_fonte_noticias(self: "TabsLayoutMixin") -> FonteNoticias:
-        """Cria a fonte adicional de contexto com as notícias do período."""
-        noticias = self._adaptadores_noticias()
-        return FonteNoticias(
-            catalog=noticias.catalogo,
-            text_store=noticias.text_store,
-            reference_date_provider=getattr(self, "_data_referencia", None),
-            confirmar=self._confirmar_envio_noticias,
-        )
-
-    def _confirmar_envio_noticias(
-        self: "TabsLayoutMixin", quantidade: int, nomes: list[str]
-    ) -> bool:
-        """Confirma o envio do índice de notícias pelo canal do painel de chat."""
-        painel = getattr(self, "_chat_panel", None)
-        if painel is None:
-            return True
-        return painel._confirmar_no_tk(quantidade, nomes)
 
     def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:
         """Retorna os tickers exibidos, tolerando hosts sem lista de tickers."""

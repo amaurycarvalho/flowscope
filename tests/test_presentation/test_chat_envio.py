@@ -156,14 +156,15 @@ class TestTokensHeadless:
             LLMUsage(entrada=6400, saida=100, entrada_cache=2400)
         )
         assert host.rotulos[-1] == (
-            "Tokens: 4.0K entrada / 0.1K saída / 6.4K contexto (5%)"
+            "Tokens: 4.0K entrada / 0.1K saída / 6.4K contexto (5%) "
+            "· nav: 0.0K/32K"
         )
 
     def test_sem_janela_omite_percentual(self):
         host = _HostTokens()
         host._acumular_uso(LLMUsage(entrada=1000, saida=10))
         assert host.rotulos[-1] == (
-            "Tokens: 1.0K entrada / 0.0K saída / 1.0K contexto"
+            "Tokens: 1.0K entrada / 0.0K saída / 1.0K contexto · nav: 0.0K/32K"
         )
 
     def test_uso_nao_llm_e_ignorado(self):

@@ -58,10 +58,7 @@ class TestAbaChatAI:
 class TestContextoNoticias:
     @needs_display
     def test_chat_registra_fonte_de_noticias(self, gui):
-        from flowscope.application.chat.noticias import FonteNoticias
-
-        fontes = gui._chat_panel._fontes_adicionais
-        assert any(isinstance(fonte, FonteNoticias) for fonte in fontes)
+        assert gui._chat_panel._noticias_catalog is not None
 
 
 class TestCopiaComChatAtivo:

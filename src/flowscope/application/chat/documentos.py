@@ -1,18 +1,19 @@
-"""Cascata de recuperação de documentos sobre os caches da sub-aba Documentos.
+"""Ramo ``/documentos`` da árvore de conhecimento sobre o cache local.
 
-A cascata é estritamente somente-leitura de cache: lê os resumos curtos e longos
-do catálogo de documentos e, quando a resposta precisa de mais detalhe, o texto
-integral dos documentos-alvo já extraído e em cache. Documentos pendentes de
-resumo ou de extração são omitidos em silêncio — nenhum resumo é gerado e nenhum
-texto é extraído durante o chat. Antes da leitura do texto integral aplica-se o
-gate de confirmação por quantidade e, depois, o orçamento de contexto.
+O ramo é estritamente somente-leitura de cache: lê os resumos curtos e longos do
+catálogo de documentos e o texto integral já extraído e em cache. Documentos
+pendentes de resumo ou de extração são omitidos em silêncio — nenhum resumo é
+gerado e nenhum texto é extraído durante o chat.
 """
 
+from __future__ import annotations
+
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
+from flowscope.application.chat.arvore import No, no_folha, no_interno
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
     CatalogoDocumentos,
@@ -22,32 +23,11 @@ from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 
 logger = logging.getLogger("flowscope")
 
-#: Teto de caracteres por documento enviado à LLM.
+#: Teto de caracteres por nó de documento enviado à LLM.
 TETO_DOCUMENTO = 12000
 
-#: Teto global de caracteres do contexto documental enviado à LLM.
-TETO_GLOBAL = 40000
-
-#: Faixas do gate de confirmação por quantidade de documentos-alvo.
-FAIXA_AUTOMATICA = "automatica"
-FAIXA_LISTAR = "listar"
-FAIXA_QUANTIDADE = "quantidade"
-
-#: Assinatura do callback que confirma a leitura do texto integral.
-ConfirmaAlvos = Callable[[int, list[str]], bool]
-
-
-def faixa_confirmacao(quantidade: int) -> str:
-    """Classifica a quantidade de alvos na faixa do gate de confirmação.
-
-    Até 3 documentos prossegue automaticamente; de 4 a 7 lista os nomes; com
-    8 ou mais informa apenas a quantidade.
-    """
-    if quantidade <= 3:
-        return FAIXA_AUTOMATICA
-    if quantidade <= 7:
-        return FAIXA_LISTAR
-    return FAIXA_QUANTIDADE
+#: Raízes de cache onde vivem os catálogos por ticker.
+_RAIZES = ("bdr", "informe-mensal", "documentos-relevantes")
 
 
 @dataclass(frozen=True)
@@ -75,37 +55,92 @@ def _achatar(catalogo: CatalogoTicker) -> list[DocumentoArquivo]:
     return arquivos
 
 
-class CascataDocumentos:
-    """Recupera o contexto documental em cascata para uma pergunta."""
+class FonteDocumentos:
+    """Provedor do ramo ``/documentos`` a partir do catálogo em cache."""
 
     def __init__(
-        self: "CascataDocumentos",
+        self: FonteDocumentos,
         catalog: CatalogoDocumentos | None = None,
-        confirmar: ConfirmaAlvos | None = None,
-        teto_documento: int = TETO_DOCUMENTO,
-        teto_global: int = TETO_GLOBAL,
+        teto_texto: int = TETO_DOCUMENTO,
     ) -> None:
-        """Guarda o catálogo e os limites do orçamento."""
+        """Guarda o catálogo e o teto de texto por nó."""
         self._catalog = catalog
-        self._confirmar = confirmar
-        self._teto_documento = teto_documento
-        self._teto_global = teto_global
+        self._teto_texto = teto_texto
 
-    def listar(
-        self: "CascataDocumentos",
-        ticker: str | None,
-        watchlist: Iterable[str],
-    ) -> list[DocumentoEscopo]:
-        """Lista os documentos do escopo, na watchlist ou no ticker foco."""
-        tickers = [ticker] if ticker else list(watchlist)
-        documentos: list[DocumentoEscopo] = []
-        for alvo in tickers:
-            if alvo:
-                documentos.extend(self._escopo_ticker(alvo))
-        return documentos
+    def construir(self: FonteDocumentos) -> No:
+        """Constrói o ramo ``/documentos`` com os documentos recuperáveis."""
+        raiz = no_interno("/documentos", "documentos")
+        tickers_no = no_interno("/documentos/tickers", "tickers")
+        raiz.filho(tickers_no)
+        for ticker in self._tickers_em_cache():
+            no_ticker = self._construir_ticker(ticker)
+            if no_ticker.folha:
+                continue
+            raiz.filho(no_ticker)
+            tickers_no.filho(
+                no_folha(
+                    f"/documentos/tickers/{ticker}",
+                    ticker,
+                    conteudo=ticker,
+                    campos={"ticker": ticker},
+                )
+            )
+        return raiz
 
-    def _escopo_ticker(self: "CascataDocumentos", ticker: str) -> list[DocumentoEscopo]:
+    def _construir_ticker(self: FonteDocumentos, ticker: str) -> No:
+        """Constrói o nó ``/documentos/<ticker>`` com curto/longo/texto.
+
+        Só entram os nós com conteúdo; o texto integral é lido do cache apenas
+        quando a LLM pede o nó (``carregar``), para não reler o conteúdo a cada
+        envio.
+        """
+        escopos = self._escopo_ticker(ticker)
+        no_ticker = no_interno(f"/documentos/{ticker}", ticker)
+        base = f"/documentos/{ticker}"
+        self._anexar_folha(
+            no_ticker,
+            base,
+            "curto",
+            self._juntar(e.short_summary for e in escopos),
+            "resumo",
+        )
+        self._anexar_folha(
+            no_ticker,
+            base,
+            "longo",
+            self._juntar(e.long_summary for e in escopos),
+            "resumo",
+        )
+        if escopos and self._tem_texto(ticker):
+            no_ticker.filho(
+                no_folha(
+                    f"{base}/texto",
+                    "texto",
+                    carregar=lambda t=ticker, e=escopos: self._texto_integral(t, e),
+                    campo_pesado="texto",
+                )
+            )
+        return no_ticker
+
+    @staticmethod
+    def _anexar_folha(
+        pai: No, base: str, segmento: str, conteudo: str, campo: str
+    ) -> None:
+        """Anexa ao nó do ticker uma folha quando há conteúdo."""
+        if conteudo:
+            pai.filho(
+                no_folha(
+                    f"{base}/{segmento}",
+                    segmento,
+                    conteudo=conteudo,
+                    campos={campo: conteudo},
+                )
+            )
+
+    def _escopo_ticker(self: FonteDocumentos, ticker: str) -> list[DocumentoEscopo]:
         """Monta os documentos do escopo a partir do catálogo de um ticker."""
+        if self._catalog is None:
+            return []
         return [
             DocumentoEscopo(
                 ticker=arquivo.ticker,
@@ -113,7 +148,7 @@ class CascataDocumentos:
                 categoria=arquivo.categoria,
                 ano=arquivo.ano,
                 mes=arquivo.mes,
-                chave=self.chave(arquivo),
+                chave=chave_documento(arquivo.caminho, self._catalog.base_dir),
                 caminho=arquivo.caminho,
                 short_summary=arquivo.short_summary,
                 long_summary=arquivo.long_summary,
@@ -121,120 +156,65 @@ class CascataDocumentos:
             for arquivo in _achatar(self._catalog.catalogo(ticker))
         ]
 
-    def chave(self: "CascataDocumentos", arquivo: DocumentoArquivo) -> str:
-        """Deriva a chave estável do documento relativa à raiz de cache."""
-        return chave_documento(arquivo.caminho, self._catalog.base_dir)
+    def _tem_texto(self: FonteDocumentos, ticker: str) -> bool:
+        """Indica se há texto em cache para o ticker, lendo o mapa uma vez."""
+        store = self._text_store
+        mapa = self._mapa_textos(store, ticker)
+        return any(mapa.values())
 
-    def montar_resumos(
-        self: "CascataDocumentos",
-        ticker: str | None,
-        watchlist: Iterable[str],
-    ) -> tuple[str, list[DocumentoEscopo]]:
-        """Monta o bloco de resumos cacheados do escopo.
+    def _texto_integral(
+        self: FonteDocumentos, ticker: str, escopos: list[DocumentoEscopo]
+    ) -> str:
+        """Lê o texto em cache dos documentos do ticker, truncando o excedente."""
+        store = self._text_store
+        if store is None:
+            return ""
+        mapa = self._mapa_textos(store, ticker)
+        textos = []
+        total = 0
+        for escopo in escopos:
+            texto = mapa.get(escopo.chave) or ""
+            if not texto:
+                continue
+            restante = self._teto_texto - total
+            if restante <= 0:
+                break
+            textos.append(texto[:restante])
+            total += len(textos[-1])
+        return "\n\n".join(textos)
 
-        Documentos pendentes de resumo são omitidos em silêncio: nada é gerado
-        nem persistido. Devolve o texto e a lista de documentos-alvo candidatos
-        (os que têm resumo), para o caso de uso escalar para o texto integral.
-        """
-        com_resumo = [
-            doc
-            for doc in self.listar(ticker, watchlist)
-            if doc.short_summary or doc.long_summary
-        ]
-        return self._formatar_resumos(com_resumo), com_resumo
+    @staticmethod
+    def _mapa_textos(store: DocumentTextStore | None, ticker: str) -> dict[str, str]:
+        """Obtém o mapa de textos do ticker lendo o cache no máximo uma vez."""
+        if store is None:
+            return {}
+        obter_mapa = getattr(store, "textos", None)
+        if callable(obter_mapa):
+            try:
+                return dict(obter_mapa(ticker))
+            except Exception:
+                logger.warning("Falha ao ler os textos de %s", ticker, exc_info=True)
+                return {}
+        return {}
 
-    def _formatar_resumos(self: "CascataDocumentos", documentos: list[DocumentoEscopo]) -> str:
-        """Formata os resumos de cada documento identificando a sua chave."""
-        blocos: list[str] = []
-        for doc in documentos:
-            titulo = f"{doc.ticker} — {doc.categoria} — {doc.nome}"
-            blocos.append(
-                f"### {titulo}\nChave: {doc.chave}\n"
-                f"Resumo curto: {doc.short_summary or ''}\n"
-                f"Resumo longo: {doc.long_summary or ''}"
-            )
-        return "\n\n".join(blocos)
+    @staticmethod
+    def _juntar(parciais: Iterable[str | None]) -> str:
+        """Junta resumos não vazios, em ordem."""
+        return "\n\n".join(p for p in parciais if p)
 
-    def resolver_alvos(
-        self: "CascataDocumentos", chaves: Iterable[str]
-    ) -> list[DocumentoEscopo]:
-        """Resolve as chaves devolvidas pela LLM em documentos do escopo."""
-        desejadas = {c for c in chaves if c}
-        if not desejadas:
-            return []
-        return self._buscar_por_chaves(desejadas)
-
-    def _buscar_por_chaves(
-        self: "CascataDocumentos", desejadas: set[str]
-    ) -> list[DocumentoEscopo]:
-        """Varre o catálogo dos tickers em cache à procura das chaves."""
-        encontrados: list[DocumentoEscopo] = []
-        for ticker in self._tickers_em_cache():
-            for doc in self._escopo_ticker(ticker):
-                if doc.chave in desejadas:
-                    encontrados.append(doc)
-        return encontrados
-
-    def _tickers_em_cache(self: "CascataDocumentos") -> list[str]:
+    def _tickers_em_cache(self: FonteDocumentos) -> list[str]:
         """Lista os tickers com catálogo de documentos em cache."""
+        if self._catalog is None:
+            return []
         base = self._catalog.base_dir
         tickers: set[str] = set()
-        for raiz in ("bdr", "informe-mensal", "documentos-relevantes"):
+        for raiz in _RAIZES:
             pasta = base / raiz
             if pasta.is_dir():
                 tickers.update(item.name for item in pasta.iterdir() if item.is_dir())
         return sorted(tickers)
 
-    def confirmar_leitura(
-        self: "CascataDocumentos", documentos: list[DocumentoEscopo]
-    ) -> bool:
-        """Aplica o gate de confirmação antes de ler o texto integral."""
-        if faixa_confirmacao(len(documentos)) == FAIXA_AUTOMATICA:
-            return True
-        if self._confirmar is None:
-            return True
-        nomes = [doc.nome for doc in documentos] if len(documentos) <= 7 else []
-        return bool(self._confirmar(len(documentos), nomes))
-
-    def preparar_texto(
-        self: "CascataDocumentos", documentos: list[DocumentoEscopo]
-    ) -> str:
-        """Lê o texto integral dos alvos do cache, truncando o excedente.
-
-        Documentos sem texto em cache são omitidos em silêncio: nenhum texto é
-        extraído nem gravado sob demanda durante o chat.
-        """
-        textos = [
-            texto
-            for documento in documentos
-            if (texto := self._text_store.obter(documento.ticker, documento.chave))
-        ]
-        return self._aplicar_orcamento(textos)
-
-    def _aplicar_orcamento(self: "CascataDocumentos", textos: list[str]) -> str:
-        """Aplica os tetos por documento e global, registrando o truncamento."""
-        selecionados: list[str] = []
-        total = 0
-        truncado = False
-        for texto in textos:
-            if len(texto) > self._teto_documento:
-                texto, truncado = texto[: self._teto_documento], True
-            restante = self._teto_global - total
-            if restante <= 0:
-                truncado = True
-                break
-            if len(texto) > restante:
-                texto, truncado = texto[:restante], True
-            total += len(texto)
-            selecionados.append(texto)
-        if truncado:
-            logger.warning(
-                "Contexto do chat truncado pelo orçamento (teto global=%d).",
-                self._teto_global,
-            )
-        return "\n\n".join(selecionados)
-
     @property
-    def _text_store(self: "CascataDocumentos") -> DocumentTextStore:
+    def _text_store(self: FonteDocumentos) -> DocumentTextStore | None:
         """Store de textos associado ao catálogo."""
-        return self._catalog.text_store
+        return self._catalog.text_store if self._catalog is not None else None

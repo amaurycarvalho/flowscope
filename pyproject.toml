@@ -24,6 +24,7 @@ dependencies = [
 [project.optional-dependencies]
 llm = [
     "litellm>=1.50",
+    "regex>=2023.0",
 ]
 dev = [
     "pytest>=7.0",

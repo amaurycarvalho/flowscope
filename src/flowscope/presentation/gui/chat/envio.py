@@ -39,7 +39,6 @@ class EnvioMixin:
         self._background.ao_iniciar(lambda _handle: self._on_job_iniciado())
         self._background.ao_terminar(lambda _handle: self._on_job_terminado())
         self._ctx_atual: JobContext | None = None
-        self._bloco_cache: tuple[str, str] | None = None
         self._enviando = False
         self._heartbeat_intervalo = HEARTBEAT_INTERVALO_S
 
@@ -150,27 +149,30 @@ class EnvioMixin:
         watchlist: list[str],
         historico: list,
     ) -> None:
-        """Monta o contexto e consulta a LLM na thread de trabalho do job."""
+        """Monta a árvore de conhecimento e consulta a LLM na thread de trabalho."""
         self._ctx_atual = ctx
         try:
             ctx.raise_if_cancelled()
             with self._heartbeat(ctx):
-                contexto = self._contexto.montar(
-                    pergunta, fundamentos, watchlist, cache=self._bloco_cache
-                )
-                self._bloco_cache = (contexto.assinatura, contexto.bloco_estavel)
+                arvore = self.montar_arvore(fundamentos, watchlist)
+                if self._assinatura is not None and self._assinatura != arvore.assinatura:
+                    self._navegacao = []
+                self._assinatura = arvore.assinatura
                 ctx.raise_if_cancelled()
                 usecase = ConsultarChatUseCase(
                     self._criar_llm(),
                     contar_tokens=self._contar_tokens(),
                     cache_suportado=self._cache_suportado(),
+                    janela=self._janela_contexto(),
                 )
                 resposta = usecase.consultar(
                     pergunta,
-                    contexto,
-                    ctx.token,
-                    historico,
+                    arvore,
+                    historico=historico,
+                    navegacao=list(self._navegacao),
+                    cancel_token=ctx.token,
                     ao_uso=lambda uso: ctx.progress(dados=uso),
+                    confirmar=self._confirmar_no_tk,
                 )
         except OperacaoCancelada:
             return
@@ -211,27 +213,16 @@ class EnvioMixin:
             parar.set()
             thread.join(timeout=1.0)
 
-    def _confirmar_no_tk(
-        self: "EnvioMixin", quantidade: int, nomes: list[str]
-    ) -> bool:
-        """Pede confirmação à interface e aguarda a resposta na thread de trabalho."""
-        ctx = getattr(self, "_ctx_atual", None)
-        if ctx is None or ctx.cancelled:
-            return False
-        return ctx.confirmar(quantidade, list(nomes), self._confirmation_timeout)
-
-    def _confirmar_recursos_no_tk(
-        self: "EnvioMixin", quantidade: int, nomes: list[str]
-    ) -> bool:
-        """Confirma a carga de recursos iniciais, com texto próprio."""
+    def _confirmar_no_tk(self: "EnvioMixin", tokens: int) -> bool:
+        """Autoriza o custo do turno na interface, aguardando na thread de trabalho."""
         ctx = getattr(self, "_ctx_atual", None)
         if ctx is None or ctx.cancelled:
             return False
         return ctx.confirmar(
-            quantidade,
-            list(nomes),
+            tokens,
+            [],
             self._confirmation_timeout,
-            motivo="recursos",
+            motivo="custo",
         )
 
     def _cancelar_envio(self: "EnvioMixin") -> None:

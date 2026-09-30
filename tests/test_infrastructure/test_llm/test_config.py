@@ -134,7 +134,6 @@ class TestProviderConfigs:
                 "model": "deepseek-chat",
                 "api_key": "sk-123",
                 "rpm": 15,
-                "input_limitado": False,
             }
         }
 
@@ -180,7 +179,6 @@ class TestSave:
             "model": "llama3.2",
             "api_key": "",
             "rpm": 7,
-            "input_limitado": False,
         }
         save_llm_config(original, caminho)
         assert load_llm_config(caminho) == original
@@ -315,33 +313,16 @@ class TestGuidanceFlag:
         assert load_guidance_llm_enabled(caminho) is True
 
 
-class TestInputLimitado:
-    def test_default_false_quando_ausente(self, tmp_path):
+class TestInputLimitadoRemovido:
+    def test_chave_ausente_do_config(self, tmp_path):
         caminho = tmp_path / "config.json"
         caminho.write_text(
             json.dumps({"llm": {"chat": {"provider": "openai"}}}),
             encoding="utf-8",
         )
-        assert load_llm_config(caminho)["input_limitado"] is False
+        assert "input_limitado" not in load_llm_config(caminho)
 
-    def test_flag_true_persistido(self, tmp_path):
-        caminho = tmp_path / "config.json"
-        save_llm_config(
-            {
-                "provider": "gemini",
-                "api_url": "https://generativelanguage.googleapis.com/v1beta/openai/",
-                "model": "gemini-3.1-flash-lite",
-                "api_key": "k",
-                "rpm": 5,
-                "input_limitado": True,
-            },
-            caminho,
-        )
-        assert load_llm_config(caminho)["input_limitado"] is True
-        providers = load_provider_configs(caminho)
-        assert providers["gemini"]["input_limitado"] is True
-
-    def test_flag_string_e_coagido(self, tmp_path):
+    def test_chave_antiga_ignorada_na_leitura(self, tmp_path):
         caminho = tmp_path / "config.json"
         caminho.write_text(
             json.dumps(
@@ -349,36 +330,30 @@ class TestInputLimitado:
                     "llm": {
                         "chat": {
                             "provider": "openai",
-                            "providers": {
-                                "openai": {"input_limitado": "true"}
-                            },
+                            "providers": {"openai": {"input_limitado": "true"}},
                         }
                     }
                 }
             ),
             encoding="utf-8",
         )
-        assert load_provider_configs(caminho)["openai"]["input_limitado"] is True
+        assert "input_limitado" not in load_provider_configs(caminho)["openai"]
 
-    def test_migracao_plana_usa_default_false(self, tmp_path):
+    def test_chave_antiga_nao_e_gravada(self, tmp_path):
         caminho = tmp_path / "config.json"
-        caminho.write_text(
-            json.dumps(
-                {
-                    "llm": {
-                        "chat": {
-                            "provider": "deepseek",
-                            "api_url": "https://api.deepseek.com/v1",
-                            "model": "deepseek-chat",
-                            "api_key": "sk-1",
-                            "rpm": 5,
-                        }
-                    }
-                }
-            ),
-            encoding="utf-8",
+        save_llm_config(
+            {
+                "provider": "gemini",
+                "api_url": "https://x/v1",
+                "model": "gemini",
+                "api_key": "k",
+                "rpm": 5,
+                "input_limitado": True,
+            },
+            caminho,
         )
-        assert load_provider_configs(caminho)["deepseek"]["input_limitado"] is False
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert "input_limitado" not in dados["llm"]["chat"]["providers"]["gemini"]
 
 
 class TestDeps:

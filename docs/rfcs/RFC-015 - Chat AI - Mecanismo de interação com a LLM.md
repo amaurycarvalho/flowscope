@@ -1,6 +1,6 @@
 # RFC-015: Mecanismo de interação da aba "Chat AI" com a LLM via árvore de conhecimento navegável
 
-> RFC descritiva no formato **PROBE** (Problem, Root Cause, Options, Better Solution, Evaluate). Documenta o funcionamento **atual** do mecanismo de interação com a LLM na aba de topo "Chat AI", com foco em: troca de mensagens, dados envolvidos, sequência de navegação, origens dos dados e estrutura do payload. Esta revisão substitui o mecanismo anterior de cascata determinística por uma **árvore de conhecimento navegável por protocolo JSON**, com foco em **máximo cache-hit** e **mínimo de input tokens por turno**.
+> RFC descritiva no formato **PROBE** (Problem, Root Cause, Options, Better Solution, Evaluate). Descreve o mecanismo **de destino** (ainda **não implementado** — o código atual ainda usa a cascata determinística) de interação com a LLM na aba de topo "Chat AI", com foco em: troca de mensagens, dados envolvidos, sequência de navegação, origens dos dados e estrutura do payload. Esta revisão substitui o mecanismo anterior de cascata determinística por uma **árvore de conhecimento navegável por protocolo JSON**, com foco em **máximo cache-hit** e **mínimo de input tokens por turno**. A implementação é conduzida pela change `chat-arvore-navegavel` (conclui o desenho e subsequentes `llm-chat-rag`).
 
 ---
 

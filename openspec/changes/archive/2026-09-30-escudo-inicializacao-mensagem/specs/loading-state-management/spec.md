@@ -56,6 +56,11 @@ O escudo de bloqueio DEVE ser visível e apresentar, dentro dele, uma mensagem i
 - **WHEN** a restauração inicial de abas/painéis conclui, mas ainda há operações de carga em background
 - **THEN** o escudo DEVE permanecer exibido até a última operação terminar
 
+#### Scenario: Liberação após a restauração inicial
+
+- **WHEN** a restauração inicial de abas/painéis conclui e não há mais operações de carga em background
+- **THEN** o bloqueio DEVE ser removido e os controles, abas, atalhos e cursor DEVEM voltar aos estados anteriores
+
 #### Scenario: Cursor consistente sem vazamento
 
 - **WHEN** a inicialização termina

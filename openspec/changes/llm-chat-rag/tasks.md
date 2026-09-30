@@ -4,7 +4,7 @@
 - [ ] 1.2 Verificar que as portas `DocumentoIndexavel`/`DocumentSource` e as fontes `MaterialFactsSource`/`NoticiasSource` existem
 - [ ] 1.3 Estender o grupo `[llm]` do `pyproject.toml` com `fastembed>=0.4` e verificar a instalação
 - [ ] 1.4 Criar a estrutura de diretórios do VectorStore, embeddings e indexação
-- [ ] 1.5 Verificar que a `cache-prompt-chat` está implementada (prefixo estável cacheável + sufixo volátil) e registrar o resultado
+- [ ] 1.5 Verificar que a `chat-arvore-navegavel` está implementada (árvore + operação `buscar_semantico`) e registrar o resultado
 
 ## 2. Infraestrutura — VectorStore
 
@@ -34,8 +34,8 @@
 - [ ] 5.3 `ConsultarDocumentosUseCase` (embed → search → prompt RAG → `LLMPort`), e verificar com mock
 - [ ] 5.4 `build_rag_prompt()` com fontes e datas, e verificar o prompt montado
 - [ ] 5.5 Estado sem documentos indexados retorna orientação, e verificar mensagem
-- [ ] 5.6 Integrar a consulta RAG à aba "Chat AI" como fonte adicional **volátil** no **sufixo** do prompt (ponto de extensão da `llm-chat`), sem compor o prefixo estável nem a assinatura do contexto, e verificar com mock e índice vazio
-- [ ] 5.7 Verificar com teste headless que, com e sem a fonte RAG, o prefixo estável permanece byte-a-byte idêntico para o mesmo contexto e que a assinatura não inclui os chunks recuperados
+- [ ] 5.6 Registrar o backend vetorial na operação `buscar_semantico` da árvore (`chat-arvore-navegavel`), sem compor o manifesto nem a assinatura do estado, e verificar com mock e índice vazio
+- [ ] 5.7 Verificar com teste que, com e sem backend, o manifesto e a assinatura da árvore permanecem byte-a-byte idênticos, e que sem índice a operação retorna `indice_indisponivel`
 
 ## 6. Testes de Infraestrutura
 
@@ -62,4 +62,4 @@
 - [ ] 9.2 `pytest -m "not llm"` + `pytest -m "llm"` passam
 - [ ] 9.3 Testes existentes sem regressão
 - [ ] 9.4 Executar `openspec validate llm-chat-rag` e garantir que a change permanece válida
-- [ ] 9.5 Executar `openspec validate cache-prompt-chat` e garantir que a change permanece válida
+- [ ] 9.5 Executar `openspec validate chat-arvore-navegavel` e garantir que a change permanece válida

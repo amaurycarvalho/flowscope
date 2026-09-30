@@ -42,10 +42,6 @@ class InfrastructureLLMConfig:
         """Indica se o provedor da configuração suporta cache de prompt."""
         return cache_suportado(str(config.get("provider") or "none"))
 
-    def input_limitado(self: "InfrastructureLLMConfig", config: dict) -> bool:
-        """Indica se o modelo da configuração tem janela de entrada limitada."""
-        return bool(config.get("input_limitado", False))
-
     def token_counter(
         self: "InfrastructureLLMConfig", config: dict
     ) -> Callable[[str], int] | None:

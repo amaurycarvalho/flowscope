@@ -1,26 +1,19 @@
-"""Fonte de contexto do chat com as notícias do Plantão B3 e da RFC-004.
+"""Ramo ``/noticias`` da árvore de conhecimento com as notícias em cache.
 
-A fonte opera em **duas camadas**. Na primeira, monta um **índice compacto**
-restrito aos itens recuperáveis (com resumo ou texto em cache) — seção, data,
-tipo, título e uma chave curta — cobrindo as quatro categorias e priorizando os
-itens mais recentes de cada uma. A pergunta filtra determinísticamente o índice
-por tickers e palavras-chave presentes nos títulos; sem casamento a seção é
-omitida. Quando o índice filtrado excede o limite de envio automático, pede
-confirmação antes de incluí-lo. Na segunda camada, atende às chaves que a LLM
-pedir, devolvendo o resumo e/ou o texto já resolvido e em cache do item; notícias
-"Geral" cujo documento vinculado (CVM RAD/FNET) não foi baixado não são
-recuperáveis e são omitidas em silêncio.
-
-A montagem do índice é regra de aplicação; aqui apenas se injeta o catálogo e o
-store de texto e se formata o bloco. Não há filtro por ticker fora da pergunta:
-a LLM infere o ticker referido nela e seleciona as notícias relacionadas.
+Expõe os quatro grupos fixos, um índice compacto por grupo e, para cada item
+recuperável, os nós de título, resumo e texto. A seleção de relevância fica a
+cargo da própria LLM, por navegação (``listar``/``buscar``); não há filtro
+determinístico por pergunta nem confirmação de envio. Tudo é lido apenas do
+cache local, sem consultar a B3 nem extrair conteúdo sob demanda.
 """
+
+from __future__ import annotations
 
 import logging
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 
-from flowscope.application.chat import FonteContexto
+from flowscope.application.chat.arvore import No, no_folha, no_interno
 from flowscope.application.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
     tem_texto,
@@ -29,39 +22,22 @@ from flowscope.application.document_preview import (
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.noticias.catalogo import NoticiasCatalogo
 from flowscope.application.noticias.fonte_chat import (
-    LIMITE_ENVIO_NOTICIAS,
     TETO_INDICE,
     NoticiaEscopo,
     escopo_de,
-    estimar_tokens,
-    filtrar_por_pergunta,
     montar_indice,
 )
 from flowscope.domain.noticias import (
     ESCOPO_NOTICIAS,
     SECAO_GERAL,
+    SECOES_ORDEM,
     apontador_pendente,
 )
 
 logger = logging.getLogger("flowscope")
 
-#: Título da seção de notícias no prompt do chat.
-TITULO_FONTE = "Notícias e informações regulatórias da B3"
-
-#: Teto de caracteres por notícia lida na segunda camada.
+#: Teto de caracteres por nó de conteúdo de notícia.
 TETO_ITEM = 12000
-
-#: Teto global de caracteres da leitura das notícias na segunda camada.
-TETO_LEITURA = 48000
-
-#: Aviso de que o documento vinculado de uma notícia não foi baixado.
-SEM_DOCUMENTO = (
-    "(Documento vinculado ainda não baixado; selecione a notícia na sub-aba "
-    '"Notícias" ou rode "Resumir pendentes" para obtê-lo.)'
-)
-
-#: Assinatura do callback que confirma o envio do índice filtrado.
-ConfirmaEnvio = Callable[[int, list[str]], bool]
 
 
 def _hoje() -> date:
@@ -70,155 +46,132 @@ def _hoje() -> date:
 
 
 class FonteNoticias:
-    """Oferece o índice das notícias e o conteúdo integral sob demanda."""
+    """Provedor do ramo ``/noticias`` a partir do catálogo em cache."""
 
     def __init__(
-        self: "FonteNoticias",
+        self: FonteNoticias,
         catalog: NoticiasCatalogo | None = None,
         text_store: DocumentTextStore | None = None,
         reference_date_provider: Callable[[], date] | None = None,
-        confirmar: ConfirmaEnvio | None = None,
         teto: int = TETO_INDICE,
         teto_item: int = TETO_ITEM,
-        teto_leitura: int = TETO_LEITURA,
-        limite_envio: int = LIMITE_ENVIO_NOTICIAS,
     ) -> None:
-        """Guarda o catálogo, o store de textos e os limites do orçamento."""
+        """Guarda o catálogo, o store de textos e os tetos do índice e dos itens."""
         self._catalog = catalog
         self._text_store = text_store or (
             catalog.text_store if catalog is not None else None
         )
         self._reference_date_provider = reference_date_provider or _hoje
-        self._confirmar = confirmar
         self._teto = teto
         self._teto_item = teto_item
-        self._teto_leitura = teto_leitura
-        self._limite_envio = limite_envio
 
-    # ── Primeira camada: índice compacto ─────────────────────────────
-
-    def __call__(self: "FonteNoticias", pergunta: str) -> FonteContexto | None:
-        """Monta o índice compacto filtrado, ou ``None`` sem conteúdo.
-
-        Só entram itens recuperáveis; a pergunta filtra os títulos e metadados.
-        Sem casamento a seção é omitida. Quando o índice filtrado excede o
-        limite de envio automático, pede confirmação antes de incluí-lo.
-        """
+    def construir(self: FonteNoticias) -> No:
+        """Constrói o ramo ``/noticias`` com grupos, índices e itens."""
+        raiz = no_interno("/noticias", "noticias")
+        raiz.filho(self._grupos())
         escopos = self.listar_recuperaveis()
-        if not escopos:
-            return None
-        filtrados = filtrar_por_pergunta(escopos, pergunta)
-        if not filtrados:
-            return None
-        indice = self._montar(filtrados)
-        if self._acima_do_limite(indice) and not self._confirmar_envio(filtrados):
-            return None
-        return FonteContexto(TITULO_FONTE, indice)
+        for secao in SECOES_ORDEM:
+            do_grupo = [e for e in escopos if e.secao == secao]
+            if do_grupo:
+                raiz.filho(self._ramo_grupo(secao, do_grupo))
+        return raiz
 
-    def listar(self: "FonteNoticias") -> list[NoticiaEscopo]:
+    @staticmethod
+    def _grupos() -> No:
+        """Monta o nó ``/noticias/grupos`` com os quatro grupos fixos."""
+        grupos = no_interno("/noticias/grupos", "grupos")
+        for secao in SECOES_ORDEM:
+            grupos.filho(
+                no_folha(
+                    f"/noticias/grupos/{secao}",
+                    secao,
+                    conteudo=secao,
+                    campos={"grupo": secao},
+                )
+            )
+        return grupos
+
+    def _ramo_grupo(
+        self: FonteNoticias, secao: str, escopos: list[NoticiaEscopo]
+    ) -> No:
+        """Monta o nó de um grupo com o índice e os itens recuperáveis."""
+        grupo = no_interno(f"/noticias/{secao}", secao)
+        indice = montar_indice(escopos, self._teto)
+        grupo.filho(
+            no_folha(
+                f"/noticias/{secao}/indice",
+                "indice",
+                conteudo=indice,
+                campos={"indice": indice},
+            )
+        )
+        for escopo in escopos:
+            grupo.filho(self._ramo_item(secao, escopo))
+        return grupo
+
+    def _ramo_item(
+        self: FonteNoticias, secao: str, escopo: NoticiaEscopo
+    ) -> No:
+        """Monta o nó de uma notícia com título, resumo e texto recuperáveis."""
+        base = f"/noticias/{secao}/{escopo.chave_curta}"
+        item = no_interno(base, escopo.chave_curta)
+        item.filho(
+            no_folha(f"{base}/titulo", "titulo", conteudo=escopo.nome, campos={"titulo": escopo.nome})
+        )
+        resumo = escopo.long_summary or escopo.short_summary
+        if resumo:
+            item.filho(
+                no_folha(
+                    f"{base}/resumo",
+                    "resumo",
+                    conteudo=resumo[: self._teto_item],
+                    campos={"resumo": resumo[: self._teto_item]},
+                )
+            )
+        item.filho(
+            no_folha(
+                f"{base}/texto",
+                "texto",
+                carregar=lambda e=escopo: (self._conteudo(e) or "")[: self._teto_item],
+                campo_pesado="texto",
+            )
+        )
+        return item
+
+    def listar(self: FonteNoticias) -> list[NoticiaEscopo]:
         """Lista as notícias em cache como escopos, tolerando falha de leitura."""
+        if self._catalog is None:
+            return []
         try:
             arquivos = self._catalog.arquivos()
-        except Exception:  # cache frio ou falha de leitura não quebra o contexto
+        except Exception:
             logger.warning("Falha ao listar as notícias do chat", exc_info=True)
             return []
         return [escopo_de(arquivo, self._catalog.chave(arquivo)) for arquivo in arquivos]
 
-    def listar_recuperaveis(self: "FonteNoticias") -> list[NoticiaEscopo]:
-        """Lista apenas os escopos com resumo ou texto em cache.
-
-        Itens pendentes de extração ou de resumo são omitidos em silêncio.
-        """
+    def listar_recuperaveis(self: FonteNoticias) -> list[NoticiaEscopo]:
+        """Lista apenas os escopos com resumo ou texto em cache."""
         return [escopo for escopo in self.listar() if self._recuperavel(escopo)]
 
-    def _recuperavel(self: "FonteNoticias", escopo: NoticiaEscopo) -> bool:
+    def _recuperavel(self: FonteNoticias, escopo: NoticiaEscopo) -> bool:
         """Indica se o item tem resumo ou texto utilizável no cache local."""
         if escopo.short_summary or escopo.long_summary:
             return True
         return bool(self._conteudo(escopo))
 
-    def _acima_do_limite(self: "FonteNoticias", indice: str) -> bool:
-        """Indica se o índice filtrado excede o envio automático."""
-        return estimar_tokens(indice) > self._limite_envio
-
-    def _confirmar_envio(
-        self: "FonteNoticias", escopos: list[NoticiaEscopo]
-    ) -> bool:
-        """Pede confirmação para incluir o índice acima do limite."""
-        if self._confirmar is None:
-            return True
-        return bool(self._confirmar(len(escopos), [e.nome for e in escopos]))
-
-    def _montar(self: "FonteNoticias", escopos: list[NoticiaEscopo]) -> str:
-        """Monta o índice compacto respeitando o teto de caracteres."""
-        return montar_indice(escopos, self._teto)
-
-    # ── Segunda camada: conteúdo integral sob demanda ────────────────
-
-    def resolver_alvos(
-        self: "FonteNoticias", chaves: set[str] | list[str]
-    ) -> list[NoticiaEscopo]:
-        """Resolve as chaves curtas devolvidas pela LLM em escopos recuperáveis."""
-        desejadas = {c for c in chaves if c}
-        if not desejadas:
-            return []
-        return [
-            escopo
-            for escopo in self.listar_recuperaveis()
-            if escopo.chave_curta in desejadas
-        ]
-
-    def preparar_texto(self: "FonteNoticias", alvos: list[NoticiaEscopo]) -> str:
-        """Lê o resumo/texto integral dos alvos, aplicando os tetos."""
-        blocos: list[str] = []
-        total = 0
-        for alvo in alvos:
-            bloco = self._bloco_conteudo(alvo)
-            if len(bloco) > self._teto_item:
-                bloco = bloco[: self._teto_item]
-            restante = self._teto_leitura - total
-            if restante <= 0:
-                break
-            if len(bloco) > restante:
-                bloco = bloco[:restante]
-            total += len(bloco)
-            blocos.append(bloco)
-        return "\n\n".join(blocos)
-
-    def _bloco_conteudo(self: "FonteNoticias", alvo: NoticiaEscopo) -> str:
-        """Monta o bloco de uma notícia com o resumo e o texto resolvido."""
-        cabecalho = (
-            f"### [{alvo.secao}] {alvo.nome} — {alvo.data_publicacao} "
-            f"({alvo.categoria})"
-        )
-        texto = self._conteudo(alvo)
-        corpo = alvo.long_summary or alvo.short_summary
-        if corpo:
-            return f"{cabecalho}\nResumo: {corpo}\nTexto: {texto or SEM_DOCUMENTO}"
-        if tem_texto(texto):
-            return f"{cabecalho}\n{texto}"
-        return f"{cabecalho}\n{SEM_DOCUMENTO}"
-
-    def _conteudo(self: "FonteNoticias", alvo: NoticiaEscopo) -> str:
-        """Obtém o texto do item apenas do cache local.
-
-        Nenhuma extração sob demanda é feita: sem texto em cache o item não tem
-        conteúdo servível. Um apontador "Geral" ainda não resolvido também é
-        tratado como ausente.
-        """
-        texto = self._text_store.obter(ESCOPO_NOTICIAS, alvo.chave)
+    def _conteudo(self: FonteNoticias, escopo: NoticiaEscopo) -> str:
+        """Obtém o texto do item apenas do cache local."""
+        if self._text_store is None:
+            return ""
+        texto = self._text_store.obter(ESCOPO_NOTICIAS, escopo.chave)
         if not tem_texto(texto):
             return ""
-        if alvo.secao == SECAO_GERAL and self._pendente(alvo, texto):
+        if escopo.secao == SECAO_GERAL and self._pendente(escopo, texto):
             return ""
         return texto
 
     @staticmethod
-    def _pendente(alvo: NoticiaEscopo, texto: str) -> bool:
-        """Indica se o texto é o apontador da "Geral" ainda não resolvido.
-
-        A comparação com o corpo atual do ``#conteudoDetalhe`` evita tratar como
-        pendente um documento já resolvido que porventura cite uma URL.
-        """
-        corpo = texto_preview(alvo.caminho, SELETOR_CONTEUDO_DETALHE)
+    def _pendente(escopo: NoticiaEscopo, texto: str) -> bool:
+        """Indica se o texto é o apontador da "Geral" ainda não resolvido."""
+        corpo = texto_preview(escopo.caminho, SELETOR_CONTEUDO_DETALHE)
         return apontador_pendente(texto, corpo)

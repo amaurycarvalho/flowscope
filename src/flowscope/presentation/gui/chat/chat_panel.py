@@ -2,34 +2,35 @@
 
 O painel mantém a sessão em memória, exibe a conversa em um campo
 somente-leitura copiável e submete cada pergunta a um ``BackgroundManager``
-local que monta o contexto e consome a porta ``LLMPort``. O manager publica o
-desfecho na thread do Tk, inclusive os pedidos de confirmação de leitura do
-texto integral pelo evento ``Confirmacao``.
+local que monta a árvore de conhecimento e consome a porta ``LLMPort``. O
+manager publica o desfecho na thread do Tk, inclusive o pedido de autorização
+de custo do turno de navegação pelo evento ``Confirmacao``.
 
 O contexto cobre sempre a watchlist completa: não há seletor de escopo e a LLM
-infere o ticker referido a partir da pergunta. Fontes adicionais de contexto
-podem ser registradas para changes futuras (``noticias-b3``, ``llm-chat-rag``).
+infere o ticker referido navegando a árvore.
 """
 
 import logging
 import tkinter as tk
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
 
 from flowscope import __release_date__, __version__
 from flowscope.application.chat import (
-    FonteAdicional,
-    MontarContextoChat,
+    ArvoreConhecimento,
+    MontarArvore,
+    ParNavegacao,
     RespostaChat,
 )
-from flowscope.application.chat.conhecimento import montar_bloco_conhecimento
-from flowscope.application.chat.documentos import (
-    FAIXA_AUTOMATICA,
-    CascataDocumentos,
-    faixa_confirmacao,
+from flowscope.application.chat.conhecimento import (
+    FonteConhecimento,
+    estrutura_conhecimento,
 )
+from flowscope.application.chat.documentos import FonteDocumentos
+from flowscope.application.chat.fundamentos import FonteFundamentos
+from flowscope.application.chat.noticias import FonteNoticias
 from flowscope.application.documentos.catalogo import CatalogoDocumentos
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
@@ -60,32 +61,12 @@ TITULO_CHAT = "Chat AI — watchlist completa"
 #: Rótulos das mensagens exibidas na conversa.
 _ROTULOS = {"user": "Você", "assistant": "Assistente"}
 
-def mensagem_confirmacao(quantidade: int, nomes: list[str]) -> str | None:
-    """Monta o texto do diálogo de confirmação conforme a faixa de quantidade."""
-    if faixa_confirmacao(quantidade) == FAIXA_AUTOMATICA:
-        return None
-    if quantidade <= 7:
-        lista = "\n".join(f"• {nome}" for nome in nomes)
-        return (
-            "Para responder, será necessário ler o texto integral de "
-            f"{quantidade} documentos:\n\n{lista}\n\nDeseja prosseguir?"
-        )
-    return (
-        "Para responder, será necessário ler o texto integral de "
-        f"{quantidade} documentos. Deseja prosseguir?"
-    )
 
-
-def mensagem_confirmacao_recursos(nomes: list[str]) -> str:
-    """Monta o texto próprio do diálogo de confirmação da carga de recursos."""
-    if nomes:
-        return (
-            "Para responder, será necessário carregar dados iniciais do "
-            f"FlowScope ({', '.join(nomes)}). Deseja prosseguir?"
-        )
+def mensagem_confirmacao_custo(tokens: int) -> str:
+    """Monta o texto do diálogo de autorização do custo de um turno."""
     return (
-        "Para responder, será necessário carregar dados iniciais do FlowScope. "
-        "Deseja prosseguir?"
+        "Para prosseguir, será necessário enviar "
+        f"{tokens} tokens adicionais de navegação. Deseja continuar?"
     )
 
 
@@ -101,15 +82,13 @@ class ChatPanel(EnvioMixin, tk.Frame):
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         catalogo: CatalogoDocumentos | None = None,
-        cascata: CascataDocumentos | None = None,
+        noticias_catalog: object | None = None,
         config_callback: Callable[[], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         tokens_callback: Callable[[str], None] | None = None,
-        fontes_adicionais: Iterable[FonteAdicional] | None = None,
         token_counter_provider: Callable[[], Callable[[str], int] | None] | None = None,
         cache_support_provider: Callable[[], bool] | None = None,
         context_window_provider: Callable[[], int] | None = None,
-        input_limitado_provider: Callable[[], bool] | None = None,
         confirmation_timeout: float = 300.0,
     ) -> None:
         """Constrói o painel, a sessão e os controles de envio e cópia."""
@@ -119,34 +98,18 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._watchlist_provider = watchlist_provider or list
         self._llm_factory = llm_factory
         self._llm_available = llm_available or (lambda: True)
-        self._cascata = cascata or CascataDocumentos(
-            catalog=catalogo,
-            confirmar=self._confirmar_no_tk,
-        )
+        self._catalogo = catalogo
+        self._noticias_catalog = noticias_catalog
         self._config_callback = config_callback
         self._status_callback = status_callback
         self._tokens_callback = tokens_callback
         self._token_counter_provider = token_counter_provider
         self._cache_support_provider = cache_support_provider
         self._context_window_provider = context_window_provider
-        self._input_limitado_provider = input_limitado_provider
-        self._fontes_adicionais = list(fontes_adicionais or [])
-        self._contexto = MontarContextoChat(
-            cascata=self._cascata,
-            fontes_adicionais=self._fontes_adicionais,
-            confirmar=self._confirmar_no_tk,
-            conhecimento=montar_bloco_conhecimento(
-                TAB_CONTENT,
-                apresentacao=APRESENTACAO,
-                licenca=LICENCA,
-                versao=__version__,
-                release_date=__release_date__,
-                repositorio=REPOSITORIO_URL,
-            ),
-            input_limitado=self._input_limitado_efetivo,
-            confirmar_recursos=self._confirmar_recursos_no_tk,
-        )
         self._confirmation_timeout = confirmation_timeout
+        self._fonte_conhecimento = self._montar_fonte_conhecimento()
+        self._navegacao: list[ParNavegacao] = []
+        self._assinatura: str | None = None
         self._tokens = ContadorTokens()
         self._init_envio()
         self._disponivel = True
@@ -154,6 +117,21 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._build()
         self.avaliar_estado()
         self._publicar_tokens()
+
+    def _montar_fonte_conhecimento(self: "ChatPanel") -> FonteConhecimento:
+        """Monta a fonte do ramo ``/flowscope`` a partir do ``TAB_CONTENT``."""
+        abas, subabas = estrutura_conhecimento(TAB_CONTENT)
+        return FonteConhecimento(
+            {
+                "apresentacao": APRESENTACAO,
+                "licenca": LICENCA,
+                "versao": __version__,
+                "release_date": __release_date__,
+                "repositorio": REPOSITORIO_URL,
+            },
+            abas=abas,
+            subabas=subabas,
+        )
 
     def destroy(self: "ChatPanel") -> None:
         """Cancela os envios em background antes de destruir o painel."""
@@ -263,13 +241,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         return bool(self.conteudo_sessao().strip())
 
     def _atualizar_controles(self: "ChatPanel") -> None:
-        """Ajusta os botões ao estado de processamento, disponibilidade e conteúdo.
-
-        "Enviar" exige a LLM configurada e fundamentos carregados. "Limpar" e
-        "Copiar chat" exigem conteúdo textual na conversa. Durante o envio, os
-        três botões de cabeçalho (Limpar, Copiar chat e Configuração) ficam
-        desabilitados e voltam ao normal quando o processamento termina.
-        """
+        """Ajusta os botões ao estado de processamento, disponibilidade e conteúdo."""
         processando = self._processando
         self._send_btn.config(
             state=(
@@ -278,25 +250,16 @@ class ChatPanel(EnvioMixin, tk.Frame):
                 else tk.DISABLED
             )
         )
-        self._cancel_btn.config(
-            state=tk.NORMAL if processando else tk.DISABLED
-        )
-        self._config_btn.config(
-            state=tk.DISABLED if processando else tk.NORMAL
-        )
+        self._cancel_btn.config(state=tk.NORMAL if processando else tk.DISABLED)
+        self._config_btn.config(state=tk.DISABLED if processando else tk.NORMAL)
         estado_texto = (
-            tk.NORMAL
-            if self._tem_conteudo() and not processando
-            else tk.DISABLED
+            tk.NORMAL if self._tem_conteudo() and not processando else tk.DISABLED
         )
         self._clear_btn.config(state=estado_texto)
         self._copy_btn.config(state=estado_texto)
 
     def _mostrar_configuracao(self: "ChatPanel", visivel: bool) -> None:
-        """Exibe ou oculta a orientação de configuração.
-
-        O botão "Configuração" fica no cabeçalho e permanece sempre visível.
-        """
+        """Exibe ou oculta a orientação de configuração."""
         if visivel:
             self._orientacao.pack(side=tk.BOTTOM, fill=tk.X, padx=4)
         else:
@@ -307,16 +270,6 @@ class ChatPanel(EnvioMixin, tk.Frame):
         if self._config_callback is not None:
             self._config_callback()
 
-    def _input_limitado_efetivo(self: "ChatPanel") -> bool:
-        """Indica se o modelo ativo tem janela de entrada limitada."""
-        provider = getattr(self, "_input_limitado_provider", None)
-        if provider is None:
-            return False
-        try:
-            return bool(provider())
-        except Exception:
-            return False
-
     # ── Envio e resposta ─────────────────────────────────────────────
 
     def _criar_llm(self: "ChatPanel") -> LLMPort:
@@ -325,9 +278,18 @@ class ChatPanel(EnvioMixin, tk.Frame):
             raise LLMUnavailableError("Fábrica de LLM não configurada.")
         return self._llm_factory()
 
-    def _atender_confirmacao(
-        self: "ChatPanel", confirmacao: Confirmacao
-    ) -> None:
+    def montar_arvore(self: "ChatPanel", fundamentos: dict, watchlist: list[str]) -> ArvoreConhecimento:
+        """Monta a árvore de conhecimento a partir dos snapshots do envio."""
+        fontes = [
+            self._fonte_conhecimento,
+            FonteFundamentos(fundamentos, watchlist=watchlist),
+            FonteDocumentos(catalog=self._catalogo),
+        ]
+        if self._noticias_catalog is not None:
+            fontes.append(FonteNoticias(catalog=self._noticias_catalog))
+        return MontarArvore(fontes).montar(watchlist=watchlist)
+
+    def _atender_confirmacao(self: "ChatPanel", confirmacao: Confirmacao) -> None:
         """Exibe o diálogo de confirmação do evento e libera a thread de trabalho."""
         confirmacao.caixa["ok"] = self._dialogo_confirmacao(
             confirmacao.quantidade,
@@ -337,23 +299,29 @@ class ChatPanel(EnvioMixin, tk.Frame):
         confirmacao.evento.set()
 
     def _dialogo_confirmacao(
-        self: "ChatPanel", quantidade: int, nomes: list[str], motivo: str = "documentos"
+        self: "ChatPanel", quantidade: int, nomes: list[str], motivo: str = "custo"
     ) -> bool:
-        """Exibe o diálogo de confirmação conforme o motivo (documentos ou recursos)."""
-        if motivo == "recursos":
-            texto = mensagem_confirmacao_recursos(nomes)
-            titulo = "Confirmar carga de dados iniciais"
-        else:
-            texto = mensagem_confirmacao(quantidade, nomes)
-            titulo = "Confirmar leitura de documentos"
-        if texto is None:
+        """Exibe o diálogo de confirmação do custo do turno de navegação."""
+        if motivo != "custo":
             return True
-        return bool(messagebox.askyesno(titulo, texto, parent=self))
+        return bool(
+            messagebox.askyesno(
+                "Confirmar custo de navegação",
+                mensagem_confirmacao_custo(quantidade),
+                parent=self,
+            )
+        )
 
     def _concluir_ok(self: "ChatPanel", resposta: RespostaChat) -> None:
-        """Registra a resposta da consulta e sinaliza o término."""
+        """Registra a resposta, acumula a navegação e sinaliza o término."""
+        self._navegacao = list(resposta.navegacao)
+        self._tokens.acumular_navegacao(sum(par.tokens for par in self._navegacao))
+        self._publicar_tokens()
         self._registrar("assistant", resposta.texto, resposta.fontes)
-        self._status("Pronto.", "")
+        if resposta.alerta_janela:
+            self._status("Contexto próximo da janela do modelo.", "⚠")
+        else:
+            self._status("Pronto.", "")
 
     def _concluir_erro(self: "ChatPanel", dados: object, exc: BaseException) -> None:
         """Trata a falha do job conforme a origem (LLM indisponível ou erro)."""
@@ -364,9 +332,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
 
     def _on_indisponivel(self: "ChatPanel", exc: BaseException) -> None:
         """Marca o painel como não configurado e exibe a orientação."""
-        self._registrar(
-            "assistant", mensagem_erro_llm(exc), enviar_ao_modelo=False
-        )
+        self._registrar("assistant", mensagem_erro_llm(exc), enviar_ao_modelo=False)
         self._disponivel = False
         self._aplicar_estado()
         self._status(mensagem_erro_llm(exc), "⚠")
@@ -375,9 +341,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         """Exibe e registra uma falha da LLM durante o chat."""
         mensagem = mensagem_erro_llm(exc)
         self._registrar("assistant", mensagem, enviar_ao_modelo=False)
-        logger.error(
-            "Falha no chat: %s: %s", type(exc).__name__, exc, exc_info=exc
-        )
+        logger.error("Falha no chat: %s: %s", type(exc).__name__, exc, exc_info=exc)
         self._status(mensagem, "⚠")
 
     # ── Sessão, cópia e utilidades ───────────────────────────────────
@@ -406,9 +370,10 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._atualizar_controles()
 
     def limpar(self: "ChatPanel") -> None:
-        """Reinicia a sessão, o bloco estável memoizado e a área de mensagens."""
+        """Reinicia a sessão, a navegação acumulada e a área de mensagens."""
         self._sessao.clear()
-        self._bloco_cache = None
+        self._navegacao = []
+        self._assinatura = None
         self._respostas.delete("1.0", tk.END)
         self._tokens.zerar()
         self._publicar_tokens()

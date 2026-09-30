@@ -8,6 +8,8 @@ pela apresentação como entrada.
 
 from collections.abc import Mapping
 
+from flowscope.application.chat.arvore import No, ramo_flowscope
+
 #: Cabeçalho da seção institucional do bloco de conhecimento.
 _CABECALHO_SOBRE = "Sobre o FlowScope"
 
@@ -59,3 +61,40 @@ def montar_bloco_conhecimento(
     ]
     partes.extend(_secoes_orientacao(tab_content))
     return "\n".join(partes)
+
+
+def estrutura_conhecimento(
+    tab_content: Mapping[object, tuple[str, list[tuple[str, str]]]],
+) -> tuple[dict[str, str], dict[str, dict[str, str]]]:
+    """Deriva abas e sub-abas do ``TAB_CONTENT`` para o ramo ``/flowscope``."""
+    abas: dict[str, str] = {}
+    subabas: dict[str, dict[str, str]] = {}
+    for chave, (titulo, corpo) in tab_content.items():
+        aba, sub = chave if isinstance(chave, tuple) else (str(chave), str(chave))
+        abas.setdefault(aba, titulo)
+        texto = _texto_da_orientacao(corpo)
+        subabas.setdefault(aba, {})[sub] = texto or titulo
+    return abas, subabas
+
+
+class FonteConhecimento:
+    """Provedor do ramo ``/flowscope`` a partir das informações da ferramenta."""
+
+    def __init__(
+        self: "FonteConhecimento",
+        meta: Mapping[str, str],
+        abas: Mapping[str, str] | None = None,
+        subabas: Mapping[str, Mapping[str, str]] | None = None,
+        indicadores: Mapping[str, str] | None = None,
+    ) -> None:
+        """Guarda os metadados e as estruturas de abas do FlowScope."""
+        self._meta = dict(meta)
+        self._abas = dict(abas or {})
+        self._subabas = {k: dict(v) for k, v in (subabas or {}).items()}
+        self._indicadores = dict(indicadores or {})
+
+    def construir(self: "FonteConhecimento") -> No:
+        """Constrói o ramo ``/flowscope`` da árvore."""
+        return ramo_flowscope(
+            self._meta, self._abas, self._subabas, self._indicadores
+        )

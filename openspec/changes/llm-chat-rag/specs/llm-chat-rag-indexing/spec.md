@@ -60,18 +60,18 @@ O sistema DEVE construir o prompt RAG combinando um system prompt fixo com os ch
 - **WHEN** o prompt é construído com 3 chunks e a pergunta "Qual o último rendimento?"
 - **THEN** o prompt final DEVE conter as instruções do sistema, os 3 chunks formatados com fonte e data e a pergunta do usuário
 
-### Requirement: Fonte vetorial volátil no sufixo do prompt
+### Requirement: Backend da operação `buscar_semantico` da árvore
 
-A consulta vetorial DEVE ser oferecida à aba "Chat AI" como fonte adicional **dependente da pergunta** e, conforme a `cache-prompt-chat`, DEVE compor o **sufixo volátil** do prompt. Ela NÃO DEVE integrar o prefixo estável cacheável nem a assinatura do contexto estável, e a presença ou ausência da fonte RAG NÃO DEVE alterar o prefixo estável para o mesmo contexto.
+A consulta vetorial DEVE retroalimentar a operação `buscar_semantico` do protocolo da árvore de conhecimento da `chat-arvore-navegavel`, que é o ponto de extensão do chat. A implementação do índice é **opcional e postergável**: enquanto não houver backend, a árvore retorna `indice_indisponivel` e o chat segue na navegação lexical. A presença ou ausência do backend NÃO DEVE alterar o manifesto da árvore nem o protocolo.
 
-#### Scenario: Fonte RAG no sufixo
-- **WHEN** a consulta vetorial retorna chunks relevantes para a pergunta
-- **THEN** esses chunks DEVEM compor o sufixo do prompt, após o histórico, e NÃO DEVEM integrar o prefixo estável
+#### Scenario: Backend disponível responde à op
+- **WHEN** há índice vetorial e a LLM emite `buscar_semantico` na árvore
+- **THEN** a operação DEVE devolver os nós recuperados via busca semântica
 
-#### Scenario: Prefixo estável inalterado com e sem RAG
-- **WHEN** a mesma pergunta e o mesmo contexto são processados com e sem a fonte RAG
-- **THEN** o prefixo estável DEVE permanecer byte-a-byte idêntico
+#### Scenario: Sem backend preserva a navegação lexical
+- **WHEN** não há documentos indexados
+- **THEN** a operação DEVE retornar vazio com motivo `indice_indisponivel`, sem alterar o manifesto, e o chat DEVE seguir na navegação lexical
 
-#### Scenario: Índice vazio preserva o prefixo estável
-- **WHEN** não há documentos indexados e a fonte RAG retorna vazio
-- **THEN** o prefixo estável DEVE permanecer inalterado e o chat DEVE seguir com a cascata lexical
+#### Scenario: Manifesto inalterado com e sem backend
+- **WHEN** o backend vetorial é adicionado ou removido
+- **THEN** o manifesto e a assinatura do estado da árvore DEVEM permanecer byte-a-byte idênticos

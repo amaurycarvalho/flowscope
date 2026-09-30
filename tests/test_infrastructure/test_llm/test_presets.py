@@ -74,10 +74,10 @@ class TestJanelaECache:
     @pytest.mark.parametrize(
         ("provider", "esperado"),
         [
-            ("openai", 128000),
+            ("openai", 1048576),
             ("gemini", 1048576),
             ("ollama", 131072),
-            ("custom", 0),
+            ("custom", 131072),
             ("none", 0),
         ],
     )
@@ -98,12 +98,12 @@ class TestJanelaECache:
 
     def test_resolve_cai_no_preset_sem_litellm(self, monkeypatch):
         monkeypatch.setattr(presets_module, "_janela_litellm", lambda model: 0)
-        assert resolve_context_window("openai", "gpt-4o-mini") == 128000
+        assert resolve_context_window("openai", "gpt-4o-mini") == 1048576
 
     def test_resolve_sem_modelo_usa_preset(self, monkeypatch):
         monkeypatch.setattr(presets_module, "_janela_litellm", lambda model: 999)
-        assert resolve_context_window("openai", "") == 128000
-        assert resolve_context_window("custom", None) == 0
+        assert resolve_context_window("openai", "") == 1048576
+        assert resolve_context_window("custom", None) == 131072
 
     def test_contador_memoiza_por_texto(self, monkeypatch):
         chamadas: list[str] = []

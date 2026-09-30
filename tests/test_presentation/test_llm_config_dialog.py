@@ -61,7 +61,6 @@ class TestCargaESalvamento:
             model="deepseek-chat",
             api_key="sk-9",
             rpm=7,
-            input_limitado=True,
         )
         root = tk.Tk()
         try:
@@ -71,7 +70,6 @@ class TestCargaESalvamento:
             assert dialog._model_var.get() == "deepseek-chat"
             assert dialog._api_key_var.get() == "sk-9"
             assert dialog._rpm_var.get() == "7"
-            assert dialog._input_limitado_var.get() is True
         finally:
             root.destroy()
 
@@ -86,14 +84,12 @@ class TestCargaESalvamento:
             dialog._model_var.set("gpt-4o-mini")
             dialog._api_key_var.set("sk-2")
             dialog._rpm_var.set("9")
-            dialog._input_limitado_var.set(True)
             dialog._salvar()
             dados = json.loads(caminho.read_text(encoding="utf-8"))
             chat = dados["llm"]["chat"]
             assert chat["provider"] == "openai"
             assert chat["providers"]["openai"]["api_key"] == "sk-2"
             assert chat["providers"]["openai"]["rpm"] == 9
-            assert chat["providers"]["openai"]["input_limitado"] is True
         finally:
             root.destroy()
 
@@ -119,7 +115,6 @@ class TestCargaESalvamento:
             dialog._model_var.set("deepseek-chat")
             dialog._api_key_var.set("sk-9")
             dialog._rpm_var.set("8")
-            dialog._input_limitado_var.set(True)
             dialog._salvar()
             reaberto = _dialog(root, config_path=caminho)
             try:
@@ -128,7 +123,6 @@ class TestCargaESalvamento:
                 assert reaberto._model_var.get() == "deepseek-chat"
                 assert reaberto._api_key_var.get() == "sk-9"
                 assert reaberto._rpm_var.get() == "8"
-                assert reaberto._input_limitado_var.get() is True
             finally:
                 reaberto.destroy()
         finally:
@@ -183,14 +177,12 @@ class TestConfigPorProvedor:
                                     "model": "gpt-4o-mini",
                                     "api_key": "sk-open",
                                     "rpm": 3,
-                                    "input_limitado": False,
                                 },
                                 "deepseek": {
                                     "api_url": "https://api.deepseek.com/v1",
                                     "model": "deepseek-chat",
                                     "api_key": "sk-deep",
                                     "rpm": 7,
-                                    "input_limitado": True,
                                 },
                             },
                         }
@@ -227,7 +219,6 @@ class TestConfigPorProvedor:
             assert dialog._model_var.get() == "deepseek-chat"
             assert dialog._api_key_var.get() == "sk-deep"
             assert dialog._rpm_var.get() == "7"
-            assert dialog._input_limitado_var.get() is True
         finally:
             root.destroy()
 
@@ -244,7 +235,6 @@ class TestConfigPorProvedor:
                 "https://generativelanguage.googleapis.com/v1beta/openai/"
             )
             assert dialog._api_key_var.get() == ""
-            assert dialog._input_limitado_var.get() is False
         finally:
             root.destroy()
 
@@ -260,13 +250,11 @@ class TestConfigPorProvedor:
             assert dialog._api_url_var.get() == ""
             assert dialog._model_var.get() == ""
             assert dialog._api_key_var.get() == ""
-            assert dialog._input_limitado_var.get() is False
             assert "none" not in dialog._working
 
             dialog._provider_var.set("deepseek")
             dialog._on_preset_change()
             assert dialog._api_key_var.get() == "sk-deep"
-            assert dialog._input_limitado_var.get() is True
         finally:
             root.destroy()
 

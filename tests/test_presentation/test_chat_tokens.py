@@ -62,17 +62,17 @@ class TestFormatacao:
 
     def test_texto_completo(self):
         assert formatar_tokens(5540, 340) == (
-            "Tokens: 5.5K entrada / 0.3K saída / 0.0K contexto"
+            "Tokens: 5.5K entrada / 0.3K saída / 0.0K contexto · nav: 0.0K/32K"
         )
 
     def test_texto_com_bruto_e_percentual(self):
         assert formatar_tokens(5540, 340, 6400, 72.4) == (
-            "Tokens: 5.5K entrada / 0.3K saída / 6.4K contexto (72%)"
+            "Tokens: 5.5K entrada / 0.3K saída / 6.4K contexto (72%) · nav: 0.0K/32K"
         )
 
     def test_percentual_arredonda_para_inteiro(self):
         assert formatar_tokens(0, 0, 0, 55.5) == (
-            "Tokens: 0.0K entrada / 0.0K saída / 0.0K contexto (56%)"
+            "Tokens: 0.0K entrada / 0.0K saída / 0.0K contexto (56%) · nav: 0.0K/32K"
         )
 
 
@@ -80,7 +80,7 @@ class TestContadorTokens:
     def test_inicia_zerado(self):
         contador = ContadorTokens()
         assert contador.texto() == (
-            "Tokens: 0.0K entrada / 0.0K saída / 0.0K contexto"
+            "Tokens: 0.0K entrada / 0.0K saída / 0.0K contexto · nav: 0.0K/32K"
         )
 
     def test_soma_uma_completion(self):
@@ -123,14 +123,14 @@ class TestContadorTokens:
         contador = ContadorTokens()
         contador.acumular(LLMUsage(entrada=1260, saida=10))
         assert contador.texto(1000) == (
-            "Tokens: 1.3K entrada / 0.0K saída / 1.3K contexto (126%)"
+            "Tokens: 1.3K entrada / 0.0K saída / 1.3K contexto (126%) · nav: 0.0K/32K"
         )
 
     def test_texto_sem_janela_omite_percentual(self):
         contador = ContadorTokens()
         contador.acumular(LLMUsage(entrada=1000, saida=10))
         assert contador.texto() == (
-            "Tokens: 1.0K entrada / 0.0K saída / 1.0K contexto"
+            "Tokens: 1.0K entrada / 0.0K saída / 1.0K contexto · nav: 0.0K/32K"
         )
 
     def test_zerar_reinicia(self):

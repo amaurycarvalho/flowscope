@@ -8,7 +8,6 @@ import tkinter as tk
 
 import pytest
 
-from flowscope.application.chat import FonteContexto
 from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMResposta,
@@ -19,10 +18,8 @@ from flowscope.presentation.gui.chat import chat_panel as chat_panel_mod
 from flowscope.presentation.gui.chat.chat_panel import (
     TITULO_CHAT,
     ChatPanel,
-    mensagem_confirmacao,
-    mensagem_confirmacao_recursos,
+    mensagem_confirmacao_custo,
 )
-from flowscope.application.chat.documentos import CascataDocumentos
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
@@ -70,7 +67,7 @@ class _LLMBloqueante:
 
 def _painel(root, tmp_path, **kwargs) -> ChatPanel:
     """Constrói um painel com catálogo temporário e opções sobreponíveis."""
-    kwargs.setdefault("cascata", CascataDocumentos(catalog=DocumentCatalog(cache_dir=tmp_path)))
+    kwargs.setdefault("catalogo", DocumentCatalog(cache_dir=tmp_path))
     painel = ChatPanel(root, **kwargs)
     painel.pack(fill=tk.BOTH, expand=True)
     return painel
@@ -378,27 +375,10 @@ class TestLimparChat:
 
 
 class TestConfirmacao:
-    @pytest.mark.parametrize(
-        ("quantidade", "nomes", "esperado"),
-        [
-            (2, [], None),
-            (3, [], None),
-            (4, ["a", "b", "c", "d"], "a"),
-            (8, [], "8 documentos"),
-        ],
-    )
-    def test_mensagem_por_faixa(self, quantidade, nomes, esperado):
-        texto = mensagem_confirmacao(quantidade, nomes)
-        if esperado is None:
-            assert texto is None
-        else:
-            assert esperado in texto
-
-    def test_mensagem_recursos(self):
-        texto = mensagem_confirmacao_recursos(["conhecimento", "resumos"])
-        assert "dados iniciais do FlowScope" in texto
-        assert "conhecimento" in texto
-        assert "resumos" in texto
+    def test_mensagem_de_custo(self):
+        texto = mensagem_confirmacao_custo(4500)
+        assert "4500 tokens" in texto
+        assert "navegação" in texto
 
     @needs_display
     def test_dialogo_confirmacao(self, tmp_path, monkeypatch):
@@ -415,33 +395,14 @@ class TestConfirmacao:
             monkeypatch.setattr(
                 chat_panel_mod.messagebox, "askyesno", lambda *a, **k: True
             )
-            assert painel._dialogo_confirmacao(5, ["a", "b", "c", "d", "e"]) is True
+            assert painel._dialogo_confirmacao(5, []) is True
             monkeypatch.setattr(
                 chat_panel_mod.messagebox, "askyesno", lambda *a, **k: False
             )
             assert painel._dialogo_confirmacao(9, []) is False
             monkeypatch.setattr(chat_panel_mod.messagebox, "askyesno", fake)
-            assert painel._dialogo_confirmacao(
-                1, ["conhecimento"], "recursos"
-            ) is True
-            assert capturado["titulo"] == "Confirmar carga de dados iniciais"
-            assert "dados iniciais do FlowScope" in capturado["texto"]
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_ate_tres_nao_abre_dialogo(self, tmp_path, monkeypatch):
-        root = tk.Tk()
-        try:
-            painel = _painel(root, tmp_path, llm_available=lambda: True)
-            chamadas: list = []
-            monkeypatch.setattr(
-                chat_panel_mod.messagebox,
-                "askyesno",
-                lambda *a, **k: chamadas.append(True) or True,
-            )
-            assert painel._dialogo_confirmacao(2, []) is True
-            assert chamadas == []
+            assert painel._dialogo_confirmacao(4500, [], "custo") is True
+            assert "4500 tokens" in capturado["texto"]
         finally:
             root.destroy()
 
@@ -514,62 +475,6 @@ class TestConsulta:
             root.update()
             assert painel._disponivel is False
             assert str(painel._entrada.cget("state")) == "disabled"
-        finally:
-            root.destroy()
-
-
-class TestFontesAdicionais:
-    @needs_display
-    def test_fonte_adicional_incluida_no_prompt(self, tmp_path):
-        root = tk.Tk()
-        llm = _FakeLLM(['{"resposta": "ok", "documentos": []}'])
-        recebidas: list[str] = []
-
-        def fonte(pergunta: str) -> FonteContexto:
-            recebidas.append(pergunta)
-            return FonteContexto("Notícias recentes", "manchete sobre PETR4")
-
-        try:
-            painel = _painel(
-                root,
-                tmp_path,
-                llm_available=lambda: True,
-                llm_factory=lambda: llm,
-                watchlist_provider=list,
-                fontes_adicionais=[fonte],
-            )
-            painel._texto_entrada_set("E as notícias?")
-            painel._enviar()
-            _aguardar(root, painel)
-            assert recebidas == ["E as notícias?"]
-            prompt = llm.chamadas[0][0][0]["content"]
-            assert "## Notícias recentes" in prompt
-            assert "manchete sobre PETR4" in prompt
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_fonte_adicional_que_falha_e_omitida(self, tmp_path):
-        root = tk.Tk()
-        llm = _FakeLLM(['{"resposta": "resposta mesmo assim", "documentos": []}'])
-
-        def fonte_ruim(pergunta: str) -> FonteContexto:
-            raise RuntimeError("fonte indisponível")
-
-        try:
-            painel = _painel(
-                root,
-                tmp_path,
-                llm_available=lambda: True,
-                llm_factory=lambda: llm,
-                watchlist_provider=list,
-                fontes_adicionais=[fonte_ruim],
-            )
-            painel._texto_entrada_set("Pergunta")
-            painel._enviar()
-            _aguardar(root, painel)
-            assert "resposta mesmo assim" in painel.conteudo_sessao()
-            assert len(llm.chamadas) == 1
         finally:
             root.destroy()
 

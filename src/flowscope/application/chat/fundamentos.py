@@ -8,6 +8,7 @@ pela LLM a partir da pergunta.
 
 from collections.abc import Iterable, Mapping
 
+from flowscope.application.chat.arvore import No, no_folha, ramo_fundamentos
 from flowscope.application.fundamental.formatters import NA
 from flowscope.application.fundamental.linhas import (
     _COLUNAS,
@@ -80,3 +81,55 @@ def montar_contexto_fundamentos(
     if not tickers:
         return ORIENTACAO_SEM_DADOS
     return serializar_fundamentos(dados, tickers)
+
+
+def campos_fundamentos() -> dict[str, str]:
+    """Mapeia cada cabeçalho de coluna de fundamentos ao seu propósito."""
+    return {cabecalho: cabecalho for _coluna, cabecalho in _COLUNAS}
+
+
+def valores_por_ticker(
+    dados: Mapping[str, object], tickers: Iterable[str]
+) -> dict[str, str]:
+    """Serializa a linha de cada ticker como um item compacto por chave."""
+    selecionados = [t for t in tickers if t in dados]
+    if not selecionados:
+        return {}
+    cabecalhos = [cabecalho for _coluna, cabecalho in _COLUNAS]
+    valores: dict[str, str] = {}
+    for linha in montar_linhas({t: dados[t] for t in selecionados}):
+        itens = _itens_compactos(cabecalhos[1:], linha[1:])
+        valores[str(linha[0])] = "; ".join(itens)
+    return valores
+
+
+class FonteFundamentos:
+    """Provedor do ramo ``/fundamentos`` a partir da tabela carregada."""
+
+    def __init__(
+        self: "FonteFundamentos",
+        dados: Mapping[str, object],
+        ticker: str | None = None,
+        watchlist: Iterable[str] = (),
+    ) -> None:
+        """Guarda a tabela e o escopo (ticker foco ou watchlist completa)."""
+        self._dados = dados
+        self._ticker = ticker
+        self._watchlist = list(watchlist)
+
+    def construir(self: "FonteFundamentos") -> No:
+        """Constrói o ramo ``/fundamentos``, com orientação se não houver dados."""
+        tickers = tickers_do_escopo(self._dados, self._ticker, self._watchlist)
+        if not tickers:
+            raiz = ramo_fundamentos()
+            raiz.filho(
+                no_folha(
+                    "/fundamentos/orientacao",
+                    "orientacao",
+                    conteudo=ORIENTACAO_SEM_DADOS,
+                )
+            )
+            return raiz
+        return ramo_fundamentos(
+            tickers, campos_fundamentos(), valores_por_ticker(self._dados, tickers)
+        )

@@ -45,11 +45,9 @@ class TestInfrastructureLLMConfig:
         assert port.cache_suportado({"provider": "openai"}) is True
         assert port.cache_suportado({"provider": "none"}) is False
 
-    def test_input_limitado(self):
+    def test_default_config_sem_input_limitado(self):
         port = InfrastructureLLMConfig()
-        assert port.input_limitado({"input_limitado": True}) is True
-        assert port.input_limitado({}) is False
-        assert port.default_config()["input_limitado"] is False
+        assert "input_limitado" not in port.default_config()
 
     def test_token_counter_sem_provedor(self):
         port = InfrastructureLLMConfig()

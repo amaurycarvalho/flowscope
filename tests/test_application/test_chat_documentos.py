@@ -1,187 +1,81 @@
-"""Testes da cascata de documentos do chat."""
+"""Testes do ramo ``/documentos`` da árvore de conhecimento do chat."""
 
-import logging
-from pathlib import Path
-
-import pytest
-
+from flowscope.application.chat.documentos import FonteDocumentos
 from flowscope.application.documentos.catalogo import chave_documento
 from flowscope.infrastructure.document_catalog import DocumentCatalog
-from flowscope.application.chat.documentos import (
-    FAIXA_AUTOMATICA,
-    FAIXA_LISTAR,
-    FAIXA_QUANTIDADE,
-    CascataDocumentos,
-    DocumentoEscopo,
-    faixa_confirmacao,
-)
 
 
-def _documento(tmp_path, ticker="PETR4", nome="1.html") -> tuple:
-    """Cria um informe mensal HTML em cache e devolve catálogo e arquivo."""
+def _catalogo(tmp_path, ticker="PETR4") -> tuple[DocumentCatalog, str]:
+    """Cria um informe mensal HTML em cache e devolve catálogo e chave."""
     pasta = tmp_path / "informe-mensal" / ticker / "2026" / "07"
     pasta.mkdir(parents=True)
-    arquivo = pasta / nome
+    arquivo = pasta / "1.html"
     arquivo.write_text(
         "<html><body><p>conteudo integral do informe</p></body></html>",
         encoding="utf-8",
     )
-    return DocumentCatalog(cache_dir=tmp_path), arquivo
+    return DocumentCatalog(cache_dir=tmp_path), chave_documento(arquivo, tmp_path)
 
 
-def _escopo(indice: int) -> DocumentoEscopo:
-    """Cria um documento de escopo fictício para os testes de gate."""
-    return DocumentoEscopo(
-        ticker="PETR4",
-        nome=f"{indice}.pdf",
-        categoria="Fato Relevante",
-        ano=2026,
-        mes=7,
-        chave=f"documentos-relevantes/PETR4/2026/07/fato-relevante/{indice}.pdf",
-        caminho=Path(f"/tmp/{indice}.pdf"),
-    )
+class TestFonteDocumentos:
+    def test_tickers_em_cache(self, tmp_path) -> None:
+        catalogo, _ = _catalogo(tmp_path)
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        assert ramo.caminho == "/documentos"
+        caminhos = {no.caminho for no in ramo.filhos}
+        assert "/documentos/tickers" in caminhos
 
-
-class TestLeitorResumos:
-    def test_resumos_do_escopo(self, tmp_path):
-        catalogo, arquivo = _documento(tmp_path)
-        chave = chave_documento(arquivo, tmp_path)
+    def test_resumos_viram_nos(self, tmp_path) -> None:
+        catalogo, chave = _catalogo(tmp_path)
         catalogo.summary_store.salvar("PETR4", chave, "curto", "longo")
-        cascata = CascataDocumentos(catalog=catalogo)
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        caminhos = _caminhos(ramo)
+        assert "/documentos/PETR4/curto" in caminhos
+        assert "/documentos/PETR4/longo" in caminhos
 
-        texto, alvos = cascata.montar_resumos("PETR4", [])
-        assert "curto" in texto
-        assert "longo" in texto
-        assert chave in texto
-        assert [a.chave for a in alvos] == [chave]
+    def test_texto_em_cache_vira_no(self, tmp_path) -> None:
+        catalogo, chave = _catalogo(tmp_path)
+        catalogo.text_store.salvar("PETR4", chave, "texto integral")
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        texto = _no(ramo, "/documentos/PETR4/texto")
+        assert texto is not None
+        assert texto.campo_pesado == "texto"
 
-    def test_listar_escopo_watchlist(self, tmp_path):
-        catalogo, _ = _documento(tmp_path)
-        cascata = CascataDocumentos(catalog=catalogo)
-        documentos = cascata.listar(None, ["PETR4"])
-        assert len(documentos) == 1
-        assert documentos[0].ticker == "PETR4"
-
-
-class TestLeitorTextoIntegral:
-    def test_texto_integral_do_cache(self, tmp_path):
-        catalogo, arquivo = _documento(tmp_path)
-        chave = chave_documento(arquivo, tmp_path)
-        catalogo.text_store.salvar("PETR4", chave, "texto integral cacheado")
-        cascata = CascataDocumentos(catalog=catalogo)
-
-        alvos = cascata.resolver_alvos([chave])
-        assert [a.chave for a in alvos] == [chave]
-        assert cascata.preparar_texto(alvos) == "texto integral cacheado"
-
-    def test_chave_desconhecida_ignorada(self, tmp_path):
-        catalogo, _ = _documento(tmp_path)
-        cascata = CascataDocumentos(catalog=catalogo)
-        assert cascata.resolver_alvos(["inexistente"]) == []
-
-    def test_sem_texto_em_cache_nao_extrai(self, tmp_path):
-        catalogo, arquivo = _documento(tmp_path)
-        chave = chave_documento(arquivo, tmp_path)
-        cascata = CascataDocumentos(catalog=catalogo)
-
-        alvos = cascata.resolver_alvos([chave])
-        assert cascata.preparar_texto(alvos) == ""
-        assert catalogo.text_store.obter("PETR4", chave) is None
-
-
-class TestCacheSomenteLeitura:
-    def test_cache_frio_nao_gera_resumo(self, tmp_path):
-        catalogo, arquivo = _documento(tmp_path)
-        chave = chave_documento(arquivo, tmp_path)
-        cascata = CascataDocumentos(catalog=catalogo)
-
-        texto, alvos = cascata.montar_resumos("PETR4", [])
-        assert texto == ""
-        assert alvos == []
-        assert catalogo.summary_store.obter("PETR4", chave) is None
-        assert catalogo.text_store.obter("PETR4", chave) is None
-
-    def test_pendente_e_omitido_em_silencio(self, tmp_path):
-        catalogo, arquivo = _documento(tmp_path)
-        chave = chave_documento(arquivo, tmp_path)
+    def test_ticker_tem_no_interno(self, tmp_path) -> None:
+        catalogo, chave = _catalogo(tmp_path)
         catalogo.summary_store.salvar("PETR4", chave, "curto", "longo")
-        outro = tmp_path / "informe-mensal" / "VALE3" / "2026" / "07"
-        outro.mkdir(parents=True)
-        (outro / "2.html").write_text("<html>sem resumo</html>", encoding="utf-8")
-        cascata = CascataDocumentos(catalog=catalogo)
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        ticker = _no(ramo, "/documentos/PETR4")
+        assert ticker is not None and not ticker.folha
+        assert {n.nome for n in ticker.filhos} == {"curto", "longo"}
 
-        texto, alvos = cascata.montar_resumos(None, ["PETR4", "VALE3"])
-        assert chave in texto
-        assert [a.ticker for a in alvos] == ["PETR4"]
-        assert "2.html" not in texto
+    def test_ticker_sem_conteudo_nao_e_listado(self, tmp_path) -> None:
+        catalogo, _ = _catalogo(tmp_path)
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        assert "/documentos/PETR4" not in _caminhos(ramo)
+        assert "/documentos/tickers/PETR4" not in _caminhos(ramo)
 
+    def test_pendente_omitido(self, tmp_path) -> None:
+        catalogo, _ = _catalogo(tmp_path)
+        ramo = FonteDocumentos(catalog=catalogo).construir()
+        caminhos = _caminhos(ramo)
+        assert "/documentos/PETR4/curto" not in caminhos
+        assert "/documentos/PETR4/texto" not in caminhos
 
-class TestGateConfirmacao:
-    @pytest.mark.parametrize(
-        ("quantidade", "faixa"),
-        [
-            (0, FAIXA_AUTOMATICA),
-            (3, FAIXA_AUTOMATICA),
-            (4, FAIXA_LISTAR),
-            (7, FAIXA_LISTAR),
-            (8, FAIXA_QUANTIDADE),
-            (20, FAIXA_QUANTIDADE),
-        ],
-    )
-    def test_faixas(self, quantidade, faixa):
-        assert faixa_confirmacao(quantidade) == faixa
-
-    def test_ate_tres_prossegue_sem_callback(self):
-        chamadas: list = []
-        cascata = CascataDocumentos(
-            confirmar=lambda quantidade, nomes: chamadas.append(quantidade) or True
-        )
-        assert cascata.confirmar_leitura([_escopo(i) for i in range(3)]) is True
-        assert chamadas == []
-
-    def test_quatro_a_sete_lista_nomes(self):
-        chamadas: list = []
-
-        def confirmar(quantidade: int, nomes: list[str]) -> bool:
-            chamadas.append((quantidade, nomes))
-            return True
-
-        cascata = CascataDocumentos(confirmar=confirmar)
-        assert cascata.confirmar_leitura([_escopo(i) for i in range(5)]) is True
-        quantidade, nomes = chamadas[0]
-        assert quantidade == 5
-        assert nomes == ["0.pdf", "1.pdf", "2.pdf", "3.pdf", "4.pdf"]
-
-    def test_oito_ou_mais_informa_quantidade(self):
-        chamadas: list = []
-
-        def confirmar(quantidade: int, nomes: list[str]) -> bool:
-            chamadas.append((quantidade, nomes))
-            return False
-
-        cascata = CascataDocumentos(confirmar=confirmar)
-        assert cascata.confirmar_leitura([_escopo(i) for i in range(9)]) is False
-        assert chamadas == [(9, [])]
+    def test_sem_catalogo(self) -> None:
+        ramo = FonteDocumentos(catalog=None).construir()
+        assert ramo.caminho == "/documentos"
 
 
-class TestOrcamento:
-    def test_teto_por_documento_e_global(self, caplog):
-        cascata = CascataDocumentos(teto_documento=5, teto_global=8)
-        with caplog.at_level(logging.WARNING, logger="flowscope"):
-            texto = cascata._aplicar_orcamento(["123456789", "abcdef"])
-        assert texto == "12345\n\nabc"
-        assert any("truncado" in r.getMessage() for r in caplog.records)
+def _caminhos(raiz) -> set[str]:
+    return {no.caminho for no in _percorrer(raiz)}
 
-    def test_sem_excesso_nao_trunca(self, caplog):
-        cascata = CascataDocumentos(teto_documento=100, teto_global=100)
-        with caplog.at_level(logging.WARNING, logger="flowscope"):
-            texto = cascata._aplicar_orcamento(["abc", "def"])
-        assert texto == "abc\n\ndef"
-        assert caplog.records == []
 
-    def test_teto_global_esgotado(self, caplog):
-        cascata = CascataDocumentos(teto_documento=100, teto_global=4)
-        with caplog.at_level(logging.WARNING, logger="flowscope"):
-            texto = cascata._aplicar_orcamento(["abcd", "efgh"])
-        assert texto == "abcd"
-        assert any("truncado" in r.getMessage() for r in caplog.records)
+def _no(raiz, caminho: str):
+    return next((no for no in _percorrer(raiz) if no.caminho == caminho), None)
+
+
+def _percorrer(no):
+    yield no
+    for filho in no.filhos:
+        yield from _percorrer(filho)

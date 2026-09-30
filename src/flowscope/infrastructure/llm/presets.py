@@ -22,7 +22,7 @@ PROVIDER_PRESETS: dict[str, dict[str, object]] = {
     "openai": {
         "model": "gpt-4o-mini",
         "api_url": "https://api.openai.com/v1",
-        "context_window": 128000,
+        "context_window": 1048576,
         "cache_prompt": True,
     },
     "gemini": {
@@ -34,19 +34,19 @@ PROVIDER_PRESETS: dict[str, dict[str, object]] = {
     "copilot": {
         "model": "gpt-4o",
         "api_url": "https://models.inference.ai.azure.com",
-        "context_window": 128000,
+        "context_window": 1048576,
         "cache_prompt": True,
     },
     "claude": {
         "model": "claude-sonnet-4-20250514",
         "api_url": "https://api.anthropic.com/v1",
-        "context_window": 200000,
+        "context_window": 1048576,
         "cache_prompt": True,
     },
     "deepseek": {
         "model": "deepseek-chat",
         "api_url": "https://api.deepseek.com/v1",
-        "context_window": 131072,
+        "context_window": 1048576,
         "cache_prompt": True,
     },
     "ollama": {
@@ -58,7 +58,7 @@ PROVIDER_PRESETS: dict[str, dict[str, object]] = {
     "custom": {
         "model": "",
         "api_url": "",
-        "context_window": 0,
+        "context_window": 131072,
         "cache_prompt": False,
     },
 }

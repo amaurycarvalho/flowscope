@@ -9,7 +9,8 @@ registra mensagens e estados de controle no lugar dos widgets.
 import threading
 import time
 
-from flowscope.application.chat import ContextoChat
+from flowscope.application.chat import ArvoreConhecimento
+from flowscope.application.chat.arvore import no_interno
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.presentation.gui.background.manager import BackgroundManager
@@ -49,9 +50,8 @@ class _LLMBloqueante:
         return LLMResposta(texto=resultado)
 
 
-class _ContextoFake:
-    def montar(self, pergunta, fundamentos, watchlist, cache=None) -> ContextoChat:
-        return ContextoChat(bloco_estavel="", assinatura="a")
+def _arvore() -> ArvoreConhecimento:
+    return ArvoreConhecimento(no_interno("/", "/"), assinatura="a")
 
 
 class _Host(EnvioMixin):
@@ -62,12 +62,12 @@ class _Host(EnvioMixin):
         self._background.ao_iniciar(lambda _handle: self._on_job_iniciado())
         self._background.ao_terminar(lambda _handle: self._on_job_terminado())
         self._ctx_atual = None
-        self._bloco_cache = None
         self._enviando = False
         self._heartbeat_intervalo = 30.0
         self._disponivel = True
         self._llm = llm
-        self._contexto = _ContextoFake()
+        self._assinatura = None
+        self._navegacao = []
         self._sessao = ChatSession()
         self._fundamental_data_provider = dict
         self._watchlist_provider = list
@@ -84,6 +84,9 @@ class _Host(EnvioMixin):
 
     def _criar_llm(self):
         return self._llm
+
+    def montar_arvore(self, fundamentos, watchlist):
+        return _arvore()
 
     def _registrar(self, role, texto, fontes=None, enviar_ao_modelo=True) -> None:
         self._sessao.add_message(
