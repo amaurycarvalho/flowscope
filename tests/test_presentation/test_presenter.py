@@ -61,6 +61,39 @@ class TestFlowScopePresenter:
         view.exit_busy.assert_not_called()
         view.restore_all_buttons.assert_not_called()
 
+    def test_ao_ficar_ocioso_dispara_na_transicao_para_ocioso(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        chamadas: list[int] = []
+        presenter.on_operation_started()
+        presenter.ao_ficar_ocioso(lambda: chamadas.append(1))
+
+        presenter.on_operation_finished()
+
+        assert chamadas == [1]
+
+    def test_ao_ficar_ocioso_executa_imediatamente_se_ja_ocioso(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        chamadas: list[int] = []
+
+        presenter.ao_ficar_ocioso(lambda: chamadas.append(1))
+
+        assert chamadas == [1]
+
+    def test_ao_ficar_ocioso_e_um_unico_disparo(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        chamadas: list[int] = []
+        presenter.ao_ficar_ocioso(lambda: chamadas.append(1))
+
+        presenter.on_operation_started()
+        presenter.on_operation_finished()
+        presenter.on_operation_started()
+        presenter.on_operation_finished()
+
+        assert chamadas == [1]
+
     def test_on_progress_delega_para_view(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)

@@ -119,6 +119,10 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
 
         self._set_icon()
         self._setup_style()
+        # O escudo é colocado antes de construir os painéis para que qualquer
+        # pintura da janela durante a inicialização já saia coberta; o gate o
+        # reergue e o mantém até a carga inicial em background concluir.
+        self.colocar_escudo()
 
         self._current_data: dict = {}
         self._sampling_dates: list[date] = []
@@ -132,12 +136,14 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
 
         self._wire_ports()
         self._build_top_bar()
+        self.colocar_escudo()
         self._wire_documentos()
         self._wire_noticias()
         # A barra de status é empacotada antes da área principal expansível para
         # não ser cortada pelo tamanho requisitado dos painéis (matplotlib).
         self._build_statusbar()
         self._build_main_area()
+        self.colocar_escudo()
         self._build_action_buttons()
         self._bind_shortcuts()
 

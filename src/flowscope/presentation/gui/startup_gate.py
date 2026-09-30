@@ -14,6 +14,9 @@ from typing import Protocol
 #: Tempo máximo (ms) para a restauração inicial antes do release de segurança.
 TIMEOUT_GATE_MS = 3000
 
+#: Mensagem exibida dentro do escudo durante a inicialização da aplicação.
+MENSAGEM_INICIALIZACAO = "Aguarde a inicialização da aplicação…"
+
 
 class EscudoView(Protocol):
     """Contrato mínimo da view requerido pelo coordenador do gate."""
@@ -30,10 +33,13 @@ class EscudoView(Protocol):
 class StartupGate:
     """Coordena escudo, flag de inicialização e estado ocupado.
 
-    ``iniciar`` entra no estado ocupado (desabilitando controles e aplicando o
-    cursor de espera) e coloca o escudo; ``finalizar`` remove o escudo antes de
-    sair do estado ocupado, para que a restauração do cursor não capture o
-    próprio overlay. Ambas as operações são idempotentes.
+    ``iniciar`` coloca o escudo antes de entrar no estado ocupado, para que a
+    primeira pintura da janela já saia coberta, e registra a remoção do escudo
+    na próxima transição da autoridade de estado para ociosa. ``finalizar``
+    apenas libera a operação do gate; o escudo só é removido quando a
+    inicialização em background conclui (todas as operações terminam), de modo
+    que o usuário veja a mensagem de espera durante toda a inicialização.
+    Ambas as operações são idempotentes.
     """
 
     def __init__(
@@ -43,6 +49,7 @@ class StartupGate:
         self._view = view
         self._presenter = presenter
         self._inicializando = False
+        self._ocioso_suportado = False
 
     @property
     def inicializando(self: "StartupGate") -> bool:
@@ -54,16 +61,21 @@ class StartupGate:
         if self._inicializando:
             return
         self._inicializando = True
-        self._presenter.enter()
         self._view.colocar_escudo()
+        self._presenter.enter()
+        registrar = getattr(self._presenter, "ao_ficar_ocioso", None)
+        self._ocioso_suportado = registrar is not None
+        if registrar is not None:
+            registrar(self._view.remover_escudo)
 
     def finalizar(self: "StartupGate") -> None:
-        """Desativa o bloqueio de inicialização, se estiver ativo."""
+        """Solicita a liberação; o escudo sai quando a aplicação fica ociosa."""
         if not self._inicializando:
             return
         self._inicializando = False
-        self._view.remover_escudo()
         self._presenter.exit()
+        if not self._ocioso_suportado:
+            self._view.remover_escudo()
 
 
 class StartupGateMixin:
@@ -103,18 +115,36 @@ class StartupGateMixin:
             gate.finalizar()
 
     def colocar_escudo(self: "StartupGateMixin") -> None:
-        """Coloca um frame de bloqueio cobrindo toda a janela."""
-        if getattr(self, "_escudo", None) is not None:
-            return
-        escudo = tk.Frame(self, cursor="watch")
-        escudo.place(x=0, y=0, relwidth=1, relheight=1)
+        """Coloca um frame de bloqueio cobrindo toda a janela.
+
+        O escudo cobre o toplevel inteiro, inclusive a barra superior de data,
+        e exibe uma mensagem central informando que a aplicação está
+        inicializando. Enquanto ativo, ele fica acima dos demais widgets.
+        """
+        escudo = getattr(self, "_escudo", None)
+        if escudo is None:
+            escudo = tk.Frame(self, cursor="watch")
+            mensagem = tk.Label(
+                escudo,
+                text=MENSAGEM_INICIALIZACAO,
+                font=("TkDefaultFont", 14),
+            )
+            mensagem.place(relx=0.5, rely=0.5, anchor="center")
+            escudo.place(x=0, y=0, relwidth=1, relheight=1)
+            self._escudo = escudo
         escudo.lift()
-        self._escudo = escudo
 
     def remover_escudo(self: "StartupGateMixin") -> None:
         """Remove o frame de bloqueio da janela."""
         escudo = getattr(self, "_escudo", None)
         if escudo is None:
             return
+        estados = getattr(self, "_cursor_states", None)
+        if estados is not None:
+            for widget in (escudo, *escudo.winfo_children()):
+                estados.pop(widget, None)
         escudo.destroy()
         self._escudo = None
+        mostrar = getattr(self, "_mostrar_data_referencia", None)
+        if mostrar is not None:
+            mostrar()

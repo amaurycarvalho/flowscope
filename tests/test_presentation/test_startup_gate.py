@@ -12,12 +12,14 @@ import tkinter as tk
 from unittest.mock import MagicMock
 
 import pytest
+from tkcalendar import DateEntry
 
 from flowscope.presentation.gui.app_actions import ActionsMixin
 from flowscope.presentation.gui.app_csv import CsvMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 from flowscope.presentation.gui.startup_gate import (
+    MENSAGEM_INICIALIZACAO,
     TIMEOUT_GATE_MS,
     StartupGate,
     StartupGateMixin,
@@ -47,22 +49,39 @@ class _EscudoFake:
 
 
 class _PresenterFake:
-    """Apresentador fake que registra entradas e saídas do estado ocupado."""
+    """Apresentador fake que registra o estado ocupado e emula a ociosidade."""
 
     def __init__(self) -> None:
         self.enters = 0
         self.exits = 0
+        self._ativos = 0
+        self._ocioso_callbacks = []
 
     def enter(self) -> None:
         self.enters += 1
+        self._ativos += 1
 
     def exit(self) -> None:
         self.exits += 1
+        if self._ativos > 0:
+            self._ativos -= 1
+        if self._ativos == 0:
+            callbacks = self._ocioso_callbacks
+            self._ocioso_callbacks = []
+            for callback in callbacks:
+                callback()
+
+    def ao_ficar_ocioso(self, callback) -> None:
+        if self._ativos == 0:
+            callback()
+            return
+        self._ocioso_callbacks.append(callback)
 
 
 class TestStartupGate:
-    def test_iniciar_entra_e_coloca_e_finalizar_remove_antes_de_sair(self):
+    def test_escudo_colocado_antes_de_entrar_e_removido_ao_ficar_ocioso(self):
         eventos: list[str] = []
+        idle: list = []
 
         class View:
             def colocar_escudo(self) -> None:
@@ -78,13 +97,20 @@ class TestStartupGate:
             def exit(self) -> None:
                 eventos.append("exit")
 
+            def ao_ficar_ocioso(self, callback) -> None:
+                idle.append(callback)
+
         gate = StartupGate(View(), Presenter())
         gate.iniciar()
-        assert eventos == ["enter", "colocar"]
+        assert eventos == ["colocar", "enter"]
 
         eventos.clear()
         gate.finalizar()
-        assert eventos == ["remover", "exit"]
+        assert eventos == ["exit"]
+        assert idle
+
+        idle[0]()
+        assert eventos == ["exit", "remover"]
 
     def test_chamadas_repetidas_sao_idempotentes(self):
         view = _EscudoFake()
@@ -126,13 +152,14 @@ class TestStartupGate:
         assert presenter._operacoes_ativas == 2
 
         gate.finalizar()
-        assert escudo.visivel is False
+        assert escudo.visivel is True
         assert presenter._operacoes_ativas == 1
         view.restore_all_buttons.assert_not_called()
         view.exit_busy.assert_not_called()
 
         presenter.exit()
         assert presenter._operacoes_ativas == 0
+        assert escudo.visivel is False
         view.restore_all_buttons.assert_called_once()
         view.exit_busy.assert_called_once()
 
@@ -329,9 +356,42 @@ class TestEscudoUI:
             assert host._escudo.winfo_manager() == "place"
             assert host._escudo.cget("cursor") == "watch"
 
+            mensagens = [
+                w
+                for w in host._escudo.winfo_children()
+                if isinstance(w, tk.Label)
+                and w.cget("text") == MENSAGEM_INICIALIZACAO
+            ]
+            assert len(mensagens) == 1
+            assert mensagens[0].winfo_manager() == "place"
+
             host.remover_escudo()
             host.update()
             assert getattr(host, "_escudo", None) is None
+            assert mensagens[0].winfo_exists() == 0
+        finally:
+            host.destroy()
+
+    def test_escudo_cobre_barra_superior_de_data(self):
+        host = _GateUIHost()
+        try:
+            host.geometry("400x300")
+            host._presenter = MagicMock()
+            barra = tk.Frame(host)
+            barra.pack(side=tk.TOP, fill=tk.X)
+            rotulo = tk.Label(barra, text="Data de referência:")
+            rotulo.pack(side=tk.LEFT)
+            entrada = DateEntry(barra)
+            entrada.pack(side=tk.LEFT)
+            host.update()
+
+            host.colocar_escudo()
+            host.update()
+
+            for widget in (rotulo, entrada):
+                x = widget.winfo_rootx() + widget.winfo_width() // 2
+                y = widget.winfo_rooty() + widget.winfo_height() // 2
+                assert host.winfo_containing(x, y) is host._escudo
         finally:
             host.destroy()
 
@@ -345,6 +405,7 @@ class TestEscudoUI:
         try:
             assert janela._inicializando is True
             assert janela._escudo is not None
+            assert "disabled" in str(janela._date_entry.cget("state"))
         finally:
             janela.destroy()
 

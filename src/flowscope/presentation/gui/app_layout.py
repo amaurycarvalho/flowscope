@@ -58,7 +58,7 @@ class LayoutMixin:
         top = tk.Frame(self)
         top.pack(side=tk.TOP, fill=tk.X, padx=PAD_LARGE, pady=PAD_SMALL)
 
-        tk.Label(top, text="Data de referência:").pack(side=tk.LEFT)
+        self._data_ref_label = tk.Label(top, text="Data de referência:")
         self._date_entry = DateEntry(
             top,
             date_pattern="yyyy-MM-dd",
@@ -123,6 +123,17 @@ class LayoutMixin:
 
         self._period_combo.bind("<<ComboboxSelected>>", self._on_period_combo_changed)
         self._sampling_combo.bind("<<ComboboxSelected>>", self._on_sampling_combo_changed)
+
+    def _mostrar_data_referencia(self: "LayoutMixin") -> None:
+        """Exibe o rótulo "Data de referência" após o escudo de inicialização sair.
+
+        Ele nasce oculto para não aparecer enquanto o gate cobre a janela; é
+        inserido na posição original, antes da entrada de data, no release.
+        """
+        label = getattr(self, "_data_ref_label", None)
+        if label is None or label.winfo_manager():
+            return
+        label.pack(side=tk.LEFT, before=self._date_entry)
 
     def _build_main_area(self: "LayoutMixin") -> None:
         self._main_pw = tk.PanedWindow(

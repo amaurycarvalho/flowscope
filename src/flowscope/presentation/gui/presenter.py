@@ -1,7 +1,7 @@
 """Apresentador da interface gráfica, conectando a view aos casos de uso."""
 
 import tkinter as tk
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import date
 from enum import Enum
@@ -115,6 +115,7 @@ class FlowScopePresenter:
         self._cancel_token = CancellationToken()
         self._jobs_cancelaveis = 0
         self._background = None
+        self._ao_ficar_ocioso: list[Callable[[], None]] = []
 
     def attach_background(self: "FlowScopePresenter", background: object) -> None:
         """Vincula o gerenciador de background ao apresentador."""
@@ -178,6 +179,24 @@ class FlowScopePresenter:
             if self._cancel_token.is_set:
                 self._view.set_status("Processamento interrompido.", "⚠")
             self._sincronizar_copy_button()
+            self._disparar_ao_ficar_ocioso()
+
+    def ao_ficar_ocioso(self: "FlowScopePresenter", callback: Callable[[], None]) -> None:
+        """Registra um callback executado uma vez na próxima transição para ocioso.
+
+        Se a interface já estiver ociosa, o callback é executado imediatamente.
+        """
+        if self._operacoes_ativas == 0 and self._estado is _BusyState.IDLE:
+            callback()
+            return
+        self._ao_ficar_ocioso.append(callback)
+
+    def _disparar_ao_ficar_ocioso(self: "FlowScopePresenter") -> None:
+        """Executa e limpa os callbacks de ociosidade registrados."""
+        callbacks = self._ao_ficar_ocioso
+        self._ao_ficar_ocioso = []
+        for callback in callbacks:
+            callback()
 
     @contextmanager
     def busy(self: "FlowScopePresenter") -> Iterator[None]:
