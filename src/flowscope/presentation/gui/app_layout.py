@@ -141,13 +141,8 @@ class LayoutMixin:
         )
         self._main_pw.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=PAD_LARGE, pady=PAD_SMALL)
 
-        self._left_pw = tk.PanedWindow(
-            self._main_pw, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=6
-        )
-        self._main_pw.add(self._left_pw, stretch="always")
-
-        self._main_notebook = ttk.Notebook(self._left_pw)
-        self._left_pw.add(self._main_notebook, stretch="always")
+        self._main_notebook = ttk.Notebook(self._main_pw)
+        self._main_pw.add(self._main_notebook, stretch="always")
 
         general_frame = ttk.Frame(self._main_notebook)
         self._main_notebook.add(general_frame, text="Análise Geral")
@@ -173,6 +168,7 @@ class LayoutMixin:
             self._main_pw, orient=tk.VERTICAL, sashrelief=tk.RAISED, sashwidth=6
         )
         self._main_pw.add(right_pw, stretch="never")
+        self._right_pw = right_pw
 
         ticker_frame = tk.Frame(right_pw)
         right_pw.add(ticker_frame, stretch="always")
@@ -194,12 +190,7 @@ class LayoutMixin:
         self._orientation_panel.frame.pack(fill=tk.X)
 
         if self._prefs.get("sash_positions"):
-            try:
-                pos = self._prefs["sash_positions"]
-                if isinstance(pos, (list, tuple)) and len(pos) >= 4:
-                    self.after(100, lambda: self._restore_sashes(pos))
-            except tk.TclError:
-                pass
+            self._agendar_restauracao_divisor()
 
         self._GENERAL = {
             "VWAP": self._vwap_chart,

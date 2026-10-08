@@ -1,5 +1,8 @@
 import os
+import threading
+import time
 import tkinter as tk
+import types
 from tkinter import ttk
 from unittest.mock import MagicMock
 
@@ -9,6 +12,7 @@ from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.presentation.gui.app_layout import LayoutMixin
 from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 
 
@@ -297,6 +301,128 @@ class TestWaitCursor:
             assert getattr(gui, "_busy_motion_id", None) is None
         finally:
             gui.destroy()
+
+
+class _FakeWidget:
+    """Widget mínimo (sem Tk) para exercitar a máquina de cursor."""
+
+    def __init__(self, cursor: str = "") -> None:
+        self._cursor = cursor
+
+    def cget(self, key: str) -> str:
+        if key == "cursor":
+            return self._cursor
+        raise tk.TclError(key)
+
+    def config(self, **kwargs: object) -> None:
+        if "cursor" in kwargs:
+            self._cursor = str(kwargs["cursor"])
+
+    def winfo_children(self) -> list:
+        return []
+
+
+class _CursorHost(StatusMixin):
+    """Host sem display que implementa o mínimo usado pelo ``StatusMixin``."""
+
+    def __init__(self) -> None:
+        self._cursor = ""
+        self._cursor_states: dict = {}
+        self._busy_motion_id = None
+        self._presenter = None
+
+    def cget(self, key: str) -> str:
+        if key == "cursor":
+            return self._cursor
+        raise tk.TclError(key)
+
+    def config(self, **kwargs: object) -> None:
+        if "cursor" in kwargs:
+            self._cursor = str(kwargs["cursor"])
+
+    def winfo_children(self) -> list:
+        return []
+
+    def bind(self, sequence: str, func: object, add: str | None = None) -> str:
+        return "hook"
+
+    def unbind(self, sequence: str, funcid: object = None) -> None:
+        pass
+
+    def deletecommand(self, funcid: object = None) -> None:
+        pass
+
+    def update_idletasks(self) -> None:
+        pass
+
+
+class TestCursorBusyHeadless:
+    def test_widget_criado_durante_busy_restaura(self):
+        host = _CursorHost()
+        host._set_wait_cursor()
+        novo = _FakeWidget(cursor="hand2")
+        StatusMixin._on_busy_motion(host, types.SimpleNamespace(widget=novo))
+        assert novo.cget("cursor") == "watch"
+        assert novo in host._cursor_states
+
+        host._clear_wait_cursor()
+        assert novo.cget("cursor") == "hand2"
+
+    def test_watch_residual_limpo_quando_ocioso(self):
+        host = _CursorHost()
+        host._presenter = types.SimpleNamespace(is_busy=False)
+        host._set_wait_cursor()
+        btn = _FakeWidget(cursor="hand2")
+        host._cursor_states[btn] = "hand2"
+        btn.config(cursor="watch")
+
+        StatusMixin._on_busy_motion(host, types.SimpleNamespace(widget=btn))
+
+        assert btn.cget("cursor") == "hand2"
+        assert host._cursor_states == {}
+        assert host._busy_motion_id is None
+
+    def test_remove_hook_usa_unbind_especifico(self):
+        host = _CursorHost()
+        host._busy_motion_id = "hook123"
+        chamadas = []
+        host.unbind = lambda seq, fid=None: chamadas.append((seq, fid))
+
+        StatusMixin._remover_hook_motion_busy(host)
+
+        assert chamadas == [("<Motion>", "hook123")]
+        assert host._busy_motion_id is None
+
+
+class TestManagersLocaisNaoAcionamCursorHeadless:
+    def test_manager_local_nao_aciona_cursor_global(self):
+        from flowscope.presentation.gui.presenter import FlowScopePresenter
+
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+
+        global_mgr = BackgroundManager()
+        global_mgr.ao_iniciar(lambda h: presenter.enter())
+        global_mgr.ao_terminar(lambda h: presenter.exit())
+        global_mgr.submit(lambda ctx: None, grupo="g")
+        prazo = time.time() + 2
+        while not view.exit_busy.called and time.time() < prazo:
+            global_mgr.drenar()
+            time.sleep(0.01)
+        view.enter_busy.assert_called_once()
+        view.exit_busy.assert_called_once()
+
+        view.reset_mock()
+        concluido = threading.Event()
+        local_mgr = BackgroundManager()
+        local_mgr.submit(lambda ctx: concluido.set(), grupo="local")
+        prazo = time.time() + 2
+        while not concluido.is_set() and time.time() < prazo:
+            local_mgr.drenar()
+            time.sleep(0.01)
+        local_mgr.drenar()
+        view.enter_busy.assert_not_called()
+        view.exit_busy.assert_not_called()
 
 
 class _StatusBarHost(tk.Tk, LayoutMixin, StatusMixin):

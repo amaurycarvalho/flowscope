@@ -126,6 +126,11 @@ class FlowScopePresenter:
         """Retorna o token de cancelamento compartilhado pelos jobs."""
         return self._cancel_token
 
+    @property
+    def is_busy(self: "FlowScopePresenter") -> bool:
+        """Indica se há operação ativa contabilizada pela autoridade de estado."""
+        return self._operacoes_ativas > 0
+
     def request_cancel(self: "FlowScopePresenter") -> None:
         """Solicita o cancelamento de todos os processamentos em background."""
         self._cancel_token.request()

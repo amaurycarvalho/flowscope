@@ -34,6 +34,12 @@ from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
 from flowscope.presentation.gui.chat.chat_panel import ChatPanel
 from flowscope.presentation.gui.widgets.about_panel import AboutPanel
 
+#: Largura mínima (px) do painel esquerdo ao restaurar o divisor principal.
+MIN_PAINEL_ESQUERDO = 200
+
+#: Largura mínima (px) do painel direito ao restaurar o divisor principal.
+MIN_PAINEL_DIREITO = 80
+
 
 class TabsLayoutMixin:
     """Constrói as abas de análise e restaura o estado dos separadores."""
@@ -270,11 +276,62 @@ class TabsLayoutMixin:
             if finalizar is not None:
                 finalizar()
 
-    def _restore_sashes(self: "TabsLayoutMixin", positions: list[int]) -> None:
+    def _agendar_restauracao_divisor(self: "TabsLayoutMixin") -> None:
+        """Agenda a restauração do divisor no primeiro layout útil da janela.
+
+        A largura salva do painel direito é aplicada somente quando o divisor
+        já tem largura real (primeiro ``<Configure>`` com layout pronto), para
+        que reabrir a aplicação em outra resolução preserve a largura e não a
+        posição absoluta do sash.
+        """
+        largura = getattr(self, "_prefs", {}).get("sash_positions")
+        if isinstance(largura, bool) or not isinstance(largura, int) or largura <= 0:
+            return
+        self._largura_direita_pendente = largura
+        self._divisor_restaurado = False
         try:
-            if len(positions) >= 2:
-                self._main_pw.sash_place(0, positions[0], 0)
-            if len(positions) >= 4 and hasattr(self, "_left_pw"):
-                self._left_pw.sash_place(0, 0, positions[1])
+            self._divisor_configure_id = self.bind(
+                "<Configure>", self._on_configure_restaurar_divisor, add="+"
+            )
+        except tk.TclError:
+            self._divisor_configure_id = None
+
+    def _on_configure_restaurar_divisor(
+        self: "TabsLayoutMixin", event: tk.Event
+    ) -> None:
+        """Aplica a largura salva uma única vez, quando o layout tem largura."""
+        if getattr(self, "_divisor_restaurado", False):
+            self._desvincular_configure_divisor()
+            return
+        painel = getattr(self, "_main_pw", None)
+        if painel is None:
+            return
+        self.update_idletasks()
+        if painel.winfo_width() <= 1:
+            return
+        self._restore_sashes(self._largura_direita_pendente)
+        self._divisor_restaurado = True
+        self._desvincular_configure_divisor()
+
+    def _desvincular_configure_divisor(self: "TabsLayoutMixin") -> None:
+        funcid = getattr(self, "_divisor_configure_id", None)
+        if funcid is None:
+            return
+        try:
+            self.unbind("<Configure>", funcid)
+        except tk.TclError:
+            pass
+        self._divisor_configure_id = None
+
+    def _restore_sashes(self: "TabsLayoutMixin", largura_direita: int) -> None:
+        """Posiciona o divisor para que o painel direito tenha a largura salva."""
+        try:
+            total = self._main_pw.winfo_width()
+            if total <= 1:
+                return
+            x = total - int(largura_direita)
+            x = max(MIN_PAINEL_ESQUERDO, min(x, total - MIN_PAINEL_DIREITO))
+            if x > 0:
+                self._main_pw.sash_place(0, x, 0)
         except tk.TclError:
             pass

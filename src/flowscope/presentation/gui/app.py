@@ -65,6 +65,15 @@ def load_preferences() -> dict:
         prefs["last_tickers"] = [t for t in last_tickers if isinstance(t, str) and t.strip()]
     if not isinstance(prefs.get("fundamental_column_widths"), dict):
         prefs["fundamental_column_widths"] = None
+    largura_direita = prefs.get("sash_positions")
+    if (
+        isinstance(largura_direita, bool)
+        or not isinstance(largura_direita, (int, float))
+        or largura_direita <= 0
+    ):
+        prefs["sash_positions"] = None
+    else:
+        prefs["sash_positions"] = int(largura_direita)
     return prefs
 
 
@@ -198,6 +207,23 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
         else:
             self._set_status("Erro ao criar atalho.", "⚠")
 
+    def _largura_divisor_direito(self: "FlowScopeGUI") -> int | None:
+        """Retorna a largura, em pixels, do painel direito do divisor principal.
+
+        Persistir a largura (e não a coordenada absoluta do sash) mantém o
+        painel direito estável quando a aplicação reabre em outra resolução.
+        """
+        painel = getattr(self, "_main_pw", None)
+        if painel is None:
+            return None
+        try:
+            total = painel.winfo_width()
+            x = painel.sash_coord(0)[0]
+        except (tk.TclError, IndexError):
+            return None
+        largura = total - x
+        return int(largura) if largura > 0 else None
+
     def _on_close(self: "FlowScopeGUI") -> None:
         self._prefs["window_geometry"] = self.geometry()
         self._prefs["last_date"] = str(self._date_entry.get_date())
@@ -208,16 +234,6 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
             self._prefs["fundamental_column_widths"] = (
                 self._fundamental_table.get_column_widths()
             )
-        try:
-            positions = []
-            if hasattr(self, "_main_pw"):
-                pos = self._main_pw.sash_coord(0)
-                positions.extend([pos[0], pos[1]])
-            if hasattr(self, "_left_pw"):
-                pos = self._left_pw.sash_coord(0)
-                positions.extend([pos[0], pos[1]])
-            self._prefs["sash_positions"] = positions if positions else None
-        except (tk.TclError, IndexError):
-            pass
+        self._prefs["sash_positions"] = self._largura_divisor_direito()
         save_preferences(self._prefs)
         self.destroy()

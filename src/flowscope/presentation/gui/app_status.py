@@ -141,14 +141,18 @@ class StatusMixin:
     def _instalar_hook_motion_busy(self: "StatusMixin") -> None:
         """Reafirma o cursor de espera em ``<Motion>`` enquanto ocupado.
 
-        O hook global roda depois dos bindings de classe do Tk (widget ->
-        classe -> toplevel -> all), sobrepondo cursores transitórios como o
-        ``hresize`` de separadores de coluna e o ``sb_*`` de sashes.
+        O hook é associado ao toplevel principal; como o toplevel está nos
+        bindtags de todos os seus descendentes, ele roda depois dos bindings
+        de classe do Tk (widget -> classe -> toplevel) e sobrepõe cursores
+        transitórios como o ``hresize`` de separadores de coluna e o ``sb_*``
+        de sashes. Diferente de ``bind_all``, o binding fica restrito a esta
+        janela e pode ser removido isoladamente, sem afetar outros bindings
+        globais de ``<Motion>``.
         """
         if getattr(self, "_busy_motion_id", None) is not None:
             return
         try:
-            self._busy_motion_id = self.bind_all(
+            self._busy_motion_id = self.bind(
                 "<Motion>", self._on_busy_motion, add="+"
             )
         except tk.TclError:
@@ -159,21 +163,43 @@ class StatusMixin:
         if funcid is None:
             return
         try:
-            self.unbind_all("<Motion>")
+            self.unbind("<Motion>", funcid)
         except tk.TclError:
-            pass
-        try:
-            self.deletecommand(funcid)
-        except tk.TclError:
-            pass
+            try:
+                self.deletecommand(funcid)
+            except tk.TclError:
+                pass
         self._busy_motion_id = None
 
+    def _ocupado_global(self: "StatusMixin") -> bool:
+        """Indica se a autoridade de estado global considera a janela ocupada."""
+        presenter = getattr(self, "_presenter", None)
+        if presenter is not None:
+            valor = getattr(presenter, "is_busy", None)
+            if valor is not None:
+                return bool(valor() if callable(valor) else valor)
+        return bool(getattr(self, "_cursor_states", None))
+
     def _on_busy_motion(self: "StatusMixin", event: tk.Event) -> None:
-        """Reaplica o cursor de espera ao widget sob o ponteiro."""
+        """Reaplica o cursor de espera ao widget sob o ponteiro.
+
+        Se a autoridade de estado não registra mais nenhuma operação ativa, o
+        hook limpa o cursor de espera residual e se desinstala, de modo que um
+        ``watch`` preso — por exemplo após um ``exit`` perdido — desapareça no
+        primeiro movimento do ponteiro. Para widgets criados depois do início
+        da operação (diálogos, painéis dinâmicos), o cursor de repouso é
+        registrado antes de forçar ``watch``, garantindo a restauração.
+        """
         widget = getattr(event, "widget", None)
         if widget is None:
             return
+        if not self._ocupado_global():
+            self._clear_wait_cursor()
+            return
         try:
+            estados = getattr(self, "_cursor_states", None)
+            if estados is not None and widget not in estados:
+                estados[widget] = self._cursor_de_repouso(widget)
             if self._cursor_de_repouso(widget) != "watch":
                 widget.config(cursor="watch")
         except (tk.TclError, AttributeError):

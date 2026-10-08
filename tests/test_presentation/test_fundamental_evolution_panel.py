@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from matplotlib.dates import date2num
+from matplotlib.figure import Figure
 
 from flowscope.application.fundamental.evolucao import (
     TIPO_INTEIRO,
@@ -220,16 +221,13 @@ class TestFundamentalEvolutionPanel:
         finally:
             root.destroy()
 
-    @needs_display
     def test_titulo_informa_datas_no_periodo(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            assert "datas no período" in painel._figure.get_suptitle()
-            assert "HGBS11" in painel._figure.get_suptitle()
-        finally:
-            root.destroy()
+        painel = FundamentalEvolutionPanel.__new__(FundamentalEvolutionPanel)
+        painel._figure = Figure()
+        painel._definir_titulo(_series(), ticker="HGBS11")
+        titulo = painel._figure.get_suptitle()
+        assert "datas no período" in titulo
+        assert "HGBS11" in titulo
 
     @needs_display
     def test_rotulos_de_data_com_dia_mes_e_ano(self):
