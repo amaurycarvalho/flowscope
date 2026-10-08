@@ -44,6 +44,7 @@ from flowscope.application.fundamental_ports import (
     CampoFundamental,
     OrigemDados,
 )
+from flowscope.domain.fii.classification import TipoAtivo, classificar_ticker
 from flowscope.domain.fii.fundamentus import AtivoFundamental
 from flowscope.infrastructure.conditional_cache import CacheOutcome
 
@@ -97,7 +98,13 @@ class FundamentusFundamentalDataProvider:
         ticker: str,
         reference_date: date,
     ) -> tuple[dict[str, CampoFundamental], OrigemDados]:
-        """Obtém os campos e a origem (cache ou rede) do snapshot."""
+        """Obtém os campos e a origem (cache ou rede) do snapshot.
+
+        BDRs não são consultados no Fundamentus: o portal não cobre esses
+        ativos, então a fonte devolve vazio sem requisição de rede.
+        """
+        if classificar_ticker(ticker).tipo is TipoAtivo.BDR:
+            return {}, OrigemDados.REDE
         get_with_outcome = getattr(self._provider, "get_with_outcome", None)
         if callable(get_with_outcome):
             ativo, outcome = get_with_outcome(ticker)

@@ -1,11 +1,13 @@
 """Erros tipados do provider do Fundamentus (RFC-011 §9)."""
 
+from flowscope.domain.fii.errors import TickerNaoEncontrado
+
 
 class FundamentusError(Exception):
     """Erro base do provider do Fundamentus."""
 
 
-class TickerNotFound(FundamentusError):
+class TickerNotFound(FundamentusError, TickerNaoEncontrado):
     """Ticker não encontrado no portal Fundamentus."""
 
 

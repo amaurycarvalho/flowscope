@@ -88,6 +88,22 @@ def deduplicacao_noticias(cache_root: Path) -> DeduplicacaoConteudo:
     )
 
 
+def hash_de_caminho(cache_root: Path, ticker: str, relativo: str) -> str | None:
+    """Retorna o hash registrado para o caminho relativo do ticker, ou ``None``.
+
+    Inverte o registro ``hash -> caminho relativo`` para identificar um
+    documento pelo conteúdo sem reler o arquivo. Usado como chave de identidade
+    do Relatório Gerencial no ledger de guidance.
+    """
+    registro = JsonHashStore(
+        caminho_hashes_documentos(cache_root, ticker)
+    ).registrados()
+    for digest, alvo in registro.items():
+        if alvo == relativo:
+            return digest
+    return None
+
+
 class JsonHashStore:
     """Persiste o mapa ``hash -> caminho relativo`` de um escopo em JSON."""
 

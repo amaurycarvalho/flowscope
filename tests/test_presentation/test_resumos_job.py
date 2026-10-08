@@ -74,7 +74,7 @@ class _PainelFake:
         self._falha_guidance = falha_guidance
         self.preparados: list[str] = []
         self.gerados: list[str] = []
-        self.guidances: list[tuple[str, str]] = []
+        self.guidances: list[tuple] = []
 
     def preparar_texto(self, arquivo, senha=None):
         if self._falha_preparar == arquivo.nome:
@@ -93,10 +93,10 @@ class _PainelFake:
         self.gerados.append(arquivo.nome)
         return ResumoDocumento("curto", "longo")
 
-    def avaliar_guidance(self, arquivo, texto):
+    def avaliar_guidance(self, arquivo, texto, resumo=None):
         if self._falha_guidance == arquivo.nome:
             raise RuntimeError("guidance falhou")
-        self.guidances.append((arquivo.nome, texto))
+        self.guidances.append((arquivo.nome, texto, resumo))
 
 
 class TestResumosPendentes:
@@ -162,14 +162,15 @@ class TestResumosPendentes:
 
 
 class TestGuidanceNoLote:
-    def test_avalia_guidance_apos_preparar_texto(self):
+    def test_avalia_guidance_apos_resumir(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
         ctx, _ = _contexto()
 
         executar_resumos(ctx, painel, arquivos)
 
-        assert painel.guidances == [("10.pdf", "texto A"), ("20.pdf", "texto B")]
+        assert [g[0] for g in painel.guidances] == ["10.pdf", "20.pdf"]
+        assert all(g[2] == ResumoDocumento("curto", "longo") for g in painel.guidances)
 
     def test_sem_texto_nao_avalia_guidance(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
@@ -178,7 +179,7 @@ class TestGuidanceNoLote:
 
         executar_resumos(ctx, painel, arquivos)
 
-        assert painel.guidances == [("10.pdf", "texto")]
+        assert [g[0] for g in painel.guidances] == ["10.pdf"]
 
     def test_falha_na_avaliacao_nao_interrompe_o_lote(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
@@ -192,7 +193,7 @@ class TestGuidanceNoLote:
 
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert [r.dados.nome for r in resultados] == ["10.pdf", "20.pdf"]
-        assert painel.guidances == [("10.pdf", "texto A")]
+        assert [g[0] for g in painel.guidances] == ["10.pdf"]
 
 
 class _PainelPersistente(_PainelFake):
@@ -248,11 +249,17 @@ class _StoreFake:
         self.salvos = []
 
     def obter(self, ticker):
-        return self._dados.get(ticker)
+        return next(
+            (a.guidance for a in self._dados.values() if a.guidance is not None),
+            None,
+        )
 
-    def salvar(self, ticker, guidance):
-        self._dados[ticker] = guidance
-        self.salvos.append((ticker, guidance))
+    def obter_avaliacao(self, ticker, chave):
+        return self._dados.get((ticker, chave))
+
+    def salvar_avaliacao(self, ticker, chave, avaliacao):
+        self._dados[(ticker, chave)] = avaliacao
+        self.salvos.append((ticker, chave, avaliacao))
 
 
 class _ExtratorFake:
@@ -274,8 +281,8 @@ class _PainelComGuidance(_PainelFake):
             store, avaliador=AvaliarGuidanceUseCase(store, extrator)
         )
 
-    def avaliar_guidance(self, arquivo, texto):
-        self.service.avaliar(arquivo, texto)
+    def avaliar_guidance(self, arquivo, texto, resumo=None):
+        self.service.avaliar(arquivo, texto, resumo)
 
 
 def _arquivo_relatorio(nome: str) -> DocumentoArquivo:
@@ -300,7 +307,7 @@ class TestGuidanceRealNoLote:
 
         executar_resumos(ctx, painel, arquivos)
 
-        assert [ticker for ticker, _ in store.salvos] == ["ALZR11"]
+        assert [ticker for ticker, _, _ in store.salvos] == ["ALZR11"]
 
     def test_documento_sem_texto_nao_avalia(self):
         arquivos = [_arquivo_relatorio("10.pdf")]
@@ -363,7 +370,7 @@ class _PainelNaoDefinitivo:
         self.gerados.append(arquivo.nome)
         return ResumoDocumento("curto", "longo")
 
-    def avaliar_guidance(self, arquivo, texto):
+    def avaliar_guidance(self, arquivo, texto, resumo=None):
         self.guidances.append(arquivo.nome)
 
 

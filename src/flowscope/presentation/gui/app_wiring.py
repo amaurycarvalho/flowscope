@@ -13,6 +13,7 @@ from flowscope.application.document_preview import ExtracaoTexto
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
     ConsultarCatalogoUseCase,
+    chave_documento,
 )
 from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.documentos.document_summary import DocumentSummaryService
@@ -24,6 +25,7 @@ from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseC
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.application.operation_guard import OperationGuard
 from flowscope.application.use_cases import AnalyzeTickersUseCase
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMPort
 from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
@@ -36,6 +38,7 @@ from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vincula
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.clipboard_image import ClipboardImageAdapter
+from flowscope.infrastructure.content_hashes import hash_de_caminho
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
 from flowscope.infrastructure.deduplicacao import (
@@ -69,7 +72,6 @@ from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
 from flowscope.infrastructure.fii.guidance_extraction import extrair_guidance
 from flowscope.infrastructure.guidance_store import JsonGuidanceStore
 from flowscope.infrastructure.llm.config import (
-    guidance_llm_disponivel,
     llm_configurada,
     load_llm_config,
 )
@@ -99,6 +101,22 @@ class AdaptadoresDocumentos:
     token_counter_provider: Callable[[], Callable[[str], int] | None]
 
 
+def resolvedor_chave_documento(
+    base: Path,
+) -> Callable[[DocumentoArquivo], str]:
+    """Resolve a chave de conteúdo (hash) de um documento na raiz de cache.
+
+    Usa o hash SHA-256 registrado pela deduplicação do ticker; sem hash, cai
+    para o caminho relativo do documento.
+    """
+
+    def chave(arquivo: DocumentoArquivo) -> str:
+        relativo = chave_documento(arquivo.caminho, base)
+        return hash_de_caminho(base, arquivo.ticker, relativo) or relativo
+
+    return chave
+
+
 def montar_adaptadores_documentos(
     cache_dir: Path | None = None,
 ) -> AdaptadoresDocumentos:
@@ -126,8 +144,9 @@ def montar_adaptadores_documentos(
         guidance_service=GuidanceService(
             JsonGuidanceStore(cache_dir=base),
             llm_factory=llm_factory,
-            llm_available=guidance_llm_disponivel,
+            llm_available=llm_configurada,
             extrator=extrair_guidance,
+            chave_rg=resolvedor_chave_documento(base),
         ),
         llm_factory=llm_factory,
         llm_available=llm_configurada,

@@ -11,6 +11,7 @@ from flowscope.infrastructure.content_hashes import (
     caminho_hashes_noticias,
     deduplicacao_documentos,
     deduplicacao_noticias,
+    hash_de_caminho,
     hash_sha256,
     raiz_cache,
 )
@@ -123,3 +124,21 @@ class TestServicos:
     def test_noticias_apontam_para_global(self, tmp_path):
         servico = deduplicacao_noticias(tmp_path)
         assert servico._registry.path == caminho_hashes_noticias(tmp_path)
+
+
+class TestHashDeCaminho:
+    def test_encontra_hash_do_caminho_relativo(self, tmp_path):
+        JsonHashStore(
+            caminho_hashes_documentos(tmp_path, "ALZR11")
+        ).registrar("abc123", "documentos-relevantes/ALZR11/2026/08/relatorio/10.pdf")
+        assert (
+            hash_de_caminho(
+                tmp_path,
+                "ALZR11",
+                "documentos-relevantes/ALZR11/2026/08/relatorio/10.pdf",
+            )
+            == "abc123"
+        )
+
+    def test_sem_registro_retorna_none(self, tmp_path):
+        assert hash_de_caminho(tmp_path, "ALZR11", "x/y.pdf") is None

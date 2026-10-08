@@ -4,7 +4,13 @@ from datetime import date
 from decimal import Decimal
 
 import flowscope.domain.fii as dominio
-from flowscope.domain.fii import AnaliseFundamental, Guidance
+from flowscope.domain.fii import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
+    AnaliseFundamental,
+    AvaliacaoGuidance,
+    Guidance,
+)
 
 
 def _guidance(minimo: str, maximo: str) -> Guidance:
@@ -32,6 +38,31 @@ class TestGuidance:
     def test_exportado_pelo_pacote_de_dominio(self):
         assert dominio.Guidance is Guidance
         assert "Guidance" in dominio.__all__
+
+
+class TestAvaliacaoGuidance:
+    def test_com_guidance(self):
+        avaliacao = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=_guidance("0.85", "0.85"),
+        )
+        assert avaliacao.tem_guidance is True
+        assert avaliacao.guidance is not None
+
+    def test_ausencia_avaliada(self):
+        avaliacao = AvaliacaoGuidance(
+            metodo=METODO_DETERMINISTICO,
+            data_relatorio=date(2026, 8, 1),
+            guidance=None,
+        )
+        assert avaliacao.tem_guidance is False
+
+    def test_exportado_pelo_pacote_de_dominio(self):
+        assert dominio.AvaliacaoGuidance is AvaliacaoGuidance
+        assert "AvaliacaoGuidance" in dominio.__all__
+        assert dominio.METODO_IA == "ia"
+        assert dominio.METODO_DETERMINISTICO == "deterministico"
 
 
 class TestAnaliseFundamental:

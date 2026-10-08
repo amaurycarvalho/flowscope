@@ -34,13 +34,13 @@ class _GuidanceFake:
         erro_avaliar: Exception | None = None,
         precisa: bool = True,
     ) -> None:
-        self.chamadas: list[tuple[DocumentoArquivo, str | None]] = []
+        self.chamadas: list[tuple[DocumentoArquivo, str | None, object]] = []
         self.erro = erro
         self.erro_avaliar = erro_avaliar
         self._precisa = precisa
 
-    def avaliar(self, arquivo, texto):
-        self.chamadas.append((arquivo, texto))
+    def avaliar(self, arquivo, texto, resumo=None):
+        self.chamadas.append((arquivo, texto, resumo))
         if self.erro_avaliar is not None:
             raise self.erro_avaliar
         return None
@@ -89,7 +89,7 @@ class TestTrabalhar:
         ctx, eventos = _contexto()
         fluxo._trabalhar(ctx, _arquivo())
         assert fluxo.preparos == 1
-        assert guidance.chamadas == [(_arquivo(), "texto preparado")]
+        assert guidance.chamadas == [(_arquivo(), "texto preparado", None)]
         assert summary.gerados == [(_arquivo(), "texto preparado")]
         assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 

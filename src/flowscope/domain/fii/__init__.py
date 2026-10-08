@@ -57,12 +57,18 @@ from flowscope.domain.fii.dividends import (
     dividendos_12m,
     dividendos_de_proventos,
 )
+from flowscope.domain.fii.errors import TickerNaoEncontrado
 from flowscope.domain.fii.fundamentus import (
     TIPO_ACAO,
     TIPO_FII,
     AtivoFundamental,
 )
-from flowscope.domain.fii.guidance import Guidance
+from flowscope.domain.fii.guidance import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
+    AvaliacaoGuidance,
+    Guidance,
+)
 from flowscope.domain.fii.metrics import (
     CALCULATION_VERSION,
     FONTE_DERIVADA,
@@ -99,6 +105,8 @@ __all__ = [
     "CALCULATION_VERSION",
     "ETFS_CONHECIDOS",
     "FONTE_DERIVADA",
+    "METODO_DETERMINISTICO",
+    "METODO_IA",
     "SUBTIPO_EXIBICAO_BDR",
     "TAXONOMIA_ETF_VERSAO",
     "TAXONOMIA_FII_PADRAO",
@@ -110,6 +118,7 @@ __all__ = [
     "TOLERANCIA_CONSISTENCIA",
     "AnaliseFundamental",
     "AtivoFundamental",
+    "AvaliacaoGuidance",
     "ClasseCotistas",
     "ClassePatrimonio",
     "ClasseRiscoFechamento",
@@ -140,6 +149,7 @@ __all__ = [
     "TaxonomiaFii",
     "TendenciaDividendo",
     "TendenciaFfo",
+    "TickerNaoEncontrado",
     "TipoAtivo",
     "UltimoDividendo",
     "analisar_snapshot",

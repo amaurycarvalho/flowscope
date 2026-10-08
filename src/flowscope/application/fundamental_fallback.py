@@ -17,6 +17,7 @@ from flowscope.application.fundamental_ports import (
     OrigemDados,
 )
 from flowscope.domain.fii.analysis import FfoObservacao
+from flowscope.domain.fii.errors import TickerNaoEncontrado
 
 logger = logging.getLogger("flowscope")
 
@@ -54,29 +55,46 @@ class CompositeFundamentalProvider:
         for provider in self._providers:
             if CAMPOS_FUNDAMENTAIS.issubset(resultado):
                 break
-            try:
-                obter_com_resultado = getattr(provider, "obter_com_resultado", None)
-                if callable(obter_com_resultado):
-                    campos, origem_fonte = obter_com_resultado(
-                        ticker, reference_date
-                    )
-                else:
-                    campos = provider.obter(ticker, reference_date)
-                    origem_fonte = OrigemDados.REDE
-            except Exception:  # fonte indisponível: segue para o fallback
-                logger.warning(
-                    "Fonte fundamentalista %s indisponível para %s",
-                    type(provider).__name__,
-                    ticker,
-                    exc_info=True,
-                )
+            consulta = self._consultar(provider, ticker, reference_date)
+            if consulta is None:
                 continue
+            campos, origem_fonte = consulta
             if campos and not resultado:
                 origem = origem_fonte
             for chave, campo in campos.items():
                 if chave not in resultado and campo.valor is not None:
                     resultado[chave] = campo
         return resultado, origem
+
+    @staticmethod
+    def _consultar(
+        provider: FundamentalDataProvider, ticker: str, reference_date: date
+    ) -> tuple[dict[str, CampoFundamental], OrigemDados] | None:
+        """Consulta uma fonte, tolerando ticker ausente e falhas.
+
+        Retorna ``None`` quando a fonte não contribui: ticker ausente é
+        registrado em nível informativo, e falhas de layout/rede em aviso.
+        """
+        try:
+            obter_com_resultado = getattr(provider, "obter_com_resultado", None)
+            if callable(obter_com_resultado):
+                return obter_com_resultado(ticker, reference_date)
+            return provider.obter(ticker, reference_date), OrigemDados.REDE
+        except TickerNaoEncontrado:
+            logger.info(
+                "Ticker sem dados na fonte %s: %s",
+                type(provider).__name__,
+                ticker,
+            )
+            return None
+        except Exception:  # fonte indisponível: segue para o fallback
+            logger.warning(
+                "Fonte fundamentalista %s indisponível para %s",
+                type(provider).__name__,
+                ticker,
+                exc_info=True,
+            )
+            return None
 
 
 class CompositeFfoProvider:

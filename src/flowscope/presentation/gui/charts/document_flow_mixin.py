@@ -218,11 +218,11 @@ class DocumentFlowMixin:
             resultado.status is StatusExtracao.OK
             and self._summary.precisa_resumo(arquivo, resultado.texto)
         )
-        if self._precisa_guidance(arquivo):
-            self.avaliar_guidance(arquivo, resultado.texto)
         resumo = (
             self._summary.gerar(arquivo, resultado.texto) if precisa else None
         )
+        if self._precisa_guidance(arquivo):
+            self.avaliar_guidance(arquivo, resultado.texto, resumo)
         ctx.resultado(valor=(resultado, precisa, resumo))
 
     def _precisa_guidance(
@@ -241,19 +241,22 @@ class DocumentFlowMixin:
             return False
 
     def avaliar_guidance(
-        self: "DocumentFlowMixin", arquivo: DocumentoArquivo, texto: str | None
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        texto: str | None,
+        resumo: ResumoDocumento | None = None,
     ) -> None:
         """Avalia o guidance do documento, tolerando falhas.
 
-        Aplica o gatilho de categoria, data e texto extraível por meio do
-        serviço de guidance; é seguro chamar fora da thread do Tk e a partir do
+        Aplica o gatilho de categoria e a cascata de fontes por meio do serviço
+        de guidance; é seguro chamar fora da thread do Tk e a partir do
         processamento em lote.
         """
         servico = getattr(self, "_guidance", None)
         if servico is None:
             return
         try:
-            servico.avaliar(arquivo, texto)
+            servico.avaliar(arquivo, texto, resumo)
         except Exception:  # falha de avaliação não deve derrubar a thread
             logger.warning(
                 "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True

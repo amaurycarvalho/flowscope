@@ -1,13 +1,15 @@
-"""Decisão e execução da avaliação de guidance ao ler um documento.
+"""Decisão e execução da avaliação de guidance de um documento.
 
-Concentra o portão da categoria ``Relatorio``, a supressão de documentos sem
-texto extraível e a leitura do guidance em cache para decidir se o relatório
-lido é mais recente. A avaliação é delegada ao caso de uso, que prefere a LLM e
-recorre à extração determinística quando ela não está disponível. O extrator
-determinístico e as estratégias de LLM são injetados pelo ponto de composição.
+Concentra o portão da categoria ``Relatorio``, a montagem da cascata de fontes
+(resumo curto, resumo longo e texto extraído) e a identidade do Relatório
+Gerencial (chave de conteúdo). A avaliação é delegada ao caso de uso, que prefere
+a IA e recorre à extração determinística quando ela não está disponível. O
+extrator determinístico, as estratégias de IA e a resolução da chave são
+injetados pelo ponto de composição.
 """
 
 from collections.abc import Callable
+from datetime import date
 
 from flowscope.application.avaliar_guidance import (
     CATEGORIA_RELATORIO,
@@ -15,14 +17,22 @@ from flowscope.application.avaliar_guidance import (
     ExtratorGuidance,
 )
 from flowscope.application.guidance_port import GuidanceStore
+from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.documents.texto import tem_texto
-from flowscope.domain.fii import Guidance
+from flowscope.domain.fii import AvaliacaoGuidance
 from flowscope.domain.llm import LLMPort
+
+#: Resolve a chave de conteúdo (hash) de um documento.
+ChaveDocumento = Callable[[DocumentoArquivo], str]
+
+
+def _chave_padrao(arquivo: DocumentoArquivo) -> str:
+    """Fallback da chave quando nenhum resolvedor é injetado."""
+    return arquivo.nome
 
 
 class GuidanceService:
-    """Decide e executa a avaliação de guidance de um documento lido."""
+    """Decide e executa a avaliação de guidance de um documento."""
 
     def __init__(
         self: "GuidanceService",
@@ -31,9 +41,11 @@ class GuidanceService:
         llm_available: Callable[[], bool] | None = None,
         avaliador: AvaliarGuidanceUseCase | None = None,
         extrator: ExtratorGuidance | None = None,
+        chave_rg: ChaveDocumento | None = None,
     ) -> None:
-        """Guarda o store e a estratégia de avaliação (LLM + fallback)."""
+        """Guarda o store, a estratégia de avaliação e a chave do documento."""
         self._store = store
+        self._chave_rg = chave_rg if chave_rg is not None else _chave_padrao
         if avaliador is not None:
             self._avaliador = avaliador
         elif extrator is not None:
@@ -49,23 +61,37 @@ class GuidanceService:
             )
 
     def precisa(self: "GuidanceService", arquivo: DocumentoArquivo) -> bool:
-        """Indica se o documento deve disparar avaliação de guidance."""
-        if arquivo.categoria != CATEGORIA_RELATORIO:
-            return False
-        cache = self._store.obter(arquivo.ticker)
-        return self._avaliador.deve_avaliar(arquivo.ano, arquivo.mes, cache)
+        """Indica se o documento deve ser considerado para avaliação de guidance."""
+        return arquivo.categoria == CATEGORIA_RELATORIO
 
     def avaliar(
-        self: "GuidanceService", arquivo: DocumentoArquivo, texto: str | None
-    ) -> Guidance | None:
-        """Avalia o texto do documento, ignorando-o quando não é extraível."""
-        if not tem_texto(texto):
+        self: "GuidanceService",
+        arquivo: DocumentoArquivo,
+        texto: str | None,
+        resumo: ResumoDocumento | None = None,
+    ) -> AvaliacaoGuidance | None:
+        """Avalia a cascata de fontes do documento, tolerando entradas vazias."""
+        if arquivo.categoria != CATEGORIA_RELATORIO:
             return None
-        return self._avaliador.avaliar_documento(
+        data_relatorio = _data_do_arquivo(arquivo)
+        if data_relatorio is None:
+            return None
+        curto = resumo.short_summary if resumo is not None else arquivo.short_summary
+        longo = resumo.long_summary if resumo is not None else arquivo.long_summary
+        fontes = (curto, longo, texto)
+        if not any(fonte and fonte.strip() for fonte in fontes):
+            return None
+        return self._avaliador.avaliar_rg(
             arquivo.ticker,
-            arquivo.categoria,
-            arquivo.ano,
-            arquivo.mes,
-            texto or "",
+            self._chave_rg(arquivo),
+            data_relatorio,
             str(arquivo.caminho),
+            fontes,
         )
+
+
+def _data_do_arquivo(arquivo: DocumentoArquivo) -> date | None:
+    """Monta a data do relatório a partir de ano/mês, ou ``None`` se inválidos."""
+    if arquivo.ano < 1 or not 1 <= arquivo.mes <= 12:
+        return None
+    return date(arquivo.ano, arquivo.mes, 1)

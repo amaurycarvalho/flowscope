@@ -1,4 +1,4 @@
-"""Testes do portão e da execução da avaliação de guidance ao ler um documento."""
+"""Testes do portão e da execução da avaliação de guidance de um documento."""
 
 from datetime import date
 from decimal import Decimal
@@ -6,11 +6,10 @@ from pathlib import Path
 
 from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
 from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.documents.texto import SEM_TEXTO
-from flowscope.domain.fii import Guidance
+from flowscope.domain.fii import METODO_IA, AvaliacaoGuidance, Guidance
 from flowscope.domain.llm import LLMResposta
-from flowscope.infrastructure.llm.config import guidance_llm_disponivel
 
 GUIDANCE = Guidance(
     valor_min=Decimal("0.74"),
@@ -21,35 +20,41 @@ GUIDANCE = Guidance(
 
 
 class _StoreFake:
-    def __init__(self, guidance: Guidance | None = None) -> None:
-        self.guidance = guidance
-        self.salvos: list[tuple[str, Guidance]] = []
+    def __init__(self, inicial: dict | None = None) -> None:
+        self._dados = dict(inicial or {})
+        self.salvos: list[tuple] = []
 
     def obter(self, ticker):
-        return self.guidance
+        return next(
+            (a.guidance for a in self._dados.values() if a.guidance is not None),
+            None,
+        )
 
-    def salvar(self, ticker, guidance):
-        self.guidance = guidance
-        self.salvos.append((ticker, guidance))
+    def obter_avaliacao(self, ticker, chave):
+        return self._dados.get((ticker, chave))
+
+    def salvar_avaliacao(self, ticker, chave, avaliacao):
+        self._dados[(ticker, chave)] = avaliacao
+        self.salvos.append((ticker, chave, avaliacao))
 
 
 class _ExtratorFake:
     def __init__(self, resultado: Guidance | None = None) -> None:
         self.resultado = resultado
-        self.chamadas = 0
+        self.chamadas: list[str] = []
 
     def __call__(self, texto, data_relatorio, caminho_pdf):
-        self.chamadas += 1
+        self.chamadas.append(texto)
         return self.resultado
 
 
 class _LLMFake:
     def __init__(self, resposta: str = "") -> None:
         self.resposta = resposta
-        self.chamadas: list[list[dict]] = []
+        self.chamadas: list[str] = []
 
     def complete(self, messages, system_prompt=None):
-        self.chamadas.append(messages)
+        self.chamadas.append(messages[0]["content"])
         return LLMResposta(texto=self.resposta)
 
 
@@ -57,6 +62,8 @@ def _arquivo(
     categoria: str = "Relatorio",
     ano: int = 2026,
     mes: int = 8,
+    short_summary: str | None = None,
+    long_summary: str | None = None,
 ) -> DocumentoArquivo:
     return DocumentoArquivo(
         ticker="HGBS11",
@@ -66,12 +73,14 @@ def _arquivo(
         nome="10.pdf",
         tipo="pdf",
         caminho=Path("/cache/relatorio/10.pdf"),
+        short_summary=short_summary,
+        long_summary=long_summary,
     )
 
 
-def _servico(store, extrator) -> GuidanceService:
+def _servico(store, extrator, **kwargs) -> GuidanceService:
     return GuidanceService(
-        store, avaliador=AvaliarGuidanceUseCase(store, extrator)
+        store, avaliador=AvaliarGuidanceUseCase(store, extrator), **kwargs
     )
 
 
@@ -80,35 +89,40 @@ class TestPrecisa:
         servico = _servico(_StoreFake(), _ExtratorFake())
         assert servico.precisa(_arquivo(categoria="Assembleia")) is False
 
-    def test_cache_vazio_dispara(self):
-        servico = _servico(_StoreFake(None), _ExtratorFake())
+    def test_relatorio_dispara(self):
+        servico = _servico(_StoreFake(), _ExtratorFake())
         assert servico.precisa(_arquivo()) is True
 
-    def test_relatorio_mais_recente_dispara(self):
-        servico = _servico(_StoreFake(GUIDANCE), _ExtratorFake())
-        assert servico.precisa(_arquivo(ano=2026, mes=9)) is True
-
-    def test_relatorio_nao_mais_recente_nao_dispara(self):
-        servico = _servico(_StoreFake(GUIDANCE), _ExtratorFake())
-        assert servico.precisa(_arquivo(ano=2026, mes=7)) is False
+    def test_relatorio_antigo_ainda_dispara(self):
+        servico = _servico(_StoreFake(), _ExtratorFake())
+        assert servico.precisa(_arquivo(ano=2020, mes=1)) is True
 
 
 class TestAvaliar:
-    def test_sem_texto_extraivel_e_ignorado(self):
+    def test_sem_fontes_nao_avalia(self):
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         servico = _servico(store, extrator)
-        assert servico.avaliar(_arquivo(), SEM_TEXTO) is None
-        assert servico.avaliar(_arquivo(), "") is None
-        assert extrator.chamadas == 0
+        assert servico.avaliar(_arquivo(), None) is None
+        assert servico.avaliar(_arquivo(), "   ") is None
+        assert extrator.chamadas == []
 
-    def test_relatorio_avalia_e_grava(self):
+    def test_cascata_usa_resumo_curto_primeiro(self):
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         servico = _servico(store, extrator)
-        resultado = servico.avaliar(_arquivo(), "texto do relatório")
-        assert resultado == GUIDANCE
-        assert store.salvos == [("HGBS11", GUIDANCE)]
+        resumo = ResumoDocumento("curto", "longo")
+        resultado = servico.avaliar(_arquivo(), "texto integral", resumo)
+        assert resultado.guidance == GUIDANCE
+        assert extrator.chamadas == ["curto"]
+
+    def test_usa_texto_quando_sem_resumo(self):
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        servico = _servico(store, extrator)
+        resultado = servico.avaliar(_arquivo(), "texto integral")
+        assert resultado.guidance == GUIDANCE
+        assert extrator.chamadas == ["texto integral"]
 
     def test_outra_categoria_nao_grava(self):
         store = _StoreFake()
@@ -117,48 +131,25 @@ class TestAvaliar:
         assert servico.avaliar(_arquivo(categoria="Comunicado"), "texto") is None
         assert store.salvos == []
 
-
-def _mock_flag(monkeypatch, habilitado: bool, provider: bool) -> None:
-    monkeypatch.setattr(
-        "flowscope.infrastructure.llm.config.load_guidance_llm_enabled",
-        lambda: habilitado,
-    )
-    monkeypatch.setattr(
-        "flowscope.infrastructure.llm.config.llm_configurada",
-        lambda: provider,
-    )
-
-
-class TestFlagLLM:
-    def test_flag_desabilitado_nao_usa_llm(self, monkeypatch):
-        _mock_flag(monkeypatch, habilitado=False, provider=True)
-        assert guidance_llm_disponivel() is False
-
-    def test_flag_habilitado_com_provider(self, monkeypatch):
-        _mock_flag(monkeypatch, habilitado=True, provider=True)
-        assert guidance_llm_disponivel() is True
-
-    def test_flag_habilitado_sem_provider(self, monkeypatch):
-        _mock_flag(monkeypatch, habilitado=True, provider=False)
-        assert guidance_llm_disponivel() is False
-
-    def test_desabilitado_usa_apenas_deterministico(self, monkeypatch):
-        _mock_flag(monkeypatch, habilitado=False, provider=True)
+    def test_chave_rg_injetada(self):
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
-        llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99")
-        servico = GuidanceService(
-            store,
-            extrator=extrator,
-            llm_factory=lambda: llm,
-            llm_available=guidance_llm_disponivel,
+        servico = _servico(
+            store, extrator, chave_rg=lambda arquivo: "hash-abc"
         )
-        assert servico.avaliar(_arquivo(), "texto") == GUIDANCE
-        assert llm.chamadas == []
-        assert extrator.chamadas == 1
+        servico.avaliar(_arquivo(), "texto")
+        assert store.salvos[0][1] == "hash-abc"
 
-    def test_habilitado_prefere_a_llm(self, monkeypatch):
-        _mock_flag(monkeypatch, habilitado=True, provider=True)
+    def test_data_invalida_nao_avalia(self):
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        servico = _servico(store, extrator)
+        assert servico.avaliar(_arquivo(ano=0, mes=0), "texto") is None
+        assert store.salvos == []
+
+
+class TestPreferenciaIA:
+    def test_ia_prevalece_em_servico_completo(self):
         store = _StoreFake()
         extrator = _ExtratorFake(GUIDANCE)
         llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99")
@@ -166,10 +157,39 @@ class TestFlagLLM:
             store,
             extrator=extrator,
             llm_factory=lambda: llm,
-            llm_available=guidance_llm_disponivel,
+            llm_available=lambda: True,
         )
         resultado = servico.avaliar(_arquivo(), "texto")
-        assert resultado is not None
-        assert resultado.valor_min == Decimal("0.99")
-        assert len(llm.chamadas) == 1
-        assert extrator.chamadas == 0
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance.valor_min == Decimal("0.99")
+        assert extrator.chamadas == []
+
+    def test_ia_indisponivel_usa_deterministico(self):
+        store = _StoreFake()
+        extrator = _ExtratorFake(GUIDANCE)
+        llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99")
+        servico = GuidanceService(
+            store,
+            extrator=extrator,
+            llm_factory=lambda: llm,
+            llm_available=lambda: False,
+        )
+        resultado = servico.avaliar(_arquivo(), "texto")
+        assert resultado.guidance == GUIDANCE
+        assert extrator.chamadas == ["texto"]
+        assert llm.chamadas == []
+
+
+class TestRecuperacaoDeEntrada:
+    def test_ja_avaliado_por_ia_nao_reavalia(self):
+        existente = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        extrator = _ExtratorFake(GUIDANCE)
+        servico = _servico(store, extrator)
+        assert servico.avaliar(_arquivo(), "texto") == existente
+        assert store.salvos == []
+        assert extrator.chamadas == []

@@ -31,10 +31,6 @@ DEFAULT_LLM_CONFIG: dict = {
 _CHAT_FIELDS = ("api_url", "model", "api_key", "rpm")
 
 
-#: Valor padrão do flag de análise de guidance via LLM (desabilitado).
-DEFAULT_GUIDANCE_ENABLED = False
-
-
 def _read_json(path: Path) -> dict:
     """Lê o JSON do arquivo, devolvendo um dicionário vazio em caso de falha."""
     try:
@@ -125,38 +121,7 @@ def save_llm_config(config: dict, path: Path | None = None) -> None:
     if not isinstance(llm, dict):
         llm = {}
     llm["chat"] = {"provider": provider, "providers": providers}
-    data["llm"] = llm
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
-
-
-def load_guidance_llm_enabled(path: Path | None = None) -> bool:
-    """Indica se a análise de guidance via LLM está habilitada (padrão: não).
-
-    O flag vive no bloco ``llm.guidance.enabled`` e é independente do provedor
-    de chat: desabilitado, a avaliação de guidance usa apenas a extração
-    determinística.
-    """
-    data = _read_json(path or CONFIG_PATH)
-    llm = data.get("llm")
-    guidance = llm.get("guidance") if isinstance(llm, dict) else None
-    if not isinstance(guidance, dict):
-        return DEFAULT_GUIDANCE_ENABLED
-    return bool(guidance.get("enabled", DEFAULT_GUIDANCE_ENABLED))
-
-
-def save_guidance_llm_enabled(enabled: bool, path: Path | None = None) -> None:
-    """Grava o flag ``llm.guidance.enabled`` preservando o bloco ``llm.chat``."""
-    destino = path or CONFIG_PATH
-    data = _read_json(destino)
-    llm = data.get("llm")
-    if not isinstance(llm, dict):
-        llm = {}
-    guidance = llm.get("guidance")
-    if not isinstance(guidance, dict):
-        guidance = {}
-    guidance["enabled"] = bool(enabled)
-    llm["guidance"] = guidance
+    llm.pop("guidance", None)
     data["llm"] = llm
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
@@ -182,13 +147,3 @@ def llm_configurada() -> bool:
         return config.get("provider", "none") != "none" and check_llm_deps()
     except Exception:  # configuração ilegível não deve quebrar a interface
         return False
-
-
-def guidance_llm_disponivel() -> bool:
-    """Indica se a análise de guidance via LLM está habilitada e configurada.
-
-    O flag ``llm.guidance.enabled`` (padrão desabilitado) controla o uso da LLM
-    especificamente para guidance; quando desabilitado, roda apenas a extração
-    determinística, ainda que o provedor de chat esteja configurado.
-    """
-    return load_guidance_llm_enabled() and llm_configurada()

@@ -4,25 +4,53 @@ from datetime import date
 from decimal import Decimal
 
 from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
-from flowscope.domain.fii import Guidance
+from flowscope.domain.fii import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
+    AvaliacaoGuidance,
+    Guidance,
+)
 from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMResposta,
     LLMUnavailableError,
 )
 
-CACHE = Guidance(
-    valor_min=Decimal("0.85"),
-    valor_max=Decimal("0.85"),
-    periodo="2S26",
-    data_relatorio=date(2026, 7, 1),
+DATA = date(2026, 8, 1)
+CAMINHO = "/x.pdf"
+
+EXISTENTE_IA = AvaliacaoGuidance(
+    metodo=METODO_IA,
+    data_relatorio=DATA,
+    caminho_pdf=CAMINHO,
+    guidance=Guidance(
+        valor_min=Decimal("0.85"),
+        valor_max=Decimal("0.85"),
+        periodo="2S26",
+        data_relatorio=DATA,
+        caminho_pdf=CAMINHO,
+    ),
+)
+
+EXISTENTE_DET = AvaliacaoGuidance(
+    metodo=METODO_DETERMINISTICO,
+    data_relatorio=DATA,
+    caminho_pdf=CAMINHO,
+    guidance=Guidance(
+        valor_min=Decimal("0.70"),
+        valor_max=Decimal("0.70"),
+        periodo="2S26",
+        data_relatorio=DATA,
+        caminho_pdf=CAMINHO,
+    ),
 )
 
 EXTRAIDO = Guidance(
     valor_min=Decimal("0.74"),
     valor_max=Decimal("0.78"),
     periodo="restante do ano de 2026",
-    data_relatorio=date(2026, 8, 1),
+    data_relatorio=DATA,
+    caminho_pdf=CAMINHO,
 )
 
 
@@ -30,10 +58,10 @@ class _LLMFake:
     def __init__(self, resposta: str = "", erro: Exception | None = None) -> None:
         self.resposta = resposta
         self.erro = erro
-        self.chamadas: list[tuple[list[dict], str | None]] = []
+        self.chamadas: list[str] = []
 
     def complete(self, messages, system_prompt=None):
-        self.chamadas.append((messages, system_prompt))
+        self.chamadas.append(messages[0]["content"])
         if self.erro is not None:
             raise self.erro
         return LLMResposta(texto=self.resposta)
@@ -42,23 +70,29 @@ class _LLMFake:
 class _StoreFake:
     def __init__(self, inicial: dict | None = None) -> None:
         self._dados = dict(inicial or {})
-        self.salvos: list[tuple[str, Guidance]] = []
+        self.salvos: list[tuple] = []
 
     def obter(self, ticker):
-        return self._dados.get(ticker)
+        return next(
+            (a.guidance for a in self._dados.values() if a.guidance is not None),
+            None,
+        )
 
-    def salvar(self, ticker, guidance):
-        self._dados[ticker] = guidance
-        self.salvos.append((ticker, guidance))
+    def obter_avaliacao(self, ticker, chave):
+        return self._dados.get((ticker, chave))
+
+    def salvar_avaliacao(self, ticker, chave, avaliacao):
+        self._dados[(ticker, chave)] = avaliacao
+        self.salvos.append((ticker, chave, avaliacao))
 
 
 class _ExtratorFake:
     def __init__(self, resultado: Guidance | None = None) -> None:
         self.resultado = resultado
-        self.chamadas: list[tuple[str, date, str | None]] = []
+        self.chamadas: list[str] = []
 
     def __call__(self, texto, data_relatorio, caminho_pdf):
-        self.chamadas.append((texto, data_relatorio, caminho_pdf))
+        self.chamadas.append(texto)
         return self.resultado
 
 
@@ -71,176 +105,138 @@ def _factory(llm=None, erro: Exception | None = None):
     return criar
 
 
-class TestCaminhoLLM:
-    def test_llm_funcional_encontra_guidance(self):
-        llm = _LLMFake(
-            "GUIDANCE: SIM\nVALOR_MIN: 0,74\nVALOR_MAX: 0,78\n"
-            "PERIODO: restante do ano de 2026"
-        )
+def _caso(store, extrator, llm=None, erro=None, disponivel=None):
+    disponibilidade = (lambda: disponivel) if disponivel is not None else None
+    if disponivel is None and erro is None and llm is None:
+        return AvaliarGuidanceUseCase(store, extrator)
+    return AvaliarGuidanceUseCase(
+        store,
+        extrator,
+        llm_factory=_factory(llm, erro),
+        llm_available=disponibilidade,
+    )
+
+
+class TestCascataIA:
+    def test_resumo_curto_interrompe_a_cascata(self):
+        llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,74\nVALOR_MAX: 0,78")
         extrator = _ExtratorFake(EXTRAIDO)
         store = _StoreFake()
-        caso = AvaliarGuidanceUseCase(store, extrator, llm_factory=_factory(llm))
-        guidance = caso.avaliar("ALZR11", "texto", date(2026, 8, 1), "/x.pdf")
-        assert guidance == Guidance(
-            valor_min=Decimal("0.74"),
-            valor_max=Decimal("0.78"),
-            periodo="restante do ano de 2026",
-            data_relatorio=date(2026, 8, 1),
-            caminho_pdf="/x.pdf",
+        caso = _caso(store, extrator, llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("curto", "longo", "texto")
         )
-        assert extrator.chamadas == []
-        assert store.salvos == [("ALZR11", guidance)]
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance.valor_min == Decimal("0.74")
+        assert len(llm.chamadas) == 1
+        assert store.salvos[0][0] == "ALZR11"
 
-    def test_prompt_inclui_o_texto(self):
+    def test_resumo_longo_usado_quando_curto_nao_tem(self):
         llm = _LLMFake("GUIDANCE: NAO")
-        _ = AvaliarGuidanceUseCase(
-            _StoreFake(), _ExtratorFake(), llm_factory=_factory(llm)
-        ).avaliar("ALZR11", "conteudo unico", date(2026, 8, 1))
-        prompt = llm.chamadas[0][0][0]["content"]
-        assert "conteudo unico" in prompt
-        assert "GUIDANCE:" in prompt
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(_StoreFake(), extrator, llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("curto", "longo", "texto")
+        )
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance is None
+        assert len(llm.chamadas) == 3
 
-    def test_llm_funcional_sem_guidance_preserva_cache(self):
+
+class TestFalhaIA:
+    def test_falha_recorre_ao_deterministico(self):
         extrator = _ExtratorFake(EXTRAIDO)
         store = _StoreFake()
-        caso = AvaliarGuidanceUseCase(
-            store, extrator, llm_factory=_factory(_LLMFake("GUIDANCE: NAO"))
-        )
-        assert caso.avaliar("ALZR11", "texto", date(2026, 8, 1)) is None
-        assert extrator.chamadas == []
-        assert store.salvos == []
-
-    def test_llm_so_com_minimo_usa_valor_unico(self):
-        llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,85")
-        guidance = AvaliarGuidanceUseCase(
-            _StoreFake(), _ExtratorFake(), llm_factory=_factory(llm)
-        ).avaliar("ALZR11", "texto", date(2026, 8, 1))
-        assert guidance is not None
-        assert guidance.valor_min == guidance.valor_max == Decimal("0.85")
-
-    def test_llm_sim_sem_valores_nao_extrai(self):
-        llm = _LLMFake("GUIDANCE: SIM\nPERIODO: 2S26")
-        guidance = AvaliarGuidanceUseCase(
-            _StoreFake(), _ExtratorFake(), llm_factory=_factory(llm)
-        ).avaliar("ALZR11", "texto", date(2026, 8, 1))
-        assert guidance is None
-
-    def test_llm_generico_nao_e_guidance(self):
-        llm = _LLMFake("resposta fora do formato")
-        guidance = AvaliarGuidanceUseCase(
-            _StoreFake(), _ExtratorFake(), llm_factory=_factory(llm)
-        ).avaliar("ALZR11", "texto", date(2026, 8, 1))
-        assert guidance is None
-
-    def test_llm_available_falso_usa_extrator(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        caso = AvaliarGuidanceUseCase(
-            _StoreFake(),
-            extrator,
-            llm_factory=_factory(_LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,85")),
-            llm_available=lambda: False,
-        )
-        assert caso.avaliar("ALZR11", "texto", date(2026, 8, 1)) == EXTRAIDO
-        assert extrator.chamadas != []
-
-
-class TestFallbackDeterministico:
-    def test_factory_indisponivel_usa_extrator(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        store = _StoreFake()
-        caso = AvaliarGuidanceUseCase(
-            store, extrator, llm_factory=_factory(erro=LLMUnavailableError("x"))
-        )
-        guidance = caso.avaliar("ALZR11", "texto", date(2026, 8, 1), "/x.pdf")
-        assert guidance == EXTRAIDO
-        assert store.salvos == [("ALZR11", EXTRAIDO)]
-
-    def test_chamada_llm_falha_usa_extrator(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        llm = _LLMFake(erro=LLMCommunicationError("timeout"))
-        caso = AvaliarGuidanceUseCase(_StoreFake(), extrator, llm_factory=_factory(llm))
-        assert caso.avaliar("ALZR11", "texto", date(2026, 8, 1)) == EXTRAIDO
-        assert extrator.chamadas != []
-
-    def test_sem_factory_usa_extrator(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        caso = AvaliarGuidanceUseCase(_StoreFake(), extrator)
-        assert caso.avaliar("ALZR11", "texto", date(2026, 8, 1)) == EXTRAIDO
-
-    def test_resultado_obsoleto_nao_sobrescreve_cache_mais_novo(self):
-        store = _StoreFake({"ALZR11": CACHE})
-        caso = AvaliarGuidanceUseCase(
+        caso = _caso(
             store,
-            _ExtratorFake(EXTRAIDO),
-            llm_factory=_factory(erro=LLMUnavailableError("x")),
+            extrator,
+            llm=_LLMFake(erro=LLMCommunicationError("timeout")),
         )
-        resultado = caso.avaliar("ALZR11", "texto", date(2026, 6, 1))
-        assert resultado is not None
-        assert store.salvos == []
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado.metodo == METODO_DETERMINISTICO
+        assert resultado.guidance == EXTRAIDO
+        assert store.salvos[-1][1] == "k1"
 
-    def test_ausencia_de_extracao_preserva_cache(self):
-        store = _StoreFake({"ALZR11": CACHE})
-        caso = AvaliarGuidanceUseCase(store, _ExtratorFake(None))
-        assert caso.avaliar("ALZR11", "texto", date(2026, 8, 1)) is None
-        assert store.salvos == []
-        assert store.obter("ALZR11") == CACHE
+    def test_factory_indisponivel_usa_deterministico(self):
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(_StoreFake(), extrator, erro=LLMUnavailableError("x"))
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado.metodo == METODO_DETERMINISTICO
 
-
-class TestDeveAvaliar:
-    def test_cache_vazio_dispara(self):
-        caso = AvaliarGuidanceUseCase(_StoreFake(), _ExtratorFake())
-        assert caso.deve_avaliar(2026, 8, None) is True
-
-    def test_relatorio_mais_recente_dispara(self):
-        caso = AvaliarGuidanceUseCase(_StoreFake(), _ExtratorFake())
-        assert caso.deve_avaliar(2026, 8, CACHE) is True
-
-    def test_mesmo_mes_nao_dispara(self):
-        caso = AvaliarGuidanceUseCase(_StoreFake(), _ExtratorFake())
-        assert caso.deve_avaliar(2026, 7, CACHE) is False
-
-    def test_relatorio_anterior_nao_dispara(self):
-        caso = AvaliarGuidanceUseCase(_StoreFake(), _ExtratorFake())
-        assert caso.deve_avaliar(2026, 6, CACHE) is False
-
-
-class TestPortoesDoDocumento:
-    def test_outra_categoria_nao_avalia(self):
+    def test_ia_indisponivel_por_flag_usa_deterministico(self):
         extrator = _ExtratorFake(EXTRAIDO)
         store = _StoreFake()
-        caso = AvaliarGuidanceUseCase(store, extrator)
-        assert caso.avaliar_documento(
-            "ALZR11", "Assembleia", 2026, 8, "texto", "/x.pdf"
-        ) is None
-        assert extrator.chamadas == []
-        assert store.salvos == []
-
-    def test_sem_texto_nao_avalia(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        caso = AvaliarGuidanceUseCase(_StoreFake(), extrator)
-        assert caso.avaliar_documento(
-            "ALZR11", "Relatorio", 2026, 8, "   ", "/x.pdf"
-        ) is None
-        assert extrator.chamadas == []
-
-    def test_relatorio_nao_mais_recente_nao_avalia(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        store = _StoreFake({"ALZR11": CACHE})
-        caso = AvaliarGuidanceUseCase(store, extrator)
-        assert caso.avaliar_documento(
-            "ALZR11", "Relatorio", 2026, 7, "texto", "/x.pdf"
-        ) is None
-        assert extrator.chamadas == []
-
-    def test_gatilho_completo_avalia_e_grava(self):
-        extrator = _ExtratorFake(EXTRAIDO)
-        store = _StoreFake()
-        caso = AvaliarGuidanceUseCase(store, extrator)
-        guidance = caso.avaliar_documento(
-            "ALZR11", "Relatorio", 2026, 8, "texto", "/x.pdf"
+        caso = _caso(
+            store,
+            extrator,
+            llm=_LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99"),
+            disponivel=False,
         )
-        assert guidance == EXTRAIDO
-        assert extrator.chamadas == [
-            ("texto", date(2026, 8, 1), "/x.pdf")
-        ]
-        assert store.salvos == [("ALZR11", EXTRAIDO)]
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado.metodo == METODO_DETERMINISTICO
+        assert extrator.chamadas == ["texto"]
+
+
+class TestControlePorMetodo:
+    def test_ja_avaliado_por_ia_nao_refaz(self):
+        store = _StoreFake({("ALZR11", "k1"): EXISTENTE_IA})
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(store, extrator, llm=_LLMFake("GUIDANCE: NAO"))
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado == EXISTENTE_IA
+        assert store.salvos == []
+        assert extrator.chamadas == []
+
+    def test_deterministico_com_ia_disponivel_e_substituido(self):
+        store = _StoreFake({("ALZR11", "k1"): EXISTENTE_DET})
+        extrator = _ExtratorFake(EXTRAIDO)
+        llm = _LLMFake("GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99")
+        caso = _caso(store, extrator, llm=llm)
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance.valor_min == Decimal("0.99")
+        assert extrator.chamadas == []
+
+    def test_deterministico_sem_ia_nao_refaz(self):
+        store = _StoreFake({("ALZR11", "k1"): EXISTENTE_DET})
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(store, extrator, disponivel=False)
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado == EXISTENTE_DET
+        assert store.salvos == []
+        assert extrator.chamadas == []
+
+    def test_deterministico_com_falha_da_ia_preserva_entrada(self):
+        store = _StoreFake({("ALZR11", "k1"): EXISTENTE_DET})
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(
+            store, extrator, llm=_LLMFake(erro=LLMCommunicationError("x"))
+        )
+        resultado = caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert resultado == EXISTENTE_DET
+        assert store.salvos == []
+        assert extrator.chamadas == []
+
+    def test_ausencia_ia_registrada_sem_apagar_outros(self):
+        store = _StoreFake({("ALZR11", "k1"): EXISTENTE_IA})
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(store, _ExtratorFake(), llm=llm)
+        resultado = caso.avaliar_rg("ALZR11", "k2", DATA, CAMINHO, ("texto",))
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance is None
+        assert store.obter("ALZR11") == EXISTENTE_IA.guidance
+
+
+class TestPrompt:
+    def test_prompt_inclui_a_fonte(self):
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
+        caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("conteudo unico",))
+        assert "conteudo unico" in llm.chamadas[0]
+        assert "GUIDANCE:" in llm.chamadas[0]
+
+    def test_fontes_vazias_sao_puladas(self):
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
+        caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, (None, "   ", "texto"))
+        assert len(llm.chamadas) == 1

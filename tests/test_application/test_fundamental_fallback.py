@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from decimal import Decimal
 
@@ -11,6 +12,7 @@ from flowscope.application.fundamental_ports import (
     FundamentalDataProvider,
     OrigemDados,
 )
+from flowscope.domain.fii import TickerNaoEncontrado
 
 REFERENCIA = date(2026, 9, 4)
 
@@ -119,3 +121,34 @@ class TestAgregacaoResultado:
             "HGBS11", REFERENCIA
         )
         assert origem is OrigemDados.CACHE
+
+
+class _FonteNaoEncontrada(_Fonte):
+    def obter(self, ticker, reference_date):
+        self.chamadas += 1
+        raise TickerNaoEncontrado(ticker)
+
+
+class TestSeveridadeLog:
+    def test_ticker_ausente_loga_info_sem_traceback(self, caplog):
+        primario = _FonteNaoEncontrada("FUNDAMENTUS")
+        fallback = _Fonte("B3", {CAMPO_NOME: CampoFundamental("Fundo X", "B3")})
+        composto = CompositeFundamentalProvider([primario, fallback])
+        with caplog.at_level(logging.INFO, logger="flowscope"):
+            campos = composto.obter("EXXO34", REFERENCIA)
+        assert campos[CAMPO_NOME].fonte == "B3"
+        registros = [r for r in caplog.records if r.name == "flowscope"]
+        assert registros
+        assert all(r.levelno == logging.INFO for r in registros)
+        assert all(r.exc_info is None for r in registros)
+
+    def test_falha_inesperada_loga_warning_com_traceback(self, caplog):
+        primario = _Fonte("FUNDAMENTUS", falhar=True)
+        fallback = _Fonte("B3", {CAMPO_NOME: CampoFundamental("Fundo X", "B3")})
+        composto = CompositeFundamentalProvider([primario, fallback])
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            composto.obter("HGBS11", REFERENCIA)
+        registros = [r for r in caplog.records if r.name == "flowscope"]
+        assert registros
+        assert registros[0].levelno >= logging.WARNING
+        assert registros[0].exc_info is not None

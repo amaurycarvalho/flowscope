@@ -1,19 +1,25 @@
 """Avaliação do guidance de distribuição de um Relatório Gerencial.
 
-Quando há LLM disponível e funcional, submete o texto a uma avaliação específica
-e usa o resultado (havendo guidance, substitui o cache; não havendo, preserva).
-Quando a LLM está indisponível ou a chamada falha, recorre a uma extração
-determinística injetada. Em nenhum caso a ausência de extração apaga o cache.
+Cada RG é avaliado no máximo uma vez por método. Quando o provedor de chat está
+configurado, submete cada fonte da cascata (resumo curto, resumo longo e texto
+extraído) a uma avaliação pela IA, que prevalece sobre o determinístico; se a
+IA falha, recorre à extração determinística. Em nenhum caso a ausência de
+extração apaga a avaliação de outro RG.
 """
 
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flowscope.application.guidance_port import GuidanceStore
-from flowscope.domain.fii.guidance import Guidance
+from flowscope.domain.fii.guidance import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
+    AvaliacaoGuidance,
+    Guidance,
+)
 from flowscope.domain.llm import LLMError, LLMPort
 from flowscope.domain.structured.documentos_relevantes import nome_categoria
 
@@ -32,7 +38,7 @@ _PERIODO = re.compile(r"PER[ÍI]ODO\s*:\s*(.*)", re.IGNORECASE)
 
 
 class AvaliarGuidanceUseCase:
-    """Avalia o guidance de um relatório e o persiste quando encontrado."""
+    """Avalia o guidance de um RG e registra o resultado no ledger."""
 
     def __init__(
         self: "AvaliarGuidanceUseCase",
@@ -41,65 +47,105 @@ class AvaliarGuidanceUseCase:
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
     ) -> None:
-        """Guarda o store, o extrator determinístico e a estratégia de LLM."""
+        """Guarda o store, o extrator determinístico e a estratégia de IA."""
         self._store = store
         self._extrator = extrator
         self._llm_factory = llm_factory
         self._llm_available = llm_available
 
-    def deve_avaliar(
-        self: "AvaliarGuidanceUseCase",
-        ano: int,
-        mes: int,
-        guidance_cache: Guidance | None,
-    ) -> bool:
-        """Indica se o relatório é mais recente que o guidance em cache."""
-        if guidance_cache is None:
-            return True
-        referencia = guidance_cache.data_relatorio
-        return (ano, mes) > (referencia.year, referencia.month)
-
-    def avaliar_documento(
+    def avaliar_rg(
         self: "AvaliarGuidanceUseCase",
         ticker: str,
-        categoria: str,
-        ano: int,
-        mes: int,
-        texto: str,
-        caminho_pdf: str | None,
-    ) -> Guidance | None:
-        """Avalia o documento aplicando categoria, texto e data como portões."""
-        if categoria != CATEGORIA_RELATORIO:
-            return None
-        if not texto or not texto.strip():
-            return None
-        cache = self._store.obter(ticker)
-        if not self.deve_avaliar(ano, mes, cache):
-            return None
-        return self.avaliar(ticker, texto, date(ano, mes, 1), caminho_pdf)
-
-    def avaliar(
-        self: "AvaliarGuidanceUseCase",
-        ticker: str,
-        texto: str,
+        chave: str,
         data_relatorio: date,
-        caminho_pdf: str | None = None,
-    ) -> Guidance | None:
-        """Avalia o texto pela LLM ou pelo extrator e grava se houver guidance."""
-        funcional, guidance = self._tentar_llm(texto, data_relatorio, caminho_pdf)
-        if not funcional:
-            guidance = self._extrator(texto, data_relatorio, caminho_pdf)
-        if guidance is not None and self._pode_substituir(ticker, data_relatorio):
-            self._store.salvar(ticker, guidance)
-        return guidance
+        caminho_pdf: str | None,
+        fontes: Sequence[str | None],
+    ) -> AvaliacaoGuidance | None:
+        """Avalia o RG aplicando o controle por método e a cascata de fontes.
 
-    def _pode_substituir(
-        self: "AvaliarGuidanceUseCase", ticker: str, data_relatorio: date
-    ) -> bool:
-        """Evita que um resultado obsoleto sobrescreva um guidance mais recente."""
-        atual = self._store.obter(ticker)
-        return self.deve_avaliar(
-            data_relatorio.year, data_relatorio.month, atual
+        Devolve a avaliação registrada, ou ``None`` quando nada foi avaliado
+        (RG já coberto pelo mesmo método ou sem fontes utilizáveis).
+        """
+        existente = self._store.obter_avaliacao(ticker, chave)
+        if existente is not None and existente.metodo == METODO_IA:
+            return existente
+        ia_disponivel = self._ia_disponivel()
+        if (
+            existente is not None
+            and existente.metodo == METODO_DETERMINISTICO
+            and not ia_disponivel
+        ):
+            return existente
+        if ia_disponivel:
+            resultado = self._cascata_ia(data_relatorio, caminho_pdf, fontes)
+            if resultado is not None:
+                self._store.salvar_avaliacao(ticker, chave, resultado)
+                return resultado
+        if existente is not None:
+            return existente
+        resultado = self._cascata_deterministica(data_relatorio, caminho_pdf, fontes)
+        self._store.salvar_avaliacao(ticker, chave, resultado)
+        return resultado
+
+    def _ia_disponivel(self: "AvaliarGuidanceUseCase") -> bool:
+        """Indica se a avaliação pela IA está disponível e funcional."""
+        if self._llm_available is not None:
+            try:
+                return bool(self._llm_available())
+            except Exception:  # configuração ilegível equivale a indisponível
+                return False
+        return self._llm_factory is not None
+
+    def _cascata_ia(
+        self: "AvaliarGuidanceUseCase",
+        data_relatorio: date,
+        caminho_pdf: str | None,
+        fontes: Sequence[str | None],
+    ) -> AvaliacaoGuidance | None:
+        """Avalia as fontes pela IA em ordem; ``None`` quando a IA falha."""
+        for fonte in fontes:
+            if not _utilizavel(fonte):
+                continue
+            funcional, guidance = self._tentar_llm(fonte, data_relatorio, caminho_pdf)
+            if not funcional:
+                return None
+            if guidance is not None:
+                return AvaliacaoGuidance(
+                    metodo=METODO_IA,
+                    data_relatorio=data_relatorio,
+                    caminho_pdf=caminho_pdf,
+                    guidance=guidance,
+                )
+        return AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=data_relatorio,
+            caminho_pdf=caminho_pdf,
+            guidance=None,
+        )
+
+    def _cascata_deterministica(
+        self: "AvaliarGuidanceUseCase",
+        data_relatorio: date,
+        caminho_pdf: str | None,
+        fontes: Sequence[str | None],
+    ) -> AvaliacaoGuidance:
+        """Avalia as fontes pelo extrator determinístico, em ordem."""
+        for fonte in fontes:
+            if not _utilizavel(fonte):
+                continue
+            guidance = self._extrator(fonte, data_relatorio, caminho_pdf)
+            if guidance is not None:
+                return AvaliacaoGuidance(
+                    metodo=METODO_DETERMINISTICO,
+                    data_relatorio=data_relatorio,
+                    caminho_pdf=caminho_pdf,
+                    guidance=guidance,
+                )
+        return AvaliacaoGuidance(
+            metodo=METODO_DETERMINISTICO,
+            data_relatorio=data_relatorio,
+            caminho_pdf=caminho_pdf,
+            guidance=None,
         )
 
     def _tentar_llm(
@@ -109,8 +155,6 @@ class AvaliarGuidanceUseCase:
         caminho_pdf: str | None,
     ) -> tuple[bool, Guidance | None]:
         """Tenta avaliar pela LLM; informa se o recurso se mostrou funcional."""
-        if self._llm_available is not None and not self._llm_available():
-            return False, None
         if self._llm_factory is None:
             return False, None
         try:
@@ -133,7 +177,7 @@ class AvaliarGuidanceUseCase:
     def _montar_prompt(texto: str) -> str:
         """Monta o prompt que pergunta se o relatório contém guidance."""
         return (
-            "Você recebe o texto de um Relatório Gerencial de um fundo "
+            "Você recebe um trecho de um Relatório Gerencial de um fundo "
             "imobiliário (FII). Determine se ele contém guidance de distribuição "
             "de rendimentos: uma projeção, orientação ou faixa de valor por cota "
             "para um período futuro.\n"
@@ -144,7 +188,7 @@ class AvaliarGuidanceUseCase:
             "VALOR_MIN: <valor numérico por cota, ou vazio>\n"
             "VALOR_MAX: <valor numérico por cota, ou vazio>\n"
             "PERIODO: <período de validade, ou vazio>\n\n"
-            f"Documento:\n{texto}"
+            f"Trecho:\n{texto}"
         )
 
     @staticmethod
@@ -171,6 +215,11 @@ class AvaliarGuidanceUseCase:
             data_relatorio=data_relatorio,
             caminho_pdf=caminho_pdf,
         )
+
+
+def _utilizavel(fonte: str | None) -> bool:
+    """Indica se a fonte tem conteúdo avaliável."""
+    return bool(fonte) and bool(fonte.strip())
 
 
 def _valor(resposta: str, padrao: re.Pattern) -> Decimal | None:

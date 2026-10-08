@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 import requests
 
+from flowscope.domain.fii import TickerNaoEncontrado
 from flowscope.domain.fii.fundamentus import TIPO_ACAO, TIPO_FII
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache import CacheOutcome, ConditionalCache
@@ -16,6 +17,7 @@ from flowscope.infrastructure.fii.fundamentus.dividend_provider import (
     FundamentusDividendHistoryProvider,
 )
 from flowscope.infrastructure.fii.fundamentus.errors import (
+    FundamentusError,
     LayoutChanged,
     NetworkError,
     TickerNotFound,
@@ -119,9 +121,14 @@ class TestParser:
         assert ativo.imoveis["qtd_imoveis"] is None
         assert ativo.composicao_ativos == {}
 
-    def test_layout_alterado_levanta(self):
-        with pytest.raises(LayoutChanged):
+    def test_pagina_vazia_levanta_ticker_nao_encontrado(self):
+        with pytest.raises(TickerNotFound):
             parse_ativo("XPTO", "<html><body><p>vazio</p></body></html>")
+
+    def test_pagina_sem_obrigatorios_levanta_layout(self):
+        html = "<table><tr><td>Outro</td><td>1</td></tr></table>"
+        with pytest.raises(LayoutChanged):
+            parse_ativo("XPTO", html)
 
     def test_extrai_data_ultima_cotacao_das_fixtures(self):
         from flowscope.infrastructure.fii.fundamentus.parser import (
@@ -735,3 +742,79 @@ class TestAdapterReceitaRendimentos:
             CAMPO_RENDIMENTOS_3M,
         ):
             assert constante in CAMPOS_FUNDAMENTAIS
+
+
+class TestTickerNaoEncontradoDominio:
+    def test_ticker_not_found_e_ticker_nao_encontrado(self):
+        assert isinstance(TickerNotFound("XPTO"), TickerNaoEncontrado)
+
+    def test_captura_por_fundamentus_error(self):
+        assert isinstance(TickerNotFound("XPTO"), FundamentusError)
+
+
+class TestAdapterBDR:
+    def test_bdr_nao_consulta_o_provider(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import (
+            FundamentusFundamentalDataProvider,
+        )
+
+        class _ProviderEspiao:
+            chamadas = 0
+
+            def get_with_outcome(self, ticker):
+                _ProviderEspiao.chamadas += 1
+                raise AssertionError("não deve consultar o Fundamentus")
+
+        adapter = FundamentusFundamentalDataProvider(provider=_ProviderEspiao())
+        campos, _ = adapter.obter_com_resultado("EXXO34", date(2026, 9, 4))
+        assert campos == {}
+        assert _ProviderEspiao.chamadas == 0
+
+    def test_nao_bdr_consulta_o_provider(self):
+        from flowscope.infrastructure.fii.fundamentus.adapter import (
+            FundamentusFundamentalDataProvider,
+        )
+
+        ativo = parse_ativo("HGBS11", _fixture("fii_hgbs11.html"))
+
+        class _ProviderEspiao:
+            chamadas = 0
+
+            def get_with_outcome(self, ticker):
+                _ProviderEspiao.chamadas += 1
+                return ativo, CacheOutcome.MISS
+
+        adapter = FundamentusFundamentalDataProvider(provider=_ProviderEspiao())
+        campos, _ = adapter.obter_com_resultado("HGBS11", date(2026, 9, 4))
+        assert _ProviderEspiao.chamadas == 1
+        assert campos
+
+
+class TestFfoProviderBDR:
+    def _provider(self):
+        from flowscope.infrastructure.fii.ffo_provider import (
+            FundamentusProvider as FfoFundamentusProvider,
+        )
+
+        return FfoFundamentusProvider()
+
+    def test_bdr_nao_carrega_a_pagina(self):
+        provider = self._provider()
+
+        def _explodir(_ticker):
+            raise AssertionError("não deve carregar Fundamentus para BDR")
+
+        provider._carregar = _explodir
+        assert provider.obter_ffo("EXXO34", date(2026, 9, 4)) is None
+
+    def test_nao_bdr_carrega_a_pagina(self):
+        provider = self._provider()
+        chamadas: list[str] = []
+
+        def _carregar(ticker):
+            chamadas.append(ticker)
+            return ""
+
+        provider._carregar = _carregar
+        assert provider.obter_ffo("HGBS11", date(2026, 9, 4)) is None
+        assert chamadas == ["HGBS11"]

@@ -792,7 +792,7 @@ class TestResumos:
                     raise LLMCommunicationError("falha")
                 return ResumoDocumento("curto", "longo")
 
-            def avaliar_guidance(self, arquivo, texto):
+            def avaliar_guidance(self, arquivo, texto, resumo=None):
                 return None
 
         sem_texto, eventos = _executar_lote(_PainelLote(), arquivos)

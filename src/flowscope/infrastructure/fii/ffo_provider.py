@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 from bs4 import BeautifulSoup, Tag
 
 from flowscope.domain.fii.analysis import FfoObservacao
+from flowscope.domain.fii.classification import TipoAtivo, classificar_ticker
 from flowscope.infrastructure.fii.fundamentus.provider import (
     FONTE_FUNDAMENTUS,
 )
@@ -114,8 +115,14 @@ class FundamentusProvider(_FundamentusProvider):
     def obter_ffo(
         self: "FundamentusProvider", ticker: str, reference_date: date
     ) -> FfoObservacao | None:
-        """Extrai o FFO do ticker, retornando ``None`` quando indisponível."""
+        """Extrai o FFO do ticker, retornando ``None`` quando indisponível.
+
+        BDRs não são consultados: o Fundamentus não cobre esses ativos, então
+        nenhuma requisição é feita.
+        """
         normalizado = ticker.strip().upper()
+        if classificar_ticker(normalizado).tipo is TipoAtivo.BDR:
+            return None
         try:
             html = self._carregar(normalizado)
         except Exception:  # aquisição tolerante para o port FfoProvider

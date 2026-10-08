@@ -21,6 +21,7 @@ from flowscope.application.documentos.lote import (
     PainelLote,
     gerar_resumo_do_lote,
 )
+from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
@@ -53,7 +54,10 @@ class _PainelDocumentos(PainelLote, Protocol):
         ...
 
     def avaliar_guidance(
-        self: "_PainelDocumentos", arquivo: DocumentoArquivo, texto: str
+        self: "_PainelDocumentos",
+        arquivo: DocumentoArquivo,
+        texto: str,
+        resumo: ResumoDocumento | None = None,
     ) -> None:
         """Avalia o guidance do documento, tolerando falhas."""
         ...
@@ -104,8 +108,6 @@ def _preparar_textos(
             if not continuar_em_erro:
                 return None
             continue
-        if _texto_utilizavel(painel, arquivo, resultado):
-            _avaliar_guidance(painel, arquivo, resultado.texto)
         preparados.append((arquivo, resultado))
         _progresso(ctx, 1, indice, total)
     return [
@@ -137,11 +139,14 @@ def _texto_utilizavel(
 
 
 def _avaliar_guidance(
-    painel: _PainelDocumentos, arquivo: DocumentoArquivo, texto: str
+    painel: _PainelDocumentos,
+    arquivo: DocumentoArquivo,
+    texto: str,
+    resumo: ResumoDocumento | None,
 ) -> None:
     """Avalia o guidance sem interromper o lote em caso de falha."""
     try:
-        painel.avaliar_guidance(arquivo, texto)
+        painel.avaliar_guidance(arquivo, texto, resumo)
     except Exception:  # falha isolada não deve abortar o lote
         logger.warning(
             "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
@@ -166,6 +171,7 @@ def _resumir(
             if not continuar_em_erro:
                 return
             continue
+        _avaliar_guidance(painel, arquivo, texto, resumo)
         ctx.resultado(valor=resumo, dados=arquivo)
         _progresso(ctx, 2, indice, total)
 

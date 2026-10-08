@@ -21,7 +21,7 @@ from flowscope.domain.fii.fundamentus import (
     AtivoFundamental,
 )
 
-from .errors import LayoutChanged
+from .errors import LayoutChanged, TickerNotFound
 from .normalizers import para_data, para_decimal, para_int
 
 _ROTULOS_NOME = ["Nome", "Empresa"]
@@ -156,6 +156,10 @@ def parse_ativo(ticker: str, html: str) -> AtivoFundamental:
     """Monta o ``AtivoFundamental`` a partir do HTML da página de detalhes."""
     soup = BeautifulSoup(html, "html.parser")
     raw = coletar_raw(soup)
+    if not raw:
+        raise TickerNotFound(
+            f"Página sem dados de papel no Fundamentus: {ticker}"
+        )
     nome = _primeiro(raw, _ROTULOS_NOME)
     cotacao = para_decimal(_primeiro(raw, _ROTULOS_COTACAO))
     if nome is None and cotacao is None:
