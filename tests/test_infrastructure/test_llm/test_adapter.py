@@ -210,7 +210,9 @@ class TestMapeamentoExcecoes:
         falso = _litellm_falso()
         falso.completion.side_effect = erro
         monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
-        adapter = LiteLLMChatAdapter(model="m", rate_limiter=_LimiterNoop())
+        adapter = LiteLLMChatAdapter(
+            model="m", rate_limiter=_LimiterNoop(), retry_delays=()
+        )
         with pytest.raises(esperado):
             adapter.complete([{"role": "user", "content": "oi"}])
 
@@ -267,3 +269,83 @@ class TestRateLimitIntegrado:
         adapter.complete([{"role": "user", "content": "2"}])
         assert relogio.t == 60.0
         assert falso.completion.call_count == 2
+
+
+class TestRetryTransitorio:
+    def _montar(self, monkeypatch, erros, *, jitter=None):
+        falso = _litellm_falso()
+        falso.completion.side_effect = erros
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        sonos: list[float] = []
+        limiter = _LimiterNoop()
+        adapter = LiteLLMChatAdapter(
+            model="m",
+            rate_limiter=limiter,
+            sleeper=sonos.append,
+            jitter=(lambda: 0.0) if jitter is None else jitter,
+        )
+        return falso, adapter, sonos, limiter
+
+    def test_transitorio_com_sucesso_na_segunda_tentativa(self, monkeypatch):
+        falso, adapter, sonos, limiter = self._montar(
+            monkeypatch,
+            [_ServiceUnavailableError("503"), _resposta("ok")],
+        )
+
+        resultado = adapter.complete([{"role": "user", "content": "oi"}])
+
+        assert resultado.texto == "ok"
+        assert falso.completion.call_count == 2
+        assert limiter.chamadas == 2
+        assert sonos == [1.0]
+
+    def test_esgotamento_propaga_ultimo_erro(self, monkeypatch):
+        falso, adapter, sonos, limiter = self._montar(
+            monkeypatch, _ServiceUnavailableError("503")
+        )
+
+        with pytest.raises(LLMServiceUnavailableError):
+            adapter.complete([{"role": "user", "content": "oi"}])
+
+        assert falso.completion.call_count == 3
+        assert limiter.chamadas == 3
+        assert sonos == [1.0, 3.0]
+
+    def test_permanente_nao_repete(self, monkeypatch):
+        falso, adapter, sonos, limiter = self._montar(
+            monkeypatch, _AuthenticationError("auth")
+        )
+
+        with pytest.raises(LLMProviderError):
+            adapter.complete([{"role": "user", "content": "oi"}])
+
+        assert falso.completion.call_count == 1
+        assert limiter.chamadas == 1
+        assert sonos == []
+
+    def test_backoff_recebe_jitter(self, monkeypatch):
+        _falso, adapter, sonos, _limiter = self._montar(
+            monkeypatch,
+            _ServiceUnavailableError("503"),
+            jitter=lambda: 0.5,
+        )
+
+        with pytest.raises(LLMServiceUnavailableError):
+            adapter.complete([{"role": "user", "content": "oi"}])
+
+        assert sonos == [1.5, 4.5]
+
+    def test_sem_retry_e_uma_unica_tentativa(self, monkeypatch):
+        falso = _litellm_falso()
+        falso.completion.side_effect = _ServiceUnavailableError("503")
+        monkeypatch.setattr(adapter_module, "_import_litellm", lambda: falso)
+        limiter = _LimiterNoop()
+        adapter = LiteLLMChatAdapter(
+            model="m", rate_limiter=limiter, retry_delays=()
+        )
+
+        with pytest.raises(LLMServiceUnavailableError):
+            adapter.complete([{"role": "user", "content": "oi"}])
+
+        assert falso.completion.call_count == 1
+        assert limiter.chamadas == 1

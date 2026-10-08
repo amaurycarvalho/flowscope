@@ -5,6 +5,10 @@ que os consumidores não dependam da biblioteca opcional. Todas as chamadas
 passam pelo rate limiter configurado.
 """
 
+import random
+import time
+from collections.abc import Callable, Sequence
+
 from flowscope.domain.llm import (
     LLMCommunicationError,
     LLMError,
@@ -34,6 +38,17 @@ _MAPEAMENTO_EXCECOES: tuple[tuple[str, type[LLMError]], ...] = (
     ("InternalServerError", LLMServiceUnavailableError),
     ("APIError", LLMProviderError),
 )
+
+#: Erros de domínio considerados transitórios e passíveis de nova tentativa.
+_EXCECOES_TRANSITORIAS: tuple[type[LLMError], ...] = (
+    LLMServiceUnavailableError,
+    LLMRateLimitError,
+    LLMCommunicationError,
+)
+
+#: Esperas (em segundos) antes de cada tentativa; o primeiro valor zero implica
+#: tentativa imediata. O comprimento define o número máximo de tentativas.
+RETRY_DELAYS: tuple[float, ...] = (0.0, 1.0, 3.0)
 
 
 def _import_litellm() -> object:
@@ -70,12 +85,18 @@ class LiteLLMChatAdapter:
         api_url: str = "",
         rpm: int = DEFAULT_RPM,
         rate_limiter: RateLimiter | None = None,
+        retry_delays: Sequence[float] = RETRY_DELAYS,
+        sleeper: Callable[[float], None] | None = None,
+        jitter: Callable[[], float] | None = None,
     ) -> None:
-        """Guarda os parâmetros de chamada e configura o rate limiter."""
+        """Guarda os parâmetros de chamada e configura rate limiter e retry."""
         self._model = model
         self._api_key = api_key
         self._api_url = api_url
         self._limiter = rate_limiter or RateLimiter(rpm)
+        self._retry_delays = tuple(retry_delays)
+        self._sleeper = sleeper or time.sleep
+        self._jitter = jitter or random.random
 
     def complete(
         self: "LiteLLMChatAdapter",
@@ -89,7 +110,6 @@ class LiteLLMChatAdapter:
                 {"role": "system", "content": system_prompt},
                 *payload,
             ]
-        self._limiter.acquire()
         litellm = _import_litellm()
         kwargs: dict[str, object] = {
             "model": self._model,
@@ -99,14 +119,45 @@ class LiteLLMChatAdapter:
         if self._api_url:
             kwargs["api_base"] = self._api_url
             kwargs["custom_llm_provider"] = "openai"
-        try:
-            resposta = litellm.completion(**kwargs)
-        except Exception as exc:
-            raise _mapear_excecao(litellm, exc) from exc
+        resposta = self._chamar(litellm, kwargs)
         return LLMResposta(
             texto=resposta.choices[0].message.content,
             uso=_extrair_uso(resposta),
         )
+
+    def _chamar(
+        self: "LiteLLMChatAdapter",
+        litellm: object,
+        kwargs: dict[str, object],
+    ) -> object:
+        """Chama o provedor repetindo erros transitórios com backoff e jitter.
+
+        Cada tentativa física adquire uma permissão do rate limiter. Erros
+        permanentes propagam de imediato; ao esgotar as tentativas, a última
+        exceção de domínio é propagada, preservando o contrato do chamador.
+        """
+        delays = self._retry_delays or (0.0,)
+        ultima = len(delays) - 1
+        for indice, atraso in enumerate(delays):
+            self._aguardar(atraso)
+            self._limiter.acquire()
+            try:
+                return litellm.completion(**kwargs)
+            except Exception as exc:
+                erro = _mapear_excecao(litellm, exc)
+                if (
+                    isinstance(erro, _EXCECOES_TRANSITORIAS)
+                    and indice < ultima
+                ):
+                    continue
+                raise erro from exc
+        raise LLMProviderError("Nenhuma tentativa de chamada configurada.")
+
+    def _aguardar(self: "LiteLLMChatAdapter", atraso: float) -> None:
+        """Aguarda o backoff da tentativa, acrescido de jitter proporcional."""
+        if atraso <= 0:
+            return
+        self._sleeper(atraso * (1 + self._jitter()))
 
 
 def _campo(objeto: object, nome: str) -> object:
