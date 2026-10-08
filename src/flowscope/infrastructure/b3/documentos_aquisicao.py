@@ -283,7 +283,15 @@ class AquisicaoDocumentos:
             return
         if not conteudo:
             return
-        cache.gravar(ticker, referencia, slug, protocolo, conteudo)
+        caminho = cache.caminho(ticker, referencia, slug, protocolo)
+        dedup = self._documentos.deduplicacao(ticker)
+        dedup.processar(
+            conteudo,
+            caminho,
+            lambda dados: cache.gravar(
+                ticker, referencia, slug, protocolo, dados
+            ),
+        )
 
 
 def _data_documento(texto: object, fallback: date) -> date:

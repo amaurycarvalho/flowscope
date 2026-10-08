@@ -65,6 +65,24 @@ class TestPreservacao:
         store.salvar("ALZR11", CHAVE_A, "novo", "novo")
         assert store.obter("ALZR11", CHAVE_A) == ResumoDocumento("novo", "novo")
 
+    def test_remover_preserva_os_demais(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", CHAVE_A, "curto A", "longo A")
+        store.salvar("ALZR11", CHAVE_B, "curto B", "longo B")
+        store.remover("ALZR11", CHAVE_A)
+        assert store.obter("ALZR11", CHAVE_A) is None
+        assert store.obter("ALZR11", CHAVE_B) == ResumoDocumento(
+            "curto B", "longo B"
+        )
+
+    def test_remover_inexistente_nao_altera(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", CHAVE_A, "curto A", "longo A")
+        store.remover("ALZR11", "nao/existe.pdf")
+        assert store.obter("ALZR11", CHAVE_A) == ResumoDocumento(
+            "curto A", "longo A"
+        )
+
 
 class TestConcorrencia:
     def test_gravacoes_concorrentes_preservam_todos_os_resumos(self, tmp_path):

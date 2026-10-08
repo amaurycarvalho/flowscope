@@ -103,6 +103,15 @@ class NoticiasIndexStore:
                 resultado[relativo] = meta
         return resultado
 
+    def remover(self: "NoticiasIndexStore", relativo: str) -> None:
+        """Remove a entrada de um item, preservando os marcadores da "Geral"."""
+        doc = self._carregar_doc()
+        itens = _itens_do_doc(doc)
+        if itens.pop(relativo, None) is None:
+            return
+        doc["itens"] = itens
+        self._gravar(doc)
+
     def geral_processada(self: "NoticiasIndexStore") -> tuple[date | None, date | None]:
         """Retorna ``(data_mais_antiga, referência)`` já processadas da "Geral"."""
         doc = self._carregar_doc()

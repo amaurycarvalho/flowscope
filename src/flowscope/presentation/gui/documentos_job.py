@@ -1,11 +1,12 @@
 """Trabalho em background da aquisição de documentos.
 
-A função de trabalho apenas executa a aquisição e publica progresso e o
-término; a thread do Tk remonta a árvore pelo gerenciador, respeitando a
-thread-safety.
+A função de trabalho executa a aquisição e, em seguida, o housekeeping de
+deduplicação por conteúdo, publicando progresso e o término; a thread do Tk
+remonta a árvore pelo gerenciador, respeitando a thread-safety.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import date
 
 from flowscope.application.cancellation import OperacaoCancelada
@@ -24,8 +25,9 @@ def executar_documentos(
     aquisicao: object,
     ticker: str,
     reference_date: date,
+    deduplicar: Callable[[str, object], None] | None = None,
 ) -> None:
-    """Executa a aquisição, publicando progresso e o término."""
+    """Executa a aquisição e o housekeeping, publicando progresso e término."""
 
     def _progresso(current: int, total: int, label: str) -> None:
         ctx.progress(detalhe=label, atual=current, total=total)
@@ -44,4 +46,14 @@ def executar_documentos(
     except Exception:  # falha inesperada não deve travar a interface
         logger.warning(
             "Falha na aquisição de documentos de %s", ticker, exc_info=True
+        )
+    if deduplicar is None:
+        return
+    try:
+        deduplicar(ticker, ctx.token)
+    except OperacaoCancelada:
+        logger.debug("Housekeeping de documentos interrompido pelo usuário")
+    except Exception:  # housekeeping não deve travar a interface
+        logger.warning(
+            "Falha no housekeeping de documentos de %s", ticker, exc_info=True
         )

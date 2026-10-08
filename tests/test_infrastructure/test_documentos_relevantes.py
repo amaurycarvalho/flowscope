@@ -18,6 +18,10 @@ from flowscope.infrastructure.b3.documentos_relevantes import (
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.b3.funds_client.constants import _TIMEOUT_DOCUMENTO
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.content_hashes import (
+    JsonHashStore,
+    caminho_hashes_documentos,
+)
 
 _BASE = B3FundosClient._BASE_URL
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "b3"
@@ -378,3 +382,19 @@ class TestProvider:
         )
         provider.persistir("ALZR11", "20294", _item())
         assert provider.cache.base_dir == tmp_path / "documentos-relevantes"
+
+    def test_duplicata_exata_nao_grava_nem_registra(self, tmp_path):
+        conteudo = b"%PDF-1.4\n" + b"x" * 2048
+        cliente = _ClienteFake(
+            [_item(id_=1), _item(id_=2)], {"1": conteudo, "2": conteudo}
+        )
+        provider = DocumentosRelevantesProvider(
+            client=cliente, cache_dir=tmp_path
+        )
+        assert provider.persistir("ALZR11", "20294", _item(id_=1)) is not None
+        assert provider.persistir("ALZR11", "20294", _item(id_=2)) is None
+        assert len(list(tmp_path.rglob("*.pdf"))) == 1
+        registrados = JsonHashStore(
+            caminho_hashes_documentos(tmp_path, "ALZR11")
+        ).registrados()
+        assert len(registrados) == 1

@@ -15,6 +15,7 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
+from flowscope.application.deduplicacao import DeduplicacaoConteudo
 from flowscope.application.structured_ports import RegulacaoRepository
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.b3.noticias_aquisicao import (
@@ -35,6 +36,10 @@ from flowscope.infrastructure.b3.noticias_index import (
     NoticiasIndexStore,
 )
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.content_hashes import (
+    deduplicacao_noticias,
+    raiz_cache,
+)
 
 logger = logging.getLogger("flowscope")
 
@@ -53,6 +58,9 @@ class AquisicaoNoticias:
         self._cache = NoticiasCache(cache.get_cache_dir() if cache else None)
         self._index = NoticiasIndexStore(cache_dir=self._cache.base_dir)
         self._baixar = baixar or baixar_noticia
+        self._deduplicacao: DeduplicacaoConteudo = deduplicacao_noticias(
+            raiz_cache(self._cache.base_dir)
+        )
 
     @property
     def cache(self: "AquisicaoNoticias") -> NoticiasCache:
@@ -190,6 +198,7 @@ class AquisicaoNoticias:
         O conteúdo é baixado quando necessário; itens sem corpo (sem URL e sem
         conteúdo próprio) são ignorados. Itens já em cache têm os metadados
         registrados mesmo assim, reparando índices ausentes ou antigos.
+        Conteúdo cujo hash já esteja registrado é descartado como duplicata.
         """
         chave = chave_item(item)
         data = data_noticia(item.data_publicacao, fallback)
@@ -198,7 +207,12 @@ class AquisicaoNoticias:
             conteudo = self._conteudo(item)
             if not conteudo:
                 return None
-            self._cache.gravar(chave, data, conteudo)
+            if not self._deduplicacao.processar(
+                conteudo,
+                caminho,
+                lambda dados: self._cache.gravar(chave, data, dados),
+            ):
+                return None
         return caminho, NoticiaMeta(
             secao=item.secao,
             titulo=item.titulo,

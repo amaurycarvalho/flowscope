@@ -174,6 +174,19 @@ class TestAcaoMaterialFacts:
         )
         aquisicao.adquirir("PETR3", _REFERENCIA)
 
+    def test_material_fact_duplicado_nao_grava(self, tmp_path):
+        outro_url = _URL_FATO.replace("1510187", "2000000")
+        cliente = _ClienteFake(
+            code_cvm="9512",
+            fatos={"4": [_fato(), _fato(url=outro_url)]},
+        )
+        conteudo = b"%PDF-1.4\n" + b"x" * 2048
+        aquisicao, _documentos, _informes = _aquisicao(
+            tmp_path, cliente, lambda _p: conteudo
+        )
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert len(list((tmp_path / "dr").rglob("*.pdf"))) == 1
+
 
 class TestFii:
     def test_grava_documentos_relevantes_e_informe(self, tmp_path):

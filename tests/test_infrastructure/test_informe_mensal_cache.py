@@ -152,3 +152,13 @@ class TestProvider:
         arquivo = provider.persistir("ALZR11", _documento())
         assert arquivo is not None
         assert provider.cache.base_dir == tmp_path / "informe-mensal"
+
+    def test_duplicata_exata_nao_grava(self, tmp_path):
+        html = "<html>" + ("x" * 2048) + "</html>"
+        cliente = _ClienteFake(html=html)
+        provider = InformeMensalArquivoProvider(
+            client=cliente, cache_dir=tmp_path
+        )
+        assert provider.persistir("ALZR11", _documento(id_=1)) is not None
+        assert provider.persistir("ALZR11", _documento(id_=2)) is None
+        assert len(list(tmp_path.rglob("*.html"))) == 1

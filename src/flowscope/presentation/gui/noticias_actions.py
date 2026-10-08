@@ -57,9 +57,10 @@ class NoticiasActionsMixin:
         if background is None or background.tem_ativo(GRUPO):
             return
         painel.mostrar_carregando()
+        deduplicar = getattr(self, "_deduplicar_noticias", None)
         background.submit(
             lambda ctx: executar_noticias(
-                ctx, aquisicao, self._data_referencia()
+                ctx, aquisicao, self._data_referencia(), deduplicar
             ),
             grupo=GRUPO,
             politica=POLITICA,

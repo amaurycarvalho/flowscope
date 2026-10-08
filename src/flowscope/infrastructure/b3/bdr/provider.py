@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import date
 from pathlib import Path
 
+from flowscope.application.deduplicacao import DeduplicacaoConteudo
 from flowscope.domain.bdr import AvisoBdr, DadosBdr, DividendoBdr
 from flowscope.domain.fii.dividends import (
     DividendoConsolidado,
@@ -22,6 +23,10 @@ from flowscope.infrastructure.b3.bdr.news import listar_avisos
 from flowscope.infrastructure.b3.bdr.parser import parse_dividendo
 from flowscope.infrastructure.b3.bdr.text import extrair_texto
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.content_hashes import (
+    deduplicacao_documentos,
+    raiz_cache,
+)
 from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
 
 logger = logging.getLogger("flowscope")
@@ -40,6 +45,7 @@ class BdrDividendProvider:
         cache: CacheManager | None = None,
         extractor: ExtratorTexto | None = None,
         meses: int = MESES_JANELA,
+        dedup_factory: Callable[[str], DeduplicacaoConteudo] | None = None,
     ) -> None:
         """Inicializa o provider com o cliente, o cache e o extrator de texto."""
         self._client = client or BdrClient()
@@ -52,6 +58,16 @@ class BdrDividendProvider:
         self._cache = cache
         self._extractor = extractor or extrair_texto
         self._meses = meses
+        self._cache_root = raiz_cache(base)
+        self._dedup_factory = dedup_factory or (
+            lambda ticker: deduplicacao_documentos(self._cache_root, ticker)
+        )
+
+    def deduplicacao(
+        self: "BdrDividendProvider", ticker: str
+    ) -> DeduplicacaoConteudo:
+        """Retorna o serviço de deduplicação do ticker."""
+        return self._dedup_factory(ticker)
 
     def obter_dividendos(
         self: "BdrDividendProvider",
@@ -158,7 +174,17 @@ class BdrDividendProvider:
             dados = None
         if dados is None:
             return self._pdf_cache.ler(ticker, referencia, aviso.id_noticia)
-        self._pdf_cache.gravar(ticker, referencia, aviso.id_noticia, dados)
+        caminho = self._pdf_cache.caminho(
+            ticker, referencia, aviso.id_noticia
+        )
+        dedup = self.deduplicacao(ticker)
+        dedup.processar(
+            dados,
+            caminho,
+            lambda conteudo: self._pdf_cache.gravar(
+                ticker, referencia, aviso.id_noticia, conteudo
+            ),
+        )
         return dados
 
 

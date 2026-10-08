@@ -7,14 +7,19 @@ execuções, sem alterar as entidades de leitura já existentes.
 """
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from flowscope.application.deduplicacao import DeduplicacaoConteudo
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.content_hashes import (
+    deduplicacao_documentos,
+    raiz_cache,
+)
 from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
 
 logger = logging.getLogger("flowscope")
@@ -123,6 +128,7 @@ class InformeMensalArquivoProvider:
         client: B3FundosClient | None = None,
         cache_dir: Path | None = None,
         cache: CacheManager | None = None,
+        dedup_factory: Callable[[str], DeduplicacaoConteudo] | None = None,
     ) -> None:
         """Inicializa o provider com o cliente, o cache JSON e a árvore de arquivos."""
         self._client = client or B3FundosClient()
@@ -132,11 +138,26 @@ class InformeMensalArquivoProvider:
             else (cache or CacheManager()).get_cache_dir() / PASTA_CACHE
         )
         self._arquivos = InformeMensalCache(base)
+        self._cache_root = raiz_cache(self._arquivos.base_dir)
+        self._dedup_factory = dedup_factory or (
+            lambda ticker: deduplicacao_documentos(self._cache_root, ticker)
+        )
 
     @property
     def cache(self: "InformeMensalArquivoProvider") -> InformeMensalCache:
         """Retorna a árvore de arquivos de informes mensais."""
         return self._arquivos
+
+    @property
+    def cache_root(self: "InformeMensalArquivoProvider") -> Path:
+        """Retorna a raiz de cache usada pelos caminhos relativos."""
+        return self._cache_root
+
+    def deduplicacao(
+        self: "InformeMensalArquivoProvider", ticker: str
+    ) -> DeduplicacaoConteudo:
+        """Retorna o serviço de deduplicação do ticker."""
+        return self._dedup_factory(ticker)
 
     def persistir(
         self: "InformeMensalArquivoProvider", ticker: str, documento: dict
@@ -171,7 +192,16 @@ class InformeMensalArquivoProvider:
             return None
         if not html:
             return None
-        caminho = self._arquivos.gravar(ticker, referencia, id_documento, html)
+        caminho = self._arquivos.caminho(ticker, referencia, id_documento)
+        dedup = self.deduplicacao(ticker)
+        if not dedup.processar(
+            html.encode("utf-8"),
+            caminho,
+            lambda dados: self._arquivos.gravar(
+                ticker, referencia, id_documento, dados.decode("utf-8")
+            ),
+        ):
+            return None
         return InformeMensalArquivo(
             ticker=ticker.strip().upper(),
             document_id=id_documento,

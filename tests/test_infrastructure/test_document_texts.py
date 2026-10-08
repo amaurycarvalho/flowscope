@@ -70,6 +70,20 @@ class TestPreservacao:
         store.salvar("ALZR11", CHAVE_A, "novo")
         assert store.obter("ALZR11", CHAVE_A) == "novo"
 
+    def test_remover_preserva_os_demais(self, tmp_path):
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", CHAVE_A, "texto A")
+        store.salvar("ALZR11", CHAVE_B, "texto B")
+        store.remover("ALZR11", CHAVE_A)
+        assert store.obter("ALZR11", CHAVE_A) is None
+        assert store.obter("ALZR11", CHAVE_B) == "texto B"
+
+    def test_remover_inexistente_nao_altera(self, tmp_path):
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        store.salvar("ALZR11", CHAVE_A, "texto A")
+        store.remover("ALZR11", "nao/existe.pdf")
+        assert store.obter("ALZR11", CHAVE_A) == "texto A"
+
 
 class TestChaveCompartilhadaComResumos:
     def test_chave_do_texto_coincide_com_a_dos_resumos(self, tmp_path):

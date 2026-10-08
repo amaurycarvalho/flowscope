@@ -75,6 +75,15 @@ class JsonDocumentSummaryStore(DocumentSummaryStore):
         """Retorna o resumo de um documento, ou ``None`` quando ausente."""
         return self.resumos(ticker).get(chave)
 
+    def remover(
+        self: "JsonDocumentSummaryStore", ticker: str, chave: str
+    ) -> None:
+        """Remove o resumo de um documento, preservando os demais do ticker."""
+        with self._lock:
+            resumos = self._carregar(ticker)
+            if resumos.pop(chave, None) is not None:
+                self._gravar(ticker, resumos)
+
     def salvar(
         self: "JsonDocumentSummaryStore",
         ticker: str,

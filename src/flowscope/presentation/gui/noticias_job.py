@@ -1,10 +1,12 @@
 """Trabalho em background da aquisição de notícias.
 
-A função de trabalho apenas executa a aquisição e publica progresso e término;
-a thread do Tk remonta a árvore pelo gerenciador, respeitando a thread-safety.
+A função de trabalho executa a aquisição e, em seguida, o housekeeping de
+deduplicação por conteúdo, publicando progresso e término; a thread do Tk
+remonta a árvore pelo gerenciador, respeitando a thread-safety.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import date
 
 from flowscope.application.cancellation import OperacaoCancelada
@@ -22,8 +24,9 @@ def executar_noticias(
     ctx: JobContext,
     aquisicao: object,
     reference_date: date,
+    deduplicar: Callable[[object], None] | None = None,
 ) -> None:
-    """Executa a aquisição, publicando progresso e o término."""
+    """Executa a aquisição e o housekeeping, publicando progresso e término."""
 
     def _progresso(current: int, total: int, label: str) -> None:
         ctx.progress(detalhe=label, atual=current, total=total)
@@ -38,3 +41,11 @@ def executar_noticias(
         logger.debug("Aquisição de notícias interrompida pelo usuário")
     except Exception:  # falha inesperada não deve travar a interface
         logger.warning("Falha na aquisição de notícias", exc_info=True)
+    if deduplicar is None:
+        return
+    try:
+        deduplicar(ctx.token)
+    except OperacaoCancelada:
+        logger.debug("Housekeeping de notícias interrompido pelo usuário")
+    except Exception:  # housekeeping não deve travar a interface
+        logger.warning("Falha no housekeeping de notícias", exc_info=True)

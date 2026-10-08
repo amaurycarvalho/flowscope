@@ -392,6 +392,25 @@ class TestAquisicao:
         aquisicao.adquirir(_REFERENCIA)
         assert baixados == []
 
+    def test_duplicata_de_conteudo_nao_grava_nem_indexa(self, tmp_path):
+        conteudo = b"<html>" + b"x" * 2048 + b"</html>"
+        repo = _RepositorioFake(
+            [
+                _noticia(
+                    url="https://x/1",
+                    titulo="A - Suspensão de negociação",
+                ),
+                _noticia(
+                    url="https://x/2",
+                    titulo="B - Suspensão de negociação",
+                ),
+            ]
+        )
+        aquisicao = _aquisicao(tmp_path, repo, lambda url: conteudo)
+        aquisicao.adquirir(_REFERENCIA)
+        assert len(list((tmp_path / "noticias").rglob("*.html"))) == 1
+        assert len(NoticiasIndexStore(tmp_path).itens()) == 1
+
 
 class TestIndiceNoticias:
     def test_aquisicao_indexa_metadados(self, tmp_path):

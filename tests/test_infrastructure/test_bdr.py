@@ -310,6 +310,36 @@ class TestProvider:
             "de IOF e 3% referente a tarifa cobrada pelo Banco B3"
         )
 
+    def test_duplicata_nao_grava_mas_extrai(self, tmp_path):
+        conteudo = b"%PDF-1.4\n" + b"x" * 2048
+        cliente = _ClienteFake(
+            [
+                {
+                    "idNoticia": 1,
+                    "titulo": "EXXON MOBIL (EXXO) - Aviso aos Acionistas",
+                    "dataPublicacao": "10/11/2025",
+                },
+                {
+                    "idNoticia": 2,
+                    "titulo": "EXXON MOBIL (EXXO) - Aviso aos Acionistas",
+                    "dataPublicacao": "10/12/2025",
+                },
+            ],
+            {"1": conteudo, "2": conteudo},
+        )
+        vistos: list[bytes] = []
+
+        def _extrator(dados: bytes) -> str:
+            vistos.append(dados)
+            return ""
+
+        provider = BdrDividendProvider(
+            client=cliente, cache_dir=tmp_path, extractor=_extrator
+        )
+        provider.obter_dados_bdr("EXXO34", REFERENCIA)
+        assert vistos == [conteudo, conteudo]
+        assert len(list(tmp_path.rglob("*.pdf"))) == 1
+
 
 class _SessaoFake:
     def __init__(self, json_payload=None, text=""):

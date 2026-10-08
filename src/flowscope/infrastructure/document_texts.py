@@ -60,6 +60,14 @@ class JsonDocumentTextStore(DocumentTextStore):
         textos[chave] = texto
         self._gravar(ticker, textos)
 
+    def remover(
+        self: "JsonDocumentTextStore", ticker: str, chave: str
+    ) -> None:
+        """Remove o texto de um documento, preservando os demais do ticker."""
+        textos = self._carregar(ticker)
+        if textos.pop(chave, None) is not None:
+            self._gravar(ticker, textos)
+
     def _carregar(self: "JsonDocumentTextStore", ticker: str) -> dict:
         """Carrega o mapa de textos, tolerando ausência e corrupção."""
         caminho = self._path_for(ticker)

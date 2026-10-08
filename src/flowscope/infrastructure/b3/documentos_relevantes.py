@@ -7,11 +7,13 @@ reuso entre execuções, sem alterar as entidades de leitura existentes.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from flowscope.application.deduplicacao import DeduplicacaoConteudo
 from flowscope.domain.structured import (
     DocumentoRelevante,
     nome_categoria,
@@ -20,6 +22,10 @@ from flowscope.domain.structured import (
 )
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.content_hashes import (
+    deduplicacao_documentos,
+    raiz_cache,
+)
 from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
 
 logger = logging.getLogger("flowscope")
@@ -138,6 +144,7 @@ class DocumentosRelevantesProvider:
         client: B3FundosClient | None = None,
         cache_dir: Path | None = None,
         cache: CacheManager | None = None,
+        dedup_factory: Callable[[str], DeduplicacaoConteudo] | None = None,
     ) -> None:
         """Inicializa o provider com o cliente, o cache JSON e a árvore de arquivos."""
         self._client = client or B3FundosClient()
@@ -147,11 +154,26 @@ class DocumentosRelevantesProvider:
             else (cache or CacheManager()).get_cache_dir() / PASTA_CACHE
         )
         self._arquivos = DocumentosRelevantesCache(base)
+        self._cache_root = raiz_cache(self._arquivos.base_dir)
+        self._dedup_factory = dedup_factory or (
+            lambda ticker: deduplicacao_documentos(self._cache_root, ticker)
+        )
 
     @property
     def cache(self: "DocumentosRelevantesProvider") -> DocumentosRelevantesCache:
         """Retorna a árvore de arquivos de documentos relevantes."""
         return self._arquivos
+
+    @property
+    def cache_root(self: "DocumentosRelevantesProvider") -> Path:
+        """Retorna a raiz de cache usada pelos caminhos relativos."""
+        return self._cache_root
+
+    def deduplicacao(
+        self: "DocumentosRelevantesProvider", ticker: str
+    ) -> DeduplicacaoConteudo:
+        """Retorna o serviço de deduplicação do ticker."""
+        return self._dedup_factory(ticker)
 
     def sincronizar(
         self: "DocumentosRelevantesProvider",
@@ -177,11 +199,12 @@ class DocumentosRelevantesProvider:
         id_fnet: str | None,
         item: dict,
     ) -> DocumentoRelevante | None:
-        """Baixa e cacheia o PDF do item, ou ``None`` em falha/não-PDF.
+        """Baixa e cacheia o PDF do item, ou ``None`` em falha/não-PDF/duplicata.
 
         Um arquivo já existente é reutilizado sem novo download. Conteúdo sem
         assinatura ``%PDF`` é rejeitado sem criar arquivo e sem propagar a
-        exceção para não interromper os demais documentos.
+        exceção para não interromper os demais documentos. Conteúdo cujo hash já
+        esteja registrado no escopo do ticker é descartado como duplicata.
         """
         id_documento = _id_da_url(str(item.get("urlViewerFundosNet") or ""))
         codigo = item.get("category")
@@ -208,7 +231,18 @@ class DocumentosRelevantesProvider:
                 return None
             if not conteudo:
                 return None
-            self._arquivos.gravar(ticker, referencia, slug, id_documento, conteudo)
+            caminho = self._arquivos.caminho(
+                ticker, referencia, slug, id_documento
+            )
+            dedup = self.deduplicacao(ticker)
+            if not dedup.processar(
+                conteudo,
+                caminho,
+                lambda dados: self._arquivos.gravar(
+                    ticker, referencia, slug, id_documento, dados
+                ),
+            ):
+                return None
             tamanho = len(conteudo)
         return _documento_relevante(
             ticker, id_fnet, item, id_documento, codigo, tamanho

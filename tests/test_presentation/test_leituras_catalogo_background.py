@@ -231,6 +231,43 @@ class TestLeituraDocumentosBackground:
         host._documents_panel.aplicar_catalogo.assert_called_once_with(None, None)
 
 
+class TestAquisicaoDocumentosComDedup:
+    def _host(self, background, aquisicao, dedup):
+        host = ActionsMixin()
+        host._documents_panel = MagicMock()
+        host._background = background
+        host._ticker_selecionado = "ALZR11"
+        host._aquisicao_documentos = aquisicao
+        host._deduplicar_documentos = dedup
+        host._presenter = MagicMock()
+        host._flash_status = MagicMock()
+        host._data_referencia = lambda: _REFERENCIA
+        return host
+
+    def test_dedup_roda_apos_aquisicao(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        dedup = MagicMock()
+        host = self._host(background, aquisicao, dedup)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        aquisicao.adquirir.assert_called_once()
+        dedup.assert_called_once()
+        assert dedup.call_args.args[0] == "ALZR11"
+
+    def test_sem_dedup_ainda_adquire(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        host = self._host(background, aquisicao, None)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        aquisicao.adquirir.assert_called_once()
+
+
 class TestLeituraNoticiasBackground:
     def _host(self, background):
         host = NoticiasActionsMixin()

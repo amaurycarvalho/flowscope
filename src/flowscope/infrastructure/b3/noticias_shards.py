@@ -82,6 +82,13 @@ class NoticiasTextStore(JsonDocumentTextStore):
         self._garantir_migracao()
         super().salvar(_escopo_de(ticker, chave), chave, texto)
 
+    def remover(
+        self: "NoticiasTextStore", ticker: str, chave: str
+    ) -> None:
+        """Remove o texto da notícia do seu shard."""
+        self._garantir_migracao()
+        super().remover(_escopo_de(ticker, chave), chave)
+
     def textos(self: "NoticiasTextStore", ticker: str) -> dict[str, str]:
         """Retorna os textos do escopo, mesclando os shards de notícias."""
         if ticker != ESCOPO_NOTICIAS:
@@ -138,6 +145,13 @@ class NoticiasSummaryStore(JsonDocumentSummaryStore):
         super().salvar(
             _escopo_de(ticker, chave), chave, short_summary, long_summary
         )
+
+    def remover(
+        self: "NoticiasSummaryStore", ticker: str, chave: str
+    ) -> None:
+        """Remove o resumo da notícia do seu shard."""
+        self._garantir_migracao()
+        super().remover(_escopo_de(ticker, chave), chave)
 
     def resumos(self: "NoticiasSummaryStore", ticker: str) -> dict:
         """Retorna os resumos do escopo, mesclando os shards de notícias."""

@@ -38,6 +38,10 @@ from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.clipboard_image import ClipboardImageAdapter
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
+from flowscope.infrastructure.deduplicacao import (
+    executar_housekeeping_documentos,
+    executar_housekeeping_noticias,
+)
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
@@ -225,8 +229,17 @@ class WiringMixin:
         self._background = background
         logger = PythonLogAdapter(logging.getLogger("flowscope"))
         cache = CacheManager()
+        base = cache.get_cache_dir()
         self._aquisicao_documentos = AquisicaoDocumentos(cache=cache)
         self._aquisicao_noticias = AquisicaoNoticias(cache=cache)
+        self._deduplicar_documentos = (
+            lambda ticker, token: executar_housekeeping_documentos(
+                base, ticker, token
+            )
+        )
+        self._deduplicar_noticias = lambda token: executar_housekeeping_noticias(
+            base, token
+        )
         b3_fund_repository = B3FundRepository()
         fundamental_repo = B3FundamentalRepository(
             fund_repository=b3_fund_repository,

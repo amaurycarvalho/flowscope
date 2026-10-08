@@ -916,6 +916,21 @@ class TestNoticiasActions:
         painel.mostrar_carregando.assert_called()
         painel.aplicar_secoes.assert_called_once()
 
+    def test_dedup_roda_apos_aquisicao(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+        host._deduplicar_noticias = MagicMock()
+        host._adquirir_noticias()
+        _drenar(host)
+        host._deduplicar_noticias.assert_called_once()
+
+    def test_sem_dedup_ainda_adquire(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+        host._adquirir_noticias()
+        _drenar(host)
+        host._aquisicao_noticias.adquirir.assert_called_once()
+
     def test_sem_aquisicao_apenas_le_cache(self):
         painel = MagicMock()
         host = _HostNoticias(painel)

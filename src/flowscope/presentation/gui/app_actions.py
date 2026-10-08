@@ -247,9 +247,10 @@ class ActionsMixin:
         if background is None or background.tem_ativo(GRUPO):
             return
         painel.mostrar_carregando(ticker)
+        deduplicar = getattr(self, "_deduplicar_documentos", None)
         background.submit(
             lambda ctx: executar_documentos(
-                ctx, aquisicao, ticker, self._data_referencia()
+                ctx, aquisicao, ticker, self._data_referencia(), deduplicar
             ),
             grupo=GRUPO,
             politica=POLITICA,
