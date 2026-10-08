@@ -1,9 +1,10 @@
 """Painel de navegação e pré-visualização das notícias em cache.
 
 Sub-aba "Notícias" da Análise Geral: árvore (ano → mês → agência → artigos),
-pré-visualização do texto do artigo, resumo por LLM e os botões "Atualizar",
-"Abrir", "I.A." e "Resumir pendentes". A abertura usa a URL do artigo no
-navegador padrão; artigos sem texto extraível exibem uma mensagem informativa.
+pré-visualização do texto do artigo, resumo por LLM e o seletor de modelo
+ativo com o botão de configuração, além de "Atualizar", "Abrir" e "Resumir
+pendentes". A abertura usa a URL do artigo no navegador padrão; artigos sem
+texto extraível exibem uma mensagem informativa.
 """
 
 import logging
@@ -27,6 +28,7 @@ from flowscope.application.documentos.document_summary import DocumentSummarySer
 from flowscope.application.documentos.document_summary_port import (
     DocumentSummaryStore,
 )
+from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.application.noticias.catalogo import (
     ConsultarCatalogoNoticiasUseCase,
     NoticiasCatalogo,
@@ -51,6 +53,7 @@ from flowscope.presentation.gui.charts.document_grouping import (
 )
 from flowscope.presentation.gui.charts.noticias_tree_view import NoticiasTreeView
 from flowscope.presentation.gui.document_actions import abrir_url
+from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
@@ -82,7 +85,9 @@ class NoticiasPanel(DocumentFlowMixin):
         open_callback: Callable[[str], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         acquire_callback: Callable[[], None] | None = None,
-        ia_callback: Callable[[], None] | None = None,
+        config_callback: Callable[[], None] | None = None,
+        config_port: LLMConfigPort | None = None,
+        model_changed_callback: Callable[[], None] | None = None,
         resumir_callback: Callable[[], None] | None = None,
         resumir_ativo_callback: Callable[[], bool] | None = None,
         reference_date_provider: Callable[[], date] | None = None,
@@ -107,7 +112,9 @@ class NoticiasPanel(DocumentFlowMixin):
         self._open_callback = open_callback or abrir_url
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
-        self._ia_callback = ia_callback
+        self._config_callback = config_callback
+        self._config_port = config_port
+        self._model_changed_callback = model_changed_callback
         self._resumir_callback = resumir_callback
         self._resumir_ativo_callback = resumir_ativo_callback
         self._reference_date_provider = reference_date_provider or _hoje
@@ -189,8 +196,13 @@ class NoticiasPanel(DocumentFlowMixin):
             barra, text="Abrir", command=self._on_open_selected, state=tk.DISABLED
         )
         self._open_btn.pack(side=tk.LEFT, padx=2)
-        self._ia_btn = ttk.Button(barra, text="I.A.", command=self._on_ia)
-        self._ia_btn.pack(side=tk.LEFT, padx=2)
+        self._model_selector = SeletorModelo(
+            barra,
+            config_port=self._config_port,
+            on_config=self._on_configurar,
+            on_changed=self._on_model_changed,
+        )
+        self._model_selector.pack(side=tk.LEFT, padx=2)
         self._resumir_btn = ttk.Button(
             barra,
             text="Resumir pendentes",
@@ -365,8 +377,13 @@ class NoticiasPanel(DocumentFlowMixin):
         )
 
     def all_buttons(self: "NoticiasPanel") -> list[tk.Widget]:
-        """Retorna os botões do painel para o bloqueio global da interface."""
-        return [self._refresh_btn, self._open_btn, self._ia_btn, self._resumir_btn]
+        """Retorna os controles do painel para o bloqueio global da interface."""
+        return [
+            self._refresh_btn,
+            self._open_btn,
+            *self._model_selector.all_buttons(),
+            self._resumir_btn,
+        ]
 
     def texto_atual(self: "NoticiasPanel") -> str:
         """Retorna o conteúdo atual do campo de pré-visualização."""
@@ -509,10 +526,18 @@ class NoticiasPanel(DocumentFlowMixin):
         if arquivo is not None:
             self._abrir(arquivo)
 
-    def _on_ia(self: "NoticiasPanel") -> None:
+    def _on_configurar(self: "NoticiasPanel") -> None:
         """Aciona o callback de abertura do diálogo de configuração de LLM."""
-        if self._ia_callback is not None:
-            self._ia_callback()
+        if self._config_callback is not None:
+            self._config_callback()
+
+    def _on_model_changed(
+        self: "NoticiasPanel", provider: str | None = None
+    ) -> None:
+        """Reavalia os resumos e notifica o host após trocar o modelo ativo."""
+        self.refresh_resumir_button()
+        if self._model_changed_callback is not None:
+            self._model_changed_callback()
 
     def _on_resumir(self: "NoticiasPanel") -> None:
         """Aciona o callback de resumo em lote dos itens pendentes."""

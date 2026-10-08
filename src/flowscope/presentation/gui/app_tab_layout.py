@@ -95,7 +95,9 @@ class TabsLayoutMixin:
             baixar_vinculo=noticias.baixar_vinculo,
             status_callback=getattr(self, "_set_status", None),
             acquire_callback=getattr(self, "_adquirir_noticias", None),
-            ia_callback=getattr(self, "_abrir_config_llm", None),
+            config_callback=getattr(self, "_abrir_config_llm", None),
+            config_port=getattr(self, "_llm_config", None),
+            model_changed_callback=getattr(self, "_on_provider_changed", None),
             resumir_callback=getattr(self, "_resumir_noticias_pendentes", None),
             resumir_ativo_callback=getattr(
                 self, "_noticias_resumos_em_andamento", None
@@ -152,7 +154,11 @@ class TabsLayoutMixin:
                     guidance_service=documentos.guidance_service,
                     status_callback=getattr(self, "_set_status", None),
                     acquire_callback=getattr(self, "_adquirir_documentos", None),
-                    ia_callback=getattr(self, "_abrir_config_llm", None),
+                    config_callback=getattr(self, "_abrir_config_llm", None),
+                    config_port=getattr(self, "_llm_config", None),
+                    model_changed_callback=getattr(
+                        self, "_on_provider_changed", None
+                    ),
                     resumir_callback=getattr(
                         self, "_resumir_documentos_pendentes", None
                     ),
@@ -207,6 +213,8 @@ class TabsLayoutMixin:
             catalogo=documentos.catalogo,
             noticias_catalog=self._adaptadores_noticias().catalogo,
             config_callback=getattr(self, "_abrir_config_llm", None),
+            config_port=getattr(self, "_llm_config", None),
+            model_changed_callback=getattr(self, "_on_provider_changed", None),
             status_callback=getattr(self, "_set_status", None),
             tokens_callback=getattr(self, "_set_tokens", None),
             token_counter_provider=documentos.token_counter_provider,

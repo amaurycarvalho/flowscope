@@ -109,8 +109,8 @@ class TestMensagemIndisponibilidade:
             "Resumo indisponível. Clique no documento para análise."
         )
         assert mensagem_indisponivel(False) == (
-            "Resumo indisponível. Configure a LLM via o botão I.A. e teste "
-            "a comunicação."
+            "Resumo indisponível. Configure a LLM pelo botão de configuração "
+            "e teste a comunicação."
         )
 
 

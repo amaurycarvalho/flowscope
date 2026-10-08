@@ -152,20 +152,30 @@ class TabActionsMixin:
 
     def _abrir_config_llm(self: "TabActionsMixin") -> None:
         """Abre o diálogo de configuração de LLM, reavaliando ao salvar."""
-        paineis = [
-            getattr(self, "_documents_panel", None),
-            getattr(self, "_noticias_panel", None),
-        ]
 
         def _on_saved() -> None:
-            for painel in paineis:
-                if painel is not None:
-                    painel.refresh_resumir_button()
-            self._reavaliar_chat_llm()
+            self._on_provider_changed()
 
         LLMConfigDialog(
             self, config_port=self._llm_config, on_saved=_on_saved
         )
+
+    def _on_provider_changed(self: "TabActionsMixin") -> None:
+        """Recarrega os seletores de modelo e reavalia chat e resumos."""
+        self._recarregar_seletores_modelo()
+        self._reavaliar_chat_llm()
+        for nome in ("_documents_panel", "_noticias_panel"):
+            painel = getattr(self, nome, None)
+            if painel is not None:
+                painel.refresh_resumir_button()
+
+    def _recarregar_seletores_modelo(self: "TabActionsMixin") -> None:
+        """Recarrega o combobox de modelo ativo de cada painel."""
+        for nome in ("_chat_panel", "_documents_panel", "_noticias_panel"):
+            painel = getattr(self, nome, None)
+            seletor = getattr(painel, "_model_selector", None)
+            if seletor is not None:
+                seletor.recarregar()
 
     def _reavaliar_chat_llm(self: "TabActionsMixin") -> None:
         """Reavalia o estado de configuração do painel de chat."""

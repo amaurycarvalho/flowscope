@@ -32,6 +32,7 @@ from flowscope.application.chat.documentos import FonteDocumentos
 from flowscope.application.chat.fundamentos import FonteFundamentos
 from flowscope.application.chat.noticias import FonteNoticias
 from flowscope.application.documentos.catalogo import CatalogoDocumentos
+from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
@@ -39,6 +40,7 @@ from flowscope.presentation.gui.background.events import Confirmacao
 from flowscope.presentation.gui.chat.envio import EnvioMixin
 from flowscope.presentation.gui.chat.tokens import ContadorTokens
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
+from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.about_panel import (
     APRESENTACAO,
     LICENCA,
@@ -51,8 +53,8 @@ logger = logging.getLogger("flowscope")
 
 #: Orientação exibida quando nenhum provedor de LLM está configurado.
 ORIENTACAO_NAO_CONFIGURADO = (
-    "O chat com I.A. ainda não está configurado. Defina um provedor em "
-    "\"Configuração\" para começar a conversar."
+    "O chat com I.A. ainda não está configurado. Defina um provedor no "
+    "botão de configuração para começar a conversar."
 )
 
 #: Rótulo do cabeçalho da aba única de chat.
@@ -84,6 +86,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         catalogo: CatalogoDocumentos | None = None,
         noticias_catalog: object | None = None,
         config_callback: Callable[[], None] | None = None,
+        config_port: LLMConfigPort | None = None,
+        model_changed_callback: Callable[[], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         tokens_callback: Callable[[str], None] | None = None,
         token_counter_provider: Callable[[], Callable[[str], int] | None] | None = None,
@@ -101,6 +105,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._catalogo = catalogo
         self._noticias_catalog = noticias_catalog
         self._config_callback = config_callback
+        self._config_port = config_port
+        self._model_changed_callback = model_changed_callback
         self._status_callback = status_callback
         self._tokens_callback = tokens_callback
         self._token_counter_provider = token_counter_provider
@@ -149,17 +155,21 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._build_entrada()
 
     def _build_header(self: "ChatPanel") -> None:
-        """Monta o cabeçalho com o título e os botões de limpar, cópia e config."""
+        """Monta o cabeçalho com título, seletor de modelo e botões."""
         cabecalho = tk.Frame(self)
         cabecalho.pack(side=tk.TOP, fill=tk.X)
         self._titulo = tk.Label(
             cabecalho, text=TITULO_CHAT, font=("TkDefaultFont", 10, "bold")
         )
         self._titulo.pack(side=tk.LEFT, padx=4, pady=4)
-        self._config_btn = ttk.Button(
-            cabecalho, text="Configuração", command=self._on_configurar
+        self._model_selector = SeletorModelo(
+            cabecalho,
+            config_port=self._config_port,
+            on_config=self._on_configurar,
+            on_changed=self._on_model_changed,
         )
-        self._config_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+        self._model_selector.pack(side=tk.RIGHT, padx=4, pady=4)
+        self._config_btn = self._model_selector.botao
         self._copy_btn = ttk.Button(
             cabecalho, text="Copiar chat", command=self._copiar_chat
         )
@@ -168,6 +178,12 @@ class ChatPanel(EnvioMixin, tk.Frame):
             cabecalho, text="Limpar", command=self._limpar_chat
         )
         self._clear_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+
+    def _on_model_changed(self: "ChatPanel", provider: str | None = None) -> None:
+        """Reavalia o estado após a troca de modelo e notifica o host."""
+        self.avaliar_estado()
+        if self._model_changed_callback is not None:
+            self._model_changed_callback()
 
     def _build_mensagens(self: "ChatPanel") -> None:
         """Monta a área rolável de respostas em campo somente-leitura."""
@@ -251,7 +267,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
             )
         )
         self._cancel_btn.config(state=tk.NORMAL if processando else tk.DISABLED)
-        self._config_btn.config(state=tk.DISABLED if processando else tk.NORMAL)
+        self._model_selector.set_enabled(not processando)
         estado_texto = (
             tk.NORMAL if self._tem_conteudo() and not processando else tk.DISABLED
         )

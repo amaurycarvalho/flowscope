@@ -27,6 +27,28 @@ class TestInfrastructureLLMConfig:
             "gpt-4o-mini"
         )
 
+    def test_active_providers_e_set_active(self, tmp_path):
+        port = InfrastructureLLMConfig()
+        caminho = tmp_path / "config.json"
+        port.save_llm_config({"provider": "deepseek"}, caminho)
+        assert port.active_providers(caminho) == ["deepseek"]
+
+        port.set_active_provider("none", caminho)
+        assert port.load_llm_config(caminho)["provider"] == "none"
+        assert port.active_providers(caminho) == ["deepseek"]
+
+    def test_salvar_sem_ativar_mantem_selecao(self, tmp_path):
+        port = InfrastructureLLMConfig()
+        caminho = tmp_path / "config.json"
+        port.save_llm_config({"provider": "deepseek"}, caminho)
+        port.save_llm_config(
+            {"provider": "openai", "api_key": "sk-open"}, caminho, ativar=False
+        )
+        assert port.load_llm_config(caminho)["provider"] == "deepseek"
+        assert (
+            port.load_provider_configs(caminho)["openai"]["api_key"] == "sk-open"
+        )
+
     def test_create_provider_delega(self, monkeypatch):
         from flowscope.infrastructure.llm import config_adapter
 

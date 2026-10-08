@@ -41,14 +41,28 @@ class LLMConfigPort(Protocol):
         """Retorna a configuração salva de cada provedor."""
         ...
 
+    def active_providers(self: "LLMConfigPort", path: Path | None = None) -> list[str]:
+        """Retorna os provedores ativos efetivos (testados mais o corrente)."""
+        ...
+
+    def set_active_provider(
+        self: "LLMConfigPort", provider: str, path: Path | None = None,
+    ) -> None:
+        """Define o provedor ativo preservando provedores e credenciais."""
+        ...
+
     def load_llm_config(self: "LLMConfigPort", path: Path | None = None) -> dict:
         """Retorna a configuração do provedor ativo."""
         ...
 
     def save_llm_config(
-        self: "LLMConfigPort", config: dict, path: Path | None = None,
+        self: "LLMConfigPort",
+        config: dict,
+        path: Path | None = None,
+        *,
+        ativar: bool = True,
     ) -> None:
-        """Grava o bloco ``llm.chat`` preservando os demais blocos."""
+        """Grava o bloco ``llm.chat``, ativando o provedor quando solicitado."""
         ...
 
     def check_llm_deps(self: "LLMConfigPort") -> bool:

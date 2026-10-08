@@ -18,7 +18,11 @@ from flowscope.domain.llm import (
     LLMUnavailableError,
 )
 from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
-from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
+from flowscope.presentation.gui.llm.config_dialog import (
+    LLMConfigDialog,
+    assinatura_conexao,
+    deve_ativar,
+)
 
 pytestmark = pytest.mark.llm
 
@@ -51,6 +55,20 @@ def _config_salva(tmp_path, **chat):
     return caminho
 
 
+class _EventoResultado:
+    """Evento mínimo com o desfecho do teste para a thread do Tk."""
+
+    def __init__(self, valor):
+        self.valor = valor
+
+
+def _simular_teste_ok(dialog, config):
+    """Aplica um desfecho de teste bem-sucedido para os valores informados."""
+    dialog._aplicar_resultado_teste(
+        _EventoResultado(("ok", "olá", config, None))
+    )
+
+
 class TestCargaESalvamento:
     @needs_display
     def test_abertura_carrega_config(self, tmp_path):
@@ -74,7 +92,7 @@ class TestCargaESalvamento:
             root.destroy()
 
     @needs_display
-    def test_salvar_persiste_config(self, tmp_path):
+    def test_salvar_sem_teste_grava_sem_ativar(self, tmp_path):
         caminho = tmp_path / "config.json"
         root = tk.Tk()
         try:
@@ -87,7 +105,8 @@ class TestCargaESalvamento:
             dialog._salvar()
             dados = json.loads(caminho.read_text(encoding="utf-8"))
             chat = dados["llm"]["chat"]
-            assert chat["provider"] == "openai"
+            assert chat["provider"] == "none"
+            assert chat["active"] == []
             assert chat["providers"]["openai"]["api_key"] == "sk-2"
             assert chat["providers"]["openai"]["rpm"] == 9
         finally:
@@ -115,6 +134,7 @@ class TestCargaESalvamento:
             dialog._model_var.set("deepseek-chat")
             dialog._api_key_var.set("sk-9")
             dialog._rpm_var.set("8")
+            _simular_teste_ok(dialog, dialog._coletar_config())
             dialog._salvar()
             reaberto = _dialog(root, config_path=caminho)
             try:
@@ -445,6 +465,71 @@ class TestOnSaved:
             dialog._salvar()
         finally:
             root.destroy()
+
+
+class TestAssinaturaConexao:
+    def test_normaliza_url_e_ignora_rpm(self):
+        a = assinatura_conexao(
+            {
+                "provider": "openai",
+                "api_url": "https://x/v1/",
+                "model": "m",
+                "api_key": "k",
+                "rpm": 5,
+            }
+        )
+        b = assinatura_conexao(
+            {
+                "provider": "openai",
+                "api_url": " https://x/v1 ",
+                "model": "m",
+                "api_key": "k",
+                "rpm": 60,
+            }
+        )
+        assert a == b
+
+    def test_campos_distintos_mudam_assinatura(self):
+        base = {
+            "provider": "openai",
+            "api_url": "https://x/v1",
+            "model": "m",
+            "api_key": "k",
+        }
+        for campo, valor in (
+            ("provider", "gemini"),
+            ("api_url", "https://y/v1"),
+            ("model", "m2"),
+            ("api_key", "k2"),
+        ):
+            outro = dict(base)
+            outro[campo] = valor
+            assert assinatura_conexao(base) != assinatura_conexao(outro)
+
+
+class TestDeveAtivar:
+    def test_none_sempre_ativa(self):
+        assert deve_ativar({"provider": "none"}, None) is True
+        assert deve_ativar({"provider": "none"}, "qualquer") is True
+
+    def test_ativa_somente_com_teste_correspondente(self):
+        config = {
+            "provider": "openai",
+            "api_url": "https://api.openai.com/v1",
+            "model": "gpt-4o-mini",
+            "api_key": "sk-2",
+            "rpm": 9,
+        }
+        assert deve_ativar(config, assinatura_conexao(config)) is True
+
+    def test_sem_teste_nao_ativa(self):
+        config = {"provider": "openai", "api_key": "sk-2"}
+        assert deve_ativar(config, None) is False
+
+    def test_teste_divergente_nao_ativa(self):
+        config = {"provider": "openai", "model": "m", "api_key": "k"}
+        outro = dict(config, model="outro")
+        assert deve_ativar(config, assinatura_conexao(outro)) is False
 
 
 class TestModalidade:

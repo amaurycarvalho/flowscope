@@ -9,9 +9,12 @@ from flowscope.infrastructure.llm.config import (
     DEFAULT_LLM_CONFIG,
     check_llm_deps,
     get_presets,
+    load_active,
+    load_active_effective,
     load_llm_config,
     load_provider_configs,
     save_llm_config,
+    set_active_provider,
 )
 from flowscope.infrastructure.llm.presets import PROVIDER_PRESETS
 
@@ -265,6 +268,128 @@ class TestSave:
         entrada = dados["llm"]["chat"]["providers"]["deepseek"]
         assert entrada["api_key"] == "sk-123"
         assert entrada["rpm"] == 15
+
+
+class TestActive:
+    def test_ausente_vira_vazio(self, tmp_path):
+        assert load_active(tmp_path / "config.json") == []
+
+    def test_valores_invalidos_ignorados(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "active": ["deepseek", "none", "deepseek", 5, ""],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_active(caminho) == ["deepseek"]
+
+    def test_salvar_com_ativar_promove(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "deepseek"
+        assert dados["llm"]["chat"]["active"] == ["deepseek"]
+
+    def test_salvar_sem_ativar_mantem_provider(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        save_llm_config(
+            {
+                "provider": "openai",
+                "api_url": "https://api.openai.com/v1",
+                "model": "gpt-4o-mini",
+                "api_key": "sk-open",
+                "rpm": 3,
+            },
+            caminho,
+            ativar=False,
+        )
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "deepseek"
+        assert dados["llm"]["chat"]["active"] == ["deepseek"]
+        assert (
+            dados["llm"]["chat"]["providers"]["openai"]["api_key"] == "sk-open"
+        )
+
+    def test_salvar_none_preserva_active(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        save_llm_config({"provider": "none"}, caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "none"
+        assert dados["llm"]["chat"]["active"] == ["deepseek"]
+
+    def test_gravar_preserva_active_de_outros(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        save_llm_config({"provider": "gemini"}, caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["active"] == ["deepseek", "gemini"]
+
+    def test_set_active_provider_preserva_providers(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        set_active_provider("openai", caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "openai"
+        assert dados["llm"]["chat"]["active"] == ["deepseek", "openai"]
+        assert "deepseek" in dados["llm"]["chat"]["providers"]
+
+    def test_set_active_provider_none(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "deepseek"}, caminho)
+        set_active_provider("none", caminho)
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        assert dados["llm"]["chat"]["provider"] == "none"
+        assert dados["llm"]["chat"]["active"] == ["deepseek"]
+
+    def test_effective_semeia_corrente(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "gemini",
+                            "active": [],
+                            "providers": {"gemini": {}, "deepseek": {}},
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_active_effective(caminho) == ["gemini"]
+        assert load_active(caminho) == []
+
+    def test_effective_nao_duplica(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        caminho.write_text(
+            json.dumps(
+                {
+                    "llm": {
+                        "chat": {
+                            "provider": "gemini",
+                            "active": ["gemini", "deepseek"],
+                        }
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        assert load_active_effective(caminho) == ["gemini", "deepseek"]
+
+    def test_effective_none_nao_semeia(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        save_llm_config({"provider": "none"}, caminho)
+        assert load_active_effective(caminho) == []
 
 
 class TestGuidanceBlockRemovido:

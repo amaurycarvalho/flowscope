@@ -164,7 +164,7 @@ class TestConstrucao:
                 debounce_ms=0,
             )
             assert isinstance(painel._preview, ReadonlyText)
-            assert len(painel.all_buttons()) == 4
+            assert len(painel.all_buttons()) == 5
             assert painel.texto_atual() == ""
             assert "Atualizar" in painel._empty_label.cget("text")
         finally:
@@ -642,7 +642,7 @@ class TestAbertura:
 
 class TestCallbacks:
     @needs_display
-    def test_acquire_ia_e_resumir(self, tmp_path):
+    def test_acquire_config_e_resumir(self, tmp_path):
         catalogo = _semear(tmp_path, [_noticia()])
         root = tk.Tk()
         try:
@@ -651,17 +651,17 @@ class TestCallbacks:
                 root,
                 catalog=catalogo,
                 acquire_callback=lambda: chamadas.append("atualizar"),
-                ia_callback=lambda: chamadas.append("ia"),
+                config_callback=lambda: chamadas.append("config"),
                 resumir_callback=lambda: chamadas.append("resumir"),
                 llm_available=lambda: True,
                 debounce_ms=0,
             )
             painel.update(_REFERENCIA)
             painel._refresh_btn.invoke()
-            painel._ia_btn.invoke()
+            painel._model_selector.botao.invoke()
             painel._resumir_btn.config(state=tk.NORMAL)
             painel._resumir_btn.invoke()
-            assert chamadas == ["atualizar", "ia", "resumir"]
+            assert chamadas == ["atualizar", "config", "resumir"]
         finally:
             root.destroy()
 

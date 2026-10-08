@@ -85,7 +85,7 @@ class TestDisableDocumentosBotoes:
             gui.destroy()
 
     @needs_display
-    def test_botao_ia_desabilitado_e_restaurado(self, tmp_path):
+    def test_seletor_modelo_desabilitado_e_restaurado(self, tmp_path):
         gui = _DisableHost()
         try:
             gui._flash_after_id = None
@@ -101,14 +101,15 @@ class TestDisableDocumentosBotoes:
             gui._documents_panel = DocumentTreePanel(
                 gui, catalog=DocumentCatalog(cache_dir=tmp_path)
             )
+            seletor = gui._documents_panel._model_selector
 
             gui.disable_all_buttons()
-            assert (
-                str(gui._documents_panel._ia_btn.cget("state")) == "disabled"
-            )
+            assert str(seletor.botao.cget("state")) == "disabled"
+            assert str(seletor.combo.cget("state")) == "disabled"
 
             gui.restore_all_buttons()
-            assert str(gui._documents_panel._ia_btn.cget("state")) == "normal"
+            assert str(seletor.botao.cget("state")) == "normal"
+            assert str(seletor.combo.cget("state")) == "readonly"
         finally:
             gui.destroy()
 

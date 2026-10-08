@@ -13,9 +13,13 @@ from flowscope.infrastructure.llm.config import (
     DEFAULT_LLM_CONFIG,
     check_llm_deps,
     get_presets,
+    load_active_effective,
     load_llm_config,
     load_provider_configs,
     save_llm_config,
+)
+from flowscope.infrastructure.llm.config import (
+    set_active_provider as _set_active_provider,
 )
 from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.llm.presets import (
@@ -58,6 +62,18 @@ class InfrastructureLLMConfig:
         """Retorna a configuração salva de cada provedor."""
         return load_provider_configs(path)
 
+    def active_providers(
+        self: "InfrastructureLLMConfig", path: Path | None = None,
+    ) -> list[str]:
+        """Retorna os provedores ativos efetivos (testados mais o corrente)."""
+        return load_active_effective(path)
+
+    def set_active_provider(
+        self: "InfrastructureLLMConfig", provider: str, path: Path | None = None,
+    ) -> None:
+        """Define o provedor ativo preservando provedores e credenciais."""
+        _set_active_provider(provider, path)
+
     def load_llm_config(
         self: "InfrastructureLLMConfig", path: Path | None = None,
     ) -> dict:
@@ -65,11 +81,14 @@ class InfrastructureLLMConfig:
         return load_llm_config(path)
 
     def save_llm_config(
-        self: "InfrastructureLLMConfig", config: dict,
+        self: "InfrastructureLLMConfig",
+        config: dict,
         path: Path | None = None,
+        *,
+        ativar: bool = True,
     ) -> None:
-        """Grava o bloco ``llm.chat`` preservando os demais blocos."""
-        save_llm_config(config, path)
+        """Grava o bloco ``llm.chat``, ativando o provedor quando solicitado."""
+        save_llm_config(config, path, ativar=ativar)
 
     def check_llm_deps(self: "InfrastructureLLMConfig") -> bool:
         """Indica se as dependências opcionais ``[llm]`` estão instaladas."""

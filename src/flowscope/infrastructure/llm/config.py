@@ -64,6 +64,45 @@ def _normalizar_provedor(entrada: dict | None) -> dict:
     return resultado
 
 
+def _active_do_chat(chat: dict) -> list[str]:
+    """Devolve a lista de provedores ativos, ignorando `none` e valores inválidos."""
+    active = chat.get("active")
+    if not isinstance(active, list):
+        return []
+    resultado: list[str] = []
+    for nome in active:
+        if (
+            isinstance(nome, str)
+            and nome
+            and nome != "none"
+            and nome not in resultado
+        ):
+            resultado.append(nome)
+    return resultado
+
+
+def _gravar_chat(
+    data: dict,
+    provider: str,
+    active: list[str],
+    providers: dict[str, dict],
+    destino: Path,
+) -> None:
+    """Substitui `llm.chat` preservando os demais blocos e grava o arquivo."""
+    llm = data.get("llm")
+    if not isinstance(llm, dict):
+        llm = {}
+    llm["chat"] = {
+        "provider": provider,
+        "active": active,
+        "providers": providers,
+    }
+    llm.pop("guidance", None)
+    data["llm"] = llm
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+
+
 def _providers_do_chat(chat: dict) -> dict[str, dict]:
     """Normaliza o mapa ``providers``, migrando o formato plano anterior.
 
@@ -90,6 +129,31 @@ def load_provider_configs(path: Path | None = None) -> dict[str, dict]:
     return _providers_do_chat(_ler_chat(_read_json(path or CONFIG_PATH)))
 
 
+def load_active(path: Path | None = None) -> list[str]:
+    """Carrega a lista persistida ``llm.chat.active``."""
+    return _active_do_chat(_ler_chat(_read_json(path or CONFIG_PATH)))
+
+
+def load_active_effective(path: Path | None = None) -> list[str]:
+    """Carrega os ativos efetivos, semeando o provedor corrente se necessário.
+
+    O provedor corrente (``provider != none``) entra na lista sem ser persistido
+    em ``active`` e sem afirmar que foi testado.
+    """
+    chat = _ler_chat(_read_json(path or CONFIG_PATH))
+    active = _active_do_chat(chat)
+    provider = chat.get("provider")
+    if (
+        isinstance(provider, str)
+        and provider
+        and provider != "none"
+        and provider not in active
+    ):
+        return [*active, provider]
+    return active
+
+
+
 def load_llm_config(path: Path | None = None) -> dict:
     """Carrega o bloco ``llm.chat`` do provedor ativo com defaults preenchidos."""
     chat = _ler_chat(_read_json(path or CONFIG_PATH))
@@ -105,26 +169,58 @@ def load_llm_config(path: Path | None = None) -> dict:
     return config
 
 
-def save_llm_config(config: dict, path: Path | None = None) -> None:
-    """Grava ``llm.chat`` preservando os demais provedores e blocos do arquivo."""
+def save_llm_config(
+    config: dict,
+    path: Path | None = None,
+    *,
+    ativar: bool = True,
+) -> None:
+    """Grava ``llm.chat`` preservando os demais provedores e blocos do arquivo.
+
+    A entrada do provedor informado é sempre atualizada em ``providers``. Quando
+    ``ativar`` é verdadeiro, o provedor passa a ser a seleção ativa e entra em
+    ``active``; quando falso, a seleção ativa e ``active`` permanecem inalteradas.
+    """
     destino = path or CONFIG_PATH
     data = _read_json(destino)
+    chat_atual = _ler_chat(data)
     provider = config.get("provider") or "none"
-    providers = _providers_do_chat(_ler_chat(data))
+    providers = _providers_do_chat(chat_atual)
     if provider != "none":
         entrada = {
             chave: config.get(chave, DEFAULT_LLM_CONFIG[chave])
             for chave in _CHAT_FIELDS
         }
         providers[provider] = _normalizar_provedor(entrada)
-    llm = data.get("llm")
-    if not isinstance(llm, dict):
-        llm = {}
-    llm["chat"] = {"provider": provider, "providers": providers}
-    llm.pop("guidance", None)
-    data["llm"] = llm
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    active = _active_do_chat(chat_atual)
+    if ativar:
+        provider_ativo = provider
+        if provider != "none" and provider not in active:
+            active.append(provider)
+    else:
+        anterior = chat_atual.get("provider")
+        provider_ativo = anterior if isinstance(anterior, str) and anterior else "none"
+    _gravar_chat(data, provider_ativo, active, providers, destino)
+
+
+def set_active_provider(provider: str, path: Path | None = None) -> None:
+    """Define o provedor ativo preservando provedores e credenciais.
+
+    O provedor informado entra em ``active`` quando não for ``none``.
+    """
+    destino = path or CONFIG_PATH
+    data = _read_json(destino)
+    chat = _ler_chat(data)
+    providers = _providers_do_chat(chat)
+    active = _active_do_chat(chat)
+    if provider and provider != "none":
+        if provider not in active:
+            active.append(provider)
+        provider_ativo = provider
+    else:
+        provider_ativo = "none"
+    _gravar_chat(data, provider_ativo, active, providers, destino)
+
 
 
 def get_presets() -> dict[str, dict[str, object]]:

@@ -24,6 +24,7 @@ from flowscope.application.documentos.document_summary import DocumentSummarySer
 from flowscope.application.documentos.document_summary_port import (
     DocumentSummaryStore,
 )
+from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 from flowscope.domain.llm import LLMPort
 from flowscope.presentation.gui.charts.document_flow_mixin import (
@@ -35,6 +36,7 @@ from flowscope.presentation.gui.charts.document_flow_mixin import (
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
 from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
+from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
@@ -61,7 +63,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         open_callback: Callable[[Path], None] | None = None,
         status_callback: Callable[[str, str], None] | None = None,
         acquire_callback: Callable[[str], None] | None = None,
-        ia_callback: Callable[[], None] | None = None,
+        config_callback: Callable[[], None] | None = None,
+        config_port: LLMConfigPort | None = None,
+        model_changed_callback: Callable[[], None] | None = None,
         resumir_callback: Callable[[], None] | None = None,
         resumir_ativo_callback: Callable[[], bool] | None = None,
         debounce_ms: int = 150,
@@ -81,7 +85,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
-        self._ia_callback = ia_callback
+        self._config_callback = config_callback
+        self._config_port = config_port
+        self._model_changed_callback = model_changed_callback
         self._resumir_callback = resumir_callback
         self._resumir_ativo_callback = resumir_ativo_callback
         self._debounce_ms = debounce_ms
@@ -166,10 +172,13 @@ class DocumentTreePanel(DocumentFlowMixin):
             state=tk.DISABLED,
         )
         self._open_btn.pack(side=tk.LEFT, padx=2)
-        self._ia_btn = ttk.Button(
-            barra, text="I.A.", command=self._on_ia
+        self._model_selector = SeletorModelo(
+            barra,
+            config_port=self._config_port,
+            on_config=self._on_configurar,
+            on_changed=self._on_model_changed,
         )
-        self._ia_btn.pack(side=tk.LEFT, padx=2)
+        self._model_selector.pack(side=tk.LEFT, padx=2)
         self._resumir_btn = ttk.Button(
             barra, text="Resumir pendentes", command=self._on_resumir,
             state=tk.DISABLED,
@@ -257,9 +266,12 @@ class DocumentTreePanel(DocumentFlowMixin):
         self.aplicar_catalogo(ticker, self.carregar_catalogo(ticker))
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
-        """Retorna os botões do painel para o bloqueio global da interface."""
+        """Retorna os controles do painel para o bloqueio global da interface."""
         return [
-            self._refresh_btn, self._open_btn, self._ia_btn, self._resumir_btn
+            self._refresh_btn,
+            self._open_btn,
+            *self._model_selector.all_buttons(),
+            self._resumir_btn,
         ]
 
     def texto_atual(self: "DocumentTreePanel") -> str:
@@ -390,10 +402,18 @@ class DocumentTreePanel(DocumentFlowMixin):
         if arquivo is not None:
             self._abrir(arquivo)
 
-    def _on_ia(self: "DocumentTreePanel") -> None:
+    def _on_configurar(self: "DocumentTreePanel") -> None:
         """Aciona o callback de abertura do diálogo de configuração de LLM."""
-        if self._ia_callback is not None:
-            self._ia_callback()
+        if self._config_callback is not None:
+            self._config_callback()
+
+    def _on_model_changed(
+        self: "DocumentTreePanel", provider: str | None = None
+    ) -> None:
+        """Reavalia os resumos e notifica o host após trocar o modelo ativo."""
+        self.refresh_resumir_button()
+        if self._model_changed_callback is not None:
+            self._model_changed_callback()
 
     def _solicitar_senha(self: "DocumentTreePanel", arquivo: DocumentoArquivo) -> str | None:
         """Solicita a senha de um PDF protegido."""

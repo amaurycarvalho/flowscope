@@ -39,6 +39,39 @@ MENSAGEM_SUCESSO = "Conexão bem-sucedida: {resposta}"
 TEXTO_TESTE = "hello"
 
 
+def _normalizar_campo(valor: object) -> str:
+    """Normaliza um campo de conexão para comparação de assinatura."""
+    return str(valor or "").strip()
+
+
+def assinatura_conexao(config: dict) -> str:
+    """Monta a identidade de conexão (provedor, URL, modelo e chave).
+
+    O ``rpm`` não integra a assinatura por não afetar a conexão. A URL perde a
+    barra final para que variações equivalentes não invalidem o teste.
+    """
+    provider = _normalizar_campo(config.get("provider"))
+    api_url = _normalizar_campo(config.get("api_url")).rstrip("/")
+    model = _normalizar_campo(config.get("model"))
+    api_key = _normalizar_campo(config.get("api_key"))
+    return repr((provider, api_url, model, api_key))
+
+
+def deve_ativar(config: dict, assinatura_testada: str | None) -> bool:
+    """Indica se o salvamento deve ativar o provedor do config informado.
+
+    ``none`` sempre desativa; os demais provedores só são ativados quando o
+    salvamento corresponde a um teste de conexão bem-sucedido na sessão.
+    """
+    provider = _normalizar_campo(config.get("provider")) or "none"
+    if provider == "none":
+        return True
+    return (
+        assinatura_testada is not None
+        and assinatura_conexao(config) == assinatura_testada
+    )
+
+
 class LLMConfigDialog(tk.Toplevel):
     """Janela de configuração do provedor de LLM."""
 
@@ -66,6 +99,7 @@ class LLMConfigDialog(tk.Toplevel):
         )
         self._testando = False
         self._deps_ok = True
+        self._assinatura_testada: str | None = None
         self._provider_var = tk.StringVar()
         self._api_url_var = tk.StringVar()
         self._model_var = tk.StringVar()
@@ -256,8 +290,10 @@ class LLMConfigDialog(tk.Toplevel):
         }
 
     def _salvar(self: "LLMConfigDialog") -> None:
-        """Grava o bloco ``llm.chat``, notifica o salvamento e fecha o diálogo."""
-        self._port.save_llm_config(self._coletar_config(), self._config_path)
+        """Grava o bloco ``llm.chat``, ativando só se o salvo foi testado."""
+        config = self._coletar_config()
+        ativar = deve_ativar(config, self._assinatura_testada)
+        self._port.save_llm_config(config, self._config_path, ativar=ativar)
         if self._on_saved is not None:
             self._on_saved()
         self.destroy()
@@ -320,6 +356,7 @@ class LLMConfigDialog(tk.Toplevel):
         self._testando = False
         self._atualizar_botao_teste()
         if estado == "ok":
+            self._assinatura_testada = assinatura_conexao(config)
             self._status_var.set(MENSAGEM_SUCESSO.format(resposta=mensagem))
         else:
             if exc is not None:

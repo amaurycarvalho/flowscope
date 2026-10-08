@@ -423,7 +423,7 @@ class TestBotaoAbrir:
             assert painel.all_buttons() == [
                 painel._refresh_btn,
                 painel._open_btn,
-                painel._ia_btn,
+                *painel._model_selector.all_buttons(),
                 painel._resumir_btn,
             ]
             painel.update("ALZR11")
@@ -438,9 +438,9 @@ class TestBotaoAbrir:
             root.destroy()
 
 
-class TestBotaoIA:
+class TestSeletorModelo:
     @needs_display
-    def test_botao_aparece_apos_abrir_documento(self, tmp_path):
+    def test_seletor_aparece_apos_abrir_documento(self, tmp_path):
         root = tk.Tk()
         try:
             painel = DocumentTreePanel(
@@ -450,23 +450,23 @@ class TestBotaoIA:
             assert filhos == [
                 painel._refresh_btn,
                 painel._open_btn,
-                painel._ia_btn,
+                painel._model_selector,
                 painel._resumir_btn,
             ]
-            assert painel._ia_btn.cget("text") == "I.A."
             assert painel._resumir_btn.cget("text") == "Resumir pendentes"
         finally:
             root.destroy()
 
     @needs_display
-    def test_botao_habilitado_sem_documentos(self, tmp_path):
+    def test_seletor_habilitado_sem_documentos(self, tmp_path):
         root = tk.Tk()
         try:
             painel = DocumentTreePanel(
                 root, catalog=_catalogo(tmp_path), debounce_ms=0
             )
             painel.update("SEMDOC")
-            assert str(painel._ia_btn.cget("state")) == "normal"
+            assert str(painel._model_selector.combo.cget("state")) == "readonly"
+            assert str(painel._model_selector.botao.cget("state")) == "normal"
         finally:
             root.destroy()
 
@@ -477,9 +477,9 @@ class TestBotaoIA:
             chamadas = []
             painel = DocumentTreePanel(
                 root, catalog=_catalogo(tmp_path),
-                ia_callback=lambda: chamadas.append(True), debounce_ms=0,
+                config_callback=lambda: chamadas.append(True), debounce_ms=0,
             )
-            painel._ia_btn.invoke()
+            painel._model_selector.botao.invoke()
             assert chamadas == [True]
         finally:
             root.destroy()
@@ -491,7 +491,7 @@ class TestBotaoIA:
             painel = DocumentTreePanel(
                 root, catalog=_catalogo(tmp_path), debounce_ms=0
             )
-            painel._on_ia()
+            painel._on_configurar()
         finally:
             root.destroy()
 
@@ -1055,7 +1055,7 @@ class TestWiringSubAba:
             host._main_notebook = ttk.Notebook(root)
             host._copy_chart = lambda _figure: None
             host._build_ticker_tabs()
-            host._documents_panel._ia_btn.invoke()
+            host._documents_panel._model_selector.botao.invoke()
             assert host.chamadas == [True]
         finally:
             root.destroy()

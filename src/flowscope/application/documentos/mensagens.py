@@ -11,7 +11,9 @@ RESUMO_INDISPONIVEL = "Resumo indisponível."
 SUFIXO_LLM_CONFIGURADA = " Clique no documento para análise."
 
 #: Sufixo da mensagem de indisponibilidade sem a LLM configurada.
-SUFIXO_LLM_AUSENTE = " Configure a LLM via o botão I.A. e teste a comunicação."
+SUFIXO_LLM_AUSENTE = (
+    " Configure a LLM pelo botão de configuração e teste a comunicação."
+)
 
 
 def mensagem_indisponivel(llm_configurada: bool) -> str:

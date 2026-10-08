@@ -109,3 +109,28 @@ class TestDialogoConfiguracao:
         )
         gui._reavaliar_chat_llm()
         assert chamadas == ["chat"]
+
+
+class TestCoordenacaoProvider:
+    def test_on_provider_changed_recarrega_seletores(self):
+        from types import SimpleNamespace
+
+        from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
+
+        class _Host(TabActionsMixin):
+            pass
+
+        host = _Host()
+        recarregados: list[str] = []
+        for nome in ("_chat_panel", "_documents_panel", "_noticias_panel"):
+            seletor = SimpleNamespace(
+                recarregar=lambda marca=nome: recarregados.append(marca)
+            )
+            painel = SimpleNamespace(
+                _model_selector=seletor,
+                refresh_resumir_button=lambda: None,
+                avaliar_estado=lambda: None,
+            )
+            setattr(host, nome, painel)
+        host._on_provider_changed()
+        assert len(recarregados) == 3

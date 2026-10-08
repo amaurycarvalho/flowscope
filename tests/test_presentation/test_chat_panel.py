@@ -21,6 +21,7 @@ from flowscope.presentation.gui.chat.chat_panel import (
     mensagem_confirmacao_custo,
 )
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
+from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
 needs_display = pytest.mark.skipif(
@@ -100,7 +101,8 @@ class TestConstrucao:
             assert painel._titulo.cget("text") == TITULO_CHAT
             assert isinstance(painel._respostas, ReadonlyText)
             assert painel._send_btn.cget("text") == "Enviar"
-            assert painel._config_btn.cget("text") == "Configuração"
+            assert painel._config_btn.cget("text") == ""
+            assert isinstance(painel._model_selector, SeletorModelo)
         finally:
             root.destroy()
 
@@ -268,9 +270,15 @@ class TestEstadoBotoes:
             assert str(painel._clear_btn.cget("state")) == "disabled"
             assert str(painel._copy_btn.cget("state")) == "disabled"
             assert str(painel._config_btn.cget("state")) == "disabled"
+            assert (
+                str(painel._model_selector.combo.cget("state")) == "disabled"
+            )
             liberar.set()
             _aguardar(root, painel)
             assert str(painel._config_btn.cget("state")) == "normal"
+            assert (
+                str(painel._model_selector.combo.cget("state")) == "readonly"
+            )
             assert str(painel._clear_btn.cget("state")) == "normal"
             assert str(painel._copy_btn.cget("state")) == "normal"
         finally:
