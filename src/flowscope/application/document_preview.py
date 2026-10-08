@@ -88,32 +88,51 @@ def extrair_pdf(dados: bytes, senha: str | None = None) -> ExtracaoTexto:
     """
     if not dados:
         return ExtracaoTexto("", StatusExtracao.SEM_TEXTO)
+    leitor = _abrir_leitor(dados)
+    if leitor is None:
+        return ExtracaoTexto("", StatusExtracao.FALHA)
+    if not _liberar(leitor, senha):
+        return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
+    extraido = _extrair_paginas(leitor)
+    if extraido is None:
+        return ExtracaoTexto("", StatusExtracao.FALHA)
+    textos, falhas = extraido
+    return _montar_resultado(textos, falhas)
+
+
+def _abrir_leitor(dados: bytes) -> object | None:
+    """Instancia o leitor do PDF, devolvendo ``None`` se a leitura falhar."""
     try:
         from pypdf import PdfReader
     except ImportError:  # dependência opcional ausente
         logger.warning("pypdf indisponível para extrair texto de PDF")
-        return ExtracaoTexto("", StatusExtracao.FALHA)
+        return None
     try:
-        leitor = PdfReader(BytesIO(dados))
+        return PdfReader(BytesIO(dados))
     except Exception:  # PDF corrompido ou encoding atípico
         logger.warning("Falha ao abrir o PDF", exc_info=True)
-        return ExtracaoTexto("", StatusExtracao.FALHA)
+        return None
 
-    if getattr(leitor, "is_encrypted", False):
-        try:
-            resultado = leitor.decrypt(senha if senha is not None else "")
-        except Exception:  # backend de criptografia ausente ou senha inválida
-            logger.warning("Falha ao descriptografar o PDF", exc_info=True)
-            return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
-        if not resultado:
-            return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
 
+def _liberar(leitor: object, senha: str | None) -> bool:
+    """Indica se o leitor pode ser lido, descriptografando-o quando protegido."""
+    if not getattr(leitor, "is_encrypted", False):
+        return True
+    try:
+        resultado = leitor.decrypt(senha if senha is not None else "")
+    except Exception:  # backend de criptografia ausente ou senha inválida
+        logger.warning("Falha ao descriptografar o PDF", exc_info=True)
+        return False
+    return bool(resultado)
+
+
+def _extrair_paginas(leitor: object) -> tuple[list[str], int] | None:
+    """Extrai o texto de cada página, contando as que falham isoladamente."""
     try:
         paginas = list(leitor.pages)
     except Exception:  # árvore de páginas ilegível
         logger.warning("Falha ao ler as páginas do PDF", exc_info=True)
-        return ExtracaoTexto("", StatusExtracao.FALHA)
-
+        return None
     textos: list[str] = []
     falhas = 0
     for pagina in paginas:
@@ -121,13 +140,18 @@ def extrair_pdf(dados: bytes, senha: str | None = None) -> ExtracaoTexto:
             textos.append(pagina.extract_text() or "")
         except Exception:  # página isolada ilegível
             falhas += 1
+    return textos, falhas
+
+
+def _montar_resultado(textos: list[str], falhas: int) -> ExtracaoTexto:
+    """Deriva o status final a partir do texto lido e das páginas com falha."""
     conteudo = "\n".join(texto for texto in textos if texto)
-    if not conteudo.strip():
-        if paginas and falhas == len(paginas):
-            return ExtracaoTexto("", StatusExtracao.FALHA, falhas)
-        return ExtracaoTexto("", StatusExtracao.SEM_TEXTO, falhas)
-    status = StatusExtracao.PARCIAL if falhas else StatusExtracao.OK
-    return ExtracaoTexto(conteudo, status, falhas)
+    if conteudo.strip():
+        status = StatusExtracao.PARCIAL if falhas else StatusExtracao.OK
+        return ExtracaoTexto(conteudo, status, falhas)
+    if falhas and not textos:
+        return ExtracaoTexto("", StatusExtracao.FALHA, falhas)
+    return ExtracaoTexto("", StatusExtracao.SEM_TEXTO, falhas)
 
 
 def texto_de_pdf(dados: bytes) -> str:
