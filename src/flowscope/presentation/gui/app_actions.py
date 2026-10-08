@@ -7,6 +7,7 @@ from flowscope.application.clipboard_port import ClipboardError, ImageClipboardP
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui import evolucao_job
 from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
+from flowscope.presentation.gui.background.events import Outcome
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
@@ -287,10 +288,15 @@ class ActionsMixin:
             return
         painel.mostrar_carregando(ticker)
         deduplicar = getattr(self, "_deduplicar_documentos", None)
-        background.submit(
-            lambda ctx: executar_documentos(
+        estado = {"adquiridos": 0}
+
+        def trabalho(ctx: object) -> None:
+            estado["adquiridos"] = executar_documentos(
                 ctx, aquisicao, ticker, self._data_referencia(), deduplicar
-            ),
+            )
+
+        background.submit(
+            trabalho,
             grupo=GRUPO,
             politica=POLITICA,
             cancelavel=True,
@@ -298,18 +304,22 @@ class ActionsMixin:
                 evento.atual, evento.total, evento.detalhe
             ),
             ao_termino=lambda evento: self._finalizar_documentos(
-                ticker, evento.cancelado
+                ticker, evento, estado["adquiridos"]
             ),
         )
 
     def _finalizar_documentos(
-        self: "ActionsMixin", ticker: str, cancelado: bool
+        self: "ActionsMixin", ticker: str, evento: object, adquiridos: int
     ) -> None:
         """Relê o catálogo e informa o desfecho da aquisição."""
         if ticker == self._ticker_apresentado():
             self._submeter_leitura_documentos(ticker)
-        if not cancelado:
+        if evento.outcome is not Outcome.SUCESSO:
+            return
+        if adquiridos:
             self._flash_status("Documentos atualizados!")
+        else:
+            self._flash_status("Nenhum documento novo.", "ℹ")
 
     def _data_referencia(self: "ActionsMixin") -> date:
         """Retorna a data de referência selecionada, ou a data corrente."""

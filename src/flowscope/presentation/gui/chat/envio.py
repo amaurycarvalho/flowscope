@@ -177,11 +177,11 @@ class EnvioMixin:
         except OperacaoCancelada:
             return
         except LLMUnavailableError as exc:
-            ctx.erro(exc, dados="indisponivel")
+            ctx.falhar(exc, dados="indisponivel")
         except LLMError as exc:
-            ctx.erro(exc, dados="erro")
+            ctx.falhar(exc, dados="erro")
         except Exception as exc:
-            ctx.erro(exc, dados="erro")
+            ctx.falhar(exc, dados="erro")
         else:
             ctx.resultado(valor=resposta)
 

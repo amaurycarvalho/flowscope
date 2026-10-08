@@ -4,6 +4,7 @@ Cobrem o contrato base, as políticas de agendamento, o cancelamento por job, o
 pump e o watchdog sem depender de ``DISPLAY`` nem de ``tk.Tk``.
 """
 
+import logging
 import threading
 from pathlib import Path
 
@@ -13,8 +14,10 @@ from flowscope.presentation.gui.background import (
     EstadoJob,
     JobContext,
     JobHandle,
+    Outcome,
     Politica,
 )
+from flowscope.presentation.gui.background.events import Erro, Termino
 from tests.architecture import guardrail
 
 _PACOTE_BACKGROUND = (
@@ -471,6 +474,7 @@ class TestWatchdog:
         manager.drenar()
 
         assert handle.estado is EstadoJob.CONCLUIDO
+        assert handle.outcome is Outcome.ABORTADO
         assert terminados == [handle]
 
     def test_job_sem_progresso_e_encerrado_por_inatividade(self):
@@ -485,9 +489,192 @@ class TestWatchdog:
 
         manager.drenar()
 
-        assert handle.estado is EstadoJob.CANCELADO
+        assert handle.estado is EstadoJob.CONCLUIDO
+        assert handle.outcome is Outcome.ABORTADO
         assert handle.token.is_set is True
         assert manager.jobs_ativos == ()
 
         liberar.set()
         handle.thread.join(2)
+
+
+class TestDesfecho:
+    def test_termino_default_retrocompativel(self):
+        termino = Termino()
+
+        assert termino.outcome is Outcome.SUCESSO
+        assert termino.cancelado is False
+        assert termino.falha_reportada is False
+
+    def test_cancelado_derivado_do_outcome(self):
+        assert Termino(outcome=Outcome.CANCELADO).cancelado is True
+        assert Termino(outcome=Outcome.FALHA).cancelado is False
+
+    def test_erro_default_nao_fatal(self):
+        assert Erro(RuntimeError("x")).fatal is False
+
+    def test_contexto_erro_nao_altera_desfecho_e_falhar_altera(self):
+        handle = JobHandle(id=1, grupo="g", politica=Politica.PARALLEL)
+        eventos = []
+        contexto = JobContext(handle, eventos.append)
+
+        contexto.erro(RuntimeError("item"))
+        assert handle.outcome is None
+        assert eventos[-1].fatal is False
+
+        contexto.falhar(RuntimeError("fatal"))
+        assert handle.outcome is Outcome.FALHA
+        assert eventos[-1].fatal is True
+
+    def test_retorno_normal_resulta_sucesso(self):
+        manager = BackgroundManager()
+        handle = manager.submit(lambda ctx: None, grupo="g")
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.outcome is Outcome.SUCESSO
+        assert handle.estado is EstadoJob.CONCLUIDO
+
+    def test_excecao_nao_tratada_resulta_falha(self):
+        def trabalho(ctx):
+            raise RuntimeError("boom")
+
+        manager = BackgroundManager()
+        handle = manager.submit(trabalho, grupo="g")
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.outcome is Outcome.FALHA
+        assert handle.estado is EstadoJob.CONCLUIDO
+
+    def test_operacao_cancelada_resulta_cancelado(self):
+        iniciado = threading.Event()
+        liberar = threading.Event()
+
+        def trabalho(ctx):
+            iniciado.set()
+            liberar.wait(2)
+            ctx.raise_if_cancelled()
+
+        manager = BackgroundManager()
+        handle = manager.submit(trabalho, grupo="g", cancelavel=True)
+        assert iniciado.wait(2)
+        handle.token.request()
+        liberar.set()
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.outcome is Outcome.CANCELADO
+        assert handle.estado is EstadoJob.CANCELADO
+
+    def test_trabalho_ausente_resulta_falha(self):
+        manager = BackgroundManager()
+        handle = manager.submit(None, grupo="g")
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.outcome is Outcome.FALHA
+
+    def test_termino_entregue_carrega_outcome(self):
+        manager = BackgroundManager()
+        recebidos = []
+        handle = manager.submit(
+            lambda ctx: None, grupo="g", ao_termino=recebidos.append
+        )
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert recebidos[0].outcome is Outcome.SUCESSO
+
+    def test_falha_de_item_nao_classifica_job_como_falha(self):
+        def trabalho(ctx):
+            ctx.erro(RuntimeError("item"))
+            ctx.resultado(valor=[1])
+
+        manager = BackgroundManager()
+        handle = manager.submit(trabalho, grupo="g", ao_erro=lambda e: None)
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.outcome is Outcome.SUCESSO
+
+
+class TestFalhaReportada:
+    def test_callback_de_erro_bem_sucedido_reporta(self):
+        recebido = []
+
+        def trabalho(ctx):
+            ctx.falhar(RuntimeError("x"))
+
+        manager = BackgroundManager()
+        handle = manager.submit(
+            trabalho, grupo="g", ao_erro=recebido.append
+        )
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert recebido
+        assert handle.falha_reportada is True
+        assert handle.outcome is Outcome.FALHA
+
+    def test_callback_de_erro_ausente_nao_reporta(self):
+        def trabalho(ctx):
+            ctx.falhar(RuntimeError("x"))
+
+        manager = BackgroundManager()
+        handle = manager.submit(trabalho, grupo="g")
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.falha_reportada is False
+
+    def test_callback_de_erro_que_falha_nao_reporta(self):
+        def ao_erro(evento):
+            raise RuntimeError("callback")
+
+        def trabalho(ctx):
+            ctx.falhar(RuntimeError("x"))
+
+        manager = BackgroundManager()
+        handle = manager.submit(trabalho, grupo="g", ao_erro=ao_erro)
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert handle.falha_reportada is False
+
+    def test_termino_carrega_falha_reportada(self):
+        recebidos = []
+
+        def trabalho(ctx):
+            ctx.falhar(RuntimeError("x"))
+
+        manager = BackgroundManager()
+        handle = manager.submit(
+            trabalho,
+            grupo="g",
+            ao_erro=lambda evento: None,
+            ao_termino=recebidos.append,
+        )
+        handle.thread.join(2)
+        manager.drenar()
+
+        assert recebidos[0].falha_reportada is True
+
+
+class TestExcepthookWorker:
+    def test_base_exception_escapa_e_e_logada(self, caplog):
+        class _Fatal(BaseException):
+            pass
+
+        def trabalho(ctx):
+            raise _Fatal("boom")
+
+        manager = BackgroundManager()
+        with caplog.at_level(logging.ERROR, logger="flowscope"):
+            handle = manager.submit(trabalho, grupo="g")
+            handle.thread.join(2)
+            manager.drenar()
+
+        assert handle.outcome is Outcome.FALHA
+        assert handle.falha_reportada is False
+        assert "Exceção não tratada" in caplog.text

@@ -23,7 +23,7 @@ from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
 from flowscope.presentation.gui.background.context import JobContext
-from flowscope.presentation.gui.background.events import Resultado
+from flowscope.presentation.gui.background.events import Erro, Resultado
 from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
@@ -118,6 +118,7 @@ class _ManagerFake:
     def __init__(self) -> None:
         self.trabalho = None
         self.ao_resultado = None
+        self.ao_erro = None
         self.grupo = None
         self.politica = None
         self.chave = None
@@ -131,10 +132,12 @@ class _ManagerFake:
         politica,
         chave=None,
         ao_resultado=None,
+        ao_erro=None,
         **kwargs,
     ):
         self.trabalho = trabalho
         self.ao_resultado = ao_resultado
+        self.ao_erro = ao_erro
         self.grupo = grupo
         self.politica = politica
         self.chave = chave
@@ -144,7 +147,12 @@ class _ManagerFake:
     def executar(self) -> None:
         eventos: list = []
         handle = JobHandle(id=1, grupo=self.grupo, politica=self.politica)
-        self.trabalho(JobContext(handle, eventos.append))
+        try:
+            self.trabalho(JobContext(handle, eventos.append))
+        except Exception as exc:
+            if self.ao_erro is not None:
+                self.ao_erro(Erro(excecao=exc))
+            return
         for evento in eventos:
             if isinstance(evento, Resultado) and self.ao_resultado is not None:
                 self.ao_resultado(evento)
@@ -309,6 +317,37 @@ class TestTrabalharEAplicar:
 
         assert host.texto_exibido == CARREGANDO
         assert host.resumos_atualizados == []
+
+
+class TestFalhaPreview:
+    def _host_com_falha(self) -> _PreviewHost:
+        host = _PreviewHost()
+
+        def _falhar(arquivo, senha=None):
+            raise RuntimeError("boom")
+
+        host._texto_do_arquivo = _falhar
+        return host
+
+    def test_falha_exibe_mensagem_e_sai_do_carregamento(self):
+        host = self._host_com_falha()
+        arquivo = _arquivo()
+        host.selecionado = arquivo
+
+        host._iniciar_preview(arquivo)
+        host.manager.executar()
+
+        assert host.texto_exibido == host._summary.mensagem_indisponivel()
+
+    def test_falha_de_documento_trocado_e_descartada(self):
+        host = self._host_com_falha()
+        arquivo = _arquivo()
+        host.selecionado = _arquivo("20.pdf")
+
+        host._iniciar_preview(arquivo)
+        host.manager.executar()
+
+        assert host.texto_exibido == CARREGANDO
 
 
 class _LLMFake:

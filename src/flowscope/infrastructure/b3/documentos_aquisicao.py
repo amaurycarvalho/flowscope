@@ -71,24 +71,29 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> None:
+    ) -> int:
         """Adquire os documentos do ticker conforme o tipo, tolerando falhas.
 
         ``progress``, quando informado, recebe ``(atual, total, rótulo)`` a
         cada documento processado. ``cancel_token``, quando informado, é
         observado no topo de cada unidade de trabalho, interrompendo a
-        aquisição pela via de :class:`OperacaoCancelada`.
+        aquisição pela via de :class:`OperacaoCancelada`. Retorna a contagem de
+        itens persistidos (novos ou já em cache).
         """
         chave = (ticker or "").strip().upper()
         if not chave:
-            return
+            return 0
         id_fnet = self._client.resolver_ticker(chave)
         if id_fnet:
-            self._adquirir_fii(chave, id_fnet, reference_date, progress, cancel_token)
-            return
+            return self._adquirir_fii(
+                chave, id_fnet, reference_date, progress, cancel_token
+            )
         code_cvm = self._client.resolver_code_cvm(chave)
         if code_cvm:
-            self._adquirir_acao(chave, code_cvm, reference_date, progress, cancel_token)
+            return self._adquirir_acao(
+                chave, code_cvm, reference_date, progress, cancel_token
+            )
+        return 0
 
     def _adquirir_fii(
         self: "AquisicaoDocumentos",
@@ -97,7 +102,7 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> None:
+    ) -> int:
         """Adquire documentos relevantes e o informe mensal de um FII."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
         itens = self._listar_documentos_relevantes(
@@ -107,18 +112,22 @@ class AquisicaoDocumentos:
         total = len(itens) + (1 if informe is not None else 0)
         self._reportar(progress, 0, total, ticker)
         atual = 0
+        adquiridos = 0
         for item in itens:
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            self._persistir_documento_relevante(ticker, id_fnet, item)
+            if self._persistir_documento_relevante(ticker, id_fnet, item):
+                adquiridos += 1
             atual += 1
             self._reportar(progress, atual, total, ticker)
         if informe is not None:
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            self._persistir_informe(ticker, informe)
+            if self._persistir_informe(ticker, informe):
+                adquiridos += 1
             atual += 1
             self._reportar(progress, atual, total, ticker)
+        return adquiridos
 
     def _listar_documentos_relevantes(
         self: "AquisicaoDocumentos",
@@ -145,16 +154,17 @@ class AquisicaoDocumentos:
         ticker: str,
         id_fnet: str,
         item: dict,
-    ) -> None:
-        """Baixa e grava um documento relevante, tolerando falha."""
+    ) -> bool:
+        """Baixa e grava um documento relevante, retornando se foi persistido."""
         try:
-            self._documentos.persistir(ticker, id_fnet, item)
+            return self._documentos.persistir(ticker, id_fnet, item) is not None
         except Exception:  # falha isolada por documento
             logger.warning(
                 "Falha ao adquirir documento relevante de %s",
                 ticker,
                 exc_info=True,
             )
+            return False
 
     def _selecionar_informe(
         self: "AquisicaoDocumentos",
@@ -184,16 +194,17 @@ class AquisicaoDocumentos:
 
     def _persistir_informe(
         self: "AquisicaoDocumentos", ticker: str, documento: dict
-    ) -> None:
-        """Grava o informe mensal selecionado, tolerando falha."""
+    ) -> bool:
+        """Grava o informe mensal selecionado, retornando se foi persistido."""
         try:
-            self._informes.persistir(ticker, documento)
+            return self._informes.persistir(ticker, documento) is not None
         except Exception:  # falha isolada de gravação
             logger.warning(
                 "Falha ao persistir informe mensal de %s",
                 ticker,
                 exc_info=True,
             )
+            return False
 
     def _adquirir_acao(
         self: "AquisicaoDocumentos",
@@ -202,7 +213,7 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> None:
+    ) -> int:
         """Adquire os material facts de uma ação ou BDR."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
         documentos: list[tuple[DocumentoMaterialFact, str]] = []
@@ -213,13 +224,16 @@ class AquisicaoDocumentos:
                 documentos.append((documento, slug))
         total = len(documentos)
         self._reportar(progress, 0, total, ticker)
+        adquiridos = 0
         for atual, (documento, slug) in enumerate(documentos, start=1):
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            self._persistir_material_fact(
+            if self._persistir_material_fact(
                 ticker, documento, slug, reference_date
-            )
+            ):
+                adquiridos += 1
             self._reportar(progress, atual, total, ticker)
+        return adquiridos
 
     @staticmethod
     def _reportar(
@@ -262,15 +276,15 @@ class AquisicaoDocumentos:
         documento: DocumentoMaterialFact,
         slug: str,
         reference_date: date,
-    ) -> None:
-        """Baixa e grava o PDF de um material fact, tolerando falhas."""
+    ) -> bool:
+        """Baixa e grava o PDF de um material fact, retornando se persistiu."""
         protocolo = id_protocolo(documento.url_documento or "")
         if protocolo is None:
-            return
+            return False
         referencia = _data_documento(documento.data_referencia, reference_date)
         cache = self._documentos.cache
         if cache.existe(ticker, referencia, slug, protocolo):
-            return
+            return True
         try:
             conteudo = self._baixar_cvm(protocolo)
         except Exception:  # falha de rede isolada por documento
@@ -280,9 +294,9 @@ class AquisicaoDocumentos:
                 ticker,
                 exc_info=True,
             )
-            return
+            return False
         if not conteudo:
-            return
+            return False
         caminho = cache.caminho(ticker, referencia, slug, protocolo)
         dedup = self._documentos.deduplicacao(ticker)
         dedup.processar(
@@ -292,6 +306,7 @@ class AquisicaoDocumentos:
                 ticker, referencia, slug, protocolo, dados
             ),
         )
+        return cache.existe(ticker, referencia, slug, protocolo)
 
 
 def _data_documento(texto: object, fallback: date) -> date:

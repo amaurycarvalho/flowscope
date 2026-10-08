@@ -48,7 +48,7 @@ def executar_fundamental(
         return
     except Exception as exc:  # falha inesperada do job
         logger.warning("Falha na análise fundamentalista", exc_info=True)
-        ctx.erro(exc)
+        ctx.falhar(exc)
         return
 
     dados = {resultado.ticker: resultado for resultado in resultados}

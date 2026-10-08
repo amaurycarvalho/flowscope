@@ -190,7 +190,21 @@ class DocumentFlowMixin:
             ao_resultado=lambda evento: self._aplicar_preview(
                 arquivo, *evento.valor
             ),
+            ao_erro=lambda evento: self._falhar_preview(arquivo),
         )
+
+    def _falhar_preview(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> None:
+        """Sai do carregamento com mensagem informativa se o arquivo segue selecionado.
+
+        A falha da extração ou da geração do resumo não é fatal: a caixa de
+        pré-visualização exibe o vocabulário de indisponibilidade e o desfecho
+        de um documento já trocado é descartado.
+        """
+        if self._arquivo_selecionado() is not arquivo:
+            return
+        self._set_preview_text(self._summary.mensagem_indisponivel())
 
     def _preview_background(self: "DocumentFlowMixin") -> BackgroundManager:
         """Retorna o gerenciador de background da pré-visualização."""

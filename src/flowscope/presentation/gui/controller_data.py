@@ -200,10 +200,10 @@ class DataLoadMixin:
         except OperacaoCancelada:
             return
         except PortfolioNotFoundError as exc:
-            ctx.erro(exc, dados=instrucao)
+            ctx.falhar(exc, dados=instrucao)
             return
         except Exception as exc:
-            ctx.erro(exc, dados=instrucao)
+            ctx.falhar(exc, dados=instrucao)
             return
 
         ctx.resultado(valor=ResultadoCarga(

@@ -17,6 +17,7 @@ from flowscope.presentation.gui.background.events import (
     Confirmacao,
     Erro,
     Evento,
+    Outcome,
     Progresso,
     Resultado,
 )
@@ -89,3 +90,5 @@ class JobHandle:
     thread: threading.Thread | None = None
     fila: "queue.Queue[Evento]" = field(default_factory=queue.Queue)
     ultima_atividade: float = 0.0
+    outcome: Outcome | None = None
+    falha_reportada: bool = False

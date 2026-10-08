@@ -8,47 +8,67 @@ Fornece a sub-aba "Notícias" na Análise Geral, com árvore dos artigos, pré-v
 
 ### Requirement: Sub-aba "Notícias" na Análise Geral
 
-O sistema DEVE expor a sub-aba "Notícias" na "Análise Geral", organizando os itens em uma árvore e exibindo o conteúdo do item selecionado em um campo de texto. A árvore DEVE ter a raiz "Notícias" e, abaixo dela, as categorias de topo "Censuras Públicas", "Condições Excepcionais", "Programas de Aquisição de Ações" e, por último, "Geral", cada uma seguindo a sub-estrutura ano → mês → categoria → item. A sub-aba DEVE oferecer botões "Atualizar", "Abrir", "I.A." (configuração) e "Resumir pendentes", com barra de progresso durante a aquisição.
+O sistema DEVE expor a sub-aba "Notícias" na "Análise Geral", organizando os itens em uma árvore e exibindo o conteúdo do item selecionado em um campo de texto. A árvore DEVE ter a raiz "Notícias" e, abaixo dela, as categorias de topo "Censuras Públicas", "Condições Excepcionais", "Programas de Aquisição de Ações" e, por último, "Geral", cada uma seguindo a sub-estrutura ano → mês → categoria → item. A sub-aba DEVE oferecer os botões "Atualizar", "Abrir", um combobox de modelo ativo com a opção `None`, um botão de configuração com o ícone `ai-properties.png` e "Resumir pendentes", com barra de progresso durante a aquisição. O botão "I.A." textual NÃO DEVE mais existir. Trocar o item do combobox DEVE persistir imediatamente o novo provedor ativo e reavaliar o estado dos resumos; o combobox e o botão de configuração DEVEM ser desabilitados durante processamentos, junto com os demais controles.
 
 #### Scenario: Árvore e pré-visualização
+
 - **WHEN** a sub-aba "Notícias" é exibida com itens em cache
 - **THEN** a árvore DEVE listar as categorias de topo com itens e a seleção DEVE exibir o texto do item
 
 #### Scenario: "Geral" por último
+
 - **WHEN** a árvore lista as categorias de topo com itens
 - **THEN** a categoria "Geral" DEVE aparecer depois das categorias regulatórias
 
 #### Scenario: Seleção da raiz
+
 - **WHEN** o nó raiz "Notícias" é selecionado
 - **THEN** a pré-visualização DEVE exibir a lista de todas as categorias com itens
 
 #### Scenario: Árvore expandida só até o primeiro nível
+
 - **WHEN** a árvore de notícias é carregada (inicialmente ou após "Atualizar")
 - **THEN** a raiz DEVE estar expandida e as categorias de topo, os anos, os meses, os tipos e os itens DEVEM estar recolhidos
 
 #### Scenario: Tipo de notícia no 3º nível da "Geral"
+
 - **WHEN** os itens da categoria "Geral" são exibidos
 - **THEN** o nível de categoria DEVE ser o tipo típico da notícia (ano → mês → tipo → item), e não a agência
 
 #### Scenario: Tipo "Outros" para títulos não classificados
+
 - **WHEN** um título da "Geral" não corresponde a nenhum tipo típico da whitelist
 - **THEN** ele DEVE ser agrupado em "Outros"
 
 #### Scenario: Tipos específicos por fonte nas demais seções
+
 - **WHEN** os itens de uma seção regulatória são exibidos
 - **THEN** o nível de categoria DEVE ser o ticker/emissor em censuras, o segmento em condições e a empresa em programas
 
 #### Scenario: Atualização com progresso
+
 - **WHEN** o usuário aciona "Atualizar"
 - **THEN** a aquisição DEVE rodar em segundo plano com progresso e reexibir a árvore ao concluir
 
 #### Scenario: Cancelamento reflete a carga parcial
+
 - **WHEN** o usuário cancela a aquisição
 - **THEN** a árvore DEVE ser remontada com os itens já persistidos assim que o worker encerrar, sem sobrescrever uma carga iniciada depois
 
 #### Scenario: Sem itens
+
 - **WHEN** não há itens para nenhuma categoria
 - **THEN** a sub-aba DEVE exibir um estado vazio, sem erro
+
+#### Scenario: Seletor de modelo e botão de configuração na barra
+
+- **WHEN** a sub-aba "Notícias" é exibida
+- **THEN** o combobox de modelo ativo e o botão de configuração com ícone DEVEM estar visíveis na barra de controles, no lugar antes ocupado pelo botão "I.A."
+
+#### Scenario: Troca de modelo pelo combobox
+
+- **WHEN** o usuário seleciona um provedor ativo no combobox
+- **THEN** o provedor ativo DEVE ser persistido e o estado do botão "Resumir pendentes" DEVE ser reavaliado
 
 ### Requirement: Classificação da "Geral" por tipo de notícia
 
@@ -64,7 +84,7 @@ O sistema DEVE classificar cada notícia da "Geral" em um tipo típico derivado 
 
 ### Requirement: Carga inicial somente do cache local
 
-A sub-aba DEVE montar a árvore e a pré-visualização lendo apenas o cache local (índice de metadados, HTML, textos e resumos), sem consultar a B3 ao ser aberta ou ao trocar de aba. A listagem e a aquisição de novos itens DEVEM ocorrer somente pelo botão "Atualizar", em segundo plano. A ausência de cache ou de índice DEVE resultar em estado vazio, sem erro, e entradas do índice sem HTML correspondente NÃO DEVEM aparecer.
+A sub-aba DEVE montar a árvore e a pré-visualização lendo apenas o cache local (índice de metadados, HTML, textos e resumos), sem consultar a B3 ao ser aberta ou ao trocar de aba. A listagem e a aquisição de novos itens DEVEM ocorrer somente pelo botão "Atualizar", em segundo plano, que DEVE também executar o housekeeping de deduplicação por conteúdo das notícias. A ausência de cache ou de índice DEVE resultar em estado vazio, sem erro, e entradas do índice sem HTML correspondente NÃO DEVEM aparecer.
 
 #### Scenario: Abertura sem consultar a B3
 - **WHEN** a sub-aba "Notícias" é aberta
@@ -84,7 +104,11 @@ A sub-aba DEVE montar a árvore e a pré-visualização lendo apenas o cache loc
 
 #### Scenario: Atualizar reconstrói a partir da B3
 - **WHEN** o usuário aciona "Atualizar"
-- **THEN** a aquisição DEVE rodar em segundo plano, gravar o cache e o índice, e a árvore DEVE ser remontada a partir do cache local
+- **THEN** a aquisição DEVE rodar em segundo plano, gravar o cache e o índice, o housekeeping de deduplicação DEVE ser executado e a árvore DEVE ser remontada a partir do cache local
+
+#### Scenario: Deduplicação no Atualizar
+- **WHEN** há notícias em cache com o mesmo conteúdo em datas ou URLs diferentes
+- **THEN** após o "Atualizar" apenas o registro mais antigo DEVE permanecer na árvore
 
 ### Requirement: Pré-visualização e abertura do item
 
@@ -114,6 +138,10 @@ O sistema DEVE extrair o texto do HTML do item em cache para a pré-visualizaç�
 
 Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento, o sistema DEVE baixar e extrair o conteúdo vinculado ao selecionar a notícia e ao processar "Resumir pendentes". As URLs suportadas incluem o **visualizador da CVM RAD** (`rad.cvm.gov.br`) e o **visualizador do FNET** (`fnet.bmfbovespa.com.br`). O texto do documento extraído DEVE substituir o apontador no corpo e ser persistido no cache de textos, evitando novo download. Se o download não puder ser concluído (captcha habilitado, falha de rede ou formato inesperado), o corpo original DEVE ser mantido, sem erro.
 
+Quando o documento vinculado for um PDF protegido por senha que não abre com senha vazia, o sistema DEVE solicitar a senha ao usuário no preview interativo, na thread da interface, e tentar novamente a extração com a senha informada, fora da thread da interface. A solicitação DEVE ser limitada a 3 tentativas por notícia/seleção (parametrizável), avisando sobre a senha incorreta e parando ao esgotar o limite. O texto obtido DEVE ser persistido no cache de textos e a senha NÃO DEVE ser persistida. Cancelar a solicitação DEVE manter o corpo original, sem erro. A solicitação DEVE ocorrer apenas no fluxo interativo; o resumo em lote NÃO DEVE abrir diálogo de senha.
+
+Quando a extração do documento vinculado resultar parcial (ao menos uma página não extraída), a pré-visualização DEVE anotar a quantidade de páginas não extraídas antes do conteúdo. O texto parcial NÃO DEVE ser persistido no cache de textos nem usado para gerar resumo, de modo que a notícia permaneça pendente. A extração parcial DEVE ser retentada automaticamente quando a notícia for selecionada ou clicada novamente e quando "Resumir pendentes" for acionado, sem controle dedicado de "Tentar novamente".
+
 #### Scenario: Pré-visualização resolve o documento vinculado da CVM
 - **WHEN** uma notícia "Geral" com URL do visualizador da CVM RAD é selecionada
 - **THEN** o conteúdo vinculado DEVE ser baixado, extraído e exibido no corpo
@@ -121,6 +149,42 @@ Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento
 #### Scenario: Pré-visualização resolve o documento vinculado do FNET
 - **WHEN** uma notícia "Geral" com URL do visualizador do FNET é selecionada
 - **THEN** o PDF apontado pelo `iframe` do visualizador DEVE ser baixado, extraído e exibido no corpo
+
+#### Scenario: Documento vinculado protegido solicita senha
+- **WHEN** o documento vinculado é um PDF protegido cujo texto não foi extraído com senha vazia
+- **THEN** o sistema DEVE abrir uma caixa de diálogo solicitando a senha
+
+#### Scenario: Senha correta extrai e cacheia
+- **WHEN** o usuário informa a senha correta do documento vinculado protegido
+- **THEN** o sistema DEVE extrair o texto, persistí-lo no cache e exibi-lo no corpo
+
+#### Scenario: Senha incorreta permite nova tentativa
+- **WHEN** o usuário informa uma senha incorreta e ainda há tentativas disponíveis
+- **THEN** o sistema DEVE informar a falha e permitir nova tentativa ou cancelamento
+
+#### Scenario: Limite de tentativas atingido
+- **WHEN** o usuário esgota as 3 tentativas de senha do documento vinculado
+- **THEN** o sistema DEVE parar de solicitar a senha e manter o corpo original, sem erro
+
+#### Scenario: Cancelamento mantém o corpo original
+- **WHEN** o usuário cancela a solicitação de senha
+- **THEN** o sistema DEVE manter o corpo original da notícia, sem erro
+
+#### Scenario: Extração parcial é anotada
+- **WHEN** a extração do documento vinculado resulta parcial
+- **THEN** a pré-visualização DEVE anotar as páginas não extraídas antes do conteúdo
+
+#### Scenario: Selecionar novamente retenta o documento vinculado
+- **WHEN** o documento vinculado foi extraído parcialmente e o usuário seleciona ou clica na notícia novamente
+- **THEN** o sistema DEVE refazer o download e a extração do documento vinculado, sem exigir controle dedicado
+
+#### Scenario: Resumir pendentes retenta o documento vinculado
+- **WHEN** o documento vinculado de uma notícia foi extraído parcialmente e o usuário aciona "Resumir pendentes"
+- **THEN** o sistema DEVE refazer o download e a extração e, se completa, gerar o resumo; se ainda parcial, manter a notícia pendente
+
+#### Scenario: Extração parcial não gera resumo
+- **WHEN** o documento vinculado de uma notícia é extraído parcialmente
+- **THEN** nenhum resumo DEVE ser gerado e a notícia DEVE permanecer pendente
 
 #### Scenario: Resumo em lote usa o documento vinculado
 - **WHEN** "Resumir pendentes" processa uma notícia "Geral" com documento vinculado
@@ -141,6 +205,10 @@ Quando o corpo de uma notícia "Geral" for apenas um apontador para um documento
 #### Scenario: Apontador não resolvido não gera resumo
 - **WHEN** "Resumir pendentes" processa uma notícia "Geral" cujo documento vinculado não pôde ser baixado
 - **THEN** nenhum resumo DEVE ser gerado para ela e o item DEVE permanecer pendente para nova tentativa
+
+#### Scenario: Lote não solicita senha
+- **WHEN** o resumo em lote processa uma notícia cujo documento vinculado é protegido
+- **THEN** o sistema NÃO DEVE abrir diálogo de senha e DEVE manter a notícia pendente
 
 ### Requirement: Resumo curto e longo por LLM
 
@@ -229,3 +297,31 @@ A remontagem da árvore de notícias após um cancelamento DEVE ser disparada pe
 #### Scenario: Interface não fica em espera ativa
 - **WHEN** há um job de notícias em cancelamento
 - **THEN** a thread da interface NÃO DEVE manter um laço de espera ativa enquanto o worker encerra
+
+### Requirement: Mensagem de conclusão honesta da aquisição de notícias
+
+Ao concluir a aquisição de notícias acionada pelo usuário, o sistema DEVE informar o desfecho de forma honesta: quando ao menos um item for adquirido, a barra de status DEVE indicar a atualização; quando nenhum item for adquirido, o sistema NÃO DEVE afirmar que as notícias foram atualizadas, exibindo uma mensagem neutra. A tolerância a falhas de aquisição permanece: nenhum desses casos DEVE ser tratado como erro fatal.
+
+#### Scenario: Notícias adquiridas informam atualização
+
+- **WHEN** a aquisição conclui com ao menos um item adquirido
+- **THEN** a barra de status DEVE indicar que as notícias foram atualizadas
+
+#### Scenario: Nada adquirido não afirma atualização
+
+- **WHEN** a aquisição conclui sem adquirir nenhum item, seja por ausência de itens ou por indisponibilidade tolerada
+- **THEN** a barra de status NÃO DEVE afirmar "Notícias atualizadas!", exibindo mensagem neutra
+
+### Requirement: Falha na leitura assíncrona sai do carregamento
+
+Quando a leitura assíncrona do cache local da sub-aba "Notícias" falhar, o sistema DEVE abandonar o estado de carregamento e exibir uma mensagem informativa, sem permanecer carregando indefinidamente e sem erro fatal.
+
+#### Scenario: Leitura falha não trava o carregamento
+
+- **WHEN** a leitura assíncrona do cache local falha
+- **THEN** a sub-aba DEVE sair do estado de carregamento e exibir mensagem informativa
+
+#### Scenario: Leitura obsoleta não altera o estado
+
+- **WHEN** uma leitura é substituída por outra mais recente e a anterior falha
+- **THEN** o desfecho da leitura anterior NÃO DEVE alterar o estado apresentado

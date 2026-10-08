@@ -390,3 +390,33 @@ class TestCancelamento:
             )
 
         assert baixados == ["1510187"]
+
+
+class TestContagemAdquiridos:
+    def test_ticker_nao_resolvido_retorna_zero(self, tmp_path):
+        cliente = _ClienteFake()
+        aquisicao, _, _ = _aquisicao(tmp_path, cliente, lambda _p: b"%PDF")
+
+        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0
+
+    def test_sem_documentos_retorna_zero(self, tmp_path):
+        cliente = _ClienteFake(code_cvm="9512", fatos={})
+        aquisicao, _, _ = _aquisicao(
+            tmp_path, cliente, lambda _p: b"%PDF-1.4"
+        )
+
+        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0
+
+    def test_material_fact_persistido_e_contado(self, tmp_path):
+        cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
+        aquisicao, _, _ = _aquisicao(
+            tmp_path, cliente, lambda _p: b"%PDF-1.4"
+        )
+
+        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 1
+
+    def test_download_falho_nao_e_contado(self, tmp_path):
+        cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
+        aquisicao, _, _ = _aquisicao(tmp_path, cliente, lambda _p: None)
+
+        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0

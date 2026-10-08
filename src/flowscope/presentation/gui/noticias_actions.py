@@ -5,6 +5,7 @@ para a barra de status e remonta a árvore ao final. Vive separado de
 :mod:`app_actions` para manter a complexidade sob controle.
 """
 
+from flowscope.presentation.gui.background.events import Outcome
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.noticias_job import (
     GRUPO,
@@ -58,10 +59,15 @@ class NoticiasActionsMixin:
             return
         painel.mostrar_carregando()
         deduplicar = getattr(self, "_deduplicar_noticias", None)
-        background.submit(
-            lambda ctx: executar_noticias(
+        estado = {"adquiridos": 0}
+
+        def trabalho(ctx: object) -> None:
+            estado["adquiridos"] = executar_noticias(
                 ctx, aquisicao, self._data_referencia(), deduplicar
-            ),
+            )
+
+        background.submit(
+            trabalho,
             grupo=GRUPO,
             politica=POLITICA,
             cancelavel=True,
@@ -69,12 +75,12 @@ class NoticiasActionsMixin:
                 evento.atual, evento.total, evento.detalhe
             ),
             ao_termino=lambda evento: self._finalizar_noticias(
-                evento.cancelado
+                evento, estado["adquiridos"]
             ),
         )
 
     def _finalizar_noticias(
-        self: "NoticiasActionsMixin", cancelado: bool
+        self: "NoticiasActionsMixin", evento: object, adquiridos: int
     ) -> None:
         """Agenda a remontagem pelo término do job e informa o desfecho.
 
@@ -83,8 +89,12 @@ class NoticiasActionsMixin:
         terminaram. Não há polling da thread de trabalho na thread do Tk.
         """
         self.after(0, self._remontar_noticias)
-        if not cancelado:
+        if evento.outcome is not Outcome.SUCESSO:
+            return
+        if adquiridos:
             self._flash_status("Notícias atualizadas!")
+        else:
+            self._flash_status("Nenhuma notícia nova.", "ℹ")
 
     def _remontar_noticias(self: "NoticiasActionsMixin") -> None:
         """Relê e remonta a árvore, exceto se uma aquisição nova estiver ativa.

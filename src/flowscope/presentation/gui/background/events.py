@@ -7,6 +7,16 @@ de comunicação entre o worker e a interface.
 
 import threading
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class Outcome(Enum):
+    """Desfecho terminal de um job, declarado pelo worker ou por escape."""
+
+    SUCESSO = "sucesso"
+    FALHA = "falha"
+    CANCELADO = "cancelado"
+    ABORTADO = "abortado"
 
 
 @dataclass(frozen=True)
@@ -30,17 +40,31 @@ class Resultado:
 
 @dataclass(frozen=True)
 class Erro:
-    """Falha ocorrida durante o trabalho, possivelmente por item."""
+    """Falha ocorrida durante o trabalho, possivelmente por item.
+
+    ``fatal`` distingue a falha declarada do job (``True``, encerra em
+    ``FALHA``) da falha de um item recuperada pelo trabalho (``False``).
+    """
 
     excecao: BaseException
     dados: object = None
+    fatal: bool = False
 
 
 @dataclass(frozen=True)
 class Termino:
-    """Término do job, indicando se foi cancelado."""
+    """Término do job, carregando o desfecho terminal.
 
-    cancelado: bool = False
+    ``cancelado`` é propriedade derivada de ``outcome`` para compatibilidade.
+    """
+
+    outcome: Outcome = Outcome.SUCESSO
+    falha_reportada: bool = False
+
+    @property
+    def cancelado(self: "Termino") -> bool:
+        """Indica se o desfecho do job foi ``CANCELADO``."""
+        return self.outcome is Outcome.CANCELADO
 
 
 @dataclass(frozen=True)

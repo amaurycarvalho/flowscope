@@ -55,7 +55,13 @@ from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.presentation.gui.background.context import JobContext
-from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
+from flowscope.presentation.gui.background.events import (
+    Erro,
+    Outcome,
+    Progresso,
+    Resultado,
+    Termino,
+)
 from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
@@ -943,7 +949,7 @@ class TestNoticiasActions:
         painel = MagicMock()
         host = _HostNoticias(painel)
 
-        host._finalizar_noticias(cancelado=True)
+        host._finalizar_noticias(Termino(outcome=Outcome.CANCELADO), 0)
 
         assert len(host.pendentes) == 1
         assert host.pendentes[0][0] == 0
@@ -951,6 +957,24 @@ class TestNoticiasActions:
 
         assert painel.carregar_secoes.call_count == 1
         painel.aplicar_secoes.assert_called_once()
+
+    def test_nada_adquirido_exibe_mensagem_neutra(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+
+        host._finalizar_noticias(Termino(outcome=Outcome.SUCESSO), 0)
+
+        assert host.status[-1] == ("Nenhuma notícia nova.", "ℹ")
+        _drenar(host)
+
+    def test_itens_adquiridos_informam_atualizacao(self):
+        painel = MagicMock()
+        host = _HostNoticias(painel)
+
+        host._finalizar_noticias(Termino(outcome=Outcome.SUCESSO), 3)
+
+        assert host.status[-1] == ("Notícias atualizadas!", "✓")
+        _drenar(host)
 
     def test_remontagem_nao_sobrescreve_carga_nova(self):
         painel = MagicMock()
@@ -964,7 +988,7 @@ class TestNoticiasActions:
         )
         assert host._background.tem_ativo(noticias_actions.GRUPO) is True
 
-        host._finalizar_noticias(cancelado=True)
+        host._finalizar_noticias(Termino(outcome=Outcome.CANCELADO), 0)
         host._rodar_pendentes()
 
         assert painel.carregar_secoes.call_count == 0

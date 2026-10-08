@@ -11,10 +11,16 @@ import queue
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 
 from flowscope.application.cancellation import OperacaoCancelada
 from flowscope.presentation.gui.background.context import JobContext
-from flowscope.presentation.gui.background.events import Evento, Termino
+from flowscope.presentation.gui.background.events import (
+    Erro,
+    Evento,
+    Outcome,
+    Termino,
+)
 from flowscope.presentation.gui.background.job import (
     Callback,
     EstadoJob,
@@ -31,6 +37,33 @@ logger = logging.getLogger("flowscope")
 #: Tempo máximo sem progresso antes de encerrar um job por inatividade.
 LIMITE_INATIVIDADE_S = 120.0
 
+#: Prefixo de nome das threads de trabalho governadas pelo gerenciador.
+_PREFIXO_THREAD = "flowscope-"
+
+
+def _excepthook_worker(args: threading.ExceptHookArgs) -> None:
+    """Registra no log do app as exceções que escapam das threads de trabalho."""
+    thread = args.thread
+    if thread is not None and thread.name.startswith(_PREFIXO_THREAD):
+        logger.error(
+            "Exceção não tratada na thread %s",
+            thread.name,
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+        return
+    _HOOK_ANTERIOR(args)
+
+
+_HOOK_ANTERIOR = threading.excepthook
+
+
+def instalar_excepthook() -> None:
+    """Instala (uma única vez) o hook que loga exceções de workers."""
+    if getattr(threading.excepthook, "_flowscope_worker", False):
+        return
+    threading.excepthook = _excepthook_worker
+    _excepthook_worker._flowscope_worker = True
+
 
 class BackgroundManager:
     """Submete, agenda e cancela trabalhos assíncronos fora da thread do Tk."""
@@ -44,6 +77,7 @@ class BackgroundManager:
         relogio: Callable[[], float] = time.monotonic,
     ) -> None:
         """Inicializa o gerenciador e, se houver, o pump da thread do Tk."""
+        instalar_excepthook()
         self._agendar = agendar
         self._relogio = relogio
         self._limite_inatividade_s = limite_inatividade_s
@@ -134,7 +168,7 @@ class BackgroundManager:
         if handle is None:
             return
         handle.token.request()
-        self._finalizar(handle, cancelado=True)
+        self._finalizar(handle, Outcome.CANCELADO)
 
     def cancel_group(self: "BackgroundManager", grupo: str) -> None:
         """Cancela e finaliza todos os jobs ativos do grupo."""
@@ -176,18 +210,30 @@ class BackgroundManager:
             self._pump.garantir_ativo()
 
     def _trabalhar(self: "BackgroundManager", handle: JobHandle) -> None:
-        """Executa o trabalho do job e publica o término na fila."""
+        """Executa o trabalho do job e publica o término na fila.
+
+        O desfecho é derivado por escape: o retorno normal sem falha declarada
+        resulta em ``SUCESSO``, ``OperacaoCancelada`` em ``CANCELADO`` e uma
+        exceção não tratada em ``FALHA`` via :meth:`JobContext.falhar`. No
+        ``finally``, um desfecho ainda indefinido (``BaseException`` que escapa
+        ou ``trabalho`` ausente) é marcado como ``FALHA``.
+        """
         contexto = JobContext(handle, self._publicador(handle))
         try:
             if handle.trabalho is not None:
                 handle.trabalho(contexto)
+                if handle.outcome is None:
+                    handle.outcome = Outcome.SUCESSO
         except OperacaoCancelada:
             logger.debug("Job %s interrompido pelo usuário", handle.id)
+            handle.outcome = Outcome.CANCELADO
         except Exception as exc:  # falha inesperada não deve travar a interface
             logger.warning("Falha no job %s", handle.id, exc_info=True)
-            contexto.erro(exc)
+            contexto.falhar(exc)
         finally:
-            handle.fila.put(Termino(cancelado=handle.token.is_set))
+            if handle.outcome is None:
+                handle.outcome = Outcome.FALHA
+            handle.fila.put(Termino(outcome=handle.outcome))
 
     def _publicador(
         self: "BackgroundManager", handle: JobHandle
@@ -216,6 +262,11 @@ class BackgroundManager:
         """Entrega um evento ao callback registrado do job."""
         callback = handle.callbacks.para(evento)
         if callback is None:
+            if isinstance(evento, Erro) and evento.fatal:
+                handle.falha_reportada = False
+            return
+        if isinstance(evento, Erro) and evento.fatal:
+            handle.falha_reportada = self._invocar(callback, evento)
             return
         self._invocar(callback, evento)
 
@@ -225,10 +276,15 @@ class BackgroundManager:
         """Entrega o término ao callback do job e o finaliza."""
         callback = handle.callbacks.termino
         if callback is not None:
+            evento = replace(
+                evento, falha_reportada=handle.falha_reportada
+            )
             self._invocar(callback, evento)
-        self._finalizar(handle, cancelado=evento.cancelado)
+        self._finalizar(handle, evento.outcome)
 
-    def _finalizar(self: "BackgroundManager", handle: JobHandle, cancelado: bool) -> None:
+    def _finalizar(
+        self: "BackgroundManager", handle: JobHandle, outcome: Outcome
+    ) -> None:
         """Remove o job do registro, notifica o término e inicia o próximo."""
         if handle.estado in (
             EstadoJob.CONCLUIDO,
@@ -236,7 +292,12 @@ class BackgroundManager:
             EstadoJob.DESCARTADO,
         ):
             return
-        handle.estado = EstadoJob.CANCELADO if cancelado else EstadoJob.CONCLUIDO
+        handle.outcome = outcome
+        handle.estado = (
+            EstadoJob.CANCELADO
+            if outcome is Outcome.CANCELADO
+            else EstadoJob.CONCLUIDO
+        )
         self._jobs.pop(handle.id, None)
         self._scheduler.remover(handle)
         self._notificar(self._listeners_terminado, handle)
@@ -255,20 +316,24 @@ class BackgroundManager:
                 and not thread.is_alive()
                 and handle.fila.empty()
             ):
-                self._finalizar(handle, cancelado=False)
+                self._finalizar(handle, Outcome.ABORTADO)
                 continue
             if agora - handle.ultima_atividade > self._limite_inatividade_s:
                 handle.token.request()
-                self._finalizar(handle, cancelado=True)
+                self._finalizar(handle, Outcome.ABORTADO)
 
-    def _invocar(self: "BackgroundManager", callback: Callback, evento: Evento) -> None:
-        """Invoca um callback de evento tolerando falhas de renderização."""
+    def _invocar(
+        self: "BackgroundManager", callback: Callback, evento: Evento
+    ) -> bool:
+        """Invoca um callback de evento, retornando se ele concluiu sem falha."""
         try:
             callback(evento)
         except Exception:  # erro de callback não deve interromper a drenagem
             logger.warning(
                 "Falha ao tratar evento %s", type(evento).__name__, exc_info=True
             )
+            return False
+        return True
 
     def _notificar(
         self: "BackgroundManager",

@@ -7,9 +7,21 @@ from datetime import date
 from enum import Enum
 from typing import Protocol
 
-from flowscope.application.cancellation import CancellationToken
 from flowscope.application.logging_port import LogReference
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.presentation.gui.background.events import Outcome
+
+#: Mensagem genérica de falha fatal sem tratador de erro consumidor.
+MENSAGEM_FALHA_NAO_REPORTADA = (
+    "Falha inesperada. Consulte o arquivo de log em "
+    "~/.flowscope/logs/flowscope.log"
+)
+
+#: Mensagem de encerramento involuntário pelo watchdog.
+MENSAGEM_ABORTADO = "Processamento encerrado por inatividade."
+
+#: Mensagem de interrupção solicitada pelo usuário.
+MENSAGEM_CANCELADO = "Processamento interrompido."
 
 
 class _BusyState(Enum):
@@ -112,19 +124,16 @@ class FlowScopePresenter:
         self._operacoes_ativas = 0
         self._estado = _BusyState.IDLE
         self._dados_disponiveis = False
-        self._cancel_token = CancellationToken()
         self._jobs_cancelaveis = 0
         self._background = None
         self._ao_ficar_ocioso: list[Callable[[], None]] = []
+        self._desfecho_falha_nao_reportada = False
+        self._desfecho_cancelado = False
+        self._desfecho_abortado = False
 
     def attach_background(self: "FlowScopePresenter", background: object) -> None:
         """Vincula o gerenciador de background ao apresentador."""
         self._background = background
-
-    @property
-    def cancel_token(self: "FlowScopePresenter") -> CancellationToken:
-        """Retorna o token de cancelamento compartilhado pelos jobs."""
-        return self._cancel_token
 
     @property
     def is_busy(self: "FlowScopePresenter") -> bool:
@@ -133,7 +142,6 @@ class FlowScopePresenter:
 
     def request_cancel(self: "FlowScopePresenter") -> None:
         """Solicita o cancelamento de todos os processamentos em background."""
-        self._cancel_token.request()
         if self._background is not None:
             self._background.cancel_all()
 
@@ -160,17 +168,27 @@ class FlowScopePresenter:
         self._operacoes_ativas += 1
         if self._estado is _BusyState.IDLE:
             self._estado = _BusyState.BUSY
-            self._cancel_token.clear()
+            self._desfecho_falha_nao_reportada = False
+            self._desfecho_cancelado = False
+            self._desfecho_abortado = False
             self._view.disable_all_buttons()
             self._view.enter_busy()
 
-    def exit(self: "FlowScopePresenter") -> None:
+    def exit(
+        self: "FlowScopePresenter",
+        outcome: Outcome | None = None,
+        falha_reportada: bool = False,
+    ) -> None:
         """Contabiliza o término de uma operação, restaurando ao chegar a zero.
 
-        Na transição de ocupado para ocioso (última operação ativa), restaura os
-        controles, o cursor e a barra de progresso. Chamadas sem operação ativa
-        são ignoradas, mantendo a transição idempotente.
+        O desfecho informado é agregado ao estado da transição corrente; na
+        transição de ocupado para ocioso (última operação ativa), os controles,
+        o cursor e a barra de progresso são restaurados e o aviso de desfecho é
+        emitido com a precedência definida. Chamadas sem operação ativa são
+        ignoradas, mantendo a transição idempotente.
         """
+        if outcome is not None:
+            self._registrar_desfecho(outcome, falha_reportada)
         if self._operacoes_ativas == 0:
             return
         self._operacoes_ativas -= 1
@@ -181,10 +199,34 @@ class FlowScopePresenter:
             self._view.clear_progress()
             self._jobs_cancelaveis = 0
             self._view.set_cancellable(False)
-            if self._cancel_token.is_set:
-                self._view.set_status("Processamento interrompido.", "⚠")
+            self._emitir_desfecho()
             self._sincronizar_copy_button()
             self._disparar_ao_ficar_ocioso()
+
+    def _registrar_desfecho(
+        self: "FlowScopePresenter", outcome: Outcome, falha_reportada: bool
+    ) -> None:
+        """Agrega o desfecho do job terminado ao estado da transição corrente."""
+        if outcome is Outcome.FALHA:
+            if not falha_reportada:
+                self._desfecho_falha_nao_reportada = True
+        elif outcome is Outcome.CANCELADO:
+            self._desfecho_cancelado = True
+        elif outcome is Outcome.ABORTADO:
+            self._desfecho_abortado = True
+
+    def _emitir_desfecho(self: "FlowScopePresenter") -> None:
+        """Exibe o aviso do desfecho agregado, com a precedência definida.
+
+        ``FALHA`` já reportada por um tratador de erro e ``SUCESSO`` não emitem
+        aviso, preservando mensagens específicas e o silêncio em caso de êxito.
+        """
+        if self._desfecho_falha_nao_reportada:
+            self._view.set_status(MENSAGEM_FALHA_NAO_REPORTADA, "⚠")
+        elif self._desfecho_cancelado:
+            self._view.set_status(MENSAGEM_CANCELADO, "⚠")
+        elif self._desfecho_abortado:
+            self._view.set_status(MENSAGEM_ABORTADO, "⚠")
 
     def ao_ficar_ocioso(self: "FlowScopePresenter", callback: Callable[[], None]) -> None:
         """Registra um callback executado uma vez na próxima transição para ocioso.

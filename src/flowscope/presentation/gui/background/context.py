@@ -17,6 +17,7 @@ from flowscope.presentation.gui.background.events import (
     Confirmacao,
     Erro,
     Evento,
+    Outcome,
     Progresso,
     Resultado,
 )
@@ -72,8 +73,15 @@ class JobContext:
         self.publicar(Resultado(valor=valor, falhou=falhou, dados=dados))
 
     def erro(self: "JobContext", excecao: BaseException, dados: object = None) -> None:
-        """Publica uma falha do trabalho ou de um item."""
+        """Publica a falha de um item (não altera o desfecho do job)."""
         self.publicar(Erro(excecao=excecao, dados=dados))
+
+    def falhar(
+        self: "JobContext", excecao: BaseException, dados: object = None
+    ) -> None:
+        """Declara a falha fatal do job e publica o erro correspondente."""
+        self.handle.outcome = Outcome.FALHA
+        self.publicar(Erro(excecao=excecao, dados=dados, fatal=True))
 
     def confirmar(
         self: "JobContext",

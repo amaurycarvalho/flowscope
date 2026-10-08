@@ -228,10 +228,10 @@ class WiringMixin:
             self._presenter.job_cancelavel_iniciado()
 
     def _on_background_terminado(self: "WiringMixin", handle: "JobHandle") -> None:
-        """Reflete o término de um job no estado ocupado do apresentador."""
+        """Reflete o término de um job, incluindo o desfecho, no apresentador."""
         if handle.cancelavel:
             self._presenter.job_cancelavel_finalizado()
-        self._presenter.exit()
+        self._presenter.exit(handle.outcome, handle.falha_reportada)
 
     def _wire_controller(self: "WiringMixin") -> None:
         """Monta o grafo de dependências e conecta a lista de tickers."""

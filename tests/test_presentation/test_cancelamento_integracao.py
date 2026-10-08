@@ -3,6 +3,8 @@
 import threading
 
 from flowscope.application.cancellation import OperacaoCancelada
+from flowscope.presentation.gui.background.events import Outcome
+from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
@@ -51,35 +53,40 @@ class _ViewFake:
 def test_clique_interrompe_worker_e_finaliza_interface():
     view = _ViewFake()
     presenter = FlowScopePresenter(view)
+    background = BackgroundManager()
+    presenter.attach_background(background)
+    background.ao_iniciar(lambda handle: presenter.on_operation_started())
+    background.ao_terminar(
+        lambda handle: presenter.exit(handle.outcome, handle.falha_reportada)
+    )
     view.presenter = presenter
-    token = presenter.cancel_token
 
-    presenter.on_operation_started()
+    iniciado = threading.Event()
+    iteracoes: list[int] = []
+
+    def trabalho(ctx):
+        iniciado.set()
+        try:
+            for i in range(10):
+                ctx.raise_if_cancelled()
+                iteracoes.append(i)
+        except OperacaoCancelada:
+            return
+
+    handle = background.submit(trabalho, grupo="g", cancelavel=True)
+    assert iniciado.wait(2)
+
     presenter.job_cancelavel_iniciado()
     view.set_progress(0, 10, "Processando")
     assert view.cancellable is True
     assert view.progress_visible is True
 
-    iteracoes: list[int] = []
+    view._on_stop_clicked()
 
-    def worker() -> None:
-        try:
-            for i in range(10):
-                token.raise_if_cancelled()
-                iteracoes.append(i)
-                if i == 2:
-                    view._on_stop_clicked()
-        except OperacaoCancelada:
-            return
-
-    thread = threading.Thread(target=worker)
-    thread.start()
-    thread.join(timeout=2)
-
-    assert iteracoes == [0, 1, 2]
+    handle.thread.join(timeout=2)
+    assert handle.outcome is Outcome.CANCELADO
 
     presenter.job_cancelavel_finalizado()
-    presenter.on_operation_finished()
 
     assert view.cancellable is False
     assert view.progress_visible is False

@@ -127,7 +127,9 @@ def _montar(controller_kwargs: dict | None = None):
     analyze.execute.return_value = {"PETR4": {"daily_data": []}}
     background = BackgroundManager()
     background.ao_iniciar(lambda handle: presenter.on_operation_started())
-    background.ao_terminar(lambda handle: presenter.on_operation_finished())
+    background.ao_terminar(
+        lambda handle: presenter.exit(handle.outcome, handle.falha_reportada)
+    )
     presenter.attach_background(background)
     controller = FlowScopeController(
         guard=OperationGuard(),
@@ -200,7 +202,7 @@ class TestSubmissaoCarga:
                 "on_operation_started",
                 "on_portfolio_loaded",
                 "on_result",
-                "on_operation_finished",
+                "exit",
             ),
             registro,
         )
@@ -212,7 +214,7 @@ class TestSubmissaoCarga:
             "on_operation_started",
             "on_portfolio_loaded",
             "on_result",
-            "on_operation_finished",
+            "exit",
         ]
         assert view.tickers == ["PETR4", "VALE3"]
 

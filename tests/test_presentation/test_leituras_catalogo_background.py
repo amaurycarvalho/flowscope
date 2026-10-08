@@ -329,6 +329,28 @@ class TestAquisicaoDocumentosComDedup:
 
         aquisicao.adquirir.assert_called_once()
 
+    def test_documentos_adquiridos_informam_atualizacao(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        aquisicao.adquirir.return_value = 2
+        host = self._host(background, aquisicao, None)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        host._flash_status.assert_called_with("Documentos atualizados!")
+
+    def test_nada_adquirido_exibe_mensagem_neutra(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        aquisicao.adquirir.return_value = 0
+        host = self._host(background, aquisicao, None)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        host._flash_status.assert_called_with("Nenhum documento novo.", "ℹ")
+
 
 class TestLeituraNoticiasBackground:
     def _host(self, background):

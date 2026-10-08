@@ -13,6 +13,9 @@ from flowscope.application.chat import ArvoreConhecimento
 from flowscope.application.chat.arvore import no_interno
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
+from flowscope.presentation.gui.background.context import JobContext
+from flowscope.presentation.gui.background.events import Erro, Outcome
+from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO, EnvioMixin
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
@@ -224,3 +227,22 @@ class TestEnvioCancelamento:
         conteudo = host.conteudo_sessao()
         assert "segunda" in conteudo
         assert "primeira" not in conteudo
+
+
+class TestFalhaFatalDoEnvio:
+    def test_falha_llm_publica_erro_fatal(self):
+        agendador = _AgendadorFake()
+        liberar = threading.Event()
+        liberar.set()
+        llm = _LLMBloqueante(liberar, LLMCommunicationError("falha"))
+        host = _Host(llm, agendador)
+        eventos: list = []
+        handle = JobHandle(id=1, grupo="chat", politica=Politica.LATEST_WINS)
+        ctx = JobContext(handle, eventos.append)
+
+        host._executar(ctx, "pergunta", {}, [], [])
+
+        erros = [evento for evento in eventos if isinstance(evento, Erro)]
+        assert erros
+        assert erros[0].fatal is True
+        assert handle.outcome is Outcome.FALHA

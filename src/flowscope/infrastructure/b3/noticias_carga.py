@@ -73,22 +73,26 @@ class AquisicaoNoticias:
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
         palavra: str | None = None,
-    ) -> None:
+    ) -> int:
         """Baixa e grava o corpo dos itens, fonte a fonte, tolerando falhas.
 
         O status de cada categoria é anunciado antes da listagem e o progresso
         é reportado por item (fontes regulatórias) ou por dia ("Geral"). A
         "Geral" só relê os dias ainda não processados, exceto o primeiro (mais
         recente), sempre recarregado. ``cancel_token`` é observado no topo de
-        cada unidade de trabalho.
+        cada unidade de trabalho. Retorna a contagem de itens persistidos.
         """
+        adquiridos = 0
         for secao, listar in fontes_noticias(self._repository, reference_date, palavra):
             if secao == SECAO_GERAL:
-                self._adquirir_geral(reference_date, palavra, progress, cancel_token)
+                adquiridos += self._adquirir_geral(
+                    reference_date, palavra, progress, cancel_token
+                )
             else:
-                self._adquirir_fonte(
+                adquiridos += self._adquirir_fonte(
                     secao, listar, reference_date, progress, cancel_token
                 )
+        return adquiridos
 
     def _adquirir_fonte(
         self: "AquisicaoNoticias",
@@ -97,17 +101,19 @@ class AquisicaoNoticias:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None,
         cancel_token: CancellationToken | None,
-    ) -> None:
+    ) -> int:
         """Baixa e indexa os itens de uma fonte regulatória, item a item.
 
         As escritas do índice são agrupadas a cada ``_LOTE_INDICE`` itens e ao
-        final, evitando regravar o índice a cada item.
+        final, evitando regravar o índice a cada item. Retorna a contagem de
+        itens persistidos.
         """
         self._anunciar(progress, secao)
         itens = listar()
         total = len(itens)
         self._reportar(progress, 0, total, secao)
         pendentes: list[tuple[Path, NoticiaMeta]] = []
+        adquiridos = 0
         try:
             for atual, item in enumerate(itens, start=1):
                 if cancel_token is not None:
@@ -115,6 +121,7 @@ class AquisicaoNoticias:
                 registro = self._persistir(item, reference_date)
                 if registro is not None:
                     pendentes.append(registro)
+                    adquiridos += 1
                 if len(pendentes) >= _LOTE_INDICE:
                     self._index.registrar_muitos(pendentes)
                     pendentes = []
@@ -122,6 +129,7 @@ class AquisicaoNoticias:
         finally:
             if pendentes:
                 self._index.registrar_muitos(pendentes)
+        return adquiridos
 
     def _adquirir_geral(
         self: "AquisicaoNoticias",
@@ -129,12 +137,13 @@ class AquisicaoNoticias:
         palavra: str | None,
         progress: Callable[[int, int, str], None] | None,
         cancel_token: CancellationToken | None,
-    ) -> None:
+    ) -> int:
         """Baixa e indexa a "Geral" dia a dia, pulando os dias já processados.
 
         As escritas do índice (itens e marcadores) são agrupadas a cada
         ``_LOTE_INDICE`` dias e ao final. Em cancelamento, os itens já
         processados são indexados sem marcar o dia, para que ele seja retomado.
+        Retorna a contagem de itens persistidos.
         """
         self._anunciar(progress, SECAO_GERAL)
         mais_antiga, referencia = self._index.geral_processada()
@@ -145,6 +154,7 @@ class AquisicaoNoticias:
         mais_antiga_pendente: date | None = None
         referencia_pendente: date | None = None
         desde_flush = 0
+        adquiridos = 0
         try:
             for indice, (inicio, fim) in enumerate(janelas, start=1):
                 if cancel_token is not None:
@@ -158,6 +168,7 @@ class AquisicaoNoticias:
                     registro = self._persistir(item, reference_date)
                     if registro is not None:
                         registros.append(registro)
+                        adquiridos += 1
                 mais_antiga_pendente = inicio  # do mais recente ao mais antigo
                 if indice == 1:
                     referencia_pendente = reference_date
@@ -174,6 +185,7 @@ class AquisicaoNoticias:
             self._index.registrar_lote(registros)  # preserva sem marcar o dia
             raise
         self._flush_geral(registros, mais_antiga_pendente, referencia_pendente)
+        return adquiridos
 
     def _flush_geral(
         self: "AquisicaoNoticias",

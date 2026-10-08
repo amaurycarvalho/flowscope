@@ -25,27 +25,32 @@ def executar_noticias(
     aquisicao: object,
     reference_date: date,
     deduplicar: Callable[[object], None] | None = None,
-) -> None:
-    """Executa a aquisição e o housekeeping, publicando progresso e término."""
+) -> int:
+    """Executa a aquisição e o housekeeping, publicando progresso e término.
+
+    Retorna a contagem de itens adquiridos (zero em cancelamento ou falha).
+    """
 
     def _progresso(current: int, total: int, label: str) -> None:
         ctx.progress(detalhe=label, atual=current, total=total)
 
+    adquiridos = 0
     try:
-        aquisicao.adquirir(
+        adquiridos = aquisicao.adquirir(
             reference_date,
             progress=_progresso,
             cancel_token=ctx.token,
-        )
+        ) or 0
     except OperacaoCancelada:
         logger.debug("Aquisição de notícias interrompida pelo usuário")
     except Exception:  # falha inesperada não deve travar a interface
         logger.warning("Falha na aquisição de notícias", exc_info=True)
     if deduplicar is None:
-        return
+        return adquiridos
     try:
         deduplicar(ctx.token)
     except OperacaoCancelada:
         logger.debug("Housekeeping de notícias interrompido pelo usuário")
     except Exception:  # housekeeping não deve travar a interface
         logger.warning("Falha no housekeeping de notícias", exc_info=True)
+    return adquiridos

@@ -5,6 +5,7 @@ import pytest
 import tkinter as tk
 
 from flowscope.application.logging_port import LogReference
+from flowscope.presentation.gui.background.events import Outcome
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
@@ -303,27 +304,21 @@ class TestFlowScopePresenter:
 
 
 class TestCancelamento:
-    def test_clique_solicita_cancelamento(self):
+    def test_clique_delega_cancelamento_ao_background(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
-        assert presenter.cancel_token.is_set is False
-        presenter.request_cancel()
-        assert presenter.cancel_token.is_set is True
+        background = MagicMock()
+        presenter.attach_background(background)
 
-    def test_nova_operacao_limpa_cancelamento(self):
-        view = MagicMock()
-        presenter = FlowScopePresenter(view)
         presenter.request_cancel()
-        presenter.on_operation_started()
-        assert presenter.cancel_token.is_set is False
 
-    def test_job_sobreposto_nao_limpa_cancelamento(self):
+        background.cancel_all.assert_called_once()
+
+    def test_clique_sem_background_nao_falha(self):
         view = MagicMock()
         presenter = FlowScopePresenter(view)
-        presenter.on_operation_started()
+
         presenter.request_cancel()
-        presenter.on_operation_started()
-        assert presenter.cancel_token.is_set is True
 
     def test_botao_visivel_apenas_com_job_cancelavel(self):
         view = MagicMock()
@@ -343,8 +338,7 @@ class TestCancelamento:
         view = MagicMock()
         presenter = FlowScopePresenter(view)
         presenter.on_fundamental_started()
-        presenter.request_cancel()
-        presenter.on_fundamental_finished()
+        presenter.exit(Outcome.CANCELADO)
         view.set_status.assert_called_once_with("Processamento interrompido.", "⚠")
         view.set_cancellable.assert_called_with(False)
 
@@ -352,5 +346,77 @@ class TestCancelamento:
         view = MagicMock()
         presenter = FlowScopePresenter(view)
         presenter.on_operation_started()
-        presenter.on_operation_finished()
+        presenter.exit(Outcome.SUCESSO)
+        view.set_status.assert_not_called()
+
+
+class TestDesfechoAgregado:
+    def _presenter_busy(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        presenter.on_operation_started()
+        return view, presenter
+
+    def test_falha_nao_reportada_emite_aviso_generico(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.exit(Outcome.FALHA, falha_reportada=False)
+
+        view.set_status.assert_called_once()
+        args = view.set_status.call_args[0]
+        assert "Falha inesperada" in args[0]
+        assert "log" in args[0]
+        assert args[1] == "⚠"
+
+    def test_falha_reportada_nao_emite_aviso(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.exit(Outcome.FALHA, falha_reportada=True)
+
+        view.set_status.assert_not_called()
+
+    def test_abortado_emite_aviso_de_inatividade(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.exit(Outcome.ABORTADO)
+
+        view.set_status.assert_called_once()
+        args = view.set_status.call_args[0]
+        assert "inatividade" in args[0]
+        assert args[1] == "⚠"
+
+    def test_precedencia_falha_sobre_cancelamento(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.on_operation_started()
+        presenter.exit(Outcome.CANCELADO)
+        presenter.exit(Outcome.FALHA, falha_reportada=False)
+
+        view.set_status.assert_called_once()
+        assert "Falha inesperada" in view.set_status.call_args[0][0]
+
+    def test_precedencia_cancelamento_sobre_abortado(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.on_operation_started()
+        presenter.exit(Outcome.ABORTADO)
+        presenter.exit(Outcome.CANCELADO)
+
+        view.set_status.assert_called_once_with("Processamento interrompido.", "⚠")
+
+    def test_sucesso_nao_emite_aviso(self):
+        view, presenter = self._presenter_busy()
+
+        presenter.exit(Outcome.SUCESSO)
+
+        view.set_status.assert_not_called()
+
+    def test_flags_reiniciadas_na_proxima_transicao(self):
+        view, presenter = self._presenter_busy()
+        presenter.exit(Outcome.CANCELADO)
+        view.set_status.reset_mock()
+
+        presenter.on_operation_started()
+        presenter.exit(Outcome.SUCESSO)
+
         view.set_status.assert_not_called()

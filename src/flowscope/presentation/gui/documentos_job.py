@@ -26,19 +26,23 @@ def executar_documentos(
     ticker: str,
     reference_date: date,
     deduplicar: Callable[[str, object], None] | None = None,
-) -> None:
-    """Executa a aquisição e o housekeeping, publicando progresso e término."""
+) -> int:
+    """Executa a aquisição e o housekeeping, publicando progresso e término.
+
+    Retorna a contagem de itens adquiridos (zero em cancelamento ou falha).
+    """
 
     def _progresso(current: int, total: int, label: str) -> None:
         ctx.progress(detalhe=label, atual=current, total=total)
 
+    adquiridos = 0
     try:
-        aquisicao.adquirir(
+        adquiridos = aquisicao.adquirir(
             ticker,
             reference_date,
             progress=_progresso,
             cancel_token=ctx.token,
-        )
+        ) or 0
     except OperacaoCancelada:
         logger.debug(
             "Aquisição de documentos de %s interrompida pelo usuário", ticker
@@ -48,7 +52,7 @@ def executar_documentos(
             "Falha na aquisição de documentos de %s", ticker, exc_info=True
         )
     if deduplicar is None:
-        return
+        return adquiridos
     try:
         deduplicar(ticker, ctx.token)
     except OperacaoCancelada:
@@ -57,3 +61,4 @@ def executar_documentos(
         logger.warning(
             "Falha no housekeeping de documentos de %s", ticker, exc_info=True
         )
+    return adquiridos

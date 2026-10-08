@@ -724,6 +724,32 @@ class TestAquisicaoFontesRegulatorias:
         assert chamadas == []  # nada é reescrito; cache avaliado por existência
 
 
+class TestContagemAdquiridos:
+    def test_sem_itens_retorna_zero(self, tmp_path):
+        repo = _RepositorioFake([])
+        aquisicao = _aquisicao(
+            tmp_path, repo, lambda url: b"<html>corpo</html>"
+        )
+
+        assert aquisicao.adquirir(_REFERENCIA) == 0
+
+    def test_conteudo_vazio_retorna_zero(self, tmp_path):
+        repo = _RepositorioFake([_noticia()])
+        aquisicao = _aquisicao(tmp_path, repo, lambda url: None)
+
+        assert aquisicao.adquirir(_REFERENCIA) == 0
+
+    def test_itens_regulatorios_sao_contados(self, tmp_path):
+        repo = _RepositorioFontesFake(
+            censuras=[_censura()], programas=[_programa()]
+        )
+        aquisicao = _aquisicao(
+            tmp_path, repo, lambda url: b"nao-deve-baixar"
+        )
+
+        assert aquisicao.adquirir(_REFERENCIA) == 2
+
+
 class TestNoticiasCache:
     def test_roundtrip_e_nao_sobrescreve(self, tmp_path):
         cache = NoticiasCache(tmp_path)
