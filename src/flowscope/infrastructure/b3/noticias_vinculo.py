@@ -10,8 +10,9 @@ resumos pendentes.
 Cada host usa uma estratégia própria: o visualizador da CVM RAD devolve uma
 página cujo PDF é obtido por um POST AJAX (``ExibirPDF``) em base64; o FNET
 devolve uma página com um ``iframe`` (``exibirDocumento``) que serve o PDF.
-Captcha habilitado, falha de rede ou formato inesperado resultam em ``None`` (ou
-texto vazio), sem erro, mantendo o corpo original.
+Captcha habilitado, falha de rede ou formato inesperado resultam em ``None``,
+mantendo o corpo original. Um PDF protegido por senha devolve o estado
+``PROTEGIDO`` para que a apresentação possa solicitar a senha.
 """
 
 import base64
@@ -23,12 +24,16 @@ from urllib.parse import parse_qs, urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 
+from flowscope.application.document_preview import (
+    ExtracaoTexto,
+    StatusExtracao,
+    extrair_pdf,
+)
 from flowscope.domain.noticias import (
     apontador_pendente,
     extrair_url_vinculada,
     host_suportado,
 )
-from flowscope.infrastructure.b3.bdr.text import extrair_texto as extrair_texto_pdf
 
 logger = logging.getLogger("flowscope")
 
@@ -57,13 +62,16 @@ __all__ = [
 def baixar_conteudo_vinculado(
     texto: str,
     *,
+    senha: str | None = None,
     sessao: requests.Session | None = None,
     timeout: int = TIMEOUT,
-) -> str | None:
+) -> ExtracaoTexto | None:
     """Baixa e extrai o texto do documento apontado pela URL embutida.
 
-    Retorna ``None`` quando não há URL suportada, o download falha ou o captcha
-    está habilitado; nesses casos a notícia mantém o corpo original.
+    Retorna ``None`` quando não há URL suportada, o download falha, o captcha
+    está habilitado ou o documento não tem texto; nesses casos a notícia mantém
+    o corpo original. Um PDF protegido por senha devolve ``PROTEGIDO`` (texto
+    possivelmente vazio) para a apresentação solicitar a senha.
     """
     url = extrair_url_vinculada(texto)
     if url is None:
@@ -74,16 +82,20 @@ def baixar_conteudo_vinculado(
     sessao = sessao or requests.Session()
     try:
         if host == "fnet":
-            return _baixar_fnet(sessao, url, timeout)
-        return _baixar_cvm_rad(sessao, url, timeout)
+            resultado = _baixar_fnet(sessao, url, timeout, senha)
+        else:
+            resultado = _baixar_cvm_rad(sessao, url, timeout, senha)
     except Exception:  # falha isolada não pode interromper a pré-visualização
         logger.warning("Falha ao baixar documento vinculado %s", url, exc_info=True)
         return None
+    if resultado is not None and resultado.status is StatusExtracao.SEM_TEXTO:
+        return None
+    return resultado
 
 
 def _baixar_cvm_rad(
-    sessao: requests.Session, url: str, timeout: int
-) -> str | None:
+    sessao: requests.Session, url: str, timeout: int, senha: str | None
+) -> ExtracaoTexto | None:
     """Resolve o documento do visualizador da CVM RAD."""
     partes = urlparse(url)
     parametros = parse_qs(partes.query)
@@ -116,10 +128,12 @@ def _baixar_cvm_rad(
         },
     )
     resp.raise_for_status()
-    return _texto_da_resposta(resp.json())
+    return _texto_da_resposta(resp.json(), senha)
 
 
-def _baixar_fnet(sessao: requests.Session, url: str, timeout: int) -> str | None:
+def _baixar_fnet(
+    sessao: requests.Session, url: str, timeout: int, senha: str | None
+) -> ExtracaoTexto | None:
     """Resolve o documento do visualizador do FNET.
 
     Se o visualizador já servir o PDF, extrai-o direto; caso contrário, segue o
@@ -127,12 +141,12 @@ def _baixar_fnet(sessao: requests.Session, url: str, timeout: int) -> str | None
     """
     resposta = _obter(sessao, url, timeout)
     if _e_pdf(resposta):
-        return _texto_do_documento(resposta.content)
+        return _texto_do_documento(resposta.content, senha)
     alvo = _url_do_pdf_fnet(resposta)
     if alvo is None:
         return None
     documento = _obter(sessao, alvo, timeout, referer=url)
-    return _texto_do_documento(documento.content)
+    return _texto_do_documento(documento.content, senha)
 
 
 def _url_do_pdf_fnet(resposta: requests.Response) -> str | None:
@@ -194,7 +208,7 @@ def _campo(soup: BeautifulSoup, id_: str) -> str | None:
     return valor if isinstance(valor, str) else None
 
 
-def _texto_da_resposta(payload: object) -> str | None:
+def _texto_da_resposta(payload: object, senha: str | None) -> ExtracaoTexto | None:
     """Decodifica o PDF em base64 devolvido pelo WebMethod, ou ``None``."""
     dados = payload.get("d") if isinstance(payload, dict) else None
     if not isinstance(dados, str) or dados.startswith(":ERRO:") or dados == "V2":
@@ -203,13 +217,15 @@ def _texto_da_resposta(payload: object) -> str | None:
         bruto = base64.b64decode(dados)
     except ValueError:
         return None
-    return _texto_do_documento(bruto) or None
+    return _texto_do_documento(bruto, senha)
 
 
-def _texto_do_documento(bruto: bytes) -> str:
+def _texto_do_documento(bruto: bytes, senha: str | None) -> ExtracaoTexto:
     """Extrai o texto do documento (PDF) ou do HTML devolvido."""
     if bruto.lstrip()[:4] == b"%PDF":
-        return extrair_texto_pdf(bruto)
-    return BeautifulSoup(
+        return extrair_pdf(bruto, senha)
+    texto = BeautifulSoup(
         bruto.decode("utf-8", errors="replace"), "html.parser"
     ).get_text("\n", strip=True)
+    status = StatusExtracao.OK if texto.strip() else StatusExtracao.SEM_TEXTO
+    return ExtracaoTexto(texto, status)

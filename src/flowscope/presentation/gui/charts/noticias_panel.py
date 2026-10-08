@@ -12,10 +12,13 @@ import tkinter as tk
 from collections.abc import Callable
 from datetime import date, datetime, timezone
 from pathlib import Path
-from tkinter import ttk
+from tkinter import simpledialog, ttk
 
 from flowscope.application.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
+    ExtracaoTexto,
+    StatusExtracao,
+    extrair_arquivo,
     tem_texto,
     texto_preview,
 )
@@ -39,6 +42,7 @@ from flowscope.domain.noticias import (
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
+    MAX_TENTATIVAS_SENHA,
     DocumentFlowMixin,
 )
 from flowscope.presentation.gui.charts.document_grouping import (
@@ -72,7 +76,7 @@ class NoticiasPanel(DocumentFlowMixin):
         summary_service: DocumentSummaryService | None = None,
         summary_store: DocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
-        baixar_vinculo: Callable[[str], str | None] | None = None,
+        baixar_vinculo: Callable[[str, str | None], ExtracaoTexto | None] | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[str], None] | None = None,
@@ -83,6 +87,7 @@ class NoticiasPanel(DocumentFlowMixin):
         resumir_ativo_callback: Callable[[], bool] | None = None,
         reference_date_provider: Callable[[], date] | None = None,
         debounce_ms: int = 150,
+        senha_max_tentativas: int = MAX_TENTATIVAS_SENHA,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles.
 
@@ -94,7 +99,11 @@ class NoticiasPanel(DocumentFlowMixin):
             summary_service, summary_store, catalog, llm_factory, llm_available
         )
         self._text_store = self._resolver_text_store(text_store, catalog)
-        self._baixar_vinculo = baixar_vinculo or (lambda _texto: None)
+        self._baixar_vinculo = baixar_vinculo or (
+            lambda _texto, _senha=None: None
+        )
+        self._senha_interativa = True
+        self._senha_max_tentativas = senha_max_tentativas
         self._open_callback = open_callback or abrir_url
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
@@ -204,6 +213,7 @@ class NoticiasPanel(DocumentFlowMixin):
         self._grupos = self._view.grupos
         self._por_caminho = self._view.por_caminho
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        self._tree.bind("<Button-1>", self._on_click)
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<Return>", self._on_double_click)
         self._content.add(self._view.frame, stretch="always")
@@ -316,19 +326,43 @@ class NoticiasPanel(DocumentFlowMixin):
         """
         return pendentes_ordenados(list(self._itens.values()))
 
-    def _texto_do_arquivo(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str:
+    def _texto_do_arquivo(
+        self: "NoticiasPanel",
+        arquivo: DocumentoArquivo,
+        senha: str | None = None,
+    ) -> ExtracaoTexto:
         """Extrai o corpo do artigo, resolvendo o documento vinculado da "Geral".
 
         O corpo do Plantão B3 é extraído de ``#conteudoDetalhe``. Quando ele é
         apenas um apontador para um documento (notícias "Geral" com URL embutida
         no visualizador da CVM RAD ou do FNET), o texto do documento vinculado
         substitui o apontador; sem URL suportada ou em falha, mantém-se o corpo.
-        Roda na thread de trabalho.
+        Um documento vinculado protegido devolve ``PROTEGIDO`` (com o corpo
+        original como texto) para a apresentação solicitar a senha. Roda na
+        thread de trabalho.
         """
-        texto = texto_preview(arquivo.caminho, SELETOR_CONTEUDO_DETALHE)
+        resultado = extrair_arquivo(
+            arquivo.caminho, SELETOR_CONTEUDO_DETALHE
+        )
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
-            return texto
-        return self._baixar_vinculo(texto) or texto
+            return resultado
+        vinculo = self._baixar_vinculo(resultado.texto, senha)
+        if vinculo is None or vinculo.status is StatusExtracao.FALHA:
+            return resultado
+        if vinculo.status is StatusExtracao.PROTEGIDO:
+            return ExtracaoTexto(resultado.texto, StatusExtracao.PROTEGIDO)
+        if not tem_texto(vinculo.texto):
+            return resultado
+        return vinculo
+
+    def _solicitar_senha(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str | None:
+        """Solicita a senha do documento vinculado protegido."""
+        return simpledialog.askstring(
+            "Documento protegido",
+            f"Senha do documento vinculado de {arquivo.nome}:",
+            show="*",
+            parent=self.frame,
+        )
 
     def all_buttons(self: "NoticiasPanel") -> list[tk.Widget]:
         """Retorna os botões do painel para o bloqueio global da interface."""
@@ -392,6 +426,23 @@ class NoticiasPanel(DocumentFlowMixin):
             return
         arquivo = self._itens.get(no)
         if arquivo is not None:
+            self._agendar_preview(arquivo)
+
+    def _on_click(self: "NoticiasPanel", event: tk.Event) -> None:
+        """Refaz a pré-visualização ao clicar no artigo já selecionado.
+
+        O ``<<TreeviewSelect>>`` não dispara quando o mesmo nó é clicado de
+        novo; isso garante a retentativa automática de extrações não definitivas
+        (parcial, falha ou protegida) sem controle dedicado.
+        """
+        no = self._tree.identify_row(event.y)
+        if not no:
+            return
+        arquivo = self._itens.get(no)
+        if arquivo is None:
+            return
+        selecionado = self._arquivo_selecionado()
+        if selecionado is not None and selecionado.caminho == arquivo.caminho:
             self._agendar_preview(arquivo)
 
     def _mostrar_grupo(self: "NoticiasPanel", grupo: Agrupamento) -> None:

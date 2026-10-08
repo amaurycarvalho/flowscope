@@ -3,15 +3,20 @@
 A função de trabalho prepara o texto (reutilizando o cache) e gera os resumos,
 publicando progresso, resultado por documento e erro no :class:`JobContext`;
 a thread do Tk aplica os resultados pelo gerenciador, respeitando a
-thread-safety. Qualquer erro por documento interrompe o lote, salvo quando
-``continuar_em_erro``.
+thread-safety. Resultados não definitivos (parcial, falha ou protegido) são
+pulados e permanecem pendentes para nova tentativa. Qualquer erro por documento
+interrompe o lote, salvo quando ``continuar_em_erro``.
 """
 
 import logging
 from typing import Protocol
 
 from flowscope.application.cancellation import OperacaoCancelada
-from flowscope.application.document_preview import tem_texto
+from flowscope.application.document_preview import (
+    ExtracaoTexto,
+    StatusExtracao,
+    tem_texto,
+)
 from flowscope.application.documentos.lote import (
     PainelLote,
     gerar_resumo_do_lote,
@@ -43,8 +48,8 @@ class _PainelDocumentos(PainelLote, Protocol):
 
     def preparar_texto(
         self: "_PainelDocumentos", arquivo: DocumentoArquivo
-    ) -> str:
-        """Retorna o texto do documento, convertendo apenas em *miss*."""
+    ) -> ExtracaoTexto:
+        """Retorna o resultado da extração do documento, convertendo em *miss*."""
         ...
 
     def avaliar_guidance(
@@ -83,47 +88,52 @@ def _preparar_textos(
     arquivos: list[DocumentoArquivo],
     continuar_em_erro: bool,
 ) -> list[tuple[DocumentoArquivo, str]] | None:
-    """Prepara os textos que faltam e retorna os que têm texto.
+    """Prepara os textos que faltam e retorna os que têm texto completo.
 
     Retorna ``None`` quando um erro interrompe a fase.
     """
     total = len(arquivos)
     _progresso(ctx, 1, 0, total)
-    preparados: list[tuple[DocumentoArquivo, str]] = []
+    preparados: list[tuple[DocumentoArquivo, ExtracaoTexto]] = []
     for indice, arquivo in enumerate(arquivos, start=1):
         ctx.raise_if_cancelled()
         try:
-            texto = painel.preparar_texto(arquivo)
+            resultado = painel.preparar_texto(arquivo)
         except Exception as exc:
             ctx.erro(exc, dados=arquivo)
             if not continuar_em_erro:
                 return None
             continue
-        if _texto_utilizavel(painel, arquivo, texto):
-            _avaliar_guidance(painel, arquivo, texto)
-        preparados.append((arquivo, texto))
+        if _texto_utilizavel(painel, arquivo, resultado):
+            _avaliar_guidance(painel, arquivo, resultado.texto)
+        preparados.append((arquivo, resultado))
         _progresso(ctx, 1, indice, total)
     return [
-        (arquivo, texto)
-        for arquivo, texto in preparados
-        if _texto_utilizavel(painel, arquivo, texto)
+        (arquivo, resultado.texto)
+        for arquivo, resultado in preparados
+        if _texto_utilizavel(painel, arquivo, resultado)
     ]
 
 
 def _texto_utilizavel(
-    painel: _PainelDocumentos, arquivo: DocumentoArquivo, texto: str
+    painel: _PainelDocumentos,
+    arquivo: DocumentoArquivo,
+    resultado: ExtracaoTexto,
 ) -> bool:
     """Indica se o texto preparado serve para resumir.
 
-    Painéis que distinguem texto resolvido de conteúdo sem valor (por exemplo,
-    notícias "Geral" cujo documento vinculado não foi baixado) expõem
-    ``texto_utilizavel``; na ausência do método, vale o texto extraível
-    genérico.
+    Apenas resultados completos são resumíveis; parcial, falha e protegido
+    permanecem pendentes. Painéis que distinguem texto resolvido de conteúdo sem
+    valor (por exemplo, notícias "Geral" cujo documento vinculado não foi
+    baixado) expõem ``texto_utilizavel``; na ausência do método, vale o texto
+    extraível genérico.
     """
+    if resultado.status is not StatusExtracao.OK:
+        return False
     metodo = getattr(painel, "texto_utilizavel", None)
     if metodo is not None:
-        return bool(metodo(arquivo, texto))
-    return tem_texto(texto)
+        return bool(metodo(arquivo, resultado.texto))
+    return tem_texto(resultado.texto)
 
 
 def _avaliar_guidance(

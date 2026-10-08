@@ -2,11 +2,17 @@
 
 from pathlib import Path
 
+from flowscope.application.document_preview import (
+    ExtracaoTexto,
+    StatusExtracao,
+)
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import Resultado
 from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
+
+_TEXTO_OK = ExtracaoTexto("texto preparado", StatusExtracao.OK)
 
 
 def _arquivo() -> DocumentoArquivo:
@@ -64,9 +70,9 @@ class _FlowFake(DocumentFlowMixin):
         self._guidance = guidance
         self.preparos = 0
 
-    def preparar_texto(self, arquivo):
+    def preparar_texto(self, arquivo, senha=None):
         self.preparos += 1
-        return "texto preparado"
+        return _TEXTO_OK
 
 
 def _contexto():
@@ -85,7 +91,7 @@ class TestTrabalhar:
         assert fluxo.preparos == 1
         assert guidance.chamadas == [(_arquivo(), "texto preparado")]
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+        assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 
     def test_guidance_nao_necessario_pula_avaliacao(self):
         summary = _SummaryFake()
@@ -95,7 +101,7 @@ class TestTrabalhar:
         fluxo._trabalhar(ctx, _arquivo())
         assert guidance.chamadas == []
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+        assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 
     def test_falha_ao_consultar_guidance_nao_interrompe_o_resumo(self):
         summary = _SummaryFake()
@@ -104,7 +110,7 @@ class TestTrabalhar:
         ctx, eventos = _contexto()
         fluxo._trabalhar(ctx, _arquivo())
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+        assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 
     def test_falha_ao_avaliar_guidance_nao_interrompe_o_resumo(self):
         summary = _SummaryFake()
@@ -113,7 +119,7 @@ class TestTrabalhar:
         ctx, eventos = _contexto()
         fluxo._trabalhar(ctx, _arquivo())
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+        assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 
     def test_sem_servico_de_guidance_nao_quebra(self):
         summary = _SummaryFake()
@@ -121,7 +127,7 @@ class TestTrabalhar:
         ctx, eventos = _contexto()
         fluxo._trabalhar(ctx, _arquivo())
         assert summary.gerados == [(_arquivo(), "texto preparado")]
-        assert eventos == [Resultado(valor=("texto preparado", True, None))]
+        assert eventos == [Resultado(valor=(_TEXTO_OK, True, None))]
 
 
 class TestPrecisaGuidance:

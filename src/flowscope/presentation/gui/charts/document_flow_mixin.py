@@ -11,8 +11,10 @@ import tkinter as tk
 
 from flowscope.application.document_preview import (
     SEM_TEXTO,
+    ExtracaoTexto,
+    StatusExtracao,
+    extrair_arquivo,
     tem_texto,
-    texto_preview,
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
@@ -34,6 +36,9 @@ GERANDO_RESUMO = "Gerando resumo…"
 
 #: Grupo de exclusão da pré-visualização de documentos.
 GRUPO_PREVIEW = "preview"
+
+#: Número máximo de tentativas de senha por documento/seleção.
+MAX_TENTATIVAS_SENHA = 3
 
 
 class DocumentFlowMixin:
@@ -79,6 +84,7 @@ class DocumentFlowMixin:
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
     ) -> None:
         """Agenda a extração com debounce, cancelando a anterior."""
+        self._tentativas_senha().pop(arquivo.caminho, None)
         if self._after_id is not None:
             try:
                 self.frame.after_cancel(self._after_id)
@@ -101,27 +107,41 @@ class DocumentFlowMixin:
         return texto
 
     def _texto_do_arquivo(
-        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
-    ) -> str:
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        senha: str | None = None,
+    ) -> ExtracaoTexto:
         """Extrai o texto do arquivo; subclasses podem restringir a extração."""
-        return texto_preview(arquivo.caminho)
+        return extrair_arquivo(arquivo.caminho, senha=senha)
 
     def preparar_texto(
-        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
-    ) -> str:
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        senha: str | None = None,
+    ) -> ExtracaoTexto:
         """Retorna o texto do documento, convertendo e gravando só em *miss*.
+
+        Apenas resultados definitivos (completo ou ausência de texto) são
+        persistidos e memoizados; resultados parciais, de falha ou protegidos
+        permanecem pendentes, permitindo a retentativa automática.
 
         Não toca em widgets: é seguro para uso na thread do job de lote.
         """
         texto = self._texto_cacheado(arquivo)
         if texto is not None:
-            return texto
-        texto = self._texto_do_arquivo(arquivo)
-        self._text_store.salvar(
-            arquivo.ticker, self._summary.chave(arquivo), texto or SEM_TEXTO
-        )
-        self._preview_cache[arquivo.caminho] = texto
-        return texto
+            status = (
+                StatusExtracao.OK if tem_texto(texto) else StatusExtracao.SEM_TEXTO
+            )
+            return ExtracaoTexto(texto, status)
+        resultado = self._texto_do_arquivo(arquivo, senha)
+        if resultado.status in (StatusExtracao.OK, StatusExtracao.SEM_TEXTO):
+            self._text_store.salvar(
+                arquivo.ticker,
+                self._summary.chave(arquivo),
+                resultado.texto or SEM_TEXTO,
+            )
+            self._preview_cache[arquivo.caminho] = resultado.texto
+        return resultado
 
     def gerar_resumo_estrito(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo, texto: str
@@ -150,7 +170,9 @@ class DocumentFlowMixin:
         return self._summary.gerar_e_persistir(arquivo, texto)
 
     def _iniciar_preview(
-        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        senha: str | None = None,
     ) -> None:
         """Exibe o carregamento e inicia extração/resumo em background.
 
@@ -161,7 +183,7 @@ class DocumentFlowMixin:
         self._after_id = None
         self._set_preview_text(CARREGANDO)
         self._preview_background().submit(
-            lambda ctx: self._trabalhar(ctx, arquivo),
+            lambda ctx: self._trabalhar(ctx, arquivo, senha),
             grupo=GRUPO_PREVIEW,
             politica=Politica.LATEST_WINS,
             chave=arquivo.caminho,
@@ -182,19 +204,26 @@ class DocumentFlowMixin:
         self: "DocumentFlowMixin",
         ctx: "JobContext",
         arquivo: DocumentoArquivo,
+        senha: str | None = None,
     ) -> None:
         """Extrai o texto, avalia o guidance e, se preciso, gera o resumo.
 
         Executa fora da thread do Tk: lê o cache persistente de texto, decide se
         o resumo é necessário e avalia o guidance, devolvendo texto, decisão e
-        resumo no resultado do job.
+        resumo no resultado do job. Um resultado parcial não gera resumo,
+        permanecendo pendente para nova extração.
         """
-        texto = self.preparar_texto(arquivo)
-        precisa = self._summary.precisa_resumo(arquivo, texto)
+        resultado = self.preparar_texto(arquivo, senha)
+        precisa = (
+            resultado.status is StatusExtracao.OK
+            and self._summary.precisa_resumo(arquivo, resultado.texto)
+        )
         if self._precisa_guidance(arquivo):
-            self.avaliar_guidance(arquivo, texto)
-        resumo = self._summary.gerar(arquivo, texto)
-        ctx.resultado(valor=(texto, precisa, resumo))
+            self.avaliar_guidance(arquivo, resultado.texto)
+        resumo = (
+            self._summary.gerar(arquivo, resultado.texto) if precisa else None
+        )
+        ctx.resultado(valor=(resultado, precisa, resumo))
 
     def _precisa_guidance(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
@@ -233,30 +262,94 @@ class DocumentFlowMixin:
     def _aplicar_preview(
         self: "DocumentFlowMixin",
         arquivo: DocumentoArquivo,
-        texto: str,
+        resultado: ExtracaoTexto,
         precisa_resumo: bool,
         resumo: ResumoDocumento | None = None,
     ) -> None:
         """Cacheia o texto e exibe a pré-visualização se o arquivo seguir selecionado.
 
-        Recebe o texto, a decisão de resumo e o resumo gerado pelo worker. Um
-        documento já resumido tem ``precisa_resumo`` falso e reutiliza o resumo
-        em memória; quando o resumo era necessário mas a geração falhou, exibe a
-        mensagem de indisponibilidade.
+        Recebe o resultado da extração, a decisão de resumo e o resumo gerado
+        pelo worker. Um PDF protegido dispara a solicitação de senha (quando
+        interativo). Um documento já resumido tem ``precisa_resumo`` falso e
+        reutiliza o resumo em memória; quando o resumo era necessário mas a
+        geração falhou, exibe a mensagem de indisponibilidade.
         """
-        self._preview_cache[arquivo.caminho] = texto
         if self._arquivo_selecionado() is not arquivo:
+            return
+        if self._tentar_senha(arquivo, resultado):
             return
         if resumo is not None:
             self._atualizar_resumo(self._summary.persistir(arquivo, resumo))
-            self._mostrar_documento(texto, resumo.long_summary)
+            self._mostrar_documento(resultado.texto, resumo.long_summary)
             return
         long_summary = (
             self._summary.mensagem_indisponivel()
             if precisa_resumo
-            else self._summary.resumo_para_exibir(arquivo, texto)
+            else self._summary.resumo_para_exibir(arquivo, resultado.texto)
         )
-        self._mostrar_documento(texto, long_summary)
+        anotacao = (
+            self._anotacao_parcial(resultado.paginas_com_falha)
+            if resultado.status is StatusExtracao.PARCIAL
+            else None
+        )
+        self._mostrar_documento(resultado.texto, long_summary, anotacao)
+
+    def _tentar_senha(
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        resultado: ExtracaoTexto,
+    ) -> bool:
+        """Solicita a senha de um PDF protegido e reprograma a extração.
+
+        Retorna ``True`` quando uma nova extração foi submetida com a senha
+        informada (a exibição fica a cargo desse novo resultado) e ``False``
+        quando não há o que solicitar — fluxo não interativo, limite atingido ou
+        usuário cancelou.
+        """
+        if resultado.status is not StatusExtracao.PROTEGIDO:
+            return False
+        if not self._pode_solicitar_senha():
+            return False
+        tentativas = self._tentativas_senha()
+        atual = tentativas.get(arquivo.caminho, 0)
+        if atual >= self._max_tentativas():
+            return False
+        senha = self._solicitar_senha(arquivo)
+        tentativas[arquivo.caminho] = atual + 1
+        if not senha:
+            return False
+        self._iniciar_preview(arquivo, senha)
+        return True
+
+    def _pode_solicitar_senha(self: "DocumentFlowMixin") -> bool:
+        """Indica se o painel é interativo e pode pedir senha ao usuário."""
+        return bool(getattr(self, "_senha_interativa", False))
+
+    def _solicitar_senha(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> str | None:
+        """Solicita a senha do documento; padrão headless devolve ``None``."""
+        return None
+
+    def _max_tentativas(self: "DocumentFlowMixin") -> int:
+        """Retorna o limite de tentativas de senha do painel."""
+        return int(getattr(self, "_senha_max_tentativas", MAX_TENTATIVAS_SENHA))
+
+    def _tentativas_senha(self: "DocumentFlowMixin") -> dict:
+        """Retorna o mapa de tentativas de senha por documento, criando-o."""
+        tentativas = getattr(self, "_senha_tentativas", None)
+        if tentativas is None:
+            tentativas = {}
+            self._senha_tentativas = tentativas
+        return tentativas
+
+    @staticmethod
+    def _anotacao_parcial(paginas_com_falha: int) -> str:
+        """Monta a anotação de extração parcial exibida antes do texto."""
+        return (
+            f"[Texto parcial: {paginas_com_falha} página(s) não pôde(ram) ser "
+            "extraída(s).]"
+        )
 
     def _atualizar_resumo(
         self: "DocumentFlowMixin", atualizado: DocumentoArquivo
@@ -302,10 +395,15 @@ class DocumentFlowMixin:
             self._mostrar_documento(texto, resumo.long_summary)
 
     def _mostrar_documento(
-        self: "DocumentFlowMixin", texto: str, long_summary: str | None
+        self: "DocumentFlowMixin",
+        texto: str,
+        long_summary: str | None,
+        anotacao: str | None = None,
     ) -> None:
         """Compõe a pré-visualização do documento com o resumo longo."""
         corpo = texto if tem_texto(texto) else SEM_TEXTO
+        if anotacao:
+            corpo = f"{anotacao}\n\n{corpo}"
         if long_summary:
             self._set_preview_text(f"{long_summary}\n\n---\n\n{corpo}")
         else:

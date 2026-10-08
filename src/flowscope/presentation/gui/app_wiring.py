@@ -9,6 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from flowscope.application.document_preview import ExtracaoTexto
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
     ConsultarCatalogoUseCase,
@@ -146,7 +147,7 @@ class AdaptadoresNoticias:
     catalogo_use_case: ConsultarCatalogoNoticiasUseCase
     summary_service: DocumentSummaryService
     text_store: DocumentTextStore
-    baixar_vinculo: Callable[[str], str | None]
+    baixar_vinculo: Callable[[str, str | None], ExtracaoTexto | None]
     llm_factory: Callable[[], LLMPort]
     llm_available: Callable[[], bool]
 

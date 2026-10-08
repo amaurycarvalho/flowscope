@@ -2,11 +2,17 @@
 
 Exercitam ``preparar_texto``/``_texto_cacheado`` sem instanciar Tk: o cache de
 texto, a conversão em caso de *miss* e a gravação do marcador de ausência.
+Resultados não definitivos (parcial, falha ou protegido) não são persistidos
+nem memoizados, permitindo a retentativa automática.
 """
 
 from pathlib import Path
 
-from flowscope.application.document_preview import SEM_TEXTO
+from flowscope.application.document_preview import (
+    SEM_TEXTO,
+    ExtracaoTexto,
+    StatusExtracao,
+)
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 
@@ -44,16 +50,18 @@ class _StoreFake:
 class _FlowHost(DocumentFlowMixin):
     """Host headless que substitui a extração do arquivo por um fake."""
 
-    def __init__(self, store: _StoreFake, texto_convertido: str = "extraído") -> None:
+    def __init__(
+        self, store: _StoreFake, resultado: ExtracaoTexto | None = None
+    ) -> None:
         self._text_store = store
         self._summary = _SummaryFake()
         self._preview_cache: dict[Path, str] = {}
-        self._texto_convertido = texto_convertido
+        self._resultado = resultado or ExtracaoTexto("extraído", StatusExtracao.OK)
         self.chamadas: list[Path] = []
 
-    def _texto_do_arquivo(self, arquivo: DocumentoArquivo) -> str:
+    def _texto_do_arquivo(self, arquivo, senha=None) -> ExtracaoTexto:
         self.chamadas.append(arquivo.caminho)
-        return self._texto_convertido
+        return self._resultado
 
 
 class TestPrepararTexto:
@@ -62,17 +70,21 @@ class TestPrepararTexto:
         host = _FlowHost(store)
         arquivo = _arquivo()
 
-        assert host.preparar_texto(arquivo) == "extraído"
+        resultado = host.preparar_texto(arquivo)
+        assert resultado.texto == "extraído"
+        assert resultado.status is StatusExtracao.OK
         assert host.chamadas == [arquivo.caminho]
         assert store.obter("ALZR11", "ALZR11/10.pdf") == "extraído"
         assert host._preview_cache[arquivo.caminho] == "extraído"
 
     def test_miss_sem_texto_grava_marcador(self):
         store = _StoreFake()
-        host = _FlowHost(store, texto_convertido="")
+        host = _FlowHost(
+            store, ExtracaoTexto("", StatusExtracao.SEM_TEXTO)
+        )
         arquivo = _arquivo()
 
-        assert host.preparar_texto(arquivo) == ""
+        assert host.preparar_texto(arquivo).texto == ""
         assert store.obter("ALZR11", "ALZR11/10.pdf") == SEM_TEXTO
 
     def test_hit_usa_cache_sem_converter(self):
@@ -81,7 +93,7 @@ class TestPrepararTexto:
         host = _FlowHost(store)
         arquivo = _arquivo()
 
-        assert host.preparar_texto(arquivo) == "do cache"
+        assert host.preparar_texto(arquivo).texto == "do cache"
         assert host.chamadas == []
 
     def test_marcador_em_cache_nao_reconverte(self):
@@ -91,6 +103,37 @@ class TestPrepararTexto:
         host = _FlowHost(store)
         arquivo = _arquivo()
 
-        assert host.preparar_texto(arquivo) == SEM_TEXTO
+        assert host.preparar_texto(arquivo).texto == SEM_TEXTO
         assert host.chamadas == []
         assert store.salvos == []
+
+    def test_parcial_nao_e_persistido_nem_memoizado(self):
+        store = _StoreFake()
+        host = _FlowHost(
+            store, ExtracaoTexto("meio texto", StatusExtracao.PARCIAL, 1)
+        )
+        arquivo = _arquivo()
+
+        resultado = host.preparar_texto(arquivo)
+        assert resultado.status is StatusExtracao.PARCIAL
+        assert resultado.texto == "meio texto"
+        assert store.salvos == []
+        assert arquivo.caminho not in host._preview_cache
+
+    def test_falha_nao_e_persistida_nem_memoizada(self):
+        store = _StoreFake()
+        host = _FlowHost(store, ExtracaoTexto("", StatusExtracao.FALHA))
+        arquivo = _arquivo()
+
+        assert host.preparar_texto(arquivo).status is StatusExtracao.FALHA
+        assert store.salvos == []
+        assert arquivo.caminho not in host._preview_cache
+
+    def test_protegido_nao_e_persistido_nem_memoizado(self):
+        store = _StoreFake()
+        host = _FlowHost(store, ExtracaoTexto("", StatusExtracao.PROTEGIDO))
+        arquivo = _arquivo()
+
+        assert host.preparar_texto(arquivo).status is StatusExtracao.PROTEGIDO
+        assert store.salvos == []
+        assert arquivo.caminho not in host._preview_cache

@@ -12,7 +12,7 @@ import queue
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import ttk
+from tkinter import simpledialog, ttk
 
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
@@ -29,6 +29,7 @@ from flowscope.domain.llm import LLMPort
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
+    MAX_TENTATIVAS_SENHA,
     DocumentFlowMixin,
 )
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
@@ -64,6 +65,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         resumir_callback: Callable[[], None] | None = None,
         resumir_ativo_callback: Callable[[], bool] | None = None,
         debounce_ms: int = 150,
+        senha_max_tentativas: int = MAX_TENTATIVAS_SENHA,
     ) -> None:
         """Constrói a árvore, a caixa de pré-visualização e os controles.
 
@@ -83,6 +85,8 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._resumir_callback = resumir_callback
         self._resumir_ativo_callback = resumir_ativo_callback
         self._debounce_ms = debounce_ms
+        self._senha_interativa = True
+        self._senha_max_tentativas = senha_max_tentativas
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, Agrupamento] = {}
         self._por_caminho: dict[Path, DocumentoArquivo] = {}
@@ -187,6 +191,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._grupos = self._view.grupos
         self._por_caminho = self._view.por_caminho
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        self._tree.bind("<Button-1>", self._on_click)
         self._tree.bind("<Double-1>", self._on_double_click)
         self._tree.bind("<Return>", self._on_double_click)
         self._content.add(self._view.frame, stretch="always")
@@ -331,6 +336,23 @@ class DocumentTreePanel(DocumentFlowMixin):
         if arquivo is not None:
             self._agendar_preview(arquivo)
 
+    def _on_click(self: "DocumentTreePanel", event: tk.Event) -> None:
+        """Refaz a pré-visualização ao clicar no arquivo já selecionado.
+
+        O ``<<TreeviewSelect>>`` não dispara quando o mesmo nó é clicado de
+        novo; isso garante a retentativa automática de extrações não definitivas
+        (parcial, falha ou protegida) sem controle dedicado.
+        """
+        no = self._tree.identify_row(event.y)
+        if not no:
+            return
+        arquivo = self._itens.get(no)
+        if arquivo is None:
+            return
+        selecionado = self._arquivo_selecionado()
+        if selecionado is not None and selecionado.caminho == arquivo.caminho:
+            self._agendar_preview(arquivo)
+
     def _atualizar_botao_abrir(self: "DocumentTreePanel") -> None:
         """Habilita o botão "Abrir documento" somente com arquivo selecionado."""
         estado = (
@@ -372,6 +394,15 @@ class DocumentTreePanel(DocumentFlowMixin):
         """Aciona o callback de abertura do diálogo de configuração de LLM."""
         if self._ia_callback is not None:
             self._ia_callback()
+
+    def _solicitar_senha(self: "DocumentTreePanel", arquivo: DocumentoArquivo) -> str | None:
+        """Solicita a senha de um PDF protegido."""
+        return simpledialog.askstring(
+            "Documento protegido",
+            f"Senha do PDF {arquivo.nome}:",
+            show="*",
+            parent=self.frame,
+        )
 
     def _on_resumir(self: "DocumentTreePanel") -> None:
         """Aciona o callback de resumo em lote dos documentos pendentes."""

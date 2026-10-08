@@ -11,6 +11,10 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
+from flowscope.application.document_preview import (
+    ExtracaoTexto,
+    StatusExtracao,
+)
 from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
@@ -72,11 +76,13 @@ class _PainelFake:
         self.gerados: list[str] = []
         self.guidances: list[tuple[str, str]] = []
 
-    def preparar_texto(self, arquivo):
+    def preparar_texto(self, arquivo, senha=None):
         if self._falha_preparar == arquivo.nome:
             raise RuntimeError("conversão falhou")
         self.preparados.append(arquivo.nome)
-        return self._textos.get(arquivo.nome, "")
+        texto = self._textos.get(arquivo.nome, "")
+        status = StatusExtracao.OK if texto else StatusExtracao.SEM_TEXTO
+        return ExtracaoTexto(texto, status)
 
     def persistir_no_lote(self):
         return False
@@ -327,8 +333,8 @@ class _PainelQueCancela(_PainelFake):
         super().__init__(textos)
         self._token = token
 
-    def preparar_texto(self, arquivo):
-        texto = super().preparar_texto(arquivo)
+    def preparar_texto(self, arquivo, senha=None):
+        texto = super().preparar_texto(arquivo, senha)
         self._token.request()
         return texto
 
@@ -336,6 +342,51 @@ class _PainelQueCancela(_PainelFake):
         resumo = super().gerar_resumo_estrito(arquivo, texto)
         self._token.request()
         return resumo
+
+
+class _PainelNaoDefinitivo:
+    """Painel fake que devolve um resultado não definitivo no preparo."""
+
+    def __init__(self, status):
+        self._status = status
+        self.gerados: list[str] = []
+        self.guidances: list[str] = []
+
+    def preparar_texto(self, arquivo, senha=None):
+        texto = "parcial" if self._status is StatusExtracao.PARCIAL else ""
+        return ExtracaoTexto(texto, self._status, 1)
+
+    def persistir_no_lote(self):
+        return False
+
+    def gerar_resumo_estrito(self, arquivo, texto):
+        self.gerados.append(arquivo.nome)
+        return ResumoDocumento("curto", "longo")
+
+    def avaliar_guidance(self, arquivo, texto):
+        self.guidances.append(arquivo.nome)
+
+
+class TestNaoDefinitivosNoLote:
+    @pytest.mark.parametrize(
+        "status",
+        [
+            StatusExtracao.PARCIAL,
+            StatusExtracao.FALHA,
+            StatusExtracao.PROTEGIDO,
+        ],
+    )
+    def test_nao_definitivo_e_pulado_sem_resumir(self, status):
+        arquivos = [_arquivo("10.pdf")]
+        painel = _PainelNaoDefinitivo(status)
+        ctx, eventos = _contexto()
+
+        sem_texto = executar_resumos(ctx, painel, arquivos)
+
+        assert sem_texto == 1
+        assert painel.gerados == []
+        assert painel.guidances == []
+        assert not any(isinstance(e, Resultado) for e in eventos)
 
 
 class TestCancelamento:

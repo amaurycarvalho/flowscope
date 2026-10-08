@@ -17,6 +17,7 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
+from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.domain.structured import CensuraPublica, NoticiaB3
@@ -340,7 +341,7 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        assert painel._texto_do_arquivo(arquivo) == "Corpo do artigo"
+        assert painel._texto_do_arquivo(arquivo).texto == "Corpo do artigo"
 
     def test_geral_usa_documento_vinculado(self, tmp_path, monkeypatch):
         caminho = tmp_path / "noticia.html"
@@ -362,10 +363,12 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        painel._baixar_vinculo = lambda _texto: "texto do documento"
+        painel._baixar_vinculo = lambda _texto, _senha=None: ExtracaoTexto(
+            "texto do documento", StatusExtracao.OK
+        )
         resultado = painel._texto_do_arquivo(arquivo)
-        assert resultado == "texto do documento"
-        assert "Titulo" not in resultado
+        assert resultado.texto == "texto do documento"
+        assert "Titulo" not in resultado.texto
 
     def test_geral_sem_vinculo_mantem_corpo(self, tmp_path, monkeypatch):
         caminho = tmp_path / "noticia.html"
@@ -385,8 +388,8 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        painel._baixar_vinculo = lambda _texto: None
-        assert painel._texto_do_arquivo(arquivo) == "Corpo"
+        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        assert painel._texto_do_arquivo(arquivo).texto == "Corpo"
 
     def test_regulatoria_nao_baixa_vinculo(self, tmp_path, monkeypatch):
         chamadas: list = []
@@ -407,8 +410,11 @@ class TestExtracaoNoticias:
             url=None,
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        painel._baixar_vinculo = lambda texto: chamadas.append(texto) or "x"
-        assert painel._texto_do_arquivo(arquivo) == "Corpo"
+        painel._baixar_vinculo = (
+            lambda texto, _senha=None: chamadas.append(texto)
+            or ExtracaoTexto("x", StatusExtracao.OK)
+        )
+        assert painel._texto_do_arquivo(arquivo).texto == "Corpo"
         assert chamadas == []
 
 
@@ -421,7 +427,7 @@ class TestAutoRecuperacao:
         painel._summary = DocumentSummaryService(
             JsonDocumentSummaryStore(cache_dir=tmp_path), tmp_path
         )
-        painel._baixar_vinculo = lambda _texto: None
+        painel._baixar_vinculo = lambda _texto, _senha=None: None
         return painel
 
     @staticmethod
@@ -481,15 +487,17 @@ class TestAutoRecuperacao:
         arquivo = self._arquivo_geral(tmp_path)
         chamadas: list[str] = []
 
-        def _baixar(texto):
+        def _baixar(texto, _senha=None):
             chamadas.append(texto)
-            return None if len(chamadas) == 1 else "CONTEUDO DO DOCUMENTO"
+            if len(chamadas) == 1:
+                return None
+            return ExtracaoTexto("CONTEUDO DO DOCUMENTO", StatusExtracao.OK)
 
         painel._baixar_vinculo = _baixar
         primeiro = painel.preparar_texto(arquivo)
-        assert "frmExibirArquivoIPEExterno" in primeiro
+        assert "frmExibirArquivoIPEExterno" in primeiro.texto
         segundo = painel.preparar_texto(arquivo)
-        assert segundo == "CONTEUDO DO DOCUMENTO"
+        assert segundo.texto == "CONTEUDO DO DOCUMENTO"
         assert len(chamadas) == 2
 
     def _painel_com_llm(self, tmp_path, store, llm):
@@ -504,7 +512,7 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        painel._baixar_vinculo = lambda _texto: None
+        painel._baixar_vinculo = lambda _texto, _senha=None: None
         sem_texto, eventos = _executar_lote(painel, [arquivo])
         assert sem_texto == 1
         assert llm.chamadas == []
@@ -517,12 +525,67 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        painel._baixar_vinculo = lambda _texto: "CONTEUDO DO DOCUMENTO"
+        painel._baixar_vinculo = lambda _texto, _senha=None: ExtracaoTexto(
+            "CONTEUDO DO DOCUMENTO", StatusExtracao.OK
+        )
         sem_texto, eventos = _executar_lote(painel, [arquivo])
         assert sem_texto == 0
         assert llm.chamadas
         assert "CONTEUDO DO DOCUMENTO" in llm.chamadas[0][0]["content"]
         assert any(isinstance(e, Resultado) for e in eventos)
+
+
+class TestReClickNoticias:
+    def test_clique_no_mesmo_artigo_reprocessa(self):
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._tree = MagicMock()
+        painel._tree.identify_row.return_value = "n1"
+        arquivo = _arquivo_lote("noticia", Path("/tmp/noticia.html"))
+        painel._itens = {"n1": arquivo}
+        painel._agendar_preview = MagicMock()
+        painel._arquivo_selecionado = lambda: arquivo
+        evento = MagicMock()
+        evento.y = 3
+
+        painel._on_click(evento)
+
+        painel._agendar_preview.assert_called_once_with(arquivo)
+
+    def test_clique_em_outro_no_nao_reprocessa(self):
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._tree = MagicMock()
+        painel._tree.identify_row.return_value = "n2"
+        painel._itens = {"n2": _arquivo_lote("outra", Path("/tmp/outra.html"))}
+        painel._agendar_preview = MagicMock()
+        painel._arquivo_selecionado = lambda: _arquivo_lote(
+            "noticia", Path("/tmp/noticia.html")
+        )
+        evento = MagicMock()
+        evento.y = 3
+
+        painel._on_click(evento)
+
+        painel._agendar_preview.assert_not_called()
+
+
+class TestSolicitarSenhaDialogo:
+    def test_usa_dialogo_com_entrada_oculta(self, monkeypatch):
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel.frame = MagicMock()
+        capturado: dict = {}
+
+        def _askstring(titulo, prompt, show=None, parent=None):
+            capturado["show"] = show
+            return "abc"
+
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.noticias_panel.simpledialog.askstring",
+            _askstring,
+        )
+
+        arquivo = _arquivo_lote("noticia", Path("/tmp/noticia.html"))
+        assert painel._solicitar_senha(arquivo) == "abc"
+        assert capturado["show"] == "*"
 
 
 class TestAbertura:
@@ -676,7 +739,9 @@ class TestResumos:
             painel = NoticiasPanel(
                 root,
                 catalog=catalogo,
-                baixar_vinculo=lambda _texto: "CONTEUDO DO ARQUIVO VINCULADO",
+                baixar_vinculo=lambda _texto, _senha=None: ExtracaoTexto(
+                    "CONTEUDO DO ARQUIVO VINCULADO", StatusExtracao.OK
+                ),
                 llm_factory=lambda: llm,
                 llm_available=lambda: True,
                 debounce_ms=0,
@@ -716,8 +781,8 @@ class TestResumos:
         ]
 
         class _PainelLote:
-            def preparar_texto(self, arquivo):
-                return "texto"
+            def preparar_texto(self, arquivo, senha=None):
+                return ExtracaoTexto("texto", StatusExtracao.OK)
 
             def persistir_no_lote(self):
                 return False

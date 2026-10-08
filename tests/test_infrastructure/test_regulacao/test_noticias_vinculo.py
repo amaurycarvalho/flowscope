@@ -5,6 +5,7 @@ import json
 
 import responses
 
+from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
 from flowscope.infrastructure.b3 import noticias_vinculo
 from flowscope.infrastructure.b3.noticias_vinculo import (
     baixar_conteudo_vinculado,
@@ -85,8 +86,10 @@ class TestBaixarConteudoVinculado:
     def test_baixa_e_extrai_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_texto_pdf",
-            lambda _dados: "texto do documento",
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "texto do documento", StatusExtracao.OK
+            ),
         )
         with responses.RequestsMock() as rsps:
             rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
@@ -97,7 +100,27 @@ class TestBaixarConteudoVinculado:
                 status=200,
             )
             resultado = baixar_conteudo_vinculado(_CORPO)
-        assert resultado == "texto do documento"
+        assert resultado.texto == "texto do documento"
+
+    def test_pdf_protegido_nao_e_colapsado_em_none(self, monkeypatch):
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "", StatusExtracao.PROTEGIDO
+            ),
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
+            rsps.add(
+                responses.POST,
+                _POST_URL,
+                body=json.dumps({"d": _pdf_b64()}),
+                status=200,
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO)
+        assert resultado is not None
+        assert resultado.status is StatusExtracao.PROTEGIDO
 
     def test_envia_o_payload_do_webmethod(self):
         capturado: list = []
@@ -159,8 +182,10 @@ class TestBaixarConteudoFnet:
     def test_segue_iframe_e_extrai_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_texto_pdf",
-            lambda _dados: "texto do fnet",
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "texto do fnet", StatusExtracao.OK
+            ),
         )
         with responses.RequestsMock() as rsps:
             rsps.add(responses.GET, _FNET_VIEWER_URL, body=_viewer_fnet(), status=200)
@@ -172,13 +197,13 @@ class TestBaixarConteudoFnet:
                 content_type="application/pdf",
             )
             resultado = baixar_conteudo_vinculado(_CORPO_FNET)
-        assert resultado == "texto do fnet"
+        assert resultado.texto == "texto do fnet"
 
     def test_visualizador_ja_e_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_texto_pdf",
-            lambda _dados: "pdf direto",
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto("pdf direto", StatusExtracao.OK),
         )
         with responses.RequestsMock() as rsps:
             rsps.add(
@@ -189,7 +214,7 @@ class TestBaixarConteudoFnet:
                 content_type="application/pdf",
             )
             resultado = baixar_conteudo_vinculado(_CORPO_FNET)
-        assert resultado == "pdf direto"
+        assert resultado.texto == "pdf direto"
 
     def test_sem_iframe_retorna_none(self):
         with responses.RequestsMock() as rsps:
@@ -205,8 +230,10 @@ class TestBaixarConteudoFnet:
         monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_texto_pdf",
-            lambda _dados: "texto recuperado",
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "texto recuperado", StatusExtracao.OK
+            ),
         )
         with responses.RequestsMock() as rsps:
             rsps.add(responses.GET, _FNET_VIEWER_URL, status=500)
@@ -219,7 +246,7 @@ class TestBaixarConteudoFnet:
                 content_type="application/pdf",
             )
             resultado = baixar_conteudo_vinculado(_CORPO_FNET)
-        assert resultado == "texto recuperado"
+        assert resultado.texto == "texto recuperado"
 
     def test_falha_de_rede_retorna_none(self, monkeypatch):
         monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)

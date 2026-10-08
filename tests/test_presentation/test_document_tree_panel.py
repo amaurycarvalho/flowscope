@@ -39,6 +39,8 @@ from flowscope.application import document_preview
 from flowscope.application.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
     SEM_TEXTO,
+    ExtracaoTexto,
+    StatusExtracao,
     tem_texto,
     texto_de_html,
     texto_de_pdf,
@@ -673,11 +675,12 @@ class TestPrepararTextoHeadless:
         arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
-            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-            lambda caminho: chamadas.append(caminho) or "extraído",
+            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo",
+            lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
+            or ExtracaoTexto("extraído", StatusExtracao.OK),
         )
 
-        assert host.preparar_texto(arquivo) == "extraído"
+        assert host.preparar_texto(arquivo).texto == "extraído"
         assert chamadas == [arquivo.caminho]
         assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") == "extraído"
         assert host._preview_cache[arquivo.caminho] == "extraído"
@@ -688,12 +691,63 @@ class TestPrepararTextoHeadless:
         arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
-            "flowscope.presentation.gui.charts.document_flow_mixin.texto_preview",
-            lambda caminho: chamadas.append(caminho) or "convertido",
+            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo",
+            lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
+            or ExtracaoTexto("convertido", StatusExtracao.OK),
         )
 
-        assert host.preparar_texto(arquivo) == "do cache"
+        assert host.preparar_texto(arquivo).texto == "do cache"
         assert chamadas == []
+
+
+class TestReClickDocumentos:
+    def test_clique_no_mesmo_arquivo_reprocessa(self, tmp_path):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._tree = MagicMock()
+        painel._tree.identify_row.return_value = "n1"
+        arquivo = _arquivo(tmp_path)
+        painel._itens = {"n1": arquivo}
+        painel._agendar_preview = MagicMock()
+        painel._arquivo_selecionado = lambda: arquivo
+        evento = MagicMock()
+        evento.y = 3
+
+        painel._on_click(evento)
+
+        painel._agendar_preview.assert_called_once_with(arquivo)
+
+    def test_clique_em_outro_no_nao_reprocessa(self, tmp_path):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._tree = MagicMock()
+        painel._tree.identify_row.return_value = "n2"
+        painel._itens = {"n2": _arquivo(tmp_path, "20.pdf")}
+        painel._agendar_preview = MagicMock()
+        painel._arquivo_selecionado = lambda: _arquivo(tmp_path, "10.pdf")
+        evento = MagicMock()
+        evento.y = 3
+
+        painel._on_click(evento)
+
+        painel._agendar_preview.assert_not_called()
+
+
+class TestSolicitarSenhaDialogo:
+    def test_usa_dialogo_com_entrada_oculta(self, tmp_path, monkeypatch):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel.frame = MagicMock()
+        capturado: dict = {}
+
+        def _askstring(titulo, prompt, show=None, parent=None):
+            capturado["show"] = show
+            return "abc"
+
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.document_tree_panel.simpledialog.askstring",
+            _askstring,
+        )
+
+        assert painel._solicitar_senha(_arquivo(tmp_path)) == "abc"
+        assert capturado["show"] == "*"
 
 
 class TestAplicarResumo:

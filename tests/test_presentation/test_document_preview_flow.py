@@ -8,7 +8,11 @@ são dirigidas por um manager fake que roda o worker sob demanda.
 from dataclasses import replace
 from pathlib import Path
 
-from flowscope.application.document_preview import SEM_TEXTO
+from flowscope.application.document_preview import (
+    SEM_TEXTO,
+    ExtracaoTexto,
+    StatusExtracao,
+)
 from flowscope.application.documentos.document_summary import (
     DocumentSummaryService,
 )
@@ -187,9 +191,12 @@ class _PreviewHost(DocumentFlowMixin):
     def refresh_resumir_button(self) -> None:
         self.refresh += 1
 
-    def _texto_do_arquivo(self, arquivo: DocumentoArquivo) -> str:
+    def _texto_do_arquivo(self, arquivo, senha=None) -> ExtracaoTexto:
         self.conversoes.append(arquivo.caminho)
-        return self.convertido
+        status = (
+            StatusExtracao.OK if self.convertido else StatusExtracao.SEM_TEXTO
+        )
+        return ExtracaoTexto(self.convertido, status)
 
 
 class TestIniciarPreview:
@@ -270,7 +277,7 @@ class TestTrabalharEAplicar:
         host._iniciar_preview(arquivo)
         host.manager.executar()
 
-        assert summary.gerados == [(arquivo, "corpo integral")]
+        assert summary.gerados == []
         assert summary.persistidos == []
         assert host.texto_exibido == (
             "resumo longo\n\n---\n\ncorpo integral"
