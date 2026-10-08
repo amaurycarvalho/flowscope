@@ -37,6 +37,8 @@ class ActionsMixin:
             self._set_status(text)
         if self._current_data:
             self._controller.on_load_data()
+        else:
+            self._atualizar_evolucao_se_visivel()
 
     def _update_sampling_label(self: "ActionsMixin") -> None:
         text = self._SAMPLING_STATUS.get(self._sampling_var.get(), "")
@@ -46,6 +48,16 @@ class ActionsMixin:
         self._update_sampling_label()
         if self._current_data:
             self._controller.on_load_data()
+        else:
+            self._atualizar_evolucao_se_visivel()
+
+    def _atualizar_evolucao_se_visivel(self: "ActionsMixin") -> None:
+        """Remonta a evolução quando a sub-aba está visível, sem dados da B3."""
+        current_tabs = getattr(self, "_current_tabs", None)
+        if current_tabs is None:
+            return
+        if current_tabs() == ("Análise do Ticker", "Evolução dos Fundamentos"):
+            self._update_fundamental_evolution()
 
     def get_sampling_config(self: "ActionsMixin") -> SamplingConfig:
         """Retorna a configuração de amostragem selecionada na interface."""
@@ -62,9 +74,13 @@ class ActionsMixin:
             "Monte Carlo duplo": "monte_carlo_double",
             "Todos os dias": "all_days",
         }
+        period_var = getattr(self, "_period_var", None)
+        sampling_var = getattr(self, "_sampling_var", None)
+        periodo = period_var.get() if period_var is not None else ""
+        amostragem = sampling_var.get() if sampling_var is not None else ""
         return SamplingConfig(
-            period_days=period_map.get(self._period_var.get(), 30),
-            method=sampling_map.get(self._sampling_var.get(), "fibonacci"),
+            period_days=period_map.get(periodo, 30),
+            method=sampling_map.get(amostragem, "fibonacci"),
         )
 
     def _on_today(self: "ActionsMixin") -> None:
@@ -167,27 +183,50 @@ class ActionsMixin:
             return
         ticker = self._ticker_apresentado()
         store = getattr(self, "_fundamental_history_store", None)
+        config = self.get_sampling_config()
+        ancora = self._data_referencia()
+        chave = (ticker, config.period_days, config.method)
         background = getattr(self, "_background", None)
         if background is None:
-            painel.update(evolucao_job.preparar_series(store, ticker), ticker=ticker)
+            painel.update(
+                evolucao_job.preparar_series(
+                    store,
+                    ticker,
+                    periodo_dias=config.period_days,
+                    metodo=config.method,
+                    ancora=ancora,
+                ),
+                ticker=ticker,
+            )
             return
         painel.mostrar_carregando(ticker)
         background.submit(
-            lambda ctx: ctx.resultado(valor=evolucao_job.preparar_series(store, ticker)),
+            lambda ctx: ctx.resultado(
+                valor=evolucao_job.preparar_series(
+                    store,
+                    ticker,
+                    periodo_dias=config.period_days,
+                    metodo=config.method,
+                    ancora=ancora,
+                )
+            ),
             grupo=evolucao_job.GRUPO,
             politica=evolucao_job.POLITICA,
-            chave=ticker,
+            chave=chave,
             ao_resultado=lambda evento: self._aplicar_evolucao(
-                ticker, evento.valor
+                ticker, chave, evento.valor
             ),
         )
 
     def _aplicar_evolucao(
-        self: "ActionsMixin", ticker: str | None, series: object
+        self: "ActionsMixin", ticker: str | None, chave: tuple, series: object
     ) -> None:
-        """Aplica as séries da evolução se o ticker apresentado não mudou."""
+        """Aplica as séries se o ticker e a configuração não mudaram."""
         painel = getattr(self, "_fundamental_evolution_panel", None)
         if painel is None or ticker != self._ticker_apresentado():
+            return
+        config = self.get_sampling_config()
+        if chave != (ticker, config.period_days, config.method):
             return
         painel.update(series, ticker=ticker)
 

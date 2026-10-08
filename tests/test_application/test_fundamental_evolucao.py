@@ -5,14 +5,22 @@ from decimal import Decimal
 
 from flowscope.application.fundamental.evolucao import (
     CAMPOS_EVOLUCAO,
+    METODO_MONTE_CARLO,
+    METODO_MONTE_CARLO_DUPLO,
+    METODO_TODOS_OS_DIAS,
     TIPO_INTEIRO,
     TIPO_MONETARIO,
     TIPO_PERCENTUAL,
     TIPO_PERCENTUAL_1,
     TIPO_QUANTIDADE,
     TIPO_RAZAO,
+    definir_janela,
     montar_series,
+    selecionar_datas,
     selecionar_datas_fibonacci,
+    selecionar_datas_fibonacci_duplo,
+    selecionar_datas_fibonacci_reverso,
+    selecionar_datas_monte_carlo,
 )
 from flowscope.application.fundamental_ports import (
     SCHEMA_VERSION_FUNDAMENTOS,
@@ -238,3 +246,120 @@ class TestMontarSeries:
         monkeypatch.setattr("builtins.open", _sem_io)
         series = montar_series([_observacao(BASE, _analise(cotacao="10"))])
         assert len(series) == 8
+
+
+def _offset_datas(offsets) -> list[date]:
+    return sorted(BASE - timedelta(days=o) for o in offsets)
+
+
+class TestDefinirJanela:
+    def test_sem_datas_retorna_none(self):
+        assert definir_janela([], BASE, 30) is None
+
+    def test_janela_ancorada_na_referencia(self):
+        datas = _offset_datas([0, 5, 10, 40])
+        assert definir_janela(datas, BASE, 30) == (
+            BASE - timedelta(days=30),
+            BASE,
+        )
+
+    def test_janela_vazia_ancora_na_mais_recente(self):
+        datas = _offset_datas([200, 210])
+        assert definir_janela(datas, BASE, 30) == (
+            BASE - timedelta(days=230),
+            BASE - timedelta(days=200),
+        )
+
+
+class TestSelecionarDatasFibonacciReverso:
+    def test_extremos_presentes(self):
+        datas = _offset_datas([0, 1, 4, 9, 20, 40, 90, 200])
+        selecionadas = selecionar_datas_fibonacci_reverso(datas)
+        assert selecionadas[0] == datas[0]
+        assert selecionadas[-1] == datas[-1]
+
+    def test_concentra_nas_datas_antigas(self):
+        datas = _offset_datas(range(400))
+        selecionadas = selecionar_datas_fibonacci_reverso(datas)
+        gaps = [
+            (selecionadas[i + 1] - selecionadas[i]).days
+            for i in range(len(selecionadas) - 1)
+        ]
+        assert gaps[0] == 1
+        assert gaps[-1] >= 8
+
+    def test_poucas_observacoes(self):
+        datas = _offset_datas([3, 10])
+        assert selecionar_datas_fibonacci_reverso(datas) == datas
+
+
+class TestSelecionarDatasFibonacciDuplo:
+    def test_extremos_e_centro_presentes(self):
+        datas = _offset_datas(range(400))
+        selecionadas = selecionar_datas_fibonacci_duplo(datas)
+        assert selecionadas[0] == datas[0]
+        assert selecionadas[-1] == datas[-1]
+        assert any(BASE - timedelta(days=205) <= d <= BASE - timedelta(days=195)
+                   for d in selecionadas)
+
+    def test_concentra_nas_margens(self):
+        datas = _offset_datas(range(400))
+        selecionadas = selecionar_datas_fibonacci_duplo(datas)
+        offsets = {(BASE - d).days for d in selecionadas}
+        assert {0, 1, 3, 6}.issubset(offsets)
+        assert {399, 398, 396, 393}.issubset(offsets)
+
+
+class TestSelecionarDatasMonteCarlo:
+    def test_extremos_e_quantidade(self):
+        datas = _offset_datas(range(20))
+        selecionadas = selecionar_datas_monte_carlo(datas, 5, semente="x")
+        assert selecionadas[0] == datas[0]
+        assert selecionadas[-1] == datas[-1]
+        assert len(selecionadas) == 7
+
+    def test_duplo_sorteia_mais_intermediarias(self):
+        datas = _offset_datas(range(30))
+        simples = selecionar_datas_monte_carlo(datas, 5, semente="x")
+        duplo = selecionar_datas_monte_carlo(datas, 12, semente="x")
+        assert len(duplo) == 14
+        assert len(duplo) > len(simples)
+
+    def test_estavel_com_a_mesma_semente(self):
+        datas = _offset_datas(range(20))
+        assert selecionar_datas_monte_carlo(datas, 5, semente="s") == (
+            selecionar_datas_monte_carlo(datas, 5, semente="s")
+        )
+
+    def test_poucas_observacoes(self):
+        datas = _offset_datas([4, 9])
+        assert selecionar_datas_monte_carlo(datas, 5, semente="s") == datas
+
+
+class TestSelecionarDatasDispatcher:
+    def test_todos_os_dias_retorna_tudo(self):
+        datas = _offset_datas(range(15))
+        assert selecionar_datas(datas, METODO_TODOS_OS_DIAS) == datas
+
+    def test_metodo_desconhecido_usa_fibonacci(self):
+        datas = _offset_datas([0, 1, 4, 9, 20, 40, 90, 200])
+        assert selecionar_datas(datas, "inexistente") == (
+            selecionar_datas_fibonacci(datas)
+        )
+
+    def test_despacha_monte_carlo(self):
+        datas = _offset_datas(range(20))
+        assert selecionar_datas(
+            datas, METODO_MONTE_CARLO, semente="s"
+        ) == selecionar_datas_monte_carlo(datas, 5, semente="s")
+
+    def test_despacha_monte_carlo_duplo(self):
+        datas = _offset_datas(range(30))
+        resultado = selecionar_datas(
+            datas, METODO_MONTE_CARLO_DUPLO, semente="s"
+        )
+        assert len(resultado) == 14
+
+    def test_poucas_observacoes_retorna_tudo(self):
+        datas = _offset_datas([7, 8])
+        assert selecionar_datas(datas, METODO_MONTE_CARLO, semente="s") == datas

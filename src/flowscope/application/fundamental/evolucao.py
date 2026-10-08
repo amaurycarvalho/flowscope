@@ -1,11 +1,14 @@
 """Seleção de datas e montagem de séries do painel de evolução dos fundamentos.
 
-Concentra as funções puras do painel: a amostragem Fibonacci acumulada das
-datas retidas no cache histórico e a conversão das observações datadas nas
-séries dos oito campos exibidos. Não executa I/O nem desenha — o painel
-(:mod:`fundamental_evolution_panel`) consome apenas o resultado.
+Concentra as funções puras do painel: a definição da janela de período, a
+amostragem das datas retidas no cache histórico conforme o método selecionado
+(Fibonacci e variantes, Monte Carlo e duplo, todos os dias) e a conversão das
+observações datadas nas séries dos oito campos exibidos. Não executa I/O nem
+desenha — o painel (:mod:`fundamental_evolution_panel`) consome apenas o
+resultado.
 """
 
+import random
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -120,6 +123,74 @@ CAMPOS_EVOLUCAO: tuple[CampoEvolucao, ...] = (
 )
 
 
+#: Métodos de amostragem aceitos, alinhados ao ``SamplingConfig`` da GUI.
+METODO_FIBONACCI = "fibonacci"
+METODO_FIBONACCI_REVERSO = "fibonacci_reverse"
+METODO_FIBONACCI_DUPLO = "fibonacci_double"
+METODO_MONTE_CARLO = "monte_carlo"
+METODO_MONTE_CARLO_DUPLO = "monte_carlo_double"
+METODO_TODOS_OS_DIAS = "all_days"
+
+#: Datas intermediárias sorteadas por método de Monte Carlo.
+MONTE_CARLO_INTERMEDIARIAS = 5
+MONTE_CARLO_DUPLO_INTERMEDIARIAS = 12
+
+#: Número de alvos de cada margem no método Fibonacci duplo.
+FIBONACCI_DUPLO_MARGEM = 3
+
+
+def definir_janela(
+    datas: Iterable[date], ancora: date, periodo_dias: int
+) -> tuple[date, date] | None:
+    """Retorna o intervalo ``[inicio, fim]`` da janela de amostragem.
+
+    Ancora na data informada; quando a janela não contiver nenhuma observação,
+    recua a âncora para a observação mais recente disponível. Retorna ``None``
+    quando não há observações.
+    """
+    disponiveis = sorted(set(datas))
+    if not disponiveis:
+        return None
+    largura = max(periodo_dias, 0)
+    inicio = ancora - timedelta(days=largura)
+    fim = ancora
+    if any(inicio <= data <= fim for data in disponiveis):
+        return inicio, fim
+    fim = disponiveis[-1]
+    return fim - timedelta(days=largura), fim
+
+
+def selecionar_datas(
+    disponiveis: Iterable[date],
+    metodo: str,
+    *,
+    semente: object | None = None,
+) -> list[date]:
+    """Seleciona as datas exibidas conforme o método de amostragem.
+
+    Preserva o contrato de exibição: as observações mais antiga e mais recente
+    sempre aparecem e, com duas ou menos observações, todas são devolvidas.
+    """
+    datas = sorted(set(disponiveis))
+    if len(datas) <= 2:
+        return datas
+    if metodo == METODO_FIBONACCI_REVERSO:
+        return selecionar_datas_fibonacci_reverso(datas)
+    if metodo == METODO_FIBONACCI_DUPLO:
+        return selecionar_datas_fibonacci_duplo(datas)
+    if metodo == METODO_TODOS_OS_DIAS:
+        return datas
+    if metodo == METODO_MONTE_CARLO:
+        return selecionar_datas_monte_carlo(
+            datas, MONTE_CARLO_INTERMEDIARIAS, semente=semente
+        )
+    if metodo == METODO_MONTE_CARLO_DUPLO:
+        return selecionar_datas_monte_carlo(
+            datas, MONTE_CARLO_DUPLO_INTERMEDIARIAS, semente=semente
+        )
+    return selecionar_datas_fibonacci(datas)
+
+
 def selecionar_datas_fibonacci(datas: Iterable[date]) -> list[date]:
     """Seleciona datas do cache por gaps acumulados de Fibonacci.
 
@@ -131,21 +202,84 @@ def selecionar_datas_fibonacci(datas: Iterable[date]) -> list[date]:
     disponiveis = sorted(set(datas))
     if len(disponiveis) <= 2:
         return disponiveis
+    return _caminhar_fibonacci(disponiveis, do_recente=True)
 
-    mais_antiga = disponiveis[0]
-    selecionadas = {mais_antiga, disponiveis[-1]}
-    atual = disponiveis[-1]
 
-    for gap in FIBONACCI_GAPS:
-        alvo = atual - timedelta(days=gap)
-        if alvo <= mais_antiga:
+def selecionar_datas_fibonacci_reverso(datas: Iterable[date]) -> list[date]:
+    """Seleciona datas concentrando-se nas mais antigas da janela.
+
+    Espelha a amostragem de Fibonacci: caminha da data mais antiga para a mais
+    recente com os mesmos gaps sucessivos, incluindo sempre os extremos.
+    """
+    disponiveis = sorted(set(datas))
+    if len(disponiveis) <= 2:
+        return disponiveis
+    return _caminhar_fibonacci(disponiveis, do_recente=False)
+
+
+def selecionar_datas_fibonacci_duplo(datas: Iterable[date]) -> list[date]:
+    """Seleciona datas concentrando-se nas duas margens da janela.
+
+    Combina os primeiros alvos do caminho recente e do caminho antigo com a
+    observação mais próxima do centro da janela, sempre incluindo os extremos.
+    """
+    disponiveis = sorted(set(datas))
+    if len(disponiveis) <= 2:
+        return disponiveis
+    recentes = _caminhar_fibonacci(
+        disponiveis, do_recente=True, passos=FIBONACCI_DUPLO_MARGEM
+    )
+    antigas = _caminhar_fibonacci(
+        disponiveis, do_recente=False, passos=FIBONACCI_DUPLO_MARGEM
+    )
+    centro_alvo = disponiveis[0] + (disponiveis[-1] - disponiveis[0]) / 2
+    centro = _mais_proxima(disponiveis, centro_alvo)
+    return sorted(set(recentes) | set(antigas) | {centro})
+
+
+def selecionar_datas_monte_carlo(
+    datas: Iterable[date], quantidade: int, *, semente: object | None = None
+) -> list[date]:
+    """Seleciona os extremos e uma amostra aleatória das datas intermediárias.
+
+    O sorteio usa :class:`random.Random` semeado por ``semente`` para que a
+    amostra seja estável entre renders com a mesma configuração.
+    """
+    disponiveis = sorted(set(datas))
+    if len(disponiveis) <= 2:
+        return disponiveis
+    intermediarias = disponiveis[1:-1]
+    sorteio = random.Random(semente)
+    escolhidas = sorteio.sample(
+        intermediarias, min(quantidade, len(intermediarias))
+    )
+    return sorted({disponiveis[0], disponiveis[-1], *escolhidas})
+
+
+def _caminhar_fibonacci(
+    disponiveis: Sequence[date],
+    *,
+    do_recente: bool,
+    passos: int | None = None,
+) -> list[date]:
+    """Caminha de um extremo com gaps de Fibonacci, aproximando aos alvos."""
+    atual, limite = (
+        (disponiveis[-1], disponiveis[0])
+        if do_recente
+        else (disponiveis[0], disponiveis[-1])
+    )
+    passo = -1 if do_recente else 1
+    selecionadas = {disponiveis[0], disponiveis[-1]}
+    gaps = FIBONACCI_GAPS if passos is None else FIBONACCI_GAPS[:passos]
+    for gap in gaps:
+        if gap >= abs((limite - atual).days):
             break
-        escolhida = _mais_proxima(disponiveis, alvo)
-        if escolhida >= atual or escolhida in selecionadas:
+        escolhida = _mais_proxima(disponiveis, atual + timedelta(days=passo * gap))
+        avancou = (escolhida - atual).days * passo > 0
+        if not avancou or escolhida in selecionadas:
             continue
         selecionadas.add(escolhida)
         atual = escolhida
-
     return sorted(selecionadas)
 
 
@@ -159,17 +293,12 @@ def montar_series(
 ) -> tuple[SerieEvolucao, ...]:
     """Monta as séries dos oito campos a partir das observações datadas.
 
-    Aplica a amostragem Fibonacci às datas observadas e, para cada campo,
-    produz os pontos com valor disponível — observações sem valor viram
+    Não faz amostragem: recebe as observações já selecionadas e, para cada
+    campo, produz os pontos com valor disponível — observações sem valor viram
     lacunas. Campos sem nenhum valor resultam em séries vazias.
     """
-    selecionadas = set(
-        selecionar_datas_fibonacci(observacao.data for observacao in observacoes)
-    )
     por_data = {
-        observacao.data: observacao.analise
-        for observacao in observacoes
-        if observacao.data in selecionadas
+        observacao.data: observacao.analise for observacao in observacoes
     }
     datas = sorted(por_data)
 

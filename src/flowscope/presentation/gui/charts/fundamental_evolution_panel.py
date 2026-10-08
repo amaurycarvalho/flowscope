@@ -147,7 +147,7 @@ class FundamentalEvolutionPanel:
             "Evolução dos Fundamentos"
         )
         self._figure.suptitle(
-            f"{rotulo}  ({n_datas} datas no cache)", fontsize=11
+            f"{rotulo}  ({n_datas} datas no período)", fontsize=11
         )
 
     def _desenhar_paineis(

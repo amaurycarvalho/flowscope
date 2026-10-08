@@ -149,6 +149,13 @@ class TestCarregarSecoes:
         assert catalogo.vazio is True
 
 
+class _Obs:
+    """Observação mínima com ``data`` para o filtro da janela."""
+
+    def __init__(self, data: date) -> None:
+        self.data = data
+
+
 class TestPrepararSeries:
     def test_sem_ticker_ou_store_retorna_vazio(self):
         assert preparar_series(None, "ALZR11") == ()
@@ -160,21 +167,76 @@ class TestPrepararSeries:
         assert preparar_series(store, "ALZR11") == ()
         store.historico.assert_not_called()
 
-    def test_le_historico_e_monta_series(self):
+    def test_periodo_restringe_historico_a_janela(self):
         store = MagicMock()
         store.datas.return_value = [date(2026, 1, 1), date(2026, 3, 1)]
-        store.historico.return_value = ["obs"]
+        store.historico.return_value = [
+            _Obs(date(2026, 1, 1)),
+            _Obs(date(2026, 3, 1)),
+        ]
         with patch(
             "flowscope.presentation.gui.evolucao_job.montar_series",
             return_value=["s1", "s2"],
         ) as montar:
-            series = preparar_series(store, "ALZR11")
+            series = preparar_series(
+                store, "ALZR11", periodo_dias=60, ancora=date(2026, 3, 1)
+            )
 
         store.historico.assert_called_once_with(
             "ALZR11", date(2026, 1, 1), date(2026, 3, 1)
         )
-        montar.assert_called_once_with(["obs"])
+        montar.assert_called_once()
         assert series == ("s1", "s2")
+
+    def test_periodo_curto_exclui_data_antiga(self):
+        store = MagicMock()
+        store.datas.return_value = [date(2026, 1, 1), date(2026, 3, 1)]
+        store.historico.return_value = [_Obs(date(2026, 3, 1))]
+        with patch(
+            "flowscope.presentation.gui.evolucao_job.montar_series",
+            return_value=["s1"],
+        ):
+            preparar_series(
+                store, "ALZR11", periodo_dias=30, ancora=date(2026, 3, 1)
+            )
+
+        store.historico.assert_called_once_with(
+            "ALZR11", date(2026, 3, 1), date(2026, 3, 1)
+        )
+
+    def test_janela_vazia_ancora_na_observacao_mais_recente(self):
+        store = MagicMock()
+        store.datas.return_value = [date(2024, 6, 1), date(2025, 1, 10)]
+        store.historico.return_value = [_Obs(date(2025, 1, 10))]
+        with patch(
+            "flowscope.presentation.gui.evolucao_job.montar_series",
+            return_value=["s1"],
+        ):
+            preparar_series(
+                store, "ALZR11", periodo_dias=30, ancora=date(2026, 3, 1)
+            )
+
+        store.historico.assert_called_once_with(
+            "ALZR11", date(2025, 1, 10), date(2025, 1, 10)
+        )
+
+    def test_metodo_repassado_para_selecao(self):
+        store = MagicMock()
+        store.datas.return_value = [date(2026, 3, 1 + i) for i in range(10)]
+        store.historico.return_value = []
+        with patch(
+            "flowscope.presentation.gui.evolucao_job.selecionar_datas",
+            return_value=[date(2026, 3, 1)],
+        ) as selecionar:
+            preparar_series(
+                store,
+                "ALZR11",
+                periodo_dias=30,
+                metodo="all_days",
+                ancora=date(2026, 3, 31),
+            )
+
+        assert selecionar.call_args.args[1] == "all_days"
 
 
 class TestLeituraDocumentosBackground:
@@ -362,3 +424,21 @@ class TestLeituraEvolucaoBackground:
         assert host._fundamental_evolution_panel.update.call_args.kwargs[
             "ticker"
         ] == "PETR4"
+
+    def test_resultado_de_configuracao_anterior_nao_e_aplicado(self):
+        background = BackgroundManager()
+        host = self._host(background)
+        liberar = threading.Event()
+        host._fundamental_history_store.datas.side_effect = lambda ticker: (
+            liberar.wait(2),
+            [],
+        )[1]
+
+        host._update_fundamental_evolution()
+        host._sampling_var = MagicMock()
+        host._sampling_var.get.return_value = "Todos os dias"
+        host._update_fundamental_evolution()
+        liberar.set()
+        _drenar(background)
+
+        assert host._fundamental_evolution_panel.update.call_count == 1

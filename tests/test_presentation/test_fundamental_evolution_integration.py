@@ -418,3 +418,46 @@ class TestOrientationText:
         assert "cache" in texto
         assert "Nº de cotistas" in texto
         assert "Shorts%" in texto
+        assert "período" in texto
+
+
+class TestGatilhoFiltros:
+    def _host(self):
+        host = ActionsMixin()
+        host._fundamental_evolution_panel = MagicMock()
+        host._ticker_selecionado = "HGBS11"
+        host._fundamental_history_store = None
+        host._current_data = {}
+        host._controller = MagicMock()
+        host._period_var = MagicMock()
+        host._period_var.get.return_value = "Últimos 30 dias"
+        host._sampling_var = MagicMock()
+        host._sampling_var.get.return_value = "Fibonacci"
+        host._sampling_label = MagicMock()
+        host._PERIOD_STATUS = {}
+        host._SAMPLING_STATUS = {}
+        host._current_tabs = lambda: (
+            "Análise do Ticker",
+            "Evolução dos Fundamentos",
+        )
+        return host
+
+    def test_periodo_sem_dados_atualiza_evolucao(self):
+        host = self._host()
+        host._on_period_combo_changed()
+        host._fundamental_evolution_panel.update.assert_called_once_with(
+            (), ticker="HGBS11"
+        )
+
+    def test_amostragem_sem_dados_atualiza_evolucao(self):
+        host = self._host()
+        host._on_sampling_combo_changed()
+        host._fundamental_evolution_panel.update.assert_called_once_with(
+            (), ticker="HGBS11"
+        )
+
+    def test_fora_da_evolucao_nao_atualiza(self):
+        host = self._host()
+        host._current_tabs = lambda: ("Análise Geral", "Fundamentos")
+        host._on_period_combo_changed()
+        host._fundamental_evolution_panel.update.assert_not_called()

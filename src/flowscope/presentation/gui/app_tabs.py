@@ -285,11 +285,14 @@ TAB_CONTENT = {
              "vermelho destaca o valor mais recente do cache. Uma linha subindo indica que o indicador cresceu no período; descendo, que recuou. "
              "O Shorts% expressa a magnitude relativa da aposta baixista sobre o free float (para FIIs, sobre o total de cotas). "
              "Passe o mouse sobre um ponto para ver a data e o valor correspondente.\n\n"
-             "As datas exibidas são amostradas a partir da observação mais recente com intervalos que crescem na sequência de Fibonacci "
-             "(1, 2, 3, 5, 8, 13, ... dias), ficando mais próximas no presente e mais espaçadas no passado. A data mais antiga e a mais recente "
-             "do cache aparecem sempre. A origem dos dados é exclusivamente o cache histórico de fundamentos: só existem pontos para os dias em "
-             "que os dados do ticker já foram carregados, portanto alguns indicadores podem ficar constantes ou ter poucos pontos. Quando o ticker "
-             "não tem nenhuma observação retida, o painel exibe um aviso de ausência de histórico."), ""),
+             "As datas exibidas respeitam os filtros da barra superior: o período selecionado (30, 60 ou 90 dias) recorta a janela, "
+             "ancorada na data de referência (ou, se ela não tiver observações, na observação mais recente do cache), e o estilo de "
+             "amostragem escolhe o subconjunto das observações dessa janela — Fibonacci (concentrado no presente), Fibonacci reverso "
+             "(concentrado no passado), Fibonacci duplo (nas margens), Monte Carlo, Monte Carlo duplo ou Todos os dias. Em qualquer método, "
+             "a data mais antiga e a mais recente da janela aparecem sempre. A origem dos dados é exclusivamente o cache histórico de "
+             "fundamentos: só existem pontos para os dias em que os dados do ticker já foram carregados, portanto alguns indicadores podem "
+             "ficar constantes ou ter poucos pontos. Quando o ticker não tem nenhuma observação retida, o painel exibe um aviso de ausência "
+             "de histórico."), ""),
         ]
     ),
     ("Análise do Ticker", "Documentos"): (

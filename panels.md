@@ -239,7 +239,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 - **Objetivo:** Acompanhar como os fundamentos do ticker selecionado evoluíram ao longo das datas já observadas e retidas no cache histórico.
 - **Responde a pergunta:** _Os fundamentos do ativo melhoraram ou pioraram desde a observação mais antiga do cache?_
-- **Origem dos dados:** Exclusivamente o cache histórico de fundamentos (`~/.cache/flowscope/fundamentos/{TICKER}.json`). Nenhuma aquisição de rede é feita ao abrir a sub-aba; só existem pontos para os dias em que os dados do ticker já foram carregados.
+- **Origem dos dados:** Exclusivamente o cache histórico de fundamentos (`~/.cache/flowscope/fundamentos/{TICKER}.json`). Nenhuma aquisição de rede é feita ao abrir a sub-aba; só existem pontos para os dias em que os dados do ticker já foram carregados. As datas são recortadas pela janela do período e amostradas conforme o estilo selecionados na barra superior.
 - **Campos exibidos:** Cotação (R$), VP (VP/Cota) (R$), P/VP, Dividend Yield (%), Último dividendo (R$), Nº de cotistas, Nº de cotas e Shorts% (%).
 - **Layout do painel:** Small multiples — oito mini-gráficos de linha (grade 4×2), um por campo, com eixo de datas compartilhado e escala vertical própria, para não misturar unidades.
   ```
@@ -253,7 +253,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
   │ Nº de cotas               │ Shorts%                   │
   └───────────────────────────┴───────────────────────────┘
   ```
-- **Amostragem das datas:** As datas partem da observação mais recente e recuam com intervalos que crescem na sequência de Fibonacci (1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377 dias), aproximando cada alvo para a data de cache mais próxima. A data mais antiga e a mais recente aparecem sempre; o gráfico as exibe em ordem crescente (mais antiga → mais recente).
+- **Janela e amostragem das datas:** As datas exibidas respeitam os comboboxes da barra superior. O **período** (30, 60 ou 90 dias) recorta a janela ancorada na data de referência; o **estilo de amostragem** escolhe o subconjunto das observações do cache dentro da janela — Fibonacci (concentrado no presente), Fibonacci reverso (concentrado no passado), Fibonacci duplo (nas margens), Monte Carlo, Monte Carlo duplo ou Todos os dias. Em todos os métodos, a observação mais antiga e a mais recente da janela aparecem sempre e o gráfico as exibe em ordem crescente (mais antiga → mais recente). Quando a janela ancorada na data de referência não contém observações, a âncora recua para a observação mais recente do cache.
 - **Como interpretar:** Em cada painel, a linha vai da observação mais antiga (esquerda) para a mais recente (direita); o ponto vermelho destaca o valor mais recente. Linha subindo indica que o indicador cresceu no período; descendo, que recuou. As datas do eixo exibem dia, mês e ano (`DD/MM/AA`) e aparecem no painel inferior com dado de cada coluna. Campos sem valor em uma observação deixam uma lacuna; campos sem nenhum valor no cache mostram "sem dado". Quando o ticker não tem histórico retido, o painel exibe um aviso de ausência.
 - **Interação:** Passe o mouse sobre um ponto para ver um tooltip com a data e o valor correspondente. Um duplo clique em uma linha da sub-aba "Fundamentos" (aba "Análise Geral") usa o ticker daquela linha e ativa esta sub-aba. O preenchimento é preguiçoso, ocorrendo apenas quando a sub-aba é selecionada.
 
