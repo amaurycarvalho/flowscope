@@ -2,7 +2,9 @@
 
 import base64
 import json
+import logging
 
+import requests
 import responses
 
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
@@ -102,6 +104,26 @@ class TestBaixarConteudoVinculado:
             resultado = baixar_conteudo_vinculado(_CORPO)
         assert resultado.texto == "texto do documento"
 
+    def test_senha_posicional_e_repassada(self, monkeypatch):
+        recebidas: list = []
+
+        def _extrair(_dados, senha=None):
+            recebidas.append(senha)
+            return ExtracaoTexto("texto do documento", StatusExtracao.OK)
+
+        monkeypatch.setattr(noticias_vinculo, "extrair_pdf", _extrair)
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
+            rsps.add(
+                responses.POST,
+                _POST_URL,
+                body=json.dumps({"d": _pdf_b64()}),
+                status=200,
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO, "segredo")
+        assert resultado.texto == "texto do documento"
+        assert recebidas == ["segredo"]
+
     def test_pdf_protegido_nao_e_colapsado_em_none(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
@@ -154,6 +176,21 @@ class TestBaixarConteudoVinculado:
         with responses.RequestsMock() as rsps:
             rsps.add(responses.GET, _VIEWER_URL, status=500)
             assert baixar_conteudo_vinculado(_CORPO) is None
+
+    def test_timeout_loga_sem_traceback(self, monkeypatch, caplog):
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+
+        def _estoura(_request):
+            raise requests.exceptions.ReadTimeout("simulado")
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            with responses.RequestsMock() as rsps:
+                for _ in range(noticias_vinculo.TENTATIVAS):
+                    rsps.add_callback(responses.GET, _VIEWER_URL, _estoura)
+                assert baixar_conteudo_vinculado(_CORPO) is None
+        assert "Falha de comunicação" in caplog.text
+        assert "ReadTimeout" in caplog.text
+        assert "Traceback" not in caplog.text
 
     def test_resposta_erro_do_webmethod_retorna_none(self):
         with responses.RequestsMock() as rsps:

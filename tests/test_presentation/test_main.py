@@ -2,6 +2,8 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import requests
+
 from flowscope.presentation.main import (
     _create_desktop_shortcut,
     _desktop_shortcut_exists,
@@ -143,6 +145,21 @@ class TestConfigureLogging:
             log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
             content = log_file.read_text()
             assert "teste log" in content
+
+    def test_falha_de_comunicacao_nao_escreve_traceback(self, tmp_path):
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            from flowscope.presentation.main import _configure_logging
+            _configure_logging()
+            import logging
+            logger = logging.getLogger("flowscope")
+            try:
+                raise requests.exceptions.ReadTimeout("read timed out")
+            except requests.exceptions.ReadTimeout:
+                logger.warning("Falha ao baixar", exc_info=True)
+            log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
+            content = log_file.read_text()
+            assert "ReadTimeout" in content
+            assert "Traceback" not in content
 
     def test_linha_comeca_com_timestamp_com_milissegundos(self, tmp_path):
         with patch("pathlib.Path.home", return_value=tmp_path):

@@ -1,5 +1,7 @@
 """Testes do painel de notícias, do job de aquisição e dos resumos em lote."""
 
+import base64
+import json
 import logging
 import os
 import queue
@@ -12,6 +14,7 @@ from tkinter import ttk
 from unittest.mock import MagicMock
 
 import pytest
+import responses
 
 from flowscope.application.cancellation import (
     CancellationToken,
@@ -43,6 +46,8 @@ from flowscope.infrastructure.b3.noticias_index import (
     NoticiaMeta,
     NoticiasIndexStore,
 )
+from flowscope.infrastructure.b3 import noticias_vinculo
+from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vinculado
 from flowscope.infrastructure.document_summaries import (
     JsonDocumentSummaryStore,
     chave_documento,
@@ -422,6 +427,94 @@ class TestExtracaoNoticias:
         )
         assert painel._texto_do_arquivo(arquivo).texto == "Corpo"
         assert chamadas == []
+
+    def test_geral_resolve_com_resolvedor_de_producao(self, tmp_path, monkeypatch):
+        url = (
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk"
+        )
+        caminho = tmp_path / "noticia.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>"
+            f"Titulo\n{url}</pre></body></html>",
+            encoding="utf-8",
+        )
+        arquivo = NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="18",
+            nome="noticia",
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+        )
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "texto do documento", StatusExtracao.OK
+            ),
+        )
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = baixar_conteudo_vinculado
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                url,
+                body=(
+                    "<html><body>"
+                    '<input type="hidden" id="hdnHabilitaCaptcha" value="N">'
+                    "</body></html>"
+                ),
+                status=200,
+            )
+            rsps.add(
+                responses.POST,
+                "https://www.rad.cvm.gov.br/ENETWEB/"
+                "frmExibirArquivoIPEExterno.aspx/ExibirPDF",
+                body=json.dumps(
+                    {"d": base64.b64encode(b"%PDF-1.7\nconteudo").decode()}
+                ),
+                status=200,
+            )
+            resultado = painel._texto_do_arquivo(arquivo)
+        assert resultado.texto == "texto do documento"
+
+    def test_geral_resolvedor_com_excecao_mantem_corpo(self, tmp_path):
+        url = (
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk"
+        )
+        caminho = tmp_path / "noticia.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>"
+            f"Titulo\n{url}</pre></body></html>",
+            encoding="utf-8",
+        )
+        arquivo = NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="18",
+            nome="noticia",
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+        )
+
+        def _falha(_texto, _senha=None):
+            raise TypeError(
+                "baixar_conteudo_vinculado() takes 1 positional argument "
+                "but 2 were given"
+            )
+
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = _falha
+        resultado = painel._texto_do_arquivo(arquivo)
+        assert "Titulo" in resultado.texto
 
 
 class TestAutoRecuperacao:

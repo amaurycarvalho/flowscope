@@ -1,12 +1,15 @@
 """Ponto de entrada principal do FlowScope, orquestrando GUI e linha de comando."""
 
 import argparse
+import copy
 import logging
 import platform
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler, SysLogHandler
 from pathlib import Path
+
+import requests
 
 from flowscope import __version__
 from flowscope.presentation.cli import build_parser, run_cli
@@ -121,6 +124,45 @@ class _MillisecondFormatter(logging.Formatter):
         return formatted
 
 
+def _causa_de_comunicacao(exc_info: tuple | None) -> BaseException | None:
+    """Retorna a exceção de comunicação presente na cadeia, se houver.
+
+    Percorre a causa e o contexto para cobrir erros de domínio que encapsulam
+    uma falha de rede (ex.: ``NetworkError`` causado por ``RequestException``).
+    """
+    if not exc_info:
+        return None
+    erro = exc_info[1]
+    while erro is not None:
+        if isinstance(erro, requests.RequestException):
+            return erro
+        erro = erro.__cause__ or erro.__context__
+    return None
+
+
+class _CommunicationAwareFormatter(_MillisecondFormatter):
+    """Omite o traceback de falhas de comunicação, mantendo um resumo rastreável.
+
+    Falhas de rede/timeout são previstas nos limites de aquisição e já tratadas
+    com fallback; o call stack completo polui o log e sugere exceção não
+    capturada. A linha passa a terminar com ``[Tipo: mensagem]``. Exceções que
+    não são de comunicação preservam o traceback.
+    """
+
+    def format(
+        self: "_CommunicationAwareFormatter",
+        record: logging.LogRecord,
+    ) -> str:
+        """Formata o registro, resumindo falhas de comunicação previstas."""
+        causa = _causa_de_comunicacao(record.exc_info)
+        if causa is None:
+            return super().format(record)
+        registro = copy.copy(record)
+        registro.exc_info = None
+        registro.exc_text = None
+        return f"{super().format(registro)} [{type(causa).__name__}: {causa}]"
+
+
 def _configure_logging() -> None:
     log_path = Path.home() / LOG_FILE_RELATIVE_PATH
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -143,7 +185,7 @@ def _configure_logging() -> None:
         except ImportError:
             pass
 
-    formatter = _MillisecondFormatter(
+    formatter = _CommunicationAwareFormatter(
         "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S,%f",
     )

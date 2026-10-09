@@ -358,7 +358,15 @@ class NoticiasPanel(DocumentFlowMixin):
         )
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
             return resultado
-        vinculo = self._baixar_vinculo(resultado.texto, senha)
+        try:
+            vinculo = self._baixar_vinculo(resultado.texto, senha)
+        except Exception:  # resolvedor com falha não pode derrubar a pré-visualização
+            logger.warning(
+                "Falha ao resolver o documento vinculado de %s",
+                arquivo.caminho,
+                exc_info=True,
+            )
+            return resultado
         if vinculo is None or vinculo.status is StatusExtracao.FALHA:
             return resultado
         if vinculo.status is StatusExtracao.PROTEGIDO:

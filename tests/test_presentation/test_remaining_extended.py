@@ -2,7 +2,13 @@ import logging
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
-from flowscope.presentation.main import _configure_logging, _MillisecondFormatter
+import requests
+
+from flowscope.presentation.main import (
+    _CommunicationAwareFormatter,
+    _configure_logging,
+    _MillisecondFormatter,
+)
 from flowscope.presentation.shortcuts import _create_desktop_shortcut, _desktop_path
 
 
@@ -41,6 +47,48 @@ class TestMillisecondFormatter:
         record = self._record(1780000000.0, 123456)
         out = formatter.formatTime(record, datefmt="%H:%M")
         assert len(out) == 5
+
+
+class TestCommunicationAwareFormatter:
+    @staticmethod
+    def _record(exc: BaseException) -> logging.LogRecord:
+        info = (type(exc), exc, exc.__traceback__)
+        return logging.LogRecord(
+            "flowscope", logging.WARNING, "m.py", 10, "falhou", (), info
+        )
+
+    def test_timeout_renderiza_linha_sem_traceback(self):
+        formatter = _CommunicationAwareFormatter()
+        out = formatter.format(
+            self._record(requests.exceptions.ReadTimeout("read timed out"))
+        )
+        assert "ReadTimeout" in out
+        assert "read timed out" in out
+        assert "Traceback" not in out
+
+    def test_causa_de_comunicacao_encadeada_sem_traceback(self):
+        causa = requests.exceptions.ConnectionError("sem rota")
+        dominio = RuntimeError("fonte indisponível")
+        dominio.__cause__ = causa
+        out = _CommunicationAwareFormatter().format(self._record(dominio))
+        assert "ConnectionError" in out
+        assert "Traceback" not in out
+
+    def test_excecao_inesperada_mantem_traceback(self):
+        formatter = _CommunicationAwareFormatter()
+        try:
+            raise ValueError("boom")
+        except ValueError as exc:
+            record = self._record(exc)
+        out = formatter.format(record)
+        assert "Traceback" in out
+        assert "ValueError: boom" in out
+
+    def test_registro_original_preserva_exc_info(self):
+        exc = requests.exceptions.ReadTimeout("read timed out")
+        record = self._record(exc)
+        _CommunicationAwareFormatter().format(record)
+        assert record.exc_info is not None
 
 
 class TestConfigureLoggingArgs:

@@ -61,8 +61,8 @@ __all__ = [
 
 def baixar_conteudo_vinculado(
     texto: str,
-    *,
     senha: str | None = None,
+    *,
     sessao: requests.Session | None = None,
     timeout: int = TIMEOUT,
 ) -> ExtracaoTexto | None:
@@ -85,8 +85,22 @@ def baixar_conteudo_vinculado(
             resultado = _baixar_fnet(sessao, url, timeout, senha)
         else:
             resultado = _baixar_cvm_rad(sessao, url, timeout, senha)
-    except Exception:  # falha isolada não pode interromper a pré-visualização
-        logger.warning("Falha ao baixar documento vinculado %s", url, exc_info=True)
+    except requests.RequestException as exc:
+        logger.warning(
+            "Falha de comunicação ao baixar documento vinculado %s: %s: %s. "
+            "Mantendo o corpo original.",
+            url,
+            type(exc).__name__,
+            exc,
+        )
+        return None
+    except Exception as exc:  # erro inesperado permanece rastreável
+        logger.warning(
+            "Falha ao baixar documento vinculado %s: %s",
+            url,
+            exc,
+            exc_info=True,
+        )
         return None
     if resultado is not None and resultado.status is StatusExtracao.SEM_TEXTO:
         return None
