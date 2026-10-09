@@ -34,7 +34,7 @@ def converter_data_br_para_iso(data_br: str | None) -> str | None:
     if not data_br:
         return None
     try:
-        return datetime.strptime(data_br.strip(), "%d/%m/%Y").date().isoformat()  # noqa: DTZ007
+        return datetime.strptime(data_br.strip(), "%d/%m/%Y").date().isoformat()
     except ValueError:
         return data_br.strip()
 

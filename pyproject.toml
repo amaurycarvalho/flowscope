@@ -30,14 +30,14 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0.0",
     "responses>=0.25",
-    "ruff>=0.1.0",
+    "ruff==0.17.0",
     "flake8>=6.0.0",
     "flake8-bugbear>=23.0.0",
     "flake8-annotations>=3.0.0",
     "flake8-docstrings>=1.7.0",
 ]
 quality = [
-    "ruff>=0.1.0",
+    "ruff==0.17.0",
     "flake8>=6.0.0",
     "flake8-bugbear>=23.0.0",
     "flake8-annotations>=3.0.0",
