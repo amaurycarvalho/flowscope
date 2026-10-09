@@ -23,6 +23,7 @@ from flowscope.application.cancellation import (
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
+from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.domain.structured import CensuraPublica, NoticiaB3
 from flowscope.infrastructure.b3.noticias_aquisicao import (
@@ -201,12 +202,16 @@ class _FakeNoticiasView:
         self.populado = None
         self._sel = None
         self.catalogos_por_no = {}
+        self.conhecidos: set = set()
 
     def limpar(self):
         self.limpou += 1
 
     def popular_secoes(self, catalogo):
         self.populado = catalogo
+
+    def focar_caminho(self, caminho):
+        return caminho in self.conhecidos
 
     def selecionado(self):
         return self._sel
@@ -262,6 +267,10 @@ class _NoticiasHost(NoticiasPanel):
         self.conteudo = False
         self.preview = None
         self.refresh = 0
+        self.agendados: list = []
+
+    def _agendar_preview(self, arquivo):
+        self.agendados.append(arquivo)
 
     def _set_preview_text(self, texto):
         self.preview = texto
@@ -1225,3 +1234,39 @@ class TestResumirNoticiasPendentes:
         assert host.capturado[0] is painel
         assert host.capturado[1] == ordenados
         assert host.capturado[3] is True
+
+
+class TestSelecaoPreservadaNoticias:
+    def _arquivo(self):
+        return DocumentoArquivo(
+            ticker="noticias",
+            ano=2026,
+            mes=9,
+            categoria="Geral",
+            nome="noticia.html",
+            tipo="html",
+            caminho=Path("/cache/noticia.html"),
+        )
+
+    def test_selecao_preservada_na_remontagem(self):
+        arquivo = self._arquivo()
+        painel = _NoticiasHost(itens={"n1": arquivo}, selecionado=arquivo)
+        painel._view.conhecidos = {arquivo.caminho}
+        catalogo = MagicMock()
+        catalogo.vazio = False
+
+        painel.aplicar_secoes(catalogo)
+
+        assert painel._view.populado is catalogo
+        assert painel.agendados == [arquivo]
+
+    def test_selecao_ausente_do_catalogo_nao_reaplica(self):
+        arquivo = self._arquivo()
+        painel = _NoticiasHost(itens={"n1": arquivo}, selecionado=arquivo)
+        catalogo = MagicMock()
+        catalogo.vazio = False
+
+        painel.aplicar_secoes(catalogo)
+
+        assert painel._view.populado is catalogo
+        assert painel.agendados == []

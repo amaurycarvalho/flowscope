@@ -18,6 +18,7 @@ from flowscope.application.documentos.mensagens import mensagem_indisponivel
 from flowscope.application.resumo_documento import (
     ResumirDocumentoUseCase,
     ResumoDocumento,
+    resumo_integro,
 )
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.documents.texto import tem_texto
@@ -57,12 +58,24 @@ class DocumentSummaryService:
         arquivo: DocumentoArquivo,
         texto: str | None,
     ) -> bool:
-        """Indica se o documento ainda precisa de geração de resumo."""
+        """Indica se o documento ainda precisa de geração de resumo.
+
+        Um resumo persistido que não termina em pontuação final foi truncado e
+        é tratado como desatualizado, de modo que o lote o regenere.
+        """
         return (
-            arquivo.long_summary is None
+            not self.resumo_completo(arquivo)
             and self.disponivel()
             and tem_texto(texto)
         )
+
+    def resumo_completo(
+        self: "DocumentSummaryService", arquivo: DocumentoArquivo
+    ) -> bool:
+        """Indica se os resumos persistidos estão íntegros (não truncados)."""
+        if not resumo_integro(arquivo.long_summary):
+            return False
+        return not arquivo.short_summary or resumo_integro(arquivo.short_summary)
 
     def resumo_para_exibir(
         self: "DocumentSummaryService",

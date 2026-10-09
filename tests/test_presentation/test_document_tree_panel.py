@@ -7,6 +7,7 @@ import time
 import tkinter as tk
 from dataclasses import replace
 from datetime import date
+from decimal import Decimal
 from pathlib import Path
 from tkinter import ttk
 from unittest.mock import MagicMock
@@ -19,6 +20,9 @@ from flowscope.application.cancellation import (
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.application.documentos.catalogo import ConsultarCatalogoUseCase
+from flowscope.application.documentos.document_guidance import (
+    EntradaGuidanceArvore,
+)
 from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.domain.documents import (
     AnoDocumentos,
@@ -27,6 +31,7 @@ from flowscope.domain.documents import (
     DocumentoArquivo,
     MesDocumentos,
 )
+from flowscope.domain.fii import Guidance
 from flowscope.domain.llm import LLMResposta
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
@@ -187,7 +192,12 @@ class TestMontagemArvore:
             raiz = painel._tree.get_children()
             assert len(raiz) == 1
             assert painel._tree.item(raiz[0], "text") == "ALZR11"
-            anos = painel._tree.get_children(raiz[0])
+            ramos = painel._tree.get_children(raiz[0])
+            assert [painel._tree.item(no, "text") for no in ramos] == [
+                "Documentos",
+                "Direitos e obrigações",
+            ]
+            anos = painel._tree.get_children(ramos[0])
             assert [painel._tree.item(no, "text") for no in anos] == ["2026"]
             meses = painel._tree.get_children(anos[0])
             assert [painel._tree.item(no, "text") for no in meses] == ["02"]
@@ -383,12 +393,28 @@ class _FakeView:
         self.limpou = 0
         self.populado = None
         self._sel = None
+        self.guidances: dict = {}
+        self.nos_por_caminho: dict = {}
 
     def limpar(self) -> None:
         self.limpou += 1
+        self.guidances.clear()
+        self.nos_por_caminho.clear()
 
-    def popular(self, catalogo) -> None:
+    def popular(self, catalogo, guidances=()) -> None:
         self.populado = catalogo
+
+    def estado_expansao(self) -> set:
+        return set()
+
+    def restaurar_expansao(self, abertos) -> None:
+        pass
+
+    def no_por_caminho(self, caminho):
+        return self.nos_por_caminho.get(caminho)
+
+    def expandir_ancestrais(self, no) -> None:
+        pass
 
     def selecionado(self):
         return self._sel
@@ -416,6 +442,9 @@ class _PainelHeadless(DocumentTreePanel):
         self._itens = dict(itens or {})
         self._por_caminho = dict(por_caminho or {})
         self._grupos: dict = {}
+        self._guidances: list = []
+        self._guidance_pendentes: frozenset = frozenset()
+        self._tickers_expandidos: set = set()
         self._preview_cache: dict = {}
         self._catalogo_atual = None
         self._current_ticker = None
@@ -720,7 +749,7 @@ class TestFachadaDocumentos:
     @needs_display
     def test_documentos_sem_resumo_em_ordem_da_arvore(self, tmp_path):
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "c", "l")
+        store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "curto.", "longo.")
         catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
         _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
         _touch(
@@ -738,6 +767,40 @@ class TestFachadaDocumentos:
             assert [arquivo.nome for arquivo in pendentes] == ["20.html"]
         finally:
             root.destroy()
+
+
+class TestDocumentosPendentesHeadless:
+    """Decisão de pendência de resumo, sem tocar em Tk."""
+
+    def _painel(self, arquivos):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._itens = {str(i): a for i, a in enumerate(arquivos)}
+        return painel
+
+    def test_resumo_truncado_entra_nos_pendentes(self, tmp_path):
+        truncado = replace(
+            _arquivo(tmp_path), short_summary="curto.", long_summary="cortado"
+        )
+        integro = replace(
+            _arquivo(tmp_path, "20.pdf"),
+            short_summary="curto.",
+            long_summary="longo.",
+        )
+        painel = self._painel([truncado, integro])
+        assert [a.nome for a in painel.documentos_sem_resumo()] == ["10.pdf"]
+
+    def test_sem_resumo_e_pendente(self, tmp_path):
+        painel = self._painel([_arquivo(tmp_path)])
+        assert [a.nome for a in painel.documentos_sem_resumo()] == ["10.pdf"]
+
+    def test_resumo_integro_nao_e_pendente(self, tmp_path):
+        integro = replace(
+            _arquivo(tmp_path),
+            short_summary="curto.",
+            long_summary="longo.",
+        )
+        painel = self._painel([integro])
+        assert painel.documentos_sem_resumo() == []
 
 
 class _FluxoDocumentosHeadless(DocumentFlowMixin):
@@ -865,7 +928,7 @@ class TestAplicarResumo:
         painel, _store, _service = self._host(tmp_path, itens={"n1": arquivo})
         painel.refresh_resumir_button()
         assert painel._resumir_btn.state == tk.NORMAL
-        painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
+        painel.aplicar_resumo(arquivo, ResumoDocumento("curto.", "longo."))
         assert painel._resumir_btn.state == tk.DISABLED
 
     def test_recompoe_preview_quando_selecionado(self, tmp_path):
@@ -946,7 +1009,7 @@ class TestResumirHabilitado:
         item = (
             _arquivo(tmp_path)
             if pendentes
-            else replace(_arquivo(tmp_path), long_summary="l")
+            else replace(_arquivo(tmp_path), long_summary="longo.")
         )
         painel = DocumentTreePanel.__new__(DocumentTreePanel)
         painel._itens = {"a": item}
@@ -1057,23 +1120,23 @@ def _catalogo_com_rg(
     )
 
 
-class _GuidancePendenteFake:
-    """Serviço de guidance mínimo para a verificação de pendências."""
+class _GuidanceEntradasFake:
+    """Serviço de guidance mínimo para a leitura do ramo e das pendências."""
 
-    def __init__(self, pendentes, *, ia: bool = True) -> None:
+    def __init__(self, pendentes=(), entradas=(), *, erro=None) -> None:
         self._pendentes = list(pendentes)
-        self._ia = ia
+        self._entradas = list(entradas)
+        self._erro = erro
         self.chamadas: list[list] = []
 
-    def ia_disponivel(self) -> bool:
-        return self._ia
-
-    def pendentes(self, arquivos):
+    def estado_arvore(self, ticker, arquivos):
         self.chamadas.append(list(arquivos))
-        return list(self._pendentes)
+        if self._erro is not None:
+            raise self._erro
+        return list(self._pendentes), list(self._entradas)
 
 
-class TestCarregarPendentesGuidance:
+class TestCarregarGuidance:
     def _painel(self, guidance):
         painel = DocumentTreePanel.__new__(DocumentTreePanel)
         painel._guidance = guidance
@@ -1082,19 +1145,31 @@ class TestCarregarPendentesGuidance:
     def test_fii_com_rg_pendente_retorna_caminho(self, tmp_path):
         catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
         arquivo = catalogo.anos[0].meses[0].categorias[0].arquivos[0]
-        guidance = _GuidancePendenteFake([arquivo])
+        guidance = _GuidanceEntradasFake([arquivo])
         painel = self._painel(guidance)
 
-        pendentes = painel.carregar_pendentes_guidance("HGBS11", catalogo)
+        pendentes, entradas = painel.carregar_guidance("HGBS11", catalogo)
 
         assert pendentes == frozenset({arquivo.caminho})
+        assert entradas == []
+
+    def test_devolve_as_entradas_de_guidance(self, tmp_path):
+        catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
+        entrada = _entrada_guidance(caminho_pdf=None)
+        guidance = _GuidanceEntradasFake(entradas=[entrada])
+        painel = self._painel(guidance)
+
+        pendentes, entradas = painel.carregar_guidance("HGBS11", catalogo)
+
+        assert pendentes == frozenset()
+        assert entradas == [entrada]
 
     def test_documento_sem_resumo_e_ignorado(self, tmp_path):
         catalogo = _catalogo_com_rg(tmp_path / "10.pdf", long_summary=None)
-        guidance = _GuidancePendenteFake([])
+        guidance = _GuidanceEntradasFake()
         painel = self._painel(guidance)
 
-        painel.carregar_pendentes_guidance("HGBS11", catalogo)
+        painel.carregar_guidance("HGBS11", catalogo)
 
         assert guidance.chamadas == [[]]
 
@@ -1102,27 +1177,18 @@ class TestCarregarPendentesGuidance:
         catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
         painel = self._painel(None)
 
-        assert (
-            painel.carregar_pendentes_guidance("HGBS11", catalogo) == frozenset()
-        )
+        assert painel.carregar_guidance("HGBS11", catalogo) == (frozenset(), [])
 
     def test_erro_no_ledger_retorna_vazio(self, tmp_path):
         catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
+        painel = self._painel(_GuidanceEntradasFake(erro=RuntimeError("x")))
 
-        class _Falha:
-            def pendentes(self, arquivos):
-                raise RuntimeError("ledger ilegível")
-
-        painel = self._painel(_Falha())
-
-        assert (
-            painel.carregar_pendentes_guidance("HGBS11", catalogo) == frozenset()
-        )
+        assert painel.carregar_guidance("HGBS11", catalogo) == (frozenset(), [])
 
 
 class TestResumirHabilitadoGuidance:
     def _host(self, tmp_path, *, disponivel=True, with_pending=True):
-        arquivo = replace(_arquivo(tmp_path), long_summary="longo")
+        arquivo = replace(_arquivo(tmp_path), long_summary="longo.")
         painel = DocumentTreePanel.__new__(DocumentTreePanel)
         painel._itens = {"a": arquivo}
         painel._por_caminho = {arquivo.caminho: arquivo}
@@ -1531,7 +1597,16 @@ class TestAgrupamentoView:
             )
             painel.update("ALZR11")
             tipos = {grupo.tipo for grupo in painel._grupos.values()}
-            assert tipos == {"ticker", "ano", "mes", "categoria"}
+            assert tipos == {
+                "ticker",
+                "documentos",
+                "ano",
+                "mes",
+                "categoria",
+                "direitos_obrigacoes",
+                "direitos",
+                "obrigacoes",
+            }
             assert _no_arquivo(painel, "10.pdf") not in painel._grupos
         finally:
             root.destroy()
@@ -1540,3 +1615,376 @@ class TestAgrupamentoView:
 # Os cenários de geração de resumo e composição da pré-visualização foram
 # convertidos para headless em test_document_preview_flow.py (fakes de
 # manager/JobContext), sem instanciar Tk.
+
+def _catalogo_fii(tmp_path: Path) -> DocumentCatalog:
+    _touch(
+        tmp_path / "documentos-relevantes" / "HGBS11" / "2026" / "08"
+        / "relatorio" / "10.pdf"
+    )
+    return DocumentCatalog(cache_dir=tmp_path)
+
+
+def _caminho_rg_fii(tmp_path: Path) -> Path:
+    return (
+        tmp_path / "documentos-relevantes" / "HGBS11" / "2026" / "08"
+        / "relatorio" / "10.pdf"
+    )
+
+
+def _entrada_guidance(
+    *,
+    caminho_pdf: str | None,
+    ano: int = 2026,
+    mes: int = 8,
+    chave: str = "chave-1",
+    valor: str = "0.85",
+) -> EntradaGuidanceArvore:
+    data = date(ano, mes, 1)
+    guidance = Guidance(
+        valor_min=Decimal(valor),
+        valor_max=Decimal(valor),
+        periodo="2026",
+        data_relatorio=data,
+    )
+    return EntradaGuidanceArvore(
+        ticker="HGBS11",
+        ano=ano,
+        mes=mes,
+        chave=chave,
+        data_relatorio=data,
+        caminho_pdf=caminho_pdf,
+        guidance=guidance,
+    )
+
+
+def _filho_texto(painel, pai: str, texto: str) -> str:
+    for no in painel._tree.get_children(pai):
+        if painel._tree.item(no, "text") == texto:
+            return no
+    raise AssertionError(f"nó '{texto}' não encontrado")
+
+
+def _aplicar(painel, ticker: str, guidances=()):
+    catalogo = painel.carregar_catalogo(ticker)
+    painel.aplicar_catalogo(ticker, catalogo, frozenset(), list(guidances))
+    return catalogo
+
+
+class _FakeTree:
+    """Substituto em memória do ``ttk.Treeview`` para testes headless."""
+
+    def __init__(self) -> None:
+        self.nodes: dict = {}
+        self.seq = 0
+        self._sel: tuple = ()
+
+    def insert(self, parent="", index="end", text="", open=False):
+        self.seq += 1
+        iid = f"I{self.seq}"
+        self.nodes[iid] = {
+            "text": text,
+            "open": bool(open),
+            "parent": parent,
+            "children": [],
+        }
+        if parent in self.nodes:
+            self.nodes[parent]["children"].append(iid)
+        return iid
+
+    def delete(self, *items):
+        for iid in items:
+            self._apagar(iid)
+
+    def _apagar(self, iid):
+        node = self.nodes.pop(iid, None)
+        if node is None:
+            return
+        pai = node["parent"]
+        if pai in self.nodes:
+            self.nodes[pai]["children"] = [
+                c for c in self.nodes[pai]["children"] if c != iid
+            ]
+        for filho in list(node["children"]):
+            self._apagar(filho)
+
+    def get_children(self, iid=""):
+        if not iid:
+            return tuple(
+                no for no, n in self.nodes.items() if n["parent"] == ""
+            )
+        node = self.nodes.get(iid)
+        return tuple(node["children"]) if node else ()
+
+    def item(self, iid, option=None, **kwargs):
+        node = self.nodes[iid]
+        if kwargs:
+            if "open" in kwargs:
+                node["open"] = bool(kwargs["open"])
+            if "text" in kwargs:
+                node["text"] = kwargs["text"]
+            return None
+        if option == "open":
+            return 1 if node["open"] else 0
+        return node["text"]
+
+    def parent(self, iid):
+        return self.nodes[iid]["parent"]
+
+    def selection(self):
+        return self._sel
+
+    def selection_set(self, *items):
+        self._sel = tuple(items)
+
+    def see(self, iid):
+        pass
+
+
+def _view_headless() -> DocumentTreeView:
+    view = DocumentTreeView.__new__(DocumentTreeView)
+    view.tree = _FakeTree()
+    view.itens = {}
+    view.grupos = {}
+    view.guidances = {}
+    view.por_caminho = {}
+    view.nos_por_caminho = {}
+    return view
+
+
+class _PainelArvoreHeadless(DocumentTreePanel):
+    """Host headless do painel de documentos com uma árvore em memória."""
+
+    def __init__(self, catalog) -> None:
+        self._view = _view_headless()
+        self._tree = self._view.tree
+        self._itens = self._view.itens
+        self._grupos = self._view.grupos
+        self._por_caminho = self._view.por_caminho
+        self._guidances_folhas = self._view.guidances
+        self._guidances: list = []
+        self._guidance_pendentes: frozenset = frozenset()
+        self._tickers_expandidos: set = set()
+        self._catalogo_atual = None
+        self._preview_cache: dict = {}
+        self._req_id = 0
+        self._catalogo_uc = ConsultarCatalogoUseCase(catalog)
+        self._open_callback = lambda caminho: None
+        self._status_callback = None
+        self.preview = ""
+        self.empty = None
+        self.conteudo = False
+        self._agendados: list = []
+
+    def carregar_catalogo(self, ticker):
+        return self._catalogo_uc.executar(ticker) if ticker else None
+
+    def _set_preview_text(self, texto):
+        self.preview = texto
+
+    def _show_empty(self, mensagem):
+        self.empty = mensagem
+        self.conteudo = False
+
+    def _show_content(self):
+        self.conteudo = True
+
+    def _atualizar_botao_abrir(self):
+        pass
+
+    def refresh_resumir_button(self):
+        pass
+
+    def _agendar_preview(self, arquivo):
+        self._agendados.append(arquivo)
+
+    def texto_atual(self):
+        return self.preview
+
+
+class TestGuidanceBranch:
+    def test_fii_com_guidance_exibe_ramos_e_folhas(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo_fii(tmp_path))
+        entrada = _entrada_guidance(caminho_pdf=str(_caminho_rg_fii(tmp_path)))
+        _aplicar(painel, "HGBS11", [entrada])
+        raiz = painel._tree.get_children()[0]
+        ramos = [
+            painel._tree.item(no, "text")
+            for no in painel._tree.get_children(raiz)
+        ]
+        assert ramos == ["Guidance", "Documentos", "Direitos e obrigações"]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        no_ano = _filho_texto(painel, guidance, "2026")
+        no_mes = _filho_texto(painel, no_ano, "08")
+        folhas = painel._tree.get_children(no_mes)
+        assert len(folhas) == 1
+        assert painel._tree.item(folhas[0], "text").startswith("Guidance R$")
+
+    def test_fii_sem_guidance_exibe_ramo_vazio(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo_fii(tmp_path))
+        _aplicar(painel, "HGBS11", [])
+        raiz = painel._tree.get_children()[0]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        assert painel._tree.get_children(guidance) == ()
+
+    def test_nao_fii_nao_exibe_ramo(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        ramos = [
+            painel._tree.item(no, "text")
+            for no in painel._tree.get_children(raiz)
+        ]
+        assert "Guidance" not in ramos
+
+
+class TestPlaceholdersDireitos:
+    def test_sub_ramos_exibem_ausencia(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        ramo = _filho_texto(painel, raiz, "Direitos e obrigações")
+        direitos = _filho_texto(painel, ramo, "Direitos")
+        obrigacoes = _filho_texto(painel, ramo, "Obrigações")
+
+        painel._tree.selection_set(direitos)
+        painel._on_select()
+        assert painel.texto_atual() == "Sem dados de Direitos."
+
+        painel._tree.selection_set(obrigacoes)
+        painel._on_select()
+        assert painel.texto_atual() == "Sem dados de Obrigações."
+
+
+class TestIndiceReverso:
+    def test_localiza_arquivo_por_caminho(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
+        no = painel._view.no_por_caminho(arquivo.caminho)
+        assert no == _no_arquivo(painel, "10.pdf")
+
+
+class TestExpansaoInicial:
+    def test_primeira_exibicao_expande_so_o_primeiro_nivel(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        assert painel._tree.item(raiz, "open")
+        for no in painel._tree.get_children(raiz):
+            assert not painel._tree.item(no, "open")
+
+    def test_exibicoes_seguintes_preservam_expansao(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        documentos = _filho_texto(painel, raiz, "Documentos")
+        painel._tree.item(documentos, open=True)
+
+        _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        documentos = _filho_texto(painel, raiz, "Documentos")
+        assert painel._tree.item(documentos, "open")
+
+    def test_troca_de_ticker_recolhe(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        catalogo = _aplicar(painel, "ALZR11", [])
+        raiz = painel._tree.get_children()[0]
+        painel._tree.item(_filho_texto(painel, raiz, "Documentos"), open=True)
+
+        painel.aplicar_catalogo("OUTRO", catalogo, frozenset(), [])
+        raiz = painel._tree.get_children()[0]
+        documentos = _filho_texto(painel, raiz, "Documentos")
+        assert not painel._tree.item(documentos, "open")
+
+
+class TestGuidanceInteracoes:
+    def _painel(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo_fii(tmp_path))
+        caminho = str(_caminho_rg_fii(tmp_path))
+        entrada = _entrada_guidance(caminho_pdf=caminho)
+        painel.aplicar_catalogo(
+            "HGBS11", painel.carregar_catalogo("HGBS11"), frozenset(), [entrada]
+        )
+        return painel, entrada
+
+    def test_ramo_guidance_lista_markdown(self, tmp_path):
+        painel, _entrada = self._painel(tmp_path)
+        raiz = painel._tree.get_children()[0]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        painel._tree.selection_set(guidance)
+        painel._on_select()
+        texto = painel.texto_atual()
+        assert texto.startswith("# Guidance")
+        assert "## 2026" in texto and "### 08" in texto
+        assert "- Guidance R$" in texto
+
+    def test_folha_exibe_texto_e_rotulo_do_rg(self, tmp_path):
+        painel, entrada = self._painel(tmp_path)
+        raiz = painel._tree.get_children()[0]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        no_mes = _filho_texto(
+            painel, _filho_texto(painel, guidance, "2026"), "08"
+        )
+        folha = painel._tree.get_children(no_mes)[0]
+        painel._tree.selection_set(folha)
+        painel._on_select()
+        texto = painel.texto_atual()
+        assert texto.startswith(entrada.texto)
+        assert texto.endswith("Relatório Gerencial — ago/26 (10.pdf)")
+
+    def test_duplo_clique_salta_para_o_rg(self, tmp_path):
+        painel, entrada = self._painel(tmp_path)
+        abertos = []
+        painel._open_callback = abertos.append
+        raiz = painel._tree.get_children()[0]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        no_mes = _filho_texto(
+            painel, _filho_texto(painel, guidance, "2026"), "08"
+        )
+        folha = painel._tree.get_children(no_mes)[0]
+        painel._tree.selection_set(folha)
+
+        assert painel._on_double_click() == "break"
+        no_rg = painel._view.no_por_caminho(Path(entrada.caminho_pdf))
+        assert painel._tree.selection() == (no_rg,)
+        documentos = _filho_texto(painel, raiz, "Documentos")
+        assert painel._tree.item(documentos, "open")
+        assert abertos == []
+
+    def test_rg_ausente_nao_salta_nem_falha(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo_fii(tmp_path))
+        entrada = _entrada_guidance(caminho_pdf="/cache/fora/99.pdf")
+        painel.aplicar_catalogo(
+            "HGBS11", painel.carregar_catalogo("HGBS11"),
+            frozenset(), [entrada],
+        )
+        raiz = painel._tree.get_children()[0]
+        guidance = _filho_texto(painel, raiz, "Guidance")
+        no_mes = _filho_texto(
+            painel, _filho_texto(painel, guidance, "2026"), "08"
+        )
+        folha = painel._tree.get_children(no_mes)[0]
+        painel._tree.selection_set(folha)
+
+        painel._on_double_click()
+        assert painel._tree.selection() == (folha,)
+
+
+class TestLimparInvalidaGuidances:
+    def test_limpar_zera_guidances(self, tmp_path):
+        painel = _PainelHeadless()
+        painel._guidances = [_entrada_guidance(caminho_pdf=None)]
+        painel._limpar()
+        assert painel._guidances == []
+
+
+class TestSelecaoPreservadaDocumentos:
+    def test_selecao_preservada_na_remontagem(self, tmp_path):
+        painel = _PainelArvoreHeadless(_catalogo(tmp_path))
+        _aplicar(painel, "ALZR11", [])
+        painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
+
+        _aplicar(painel, "ALZR11", [])
+        selecao = painel._tree.selection()
+        assert len(selecao) == 1
+        assert painel._itens[selecao[0]].nome == "10.pdf"

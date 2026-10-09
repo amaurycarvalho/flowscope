@@ -7,6 +7,7 @@ de infraestrutura.
 """
 
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Protocol
 
 from flowscope.domain.fii.guidance import AvaliacaoGuidance, Guidance
@@ -29,6 +30,10 @@ class GuidanceStore(Protocol):
         self: "GuidanceStore", ticker: str
     ) -> Mapping[str, AvaliacaoGuidance]:
         """Retorna o mapa das avaliações do ticker, por chave de conteúdo."""
+        ...
+
+    def caminho(self: "GuidanceStore", ticker: str) -> Path:
+        """Retorna o caminho do arquivo de ledger do ticker."""
         ...
 
     def salvar_avaliacao(

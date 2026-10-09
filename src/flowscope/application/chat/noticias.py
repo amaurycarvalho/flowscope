@@ -132,7 +132,7 @@ class FonteNoticias:
             no_folha(
                 f"{base}/texto",
                 "texto",
-                carregar=lambda e=escopo: (self._conteudo(e) or "")[: self._teto_item],
+                carregar=lambda e=escopo: self._conteudo(e) or "",
                 campo_pesado="texto",
             )
         )

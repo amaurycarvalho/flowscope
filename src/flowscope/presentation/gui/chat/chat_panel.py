@@ -13,6 +13,7 @@ infere o ticker referido navegando a árvore.
 import logging
 import tkinter as tk
 from collections.abc import Callable
+from pathlib import Path
 from tkinter import messagebox, ttk
 
 from PIL import Image, ImageTk
@@ -28,10 +29,16 @@ from flowscope.application.chat.conhecimento import (
     FonteConhecimento,
     estrutura_conhecimento,
 )
+from flowscope.application.chat.direitos_obrigacoes import FonteDireitosObrigacoes
 from flowscope.application.chat.documentos import FonteDocumentos
 from flowscope.application.chat.fundamentos import FonteFundamentos
+from flowscope.application.chat.guidance import FonteGuidance
 from flowscope.application.chat.noticias import FonteNoticias
-from flowscope.application.documentos.catalogo import CatalogoDocumentos
+from flowscope.application.documentos.catalogo import (
+    CatalogoDocumentos,
+    chave_documento,
+)
+from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
@@ -86,6 +93,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         llm_available: Callable[[], bool] | None = None,
         catalogo: CatalogoDocumentos | None = None,
         noticias_catalog: object | None = None,
+        guidance_service: GuidanceService | None = None,
+        guidance_paths: Callable[[list[str]], list[Path]] | None = None,
         config_callback: Callable[[], None] | None = None,
         config_port: LLMConfigPort | None = None,
         model_changed_callback: Callable[[], None] | None = None,
@@ -105,6 +114,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._llm_available = llm_available or (lambda: True)
         self._catalogo = catalogo
         self._noticias_catalog = noticias_catalog
+        self._guidance_service = guidance_service
+        self._guidance_paths = guidance_paths
         self._config_callback = config_callback
         self._config_port = config_port
         self._model_changed_callback = model_changed_callback
@@ -304,11 +315,58 @@ class ChatPanel(EnvioMixin, tk.Frame):
         fontes = [
             self._fonte_conhecimento,
             FonteFundamentos(fundamentos, watchlist=watchlist),
-            FonteDocumentos(catalog=self._catalogo),
+            FonteDocumentos(catalog=self._catalogo, rg_chaves=self._rg_chaves),
+            FonteDireitosObrigacoes(),
         ]
         if self._noticias_catalog is not None:
             fontes.append(FonteNoticias(catalog=self._noticias_catalog))
-        return MontarArvore(fontes).montar(watchlist=watchlist)
+        if self._guidance_service is not None:
+            fontes.append(
+                FonteGuidance(
+                    watchlist, self._guidance_service, self._catalogo
+                )
+            )
+        return MontarArvore(fontes).montar(
+            caminhos=self._caminhos_guidance(watchlist), watchlist=watchlist
+        )
+
+    def _rg_chaves(self: "ChatPanel", ticker: str) -> set[str]:
+        """Resolve as chaves dos RGs mensais avaliados (ledger de guidance).
+
+        Alimenta o marcador ``RG mensal`` do índice de documentos; sem serviço
+        de guidance ou fora de um FII, não há marcador.
+        """
+        if self._guidance_service is None or self._catalogo is None:
+            return set()
+        metodo = getattr(self._guidance_service, "entradas_arvore", None)
+        if not callable(metodo):
+            return set()
+        base = self._catalogo.base_dir
+        try:
+            entradas = list(metodo(ticker))
+        except Exception:
+            logger.warning(
+                "Falha ao resolver os RGs mensais de %s", ticker, exc_info=True
+            )
+            return set()
+        return {
+            chave_documento(Path(entrada.caminho_pdf), base)
+            for entrada in entradas
+            if getattr(entrada, "caminho_pdf", None)
+        }
+
+    def _caminhos_guidance(self: "ChatPanel", watchlist: list[str]) -> list[Path]:
+        """Resolve os caminhos do ledger de guidance para a assinatura de estado."""
+        if self._guidance_paths is None:
+            return []
+        try:
+            return list(self._guidance_paths(watchlist))
+        except Exception:
+            logger.warning(
+                "Falha ao resolver os caminhos do ledger de guidance",
+                exc_info=True,
+            )
+            return []
 
     def _atender_confirmacao(self: "ChatPanel", confirmacao: Confirmacao) -> None:
         """Exibe o diálogo de confirmação do evento e libera a thread de trabalho."""

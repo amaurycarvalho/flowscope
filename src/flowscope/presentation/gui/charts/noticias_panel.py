@@ -269,14 +269,36 @@ class NoticiasPanel(DocumentFlowMixin):
         self._reference_date = reference_date
 
     def aplicar_secoes(self: "NoticiasPanel", catalogo: CatalogoNoticias) -> None:
-        """Remonta a árvore com as seções lidas, na thread do Tk."""
+        """Remonta a árvore com as seções lidas, na thread do Tk.
+
+        Preserva o item selecionado quando ele continua no catálogo,
+        reexibindo o seu conteúdo.
+        """
+        selecionado = self._caminho_selecionado()
         self._limpar()
         if catalogo.vazio:
             self._show_empty("Sem notícias em cache")
         else:
             self._show_content()
             self._popular(catalogo)
+            self._restaurar_selecao(selecionado)
         self.refresh_resumir_button()
+
+    def _caminho_selecionado(self: "NoticiasPanel") -> Path | None:
+        """Retorna o caminho do item selecionado, ou ``None``."""
+        arquivo = self._arquivo_selecionado()
+        return arquivo.caminho if arquivo is not None else None
+
+    def _restaurar_selecao(
+        self: "NoticiasPanel", caminho: Path | None
+    ) -> bool:
+        """Reseleciona o item e reagenda o conteúdo, se ainda existir."""
+        if caminho is None or not self._view.focar_caminho(caminho):
+            return False
+        arquivo = self._arquivo_selecionado()
+        if arquivo is not None:
+            self._agendar_preview(arquivo)
+        return True
 
     def update(self: "NoticiasPanel", reference_date: date) -> None:
         """Remonta a árvore a partir do cache local.

@@ -26,6 +26,9 @@ MAX_RESULTADOS = 50
 #: Tamanho do trecho devolvido em cada resultado de busca.
 TAMANHO_TRECHO = 200
 
+#: Limite padrão de caracteres por página de conteúdo pesado.
+LIMITE_PAGINA_PADRAO = 12000
+
 
 @dataclass
 class No:
@@ -170,8 +173,20 @@ class ArvoreConhecimento:
             )
         return list(no.filhos)
 
-    def obter(self: ArvoreConhecimento, caminho: str) -> str:
-        """Devolve o conteúdo de um nó folha, carregando-o sob demanda."""
+    def obter(
+        self: ArvoreConhecimento,
+        caminho: str,
+        offset: int | None = None,
+        limite: int | None = None,
+    ) -> str | dict:
+        """Devolve o conteúdo de um nó folha, carregando-o sob demanda.
+
+        Nós de conteúdo pesado (``campo_pesado``) devolvem uma página: o trecho
+        ``[offset, offset+limite)`` com o total, o ``offset`` e o ``limite``
+        aplicados e o indicador ``continua``. Sem ``offset``/``limite``,
+        devolvem a página padrão a partir do início. Os demais nós devolvem o
+        conteúdo integral como texto.
+        """
         no = self._exigir(caminho)
         if not no.folha:
             raise ErroNavegacao(
@@ -179,9 +194,32 @@ class ArvoreConhecimento:
                 normalizar_caminho(caminho),
                 "nó interno não tem conteúdo; use listar(caminho) para ver os filhos",
             )
+        conteudo = self._carregar_conteudo(no)
+        if no.campo_pesado:
+            return self._paginar(conteudo, offset, limite)
+        return conteudo
+
+    @staticmethod
+    def _carregar_conteudo(no: No) -> str:
+        """Materializa o conteúdo de um nó, adiando a leitura até o primeiro uso."""
         if not no.conteudo and no.carregar is not None:
             no.conteudo = no.carregar() or ""
         return no.conteudo
+
+    @staticmethod
+    def _paginar(conteudo: str, offset: int | None, limite: int | None) -> dict:
+        """Recorta uma página do conteúdo pesado e sinaliza a continuação."""
+        inicio = offset or 0
+        tamanho = limite or LIMITE_PAGINA_PADRAO
+        total = len(conteudo)
+        trecho = conteudo[inicio : inicio + tamanho]
+        return {
+            "texto": trecho,
+            "total": total,
+            "offset": inicio,
+            "limite": tamanho,
+            "continua": inicio + len(trecho) < total,
+        }
 
     def contar(self: ArvoreConhecimento, caminho: str) -> int:
         """Conta os nós da subárvore prefixada pelo caminho.
@@ -373,7 +411,11 @@ def ramo_flowscope(
     subabas: Mapping[str, Mapping[str, str]] | None = None,
     indicadores: Mapping[str, str] | None = None,
 ) -> No:
-    """Monta os ramos ``/flowscope/*`` a partir do conhecimento da ferramenta."""
+    """Monta os ramos ``/flowscope/*`` a partir do conhecimento da ferramenta.
+
+    Ramos internos sem itens são omitidos: como não têm filhos, seriam folhas
+    vazias e induziriam a LLM a ``listar`` um nó não-listável.
+    """
     raiz = no_interno("/flowscope", "flowscope")
     for chave in ("apresentacao", "licenca", "versao", "release_date", "repositorio"):
         if chave in meta:
@@ -385,39 +427,41 @@ def ramo_flowscope(
                     campos={"meta": meta[chave]},
                 )
             )
-    abas_no = no_interno("/flowscope/abas", "abas")
-    for nome, proposito in (abas or {}).items():
-        aba = no_folha(
-            f"/flowscope/abas/{nome}",
-            nome,
-            conteudo=proposito,
-            metadado=proposito,
-            campos={"proposito": proposito},
-        )
-        for sub_nome, sub_proposito in (subabas or {}).get(nome, {}).items():
-            aba.filhos.append(
-                no_folha(
-                    f"/flowscope/abas/{nome}/subabas/{sub_nome}",
-                    sub_nome,
-                    conteudo=sub_proposito,
-                    metadado=sub_proposito,
-                    campos={"proposito": sub_proposito},
-                )
-            )
-        abas_no.filho(aba)
-    raiz.filho(abas_no)
-    indicadores_no = no_interno("/flowscope/indicadores", "indicadores")
-    for nome, proposito in (indicadores or {}).items():
-        indicadores_no.filho(
-            no_folha(
-                f"/flowscope/indicadores/{nome}",
+    if abas:
+        abas_no = no_interno("/flowscope/abas", "abas")
+        for nome, proposito in abas.items():
+            aba = no_folha(
+                f"/flowscope/abas/{nome}",
                 nome,
                 conteudo=proposito,
                 metadado=proposito,
                 campos={"proposito": proposito},
             )
-        )
-    raiz.filho(indicadores_no)
+            for sub_nome, sub_proposito in (subabas or {}).get(nome, {}).items():
+                aba.filhos.append(
+                    no_folha(
+                        f"/flowscope/abas/{nome}/subabas/{sub_nome}",
+                        sub_nome,
+                        conteudo=sub_proposito,
+                        metadado=sub_proposito,
+                        campos={"proposito": sub_proposito},
+                    )
+                )
+            abas_no.filho(aba)
+        raiz.filho(abas_no)
+    if indicadores:
+        indicadores_no = no_interno("/flowscope/indicadores", "indicadores")
+        for nome, proposito in indicadores.items():
+            indicadores_no.filho(
+                no_folha(
+                    f"/flowscope/indicadores/{nome}",
+                    nome,
+                    conteudo=proposito,
+                    metadado=proposito,
+                    campos={"proposito": proposito},
+                )
+            )
+        raiz.filho(indicadores_no)
     return raiz
 
 
@@ -426,42 +470,48 @@ def ramo_fundamentos(
     campos: Mapping[str, str] | None = None,
     valores: Mapping[str, str] | None = None,
 ) -> No:
-    """Monta os ramos ``/fundamentos/*`` a partir da tabela carregada."""
+    """Monta os ramos ``/fundamentos/*`` a partir da tabela carregada.
+
+    Sub-ramos sem itens são omitidos para não expor nós vazios como folhas.
+    """
     raiz = no_interno("/fundamentos", "fundamentos")
-    tickers_no = no_interno("/fundamentos/tickers", "tickers")
-    for ticker in tickers:
-        tickers_no.filho(
-            no_folha(
-                f"/fundamentos/tickers/{ticker}",
-                ticker,
-                conteudo=ticker,
-                campos={"ticker": ticker},
+    if tickers:
+        tickers_no = no_interno("/fundamentos/tickers", "tickers")
+        for ticker in tickers:
+            tickers_no.filho(
+                no_folha(
+                    f"/fundamentos/tickers/{ticker}",
+                    ticker,
+                    conteudo=ticker,
+                    campos={"ticker": ticker},
+                )
             )
-        )
-    raiz.filho(tickers_no)
-    campos_no = no_interno("/fundamentos/campos", "campos")
-    for nome, proposito in (campos or {}).items():
-        campos_no.filho(
-            no_folha(
-                f"/fundamentos/campos/{nome}",
-                nome,
-                conteudo=proposito,
-                metadado=proposito,
-                campos={"proposito": proposito},
+        raiz.filho(tickers_no)
+    if campos:
+        campos_no = no_interno("/fundamentos/campos", "campos")
+        for nome, proposito in campos.items():
+            campos_no.filho(
+                no_folha(
+                    f"/fundamentos/campos/{nome}",
+                    nome,
+                    conteudo=proposito,
+                    metadado=proposito,
+                    campos={"proposito": proposito},
+                )
             )
-        )
-    raiz.filho(campos_no)
-    valores_no = no_interno("/fundamentos/valores", "valores")
-    for ticker, linha in (valores or {}).items():
-        valores_no.filho(
-            no_folha(
-                f"/fundamentos/valores/{ticker}",
-                ticker,
-                conteudo=linha,
-                campos={"ticker": ticker, "valor": linha},
+        raiz.filho(campos_no)
+    if valores:
+        valores_no = no_interno("/fundamentos/valores", "valores")
+        for ticker, linha in valores.items():
+            valores_no.filho(
+                no_folha(
+                    f"/fundamentos/valores/{ticker}",
+                    ticker,
+                    conteudo=linha,
+                    campos={"ticker": ticker, "valor": linha},
+                )
             )
-        )
-    raiz.filho(valores_no)
+        raiz.filho(valores_no)
     return raiz
 
 

@@ -19,7 +19,11 @@ from flowscope.application.documentos.catalogo import (
     CatalogoDocumentos,
     ConsultarCatalogoUseCase,
 )
-from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.application.documentos.document_guidance import (
+    EntradaGuidanceArvore,
+    GuidanceService,
+    conteudo_arvore_guidance,
+)
 from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.application.documentos.document_summary_port import (
     DocumentSummaryStore,
@@ -97,7 +101,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, Agrupamento] = {}
         self._por_caminho: dict[Path, DocumentoArquivo] = {}
+        self._guidances: list[EntradaGuidanceArvore] = []
         self._guidance_pendentes: frozenset[Path] = frozenset()
+        self._tickers_expandidos: set[str] = set()
         self._catalogo_atual: CatalogoTicker | None = None
         self._preview_cache: dict[Path, str] = {}
         self._current_ticker: str | None = None
@@ -205,6 +211,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._itens = self._view.itens
         self._grupos = self._view.grupos
         self._por_caminho = self._view.por_caminho
+        # O mapa de folhas de guidance é vivo na view: acompanha limpezas e
+        # remontagens sem cópia.
+        self._guidances_folhas = self._view.guidances
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Button-1>", self._on_click)
         self._tree.bind("<Double-1>", self._on_double_click)
@@ -249,18 +258,41 @@ class DocumentTreePanel(DocumentFlowMixin):
         ticker: str | None,
         catalogo: CatalogoTicker | None,
         pendentes_guidance: frozenset[Path] | None = None,
+        guidances: list[EntradaGuidanceArvore] | None = None,
     ) -> None:
-        """Aplica o catálogo lido, remontando a árvore na thread do Tk."""
+        """Aplica o catálogo lido, remontando a árvore na thread do Tk.
+
+        Preserva a expansão e o arquivo selecionado nas exibições seguintes do
+        mesmo ticker; na primeira exibição (e a cada troca) a árvore fica
+        expandida apenas até o primeiro nível.
+        """
+        # A primeira exibição de um ticker na sessão monta só o primeiro nível;
+        # as seguintes reaproveitam o estado de expansão e a seleção correntes.
+        primeira = ticker not in self._tickers_expandidos
+        abertos = None if primeira else self._view.estado_expansao()
+        selecionado = self._caminho_selecionado()
         self._current_ticker = ticker
-        self._limpar()
+        # A limpeza de nós não mexe na pré-visualização: ela só é descartada
+        # quando não há arquivo a reselecionar, para não perder o contexto.
+        self._limpar_nos()
         self._guidance_pendentes = frozenset(pendentes_guidance or ())
+        self._guidances = list(guidances or ())
+        if ticker:
+            self._tickers_expandidos.add(ticker)
+        restaurado = False
         if not ticker:
             self._show_empty("Selecione um ticker")
         elif catalogo is None or catalogo.vazio:
             self._show_empty(f"Sem documentos em cache para {ticker}")
         else:
+            # Remonta os três ramos do ticker e reaplica o estado do usuário.
             self._show_content()
             self._popular(catalogo)
+            if abertos is not None:
+                self._view.restaurar_expansao(abertos)
+            restaurado = self._restaurar_selecao(selecionado)
+        if not restaurado:
+            self._limpar_preview()
         self.refresh_resumir_button()
 
     def update(
@@ -272,8 +304,8 @@ class DocumentTreePanel(DocumentFlowMixin):
         aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
         """
         catalogo = self.carregar_catalogo(ticker)
-        pendentes = self.carregar_pendentes_guidance(ticker, catalogo)
-        self.aplicar_catalogo(ticker, catalogo, pendentes)
+        pendentes, guidances = self.carregar_guidance(ticker, catalogo)
+        self.aplicar_catalogo(ticker, catalogo, pendentes, guidances)
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os controles do painel para o bloqueio global da interface."""
@@ -316,11 +348,20 @@ class DocumentTreePanel(DocumentFlowMixin):
 
     def _limpar(self: "DocumentTreePanel") -> None:
         """Esvazia a árvore, os mapas de nós e a caixa de texto."""
+        self._limpar_nos()
+        self._limpar_preview()
+
+    def _limpar_nos(self: "DocumentTreePanel") -> None:
+        """Esvazia a árvore e os mapas de nós, sem tocar na pré-visualização."""
         self._req_id += 1
         self._view.limpar()
         self._catalogo_atual = None
-        self._preview_cache.clear()
+        self._guidances = []
         self._guidance_pendentes = frozenset()
+
+    def _limpar_preview(self: "DocumentTreePanel") -> None:
+        """Limpa a pré-visualização, o memo de texto e o botão de abrir."""
+        self._preview_cache.clear()
         self._set_preview_text("")
         self._atualizar_botao_abrir()
 
@@ -329,7 +370,23 @@ class DocumentTreePanel(DocumentFlowMixin):
     ) -> None:
         """Insere a hierarquia do catálogo na árvore."""
         self._catalogo_atual = catalogo
-        self._view.popular(catalogo)
+        self._view.popular(catalogo, self._guidances)
+
+    def _caminho_selecionado(self: "DocumentTreePanel") -> Path | None:
+        """Retorna o caminho do arquivo selecionado, ou ``None``."""
+        arquivo = self._arquivo_selecionado()
+        return arquivo.caminho if arquivo is not None else None
+
+    def _restaurar_selecao(
+        self: "DocumentTreePanel", caminho: Path | None
+    ) -> bool:
+        """Reseleciona o arquivo e reagenda a pré-visualização, se ainda existir."""
+        if caminho is None or not self._view.focar_caminho(caminho):
+            return False
+        arquivo = self._arquivo_selecionado()
+        if arquivo is not None:
+            self._agendar_preview(arquivo)
+        return True
 
     def _show_empty(self: "DocumentTreePanel", mensagem: str) -> None:
         """Exibe a mensagem de estado vazio no lugar do conteúdo."""
@@ -355,9 +412,21 @@ class DocumentTreePanel(DocumentFlowMixin):
         if grupo is not None:
             self._mostrar_grupo(grupo)
             return
+        entrada = self._guidances_folhas.get(no)
+        if entrada is not None:
+            self._mostrar_guidance(entrada)
+            return
         arquivo = self._itens.get(no)
         if arquivo is not None:
             self._agendar_preview(arquivo)
+
+    def _mostrar_guidance(
+        self: "DocumentTreePanel", entrada: EntradaGuidanceArvore
+    ) -> None:
+        """Exibe o texto do guidance e o rótulo curado do RG associado."""
+        self._set_preview_text(
+            conteudo_arvore_guidance(entrada, self._por_caminho)
+        )
 
     def _on_click(self: "DocumentTreePanel", event: tk.Event) -> None:
         """Refaz a pré-visualização ao clicar no arquivo já selecionado.
@@ -400,9 +469,13 @@ class DocumentTreePanel(DocumentFlowMixin):
     def _on_double_click(
         self: "DocumentTreePanel", event: tk.Event | None = None
     ) -> str:
-        """Alterna pastas ou abre arquivos no aplicativo padrão."""
+        """Salta da folha de guidance ao RG ou abre arquivos/pastas."""
         no = self._no_selecionado()
         if no is None:
+            return "break"
+        entrada = self._guidances_folhas.get(no)
+        if entrada is not None:
+            self._saltar_para_rg(entrada)
             return "break"
         arquivo = self._itens.get(no)
         if arquivo is None:
@@ -410,6 +483,16 @@ class DocumentTreePanel(DocumentFlowMixin):
             return "break"
         self._abrir(arquivo)
         return "break"
+
+    def _saltar_para_rg(
+        self: "DocumentTreePanel", entrada: EntradaGuidanceArvore
+    ) -> None:
+        """Foca a folha do RG associado, expandindo os ancestrais.
+
+        Sem o documento no catálogo apresentado, não salta nem falha.
+        """
+        if entrada.caminho_pdf:
+            self._view.focar_caminho(Path(entrada.caminho_pdf))
 
     def _on_open_selected(self: "DocumentTreePanel") -> None:
         """Abre o arquivo selecionado, se houver."""

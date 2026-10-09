@@ -250,6 +250,10 @@ class TestLeituraDocumentosBackground:
     def test_submete_leitura_e_aplica_por_evento(self):
         background = BackgroundManager()
         host = self._host(background)
+        host._documents_panel.carregar_guidance.return_value = (
+            frozenset(),
+            [],
+        )
 
         host._update_documents()
 
@@ -259,12 +263,17 @@ class TestLeituraDocumentosBackground:
         host._documents_panel.aplicar_catalogo.assert_called_once_with(
             "ALZR11",
             host._documents_panel.carregar_catalogo.return_value,
-            host._documents_panel.carregar_pendentes_guidance.return_value,
+            frozenset(),
+            [],
         )
 
     def test_troca_de_ticker_descarta_leitura_obsoleta(self):
         background = BackgroundManager()
         host = self._host(background)
+        host._documents_panel.carregar_guidance.return_value = (
+            frozenset(),
+            [],
+        )
         liberar = threading.Event()
 
         def _carregar(ticker):
@@ -283,7 +292,8 @@ class TestLeituraDocumentosBackground:
         host._documents_panel.aplicar_catalogo.assert_called_once_with(
             "PETR4",
             "cat-PETR4",
-            host._documents_panel.carregar_pendentes_guidance.return_value,
+            frozenset(),
+            [],
         )
 
     def test_sem_ticker_aplica_estado_vazio(self):

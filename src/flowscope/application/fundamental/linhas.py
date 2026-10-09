@@ -168,7 +168,7 @@ _MESES_ABREVIADOS = (
 )
 
 
-def _mes_ano(data: date) -> str:
+def mes_ano(data: date) -> str:
     """Formata a data como ``mmm/aa`` (ex.: ``ago/26``)."""
     return f"{_MESES_ABREVIADOS[data.month - 1]}/{data.year % 100:02d}"
 
@@ -189,7 +189,7 @@ def formatar_guidance(guidance: Guidance) -> str:
         )
     detalhes = [
         parte
-        for parte in (guidance.periodo.strip(), _mes_ano(guidance.data_relatorio))
+        for parte in (guidance.periodo.strip(), mes_ano(guidance.data_relatorio))
         if parte
     ]
     return f"Guidance R$ {valor}/cota ({', '.join(detalhes)})"

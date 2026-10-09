@@ -4,7 +4,7 @@ Produz um resumo curto (até 280 caracteres) e um longo (até 1500 caracteres) a
 partir do texto integral de um documento. A fórmula XYZ orienta os dois
 resumos, pedidos em uma única chamada de completion. O parsing é tolerante:
 quando o formato delimitado não é identificável, a resposta inteira vira o
-resumo longo e seus primeiros 280 caracteres o resumo curto.
+resumo longo e um trecho inicial em fronteira o resumo curto.
 """
 
 import re
@@ -21,11 +21,48 @@ LIMITE_LONGO = 1500
 #: Orçamento máximo de caracteres do texto enviado à LLM.
 ORCAMENTO_ENTRADA = 12000
 
+#: Separadores de fim de frase usados no truncamento em fronteira.
+_FRONTEIRAS_FRASE = (". ", "; ", "! ", "? ")
+
+#: Pontuações que encerram um resumo íntegro (não truncado).
+_PONTUACAO_FINAL = (".", "!", "?", ";", ":", "…")
+
 #: Delimitador do resumo curto na resposta, até o delimitador longo.
 _MARCADOR_CURTO = re.compile(r"CURTO\s*:\s*(.*?)(?=LONGO\s*:|$)", re.DOTALL | re.IGNORECASE)
 
 #: Delimitador do resumo longo na resposta.
 _MARCADOR_LONGO = re.compile(r"LONGO\s*:\s*(.*)", re.DOTALL | re.IGNORECASE)
+
+
+def _truncar_em_fronteira(texto: str, limite: int) -> str:
+    """Trunca preservando fronteira de frase e, na falta, de palavra.
+
+    Corta no último fim de frase dentro do limite; sem frase, no último espaço;
+    só corta duro quando não há nenhuma fronteira no trecho.
+    """
+    if len(texto) <= limite:
+        return texto
+    corte = texto[:limite]
+    for separador in _FRONTEIRAS_FRASE:
+        pos = corte.rfind(separador)
+        if pos >= 0:
+            return corte[: pos + 1].strip()
+    pos = corte.rfind(" ")
+    if pos > 0:
+        return corte[:pos].strip()
+    return corte.strip()
+
+
+def resumo_integro(resumo: str | None) -> bool:
+    """Indica se um resumo persistido termina em pontuação final.
+
+    Um resumo sem pontuação final foi truncado no meio da palavra/frase e deve
+    ser considerado desatualizado, passível de regeneração.
+    """
+    if not resumo:
+        return False
+    texto = " ".join(resumo.split())
+    return bool(texto) and texto.endswith(_PONTUACAO_FINAL)
 
 
 @dataclass(frozen=True)
@@ -53,8 +90,8 @@ class ResumirDocumentoUseCase:
         )
         curto, longo = self._interpretar(resposta.texto)
         return ResumoDocumento(
-            short_summary=curto[:LIMITE_CURTO],
-            long_summary=longo[:LIMITE_LONGO],
+            short_summary=_truncar_em_fronteira(curto, LIMITE_CURTO),
+            long_summary=_truncar_em_fronteira(longo, LIMITE_LONGO),
         )
 
     @staticmethod
@@ -65,8 +102,8 @@ class ResumirDocumentoUseCase:
             "fórmula XYZ (X: o que o texto diz; Y: por que isso importa; "
             "Z: o que se conclui) tanto no resumo curto quanto no longo.\n"
             "Responda em uma única mensagem, no formato exato:\n"
-            "CURTO: <resumo de até 280 caracteres>\n"
-            "LONGO: <resumo de até 1500 caracteres>\n\n"
+            "CURTO: <resumo em 1 a 2 frases, de até 280 caracteres>\n"
+            "LONGO: <resumo em parágrafos, de até 1500 caracteres>\n\n"
             f"Documento:\n{texto}"
         )
 
@@ -78,4 +115,4 @@ class ResumirDocumentoUseCase:
         if curto is not None and longo is not None:
             return curto.group(1).strip(), longo.group(1).strip()
         inteira = resposta.strip()
-        return inteira[:LIMITE_CURTO], inteira
+        return _truncar_em_fronteira(inteira, LIMITE_CURTO), inteira

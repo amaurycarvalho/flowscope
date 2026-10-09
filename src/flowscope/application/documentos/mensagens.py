@@ -20,3 +20,18 @@ def mensagem_indisponivel(llm_configurada: bool) -> str:
     """Monta a mensagem de resumo indisponível conforme a LLM esteja pronta."""
     sufixo = SUFIXO_LLM_CONFIGURADA if llm_configurada else SUFIXO_LLM_AUSENTE
     return RESUMO_INDISPONIVEL + sufixo
+
+
+#: Mensagem exibida nos ramos placeholder sem dados.
+SEM_DADOS = "Sem dados disponíveis."
+
+#: Mensagens de ausência de dados dos sub-ramos de Direitos e Obrigações.
+_PLACEHOLDER = {
+    "direitos": "Sem dados de Direitos.",
+    "obrigacoes": "Sem dados de Obrigações.",
+}
+
+
+def mensagem_placeholder(tipo: str) -> str:
+    """Devolve a mensagem de ausência de dados de um ramo placeholder."""
+    return _PLACEHOLDER.get(tipo, SEM_DADOS)

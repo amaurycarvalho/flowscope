@@ -8,6 +8,8 @@ from flowscope.application.resumo_documento import (
     ORCAMENTO_ENTRADA,
     ResumirDocumentoUseCase,
     ResumoDocumento,
+    _truncar_em_fronteira,
+    resumo_integro,
 )
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta, LLMUnavailableError
 
@@ -60,6 +62,58 @@ class TestPrompt:
         assert "XYZ" in prompt
         assert "280" in prompt
         assert "1500" in prompt
+
+    def test_pede_frases_e_paragrafos(self):
+        llm = _LLMFake("CURTO: c\nLONGO: l")
+        ResumirDocumentoUseCase(llm).resumir("documento")
+        prompt = _prompt(llm)
+        assert "1 a 2 frases" in prompt
+        assert "parágrafos" in prompt
+
+
+class TestFronteira:
+    def test_resumo_curto_nao_corta_palavra(self):
+        llm = _LLMFake("CURTO: " + "palavra " * 60 + "\nLONGO: longo.")
+        resumo = ResumirDocumentoUseCase(llm).resumir("documento")
+        assert len(resumo.short_summary) <= LIMITE_CURTO
+        assert resumo.short_summary.endswith("palavra")
+
+    def test_resumo_longo_nao_corta_palavra(self):
+        llm = _LLMFake("CURTO: c.\nLONGO: " + "palavra " * 400)
+        resumo = ResumirDocumentoUseCase(llm).resumir("documento")
+        assert len(resumo.long_summary) <= LIMITE_LONGO
+        assert resumo.long_summary.endswith("palavra")
+
+    def test_prefere_fim_de_frase(self):
+        llm = _LLMFake("CURTO: " + "x" * 250 + ". " + "y" * 100)
+        resumo = ResumirDocumentoUseCase(llm).resumir("documento")
+        assert resumo.short_summary.endswith(".")
+        assert "y" not in resumo.short_summary
+
+    def test_trunca_no_ultimo_espaco(self):
+        texto = "palavra " * 60
+        esperado = texto[:LIMITE_CURTO].rstrip()
+        assert _truncar_em_fronteira(texto, LIMITE_CURTO) == esperado
+        assert not _truncar_em_fronteira(texto, LIMITE_CURTO).endswith("palavr")
+
+    def test_sem_fronteira_corta_duro(self):
+        assert _truncar_em_fronteira("z" * 400, LIMITE_CURTO) == "z" * LIMITE_CURTO
+        assert _truncar_em_fronteira("z" * LIMITE_CURTO, LIMITE_CURTO) == (
+            "z" * LIMITE_CURTO
+        )
+
+    def test_resumo_integro_por_pontuacao_final(self):
+        assert resumo_integro("conclusão.") is True
+        assert resumo_integro("sério!") is True
+        assert resumo_integro("e então?") is True
+        assert resumo_integro("lista;") is True
+        assert resumo_integro("assim:") is True
+        assert resumo_integro("continua…") is True
+        assert resumo_integro("cortado no meio da pa") is False
+        assert resumo_integro("") is False
+        assert resumo_integro(None) is False
+
+
 
 
 class TestLimites:

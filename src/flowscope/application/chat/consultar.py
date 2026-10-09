@@ -51,8 +51,18 @@ SYSTEM_PROMPT = (
     "fluxo de ordens. Responda apenas com base no contexto navegado. Cite as "
     "fontes (tickers, chaves de notícia, caminhos). Identifique o ticker referido "
     "na pergunta; quando for ambíguo, peça esclarecimento. Use contar/existe antes "
-    "de listar ramos grandes. Declare quando a resposta vier de navegação anterior "
-    "e não do estado corrente. Se o contexto não bastar, admita a limitação."
+    "de listar ramos grandes; quando a busca semântica não estiver disponível, use "
+    "a busca determinística por regex (buscar) em vez de listar. Para comentar ou "
+    "analisar um documento específico, leia o texto integral do alvo (ex.: "
+    "/documentos/<ticker>/<chave>/texto); para textos longos, leia em páginas "
+    "sucessivas via obter com offset/limite até `continua` ser falso. Para "
+    "listar ou resumir vários "
+    "documentos, abra o resumo curto (/curto) ou o resumo longo (/longo) de "
+    "cada documento — o índice traz só uma prévia. Nunca responda prometendo "
+    "navegar: se faltam dados, emita solicitacoes com resposta null e só "
+    "finalize quando tiver o conteúdo. Use o foco para 'esse documento'. "
+    "Declare quando a resposta vier de navegação anterior e não do estado corrente. "
+    "Se o contexto não bastar, admita a limitação."
 )
 
 #: Instrução do contrato de resposta e das operações.
@@ -215,9 +225,11 @@ class ConsultarChatUseCase:
         elif assinatura in estado.negados:
             resultado = _negativa("custo", tokens)
         else:
+            _aplicar_reset(estado, interpretada)
             resultados = estado.protocolo.executar(interpretada.solicitacoes)
             estado.fontes.extend(_fontes(resultados))
-            resultado = estado.protocolo.serializar(resultados)
+            estado.foco = _atualizar_foco(estado.foco, resultados)
+            resultado = estado.protocolo.serializar(resultados, estado.foco)
         estado.correntes.append(
             ParNavegacao(_serializar_solicitacoes(interpretada), resultado)
         )
@@ -350,6 +362,7 @@ class _Estado:
     fontes: list[str] = field(default_factory=list)
     negados: set[str] = field(default_factory=set)
     alerta: bool = False
+    foco: str | None = None
 
     def mensagens(self: _Estado) -> list[dict]:
         """Monta o payload: diálogo, navegação acumulada e o turno corrente."""
@@ -380,3 +393,23 @@ def _fontes(resultados: list[dict]) -> list[str]:
                 item["caminho"] for item in dados if isinstance(item, dict) and "caminho" in item
             )
     return fontes
+
+
+def _atualizar_foco(foco: str | None, resultados: list[dict]) -> str | None:
+    """Atualiza o foco com o último ``obter`` bem-sucedido do turno."""
+    for resultado in resultados:
+        if (
+            resultado.get("op") == "obter"
+            and resultado.get("caminho")
+            and "dados" in resultado
+            and "erro" not in resultado
+        ):
+            foco = resultado["caminho"]
+    return foco
+
+
+def _aplicar_reset(estado: _Estado, interpretada: RespostaProtocolo) -> None:
+    """Descarta a navegação acumulada e o foco quando a LLM pede reset."""
+    if any(solicitacao.op == "resetar_navegacao" for solicitacao in interpretada.solicitacoes):
+        estado.acumulada.clear()
+        estado.foco = None

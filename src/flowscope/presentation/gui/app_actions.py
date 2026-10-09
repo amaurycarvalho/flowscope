@@ -258,8 +258,8 @@ class ActionsMixin:
 
         def trabalho(ctx: object) -> None:
             catalogo = painel.carregar_catalogo(ticker)
-            pendentes = painel.carregar_pendentes_guidance(ticker, catalogo)
-            ctx.resultado(valor=(catalogo, pendentes))
+            pendentes, guidances = painel.carregar_guidance(ticker, catalogo)
+            ctx.resultado(valor=(catalogo, pendentes, guidances))
 
         background.submit(
             trabalho,
@@ -274,12 +274,12 @@ class ActionsMixin:
     def _aplicar_catalogo_documentos(
         self: "ActionsMixin", ticker: str | None, valor: object
     ) -> None:
-        """Aplica o catálogo e os RGs pendentes de guidance se o ticker não mudou."""
+        """Aplica o catálogo, os RGs pendentes e o guidance se o ticker não mudou."""
         painel = getattr(self, "_documents_panel", None)
         if painel is None or ticker != self._ticker_apresentado():
             return
-        catalogo, pendentes = valor
-        painel.aplicar_catalogo(ticker, catalogo, pendentes)
+        catalogo, pendentes, guidances = valor
+        painel.aplicar_catalogo(ticker, catalogo, pendentes, guidances)
 
     def _adquirir_documentos(self: "ActionsMixin", ticker: str) -> None:
         """Adquire os documentos do ticker em background e remonta a árvore."""

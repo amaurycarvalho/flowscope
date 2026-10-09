@@ -1,5 +1,6 @@
 """Testes puros do serviço de resumo e das portas de persistência."""
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -101,6 +102,33 @@ class TestPersistencia:
         _store, servico = self._servico(tmp_path)
         assert servico.precisa_resumo(_arquivo(tmp_path), "texto") is True
         assert servico.precisa_resumo(_arquivo(tmp_path), "") is False
+
+    def test_resumo_truncado_e_pendente(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        arquivo = replace(
+            _arquivo(tmp_path), long_summary="cortado no meio da pa"
+        )
+        assert servico.resumo_completo(arquivo) is False
+        assert servico.precisa_resumo(arquivo, "texto") is True
+
+    def test_resumo_curto_truncado_e_pendente(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        arquivo = replace(
+            _arquivo(tmp_path),
+            short_summary="cortado",
+            long_summary="resumo longo.",
+        )
+        assert servico.precisa_resumo(arquivo, "texto") is True
+
+    def test_resumo_integro_nao_e_refeito(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        arquivo = replace(
+            _arquivo(tmp_path),
+            short_summary="curto.",
+            long_summary="resumo longo.",
+        )
+        assert servico.resumo_completo(arquivo) is True
+        assert servico.precisa_resumo(arquivo, "texto") is False
 
 
 class TestMensagemIndisponibilidade:

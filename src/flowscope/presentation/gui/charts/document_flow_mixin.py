@@ -17,7 +17,7 @@ from flowscope.application.document_preview import (
     tem_texto,
 )
 from flowscope.application.fundamental.linhas import formatar_guidance
-from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.resumo_documento import ResumoDocumento, resumo_integro
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
 from flowscope.domain.fii.guidance import METODO_IA
@@ -26,7 +26,9 @@ from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
+    mensagem_placeholder,
     render_grupo,
+    render_guidance,
 )
 
 logger = logging.getLogger("flowscope")
@@ -63,43 +65,55 @@ class DocumentFlowMixin:
     def documentos_sem_resumo(
         self: "DocumentFlowMixin",
     ) -> list[DocumentoArquivo]:
-        """Retorna os documentos sem ``long_summary``, na ordem da árvore."""
+        """Retorna os documentos sem resumo íntegro, na ordem da árvore.
+
+        Um resumo persistido truncado (sem pontuação final) é tratado como
+        pendente, para que o lote "Resumir pendentes" o regenere.
+        """
         return [
             arquivo
             for arquivo in self._itens.values()
-            if arquivo.long_summary is None
+            if not self._resumo_integro(arquivo)
         ]
 
-    def carregar_pendentes_guidance(
+    @staticmethod
+    def _resumo_integro(arquivo: DocumentoArquivo) -> bool:
+        """Indica se os resumos persistidos do arquivo estão íntegros."""
+        if not resumo_integro(arquivo.long_summary):
+            return False
+        return not arquivo.short_summary or resumo_integro(arquivo.short_summary)
+
+    def carregar_guidance(
         self: "DocumentFlowMixin",
         ticker: str | None,
         catalogo: CatalogoTicker | None,
-    ) -> frozenset:
-        """Resolve os RGs já resumidos pendentes de avaliação de guidance.
+    ) -> tuple[frozenset, list]:
+        """Resolve os RGs pendentes e as entradas de guidance do ticker.
 
         Considera apenas os documentos da categoria ``Relatorio`` (própria de
-        FIIs), filtrados pelo serviço de guidance quanto à IA e ao ledger; por
-        consultar o ledger, é seguro apenas fora da thread do Tk (no worker de
-        leitura do catálogo). Não toca em widgets.
+        FIIs) com resumo para as pendências e devolve também as entradas do
+        ledger com guidance para montar o ramo Guidance. Lê o ledger uma única
+        vez; por consultá-lo, é seguro apenas fora da thread do Tk (no worker
+        de leitura do catálogo). Não toca em widgets.
         """
         servico = getattr(self, "_guidance", None)
         if servico is None or not ticker or catalogo is None:
-            return frozenset()
+            return frozenset(), []
         documentos = [
             arquivo
             for arquivo in _documentos_do_catalogo(catalogo)
             if arquivo.long_summary is not None
         ]
         try:
-            pendentes = servico.pendentes(documentos)
+            pendentes, guidances = servico.estado_arvore(ticker, documentos)
         except Exception:  # ledger ilegível não deve bloquear o painel
             logger.warning(
-                "Falha ao consultar guidance pendente de %s",
+                "Falha ao consultar guidance de %s",
                 ticker,
                 exc_info=True,
             )
-            return frozenset()
-        return frozenset(arquivo.caminho for arquivo in pendentes)
+            return frozenset(), []
+        return frozenset(arquivo.caminho for arquivo in pendentes), list(guidances)
 
     def documentos_pendentes_guidance(
         self: "DocumentFlowMixin",
@@ -141,6 +155,14 @@ class DocumentFlowMixin:
 
     def _mostrar_grupo(self: "DocumentFlowMixin", grupo: Agrupamento) -> None:
         """Renderiza a lista Markdown do agrupamento selecionado."""
+        if grupo.tipo in ("guidance", "guidance_ano", "guidance_mes"):
+            self._set_preview_text(
+                render_guidance(getattr(self, "_guidances", []), grupo)
+            )
+            return
+        if grupo.tipo in ("direitos", "obrigacoes", "direitos_obrigacoes"):
+            self._set_preview_text(mensagem_placeholder(grupo.tipo))
+            return
         if self._catalogo_atual is None:
             return
         texto = render_grupo(

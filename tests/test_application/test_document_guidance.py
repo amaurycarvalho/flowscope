@@ -6,7 +6,11 @@ from decimal import Decimal
 from pathlib import Path
 
 from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
-from flowscope.application.documentos.document_guidance import GuidanceService
+from flowscope.application.documentos.document_guidance import (
+    GuidanceService,
+    conteudo_arvore_guidance,
+    rotulo_relatorio_gerencial,
+)
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import METODO_IA, AvaliacaoGuidance, Guidance
@@ -46,6 +50,9 @@ class _StoreFake:
     def salvar_avaliacao(self, ticker, chave, avaliacao):
         self._dados[(ticker, chave)] = avaliacao
         self.salvos.append((ticker, chave, avaliacao))
+
+    def caminho(self, ticker):
+        return Path(f"/cache/guidance/{ticker}.json")
 
 
 class _ExtratorFake:
@@ -271,3 +278,100 @@ class TestPendentesGuidance:
         pendentes = servico.pendentes([primeiro, segundo])
         assert pendentes == [primeiro, segundo]
         assert store.consultas == ["HGBS11"]
+
+
+class TestEntradasArvore:
+    def _avaliacao(self, guidance=GUIDANCE, caminho: str | None = None):
+        return AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            caminho_pdf=caminho,
+            guidance=guidance,
+        )
+
+    def test_disponibiliza_entradas_com_valor(self):
+        store = _StoreFake(
+            {
+                ("HGBS11", "chave-1"): self._avaliacao(
+                    caminho="/cache/relatorio/10.pdf"
+                ),
+            }
+        )
+        servico = _servico(store, _ExtratorFake(GUIDANCE))
+        entradas = servico.entradas_arvore("HGBS11")
+        assert len(entradas) == 1
+        entrada = entradas[0]
+        assert (entrada.ano, entrada.mes) == (2026, 8)
+        assert entrada.caminho_pdf == "/cache/relatorio/10.pdf"
+        assert entrada.chave == "chave-1"
+        assert entrada.guidance == GUIDANCE
+
+    def test_exclui_ausencias(self):
+        store = _StoreFake(
+            {
+                ("HGBS11", "com-guidance"): self._avaliacao(),
+                ("HGBS11", "ausente"): AvaliacaoGuidance(
+                    metodo=METODO_IA,
+                    data_relatorio=date(2026, 7, 1),
+                    guidance=None,
+                ),
+            }
+        )
+        servico = _servico(store, _ExtratorFake(GUIDANCE))
+        entradas = servico.entradas_arvore("HGBS11")
+        assert [e.chave for e in entradas] == ["com-guidance"]
+
+    def test_nao_altera_o_ledger(self):
+        store = _StoreFake(
+            {("HGBS11", "chave-1"): self._avaliacao()},
+        )
+        servico = _servico(store, _ExtratorFake(GUIDANCE))
+        servico.entradas_arvore("HGBS11")
+        assert store.salvos == []
+
+    def test_estado_arvore_le_o_ledger_uma_vez(self):
+        store = _StoreFake(
+            {("HGBS11", "10.pdf"): self._avaliacao()},
+        )
+        servico = _servico_com_ia(store)
+        pendentes, entradas = servico.estado_arvore("HGBS11", [_arquivo()])
+        assert store.consultas == ["HGBS11"]
+        assert len(entradas) == 1
+        assert pendentes == []
+
+
+class TestRotuloRelatorioGerencial:
+    def test_usa_nome_do_documento_do_catalogo(self, tmp_path):
+        caminho = tmp_path / "10.pdf"
+        documento = _arquivo()
+        documento = replace(documento, caminho=caminho)
+        rotulo = rotulo_relatorio_gerencial(
+            date(2026, 8, 1), str(caminho), {caminho: documento}
+        )
+        assert rotulo == "Relatório Gerencial — ago/26 (10.pdf)"
+
+    def test_fallback_para_basename_do_caminho(self):
+        rotulo = rotulo_relatorio_gerencial(date(2026, 8, 1), "/cache/relatorio/x.pdf")
+        assert rotulo == "Relatório Gerencial — ago/26 (x.pdf)"
+
+    def test_sem_caminho_usa_vazio(self):
+        assert rotulo_relatorio_gerencial(date(2026, 8, 1), None).endswith("()")
+
+    def test_conteudo_arvore_composto(self, tmp_path):
+        caminho = tmp_path / "10.pdf"
+        store = _StoreFake(
+            {
+                ("HGBS11", "chave-1"): AvaliacaoGuidance(
+                    metodo=METODO_IA,
+                    data_relatorio=date(2026, 8, 1),
+                    caminho_pdf=str(caminho),
+                    guidance=GUIDANCE,
+                )
+            }
+        )
+        servico = _servico(store, _ExtratorFake(GUIDANCE))
+        entrada = servico.entradas_arvore("HGBS11")[0]
+        documento = replace(_arquivo(), caminho=caminho)
+        conteudo = conteudo_arvore_guidance(entrada, {caminho: documento})
+        assert conteudo.startswith(entrada.texto)
+        assert conteudo.endswith("Relatório Gerencial — ago/26 (10.pdf)")

@@ -8,11 +8,17 @@ a mensagem de indisponibilidade.
 from dataclasses import dataclass
 from pathlib import Path
 
+from flowscope.application.documentos.document_guidance import (
+    EntradaGuidanceArvore,
+    agrupar_entradas,
+)
 from flowscope.application.documentos.mensagens import (
     RESUMO_INDISPONIVEL,
+    SEM_DADOS,
     SUFIXO_LLM_AUSENTE,
     SUFIXO_LLM_CONFIGURADA,
     mensagem_indisponivel,
+    mensagem_placeholder,
 )
 from flowscope.domain.documents import (
     AnoDocumentos,
@@ -24,15 +30,32 @@ from flowscope.domain.documents import (
 
 __all__ = [
     "RESUMO_INDISPONIVEL",
+    "SEM_DADOS",
     "SUFIXO_LLM_AUSENTE",
     "SUFIXO_LLM_CONFIGURADA",
     "Agrupamento",
+    "agrupar_guidance",
     "mensagem_indisponivel",
+    "mensagem_placeholder",
     "render_grupo",
+    "render_guidance",
 ]
 
 #: Profundidade de cada tipo de agrupamento na hierarquia.
-_PROFUNDIDADE = {"ticker": 1, "ano": 2, "mes": 3, "categoria": 4}
+_PROFUNDIDADE = {
+    "ticker": 1,
+    "documentos": 1,
+    "ano": 2,
+    "mes": 3,
+    "categoria": 4,
+}
+
+
+def agrupar_guidance(
+    entradas: list[EntradaGuidanceArvore],
+) -> list[tuple[int, list[tuple[int, list[EntradaGuidanceArvore]]]]]:
+    """Agrupa as entradas de guidance por ano e mês (reexportação)."""
+    return agrupar_entradas(entradas)
 
 
 @dataclass(frozen=True)
@@ -117,3 +140,53 @@ def _linhas_arquivos(
         atual = por_caminho.get(arquivo.caminho, arquivo)
         texto = atual.short_summary or mensagem
         linhas.append(f"- {arquivo.nome} — {texto}")
+
+
+def render_guidance(
+    entradas: list[EntradaGuidanceArvore], grupo: Agrupamento
+) -> str:
+    """Renderiza a lista Markdown dos guidances do agrupamento selecionado."""
+    if grupo.tipo == "guidance_mes":
+        linhas = [f"# {grupo.mes:02d}"]
+        linhas.extend(
+            f"- {entrada.texto}"
+            for entrada in _filtrar_guidance(entradas, grupo.ano, grupo.mes)
+        )
+        return "\n".join(linhas)
+    if grupo.tipo == "guidance_ano":
+        linhas = [f"# {grupo.ano}"]
+        for mes, itens in _meses_do_ano(entradas, grupo.ano):
+            linhas.append(f"## {mes:02d}")
+            linhas.extend(f"- {entrada.texto}" for entrada in itens)
+        return "\n".join(linhas)
+    linhas = ["# Guidance"]
+    for ano, meses in agrupar_guidance(entradas):
+        linhas.append(f"## {ano}")
+        for mes, itens in meses:
+            linhas.append(f"### {mes:02d}")
+            linhas.extend(f"- {entrada.texto}" for entrada in itens)
+    return "\n".join(linhas)
+
+
+def _filtrar_guidance(
+    entradas: list[EntradaGuidanceArvore], ano: int | None, mes: int | None
+) -> list[EntradaGuidanceArvore]:
+    """Filtra as entradas de guidance por ano e mês informados."""
+    return [
+        entrada
+        for entrada in entradas
+        if (ano is None or entrada.ano == ano)
+        and (mes is None or entrada.mes == mes)
+    ]
+
+
+def _meses_do_ano(
+    entradas: list[EntradaGuidanceArvore], ano: int | None
+) -> list[tuple[int, list[EntradaGuidanceArvore]]]:
+    """Devolve os meses com as entradas de um ano, do mais recente ao antigo."""
+    return [
+        (mes, itens)
+        for candidato, meses in agrupar_guidance(entradas)
+        if candidato == ano
+        for mes, itens in meses
+    ]

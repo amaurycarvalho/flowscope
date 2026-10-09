@@ -5,7 +5,7 @@ em um mixin próprio, mantendo ``app.py`` restrito à composição da janela.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,6 +94,7 @@ class AdaptadoresDocumentos:
     summary_service: DocumentSummaryService
     text_store: DocumentTextStore
     guidance_service: GuidanceService
+    guidance_paths: Callable[[Iterable[str]], list[Path]]
     llm_factory: Callable[[], LLMPort]
     llm_available: Callable[[], bool]
     context_window_provider: Callable[[], int]
@@ -127,6 +128,7 @@ def montar_adaptadores_documentos(
     """
     base = Path(cache_dir) if cache_dir is not None else CacheManager().get_cache_dir()
     catalogo = DocumentCatalog(cache_dir=base)
+    guidance_store = JsonGuidanceStore(cache_dir=base)
     porta_llm = InfrastructureLLMConfig()
     llm_factory: Callable[[], LLMPort] = lambda: create_llm_provider(
         load_llm_config()
@@ -142,12 +144,15 @@ def montar_adaptadores_documentos(
         ),
         text_store=catalogo.text_store,
         guidance_service=GuidanceService(
-            JsonGuidanceStore(cache_dir=base),
+            guidance_store,
             llm_factory=llm_factory,
             llm_available=llm_configurada,
             extrator=extrair_guidance,
             chave_rg=resolvedor_chave_documento(base),
         ),
+        guidance_paths=lambda tickers: [
+            guidance_store.caminho(ticker) for ticker in tickers
+        ],
         llm_factory=llm_factory,
         llm_available=llm_configurada,
         context_window_provider=lambda: porta_llm.context_window(

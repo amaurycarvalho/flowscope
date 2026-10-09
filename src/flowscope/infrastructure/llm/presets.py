@@ -97,11 +97,26 @@ def resolve_provider(
     return resolved_model, resolved_url
 
 
-def _janela_litellm(model: str) -> int:
-    """Consulta a janela de entrada do liteLLM, devolvendo zero se indisponível."""
+def _import_litellm() -> object | None:
+    """Importa o liteLLM desabilitando o banner de provedores, ou ``None``.
+
+    O liteLLM imprime um banner na saída padrão quando não infere o provedor a
+    partir do nome do modelo (ex.: ``deepseek-chat`` sem o prefixo do provedor).
+    O flag ``suppress_debug_info`` silencia esse banner nas consultas de janela e
+    contagem, que não fazem chamadas de rede.
+    """
     try:
         import litellm
     except ImportError:
+        return None
+    litellm.suppress_debug_info = True
+    return litellm
+
+
+def _janela_litellm(model: str) -> int:
+    """Consulta a janela de entrada do liteLLM, devolvendo zero se indisponível."""
+    litellm = _import_litellm()
+    if litellm is None:
         return 0
     try:
         info = litellm.get_model_info(model)
@@ -137,9 +152,8 @@ def _contar_litellm(model: str, texto: str) -> int:
     """Conta tokens pelo liteLLM, caindo em heurística de caracteres."""
     if not texto:
         return 0
-    try:
-        import litellm
-    except ImportError:
+    litellm = _import_litellm()
+    if litellm is None:
         return max(1, len(texto) // 4)
     try:
         return max(0, int(litellm.token_counter(model=model, text=texto)))

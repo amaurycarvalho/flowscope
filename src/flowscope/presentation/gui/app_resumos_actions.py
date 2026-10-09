@@ -181,6 +181,7 @@ class ResumosActionsMixin:
         sem_texto: int,
     ) -> None:
         """Encerra o lote, libera o estado ocupado e exibe o desfecho."""
+        self.after(0, self._recarregar_painel_resumos)
         if cancelado:
             self._resumos_interrompido = True
         painel = self._painel_resumos()
@@ -204,3 +205,16 @@ class ResumosActionsMixin:
                 f"({sem_texto} sem texto)."
             )
         self._flash_status(mensagem, "✓")
+
+    def _recarregar_painel_resumos(self: "ResumosActionsMixin") -> None:
+        """Remonta o painel de origem do lote a partir do cache atualizado.
+
+        A remontagem é adiada para depois de o gerenciador remover o job — quando
+        eventuais gravações do worker já terminaram — e reusa a leitura fora da
+        thread do Tk. Notícias (lote contínuo) e documentos são despachados por
+        origem.
+        """
+        if getattr(self, "_resumos_continuar", False):
+            self._submeter_leitura_noticias(self._data_referencia())
+        else:
+            self._submeter_leitura_documentos(self._ticker_apresentado())

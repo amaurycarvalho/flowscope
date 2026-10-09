@@ -68,6 +68,10 @@ class JsonGuidanceStore:
         """Retorna uma cópia do mapa de avaliações do ticker, por chave."""
         return dict(self._entradas(ticker))
 
+    def caminho(self: "JsonGuidanceStore", ticker: str) -> Path:
+        """Retorna o caminho do arquivo de ledger do ticker."""
+        return self._path_for(ticker)
+
     def salvar_avaliacao(
         self: "JsonGuidanceStore",
         ticker: str,

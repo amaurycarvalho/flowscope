@@ -18,6 +18,9 @@ from flowscope.application.chat.arvore import ArvoreConhecimento, ErroNavegacao
 #: Teto rígido do manifesto, em tokens.
 TETO_TOKENS = 4000
 
+#: Teto de caracteres de um metadado para integrar a seção de metadados.
+TETO_METADADO = 120
+
 #: Razão grosseira de caracteres por token usada na ausência de contador.
 CARACTERES_POR_TOKEN = 4
 
@@ -30,26 +33,87 @@ PERSONA = (
     "resposta vier de navegação anterior e não do estado corrente."
 )
 
-#: Mapa dos caminhos canônicos, para a LLM saber como navegar cada ramo.
-MAPA_ARVORE = (
-    "## Mapa da árvore\n"
-    "- /flowscope/meta/<chave>, /flowscope/abas/<aba>/subabas/<sub>, "
-    "/flowscope/indicadores/<indicador>\n"
-    "- /fundamentos/tickers, /fundamentos/campos, /fundamentos/valores/<ticker>\n"
-    "- /documentos/tickers, /documentos/<ticker>/curto, /documentos/<ticker>/longo, "
-    "/documentos/<ticker>/texto\n"
-    "- /noticias/grupos, /noticias/<grupo>/indice, /noticias/<grupo>/<chave>/titulo, "
-    "/noticias/<grupo>/<chave>/resumo, /noticias/<grupo>/<chave>/texto"
+#: Cabeçalho do mapa dos caminhos canônicos.
+_CABECALHO_MAPA = "## Mapa da árvore"
+
+
+def _mapa_arvore(arvore: ArvoreConhecimento) -> str:
+    """Descreve os caminhos canônicos apenas dos ramos existentes.
+
+    Ramos internos vazios são omitidos da árvore; anunciá-los aqui induziria a
+    LLM a navegar caminhos inexistentes e receber ``nao_interno``/
+    ``caminho_invalido``.
+    """
+    linhas = [_CABECALHO_MAPA, "- " + ", ".join(_caminhos_flowscope(arvore))]
+    fundamentos = _caminhos_fundamentos(arvore)
+    if fundamentos:
+        linhas.append("- " + ", ".join(fundamentos))
+    for caminho, descricao in _RAMOS_CANONICOS:
+        if arvore.existe(caminho):
+            linhas.append(f"- {descricao}")
+    return "\n".join(linhas)
+
+
+def _caminhos_flowscope(arvore: ArvoreConhecimento) -> list[str]:
+    """Lista os formatos de caminho do ramo ``/flowscope`` presentes."""
+    caminhos = ["/flowscope/meta/<chave>"]
+    if arvore.existe("/flowscope/abas"):
+        caminhos.append("/flowscope/abas/<aba>")
+        caminhos.append("/flowscope/abas/<aba>/subabas/<sub>")
+    if arvore.existe("/flowscope/indicadores"):
+        caminhos.append("/flowscope/indicadores/<indicador>")
+    return caminhos
+
+
+def _caminhos_fundamentos(arvore: ArvoreConhecimento) -> list[str]:
+    """Lista os formatos de caminho do ramo ``/fundamentos`` presentes."""
+    segmentos = (
+        ("/fundamentos/tickers", "/fundamentos/tickers"),
+        ("/fundamentos/campos", "/fundamentos/campos"),
+        ("/fundamentos/valores", "/fundamentos/valores/<ticker>"),
+    )
+    return [texto for caminho, texto in segmentos if arvore.existe(caminho)]
+
+
+#: Ramos canônicos e a descrição dos seus formatos de caminho.
+_RAMOS_CANONICOS = (
+    (
+        "/documentos",
+        (
+            "/documentos/tickers, /documentos/<ticker>/indice, "
+            "/documentos/<ticker>/<chave>/curto, /documentos/<ticker>/<chave>/longo, "
+            "/documentos/<ticker>/<chave>/texto"
+        ),
+    ),
+    (
+        "/guidance",
+        "/guidance/<ticker>/indice, /guidance/<ticker>/<ano>/<mes>/<guidance>",
+    ),
+    (
+        "/direitos-obrigacoes",
+        "/direitos-obrigacoes/direitos, /direitos-obrigacoes/obrigacoes",
+    ),
+    (
+        "/noticias",
+        (
+            "/noticias/grupos, /noticias/<grupo>/indice, "
+            "/noticias/<grupo>/<chave>/titulo, /noticias/<grupo>/<chave>/resumo, "
+            "/noticias/<grupo>/<chave>/texto"
+        ),
+    ),
 )
 
 #: Descrição da árvore e das operações de navegação.
 PROTOCOLO = (
     "### Operações\n"
     "- listar(caminho) -> filhos imediatos (nome + metadado curto)\n"
-    "- obter(caminho) -> conteúdo do nó\n"
+    "- obter(caminho, offset, limite) -> conteúdo do nó; para textos longos, "
+    "leia em páginas sucessivas com `offset`/`limite` até `continua` ser "
+    "falso\n"
     "- contar(caminho) -> nº de nós na subárvore\n"
     "- existe(caminho) -> booleano\n"
-    "- buscar(caminho, regex, em=[...], max) -> nós cujos campos casam\n"
+    "- buscar(caminho, regex, em=[...], max) -> nós cujos campos casam "
+    "(busca determinística)\n"
     "- buscar_semantico(caminho, consulta, max) -> nós por similaridade\n"
     "- resetar_navegacao() -> descarta o histórico de navegação\n\n"
     "### Formato de resposta (JSON estrito)\n"
@@ -60,7 +124,17 @@ PROTOCOLO = (
     "- Até 8 operações por turno.\n"
     "- Busca regex: timeout de 100 ms, máx. 50 resultados, padrões "
     "catastróficos bloqueados.\n"
-    "- Recomendado: usar contar/existe antes de listar em ramos grandes."
+    "- Recomendado: usar contar/existe antes de listar em ramos grandes; "
+    "para grupos grandes use o nó `indice` ou `buscar` em vez de listar tudo.\n"
+    "- Se `buscar_semantico` responder `indice_indisponivel`, use "
+    "`buscar(caminho, regex, em=[...])` (busca determinística por campos) — "
+    "não desista da busca.\n\n"
+    "### Como responder\n"
+    "- Nunca responda prometendo navegar (\"vou abrir\", \"preciso ler\"): se "
+    "faltam dados, emita `solicitacoes` com `resposta: null` e só finalize "
+    "quando o conteúdo necessário já estiver no contexto navegado.\n"
+    "- Use o `foco` (último caminho obtido) para \"esse documento\"/\"nesse RG\" "
+    "e não reabra a análise de um alvo já obtido."
 )
 
 #: Ramos cujos filhos viram listas de chaves no manifesto.
@@ -123,19 +197,104 @@ def _metadados(arvore: ArvoreConhecimento) -> list[str]:
     linhas: list[str] = []
     for caminho in sorted(arvore._indice):
         no = arvore._indice[caminho]
-        if no.metadado and no.metadado != no.nome:
+        if (
+            no.metadado
+            and no.metadado != no.nome
+            and len(no.metadado) <= TETO_METADADO
+            and not no.caminho.startswith("/documentos/")
+        ):
             linhas.append(f"- {no.caminho}: {no.metadado}")
     return linhas
 
 
 def _chaves(arvore: ArvoreConhecimento) -> list[str]:
-    """Monta as linhas das listas de chaves."""
+    """Monta as linhas das listas de chaves, incluindo as sub-abas por aba."""
     linhas: list[str] = []
     for rotulo, caminho in _RAMOS_CHAVES.items():
         nomes = _nomes(arvore, caminho)
         if nomes:
             linhas.append(f"- {rotulo}: {', '.join(nomes)}")
+    linhas.extend(_subabas(arvore))
     return linhas
+
+
+def _subabas(arvore: ArvoreConhecimento) -> list[str]:
+    """Lista as sub-abas de cada aba presente na árvore."""
+    linhas: list[str] = []
+    for aba in _nomes(arvore, "/flowscope/abas"):
+        subabas = _nomes(arvore, f"/flowscope/abas/{aba}")
+        if subabas:
+            linhas.append(f"- subabas {aba}: {', '.join(subabas)}")
+    return linhas
+
+
+#: Ramos de topo cuja presença é anunciada na descrição do manifesto.
+_RAIZES_DESCRICAO = (
+    "/flowscope",
+    "/fundamentos",
+    "/documentos",
+    "/guidance",
+    "/direitos-obrigacoes",
+    "/noticias",
+)
+
+
+def _descricao(arvore: ArvoreConhecimento) -> str:
+    """Descreve a árvore listando apenas os ramos de topo presentes."""
+    presentes = [raiz for raiz in _RAIZES_DESCRICAO if arvore.existe(raiz)]
+    return (
+        "Você tem acesso a uma árvore navegável montada a partir do estado "
+        "local. Ela contém: " + ", ".join(presentes) + "."
+    )
+
+
+def _playbook(arvore: ArvoreConhecimento) -> str:
+    """Descreve o playbook por intenção apenas dos ramos presentes.
+
+    Anunciar caminhos de ramos ausentes induziria a LLM a navegar caminhos
+    inexistentes; por isso cada linha só entra quando o ramo existe.
+    """
+    linhas = ["### Playbook por intenção"]
+    if arvore.existe("/guidance"):
+        linhas.append(
+            "- Evolução/histórico de guidance -> /guidance/<ticker>/indice e, "
+            "para detalhe, a folha do mês"
+        )
+        linhas.append(
+            "- Relatório Gerencial mensal -> /guidance/<ticker>/indice associa o "
+            "RG de cada período; abra o texto integral do documento "
+            "correspondente em /documentos/<ticker>/<chave>/texto"
+        )
+    if arvore.existe("/documentos"):
+        linhas.append(
+            "- Documento/relatório mais recente -> /documentos/<ticker>/indice"
+        )
+        linhas.append(
+            "- Comentar/analisar um documento (ex.: 'comente o RG', 'o que mais "
+            "há de relevante') -> abra o texto integral "
+            "/documentos/<ticker>/<chave>/texto do alvo; não responda só com "
+            "curto/longo"
+        )
+        linhas.append(
+            "- Ler um documento longo por completo -> abra "
+            "/documentos/<ticker>/<chave>/texto em páginas sucessivas via "
+            "obter com `offset`/`limite` até `continua` ser falso"
+        )
+        linhas.append(
+            "- Resumo curto de um documento -> abra "
+            "/documentos/<ticker>/<chave>/curto de cada chave do índice (o "
+            "índice traz só uma prévia, não o resumo completo)"
+        )
+        linhas.append(
+            "- Resumo longo de um documento -> abra "
+            "/documentos/<ticker>/<chave>/longo de cada chave do índice"
+        )
+    if arvore.existe("/flowscope"):
+        linhas.append(
+            "- Objetivo/funcionalidades do aplicativo -> /flowscope/meta e "
+            "/flowscope/abas/<aba>/subabas/<sub>"
+        )
+    return "\n".join(linhas) if len(linhas) > 1 else ""
 
 
 def _renderizar(
@@ -146,12 +305,12 @@ def _renderizar(
         "# Árvore de conhecimento do FlowScope",
         PERSONA,
         "## Descrição",
-        (
-            "Você tem acesso a uma árvore navegável montada a partir do estado "
-            "local. Ela contém: /flowscope, /fundamentos, /documentos, /noticias."
-        ),
-        MAPA_ARVORE,
+        _descricao(arvore),
+        _mapa_arvore(arvore),
     ]
+    playbook = _playbook(arvore)
+    if playbook:
+        partes.append(playbook)
     if chaves:
         partes.extend(["## Listas de chaves", *chaves])
     if metadados:

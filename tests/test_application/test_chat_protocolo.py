@@ -4,6 +4,7 @@ import json
 
 from flowscope.application.chat.arvore import (
     ArvoreConhecimento,
+    no_folha,
     no_interno,
     ramo_fundamentos,
 )
@@ -20,7 +21,16 @@ def _arvore() -> ArvoreConhecimento:
     raiz.filho(
         ramo_fundamentos(
             tickers=["PETR4", "VALE3"],
+            campos={"PL": "preço/lucro"},
             valores={"PETR4": "[PETR4] PL=3.2", "VALE3": "[VALE3] PL=5.0"},
+        )
+    )
+    raiz.filho(
+        no_folha(
+            "/doc/texto",
+            "texto",
+            carregar=lambda: "conteudo pesado",
+            campo_pesado="texto",
         )
     )
     return ArvoreConhecimento(raiz)
@@ -159,6 +169,38 @@ class TestExecucao:
         assert resultado["dados"] == "navegacao_descartada"
 
 
+class TestPaginacao:
+    def test_offset_negativo_e_recusado(self) -> None:
+        resultado = _executar("obter", caminho="/doc/texto", offset=-1)
+        assert resultado["erro"]["motivo"] == "tipo_invalido"
+        assert "offset" in resultado["erro"]["detalhe"]
+        assert "maior ou igual a zero" in resultado["erro"]["dica"]
+
+    def test_limite_zero_e_recusado(self) -> None:
+        resultado = _executar("obter", caminho="/doc/texto", limite=0)
+        assert resultado["erro"]["motivo"] == "tipo_invalido"
+        assert "limite" in resultado["erro"]["detalhe"]
+        assert "maior que zero" in resultado["erro"]["dica"]
+
+    def test_limite_nao_inteiro_e_recusado(self) -> None:
+        resultado = _executar("obter", caminho="/doc/texto", limite="10")
+        assert resultado["erro"]["motivo"] == "tipo_invalido"
+
+    def test_pagina_em_no_pesado(self) -> None:
+        resultado = _executar("obter", caminho="/doc/texto", offset=2, limite=5)
+        dados = resultado["dados"]
+        assert dados["texto"] == "nteud"
+        assert dados["total"] == len("conteudo pesado")
+        assert dados["offset"] == 2
+        assert dados["limite"] == 5
+        assert dados["continua"] is True
+
+    def test_pagina_padrao_sem_campos(self) -> None:
+        dados = _executar("obter", caminho="/doc/texto")["dados"]
+        assert dados["texto"] == "conteudo pesado"
+        assert dados["continua"] is False
+
+
 class TestSerializacao:
     def test_bloco_deterministico_sem_timestamp(self) -> None:
         protocolo = _protocolo()
@@ -169,6 +211,18 @@ class TestSerializacao:
         assert a.startswith(MARCADOR_RESULTADO)
         corpo = json.loads(a[len(MARCADOR_RESULTADO) :])
         assert corpo["resultados"][0]["dados"] is True
+
+    def test_foco_serializado_quando_informado(self) -> None:
+        protocolo = _protocolo()
+        bloco = protocolo.serializar([], foco="/documentos/PETR4/abc/texto")
+        corpo = json.loads(bloco[len(MARCADOR_RESULTADO) :])
+        assert corpo["foco"] == "/documentos/PETR4/abc/texto"
+
+    def test_foco_ausente_quando_nulo(self) -> None:
+        protocolo = _protocolo()
+        bloco = protocolo.serializar([])
+        corpo = json.loads(bloco[len(MARCADOR_RESULTADO) :])
+        assert "foco" not in corpo
 
 
 def _executar(op: str, **campos) -> dict:

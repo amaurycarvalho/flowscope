@@ -218,6 +218,8 @@ class TabsLayoutMixin:
             llm_available=documentos.llm_available,
             catalogo=documentos.catalogo,
             noticias_catalog=self._adaptadores_noticias().catalogo,
+            guidance_service=documentos.guidance_service,
+            guidance_paths=documentos.guidance_paths,
             config_callback=getattr(self, "_abrir_config_llm", None),
             config_port=getattr(self, "_llm_config", None),
             model_changed_callback=getattr(self, "_on_provider_changed", None),

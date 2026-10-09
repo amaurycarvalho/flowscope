@@ -32,7 +32,7 @@ O sistema DEVE limitar o volume de texto de cada nó enviado à LLM por meio de 
 
 ### Requirement: Conhecimento do próprio FlowScope na árvore
 
-O sistema DEVE compor o conhecimento do FlowScope a partir dos textos de orientação das sub-abas e das informações da aba Sobre (apresentação, licença, versão), expondo-o como os ramos `/flowscope/abas`, `/flowscope/abas/<aba>/subabas`, `/flowscope/indicadores` e `/flowscope/meta` da árvore de conhecimento. O conteúdo pesado NÃO DEVE integrar o manifesto; a LLM DEVE obtê-lo por navegação, inclusive para perguntas sobre o próprio aplicativo.
+O sistema DEVE compor o conhecimento do FlowScope a partir dos textos de orientação das sub-abas e das informações da aba Sobre (apresentação, licença, versão), expondo-o como os ramos `/flowscope/abas`, `/flowscope/abas/<aba>`, `/flowscope/abas/<aba>/subabas`, `/flowscope/indicadores` e `/flowscope/meta` da árvore de conhecimento. Os ramos `/flowscope/abas` e `/flowscope/indicadores` DEVEM ser expostos apenas quando tiverem itens; sem itens, o ramo DEVE ser omitido em vez de existir como folha vazia. O ramo `/flowscope/abas/<aba>` DEVE existir como nó interno navegável cujos filhos são as sub-abas. A LLM DEVE conseguir descobrir os nomes das abas e das sub-abas por navegação, e o manifesto DEVE anunciar o caminho da aba e as sub-abas de cada aba. O conteúdo pesado NÃO DEVE integrar o manifesto (nem como metadado): a LLM DEVE obtê-lo por navegação, inclusive para perguntas sobre o próprio aplicativo.
 
 #### Scenario: Pergunta sobre o próprio FlowScope
 - **WHEN** o usuário pergunta o que é o FlowScope ou como funciona uma sub-aba
@@ -46,9 +46,17 @@ O sistema DEVE compor o conhecimento do FlowScope a partir dos textos de orienta
 - **WHEN** a LLM precisa do propósito de uma aba ou sub-aba
 - **THEN** ela DEVE descobri-lo por `listar`/`obter`, não por um bloco pré-injetado no manifesto
 
+#### Scenario: Aba navegável e sub-abas descobertas
+- **WHEN** a LLM lista `/flowscope/abas` e em seguida `/flowscope/abas/<aba>`
+- **THEN** o manifesto DEVE anunciar o caminho da aba e as sub-abas DEVEM ser descobríveis por `listar`, para a LLM obter o texto desejado sem adivinhar nomes
+
+#### Scenario: Ramo de indicadores vazio é omitido
+- **WHEN** não há indicadores curados para expor
+- **THEN** o ramo `/flowscope/indicadores` NÃO DEVE existir e `existe(/flowscope/indicadores)` DEVE ser falso, sem erro
+
 ### Requirement: Fundamentos na árvore
 
-O sistema DEVE expor os dados da tabela de fundamentos carregada no momento como os ramos `/fundamentos/tickers`, `/fundamentos/campos` e `/fundamentos/valores/<ticker>` da árvore, cobrindo a watchlist completa. O ticker referido na pergunta DEVE ser identificado pela LLM a partir do texto da pergunta, sem seletor de escopo na interface. Quando não houver dados carregados, o sistema DEVE orientar o usuário a carregá-los, sem falhar.
+O sistema DEVE expor os dados da tabela de fundamentos carregada no momento como os ramos `/fundamentos/tickers`, `/fundamentos/campos` e `/fundamentos/valores/<ticker>` da árvore, cobrindo a watchlist completa. Cada sub-ramo de fundamentos (`/fundamentos/tickers`, `/fundamentos/campos` e `/fundamentos/valores`) DEVE ser exposto apenas quando tiver itens; sem itens, DEVE ser omitido em vez de existir como folha vazia. O ticker referido na pergunta DEVE ser identificado pela LLM a partir do texto da pergunta, sem seletor de escopo na interface. Quando não houver dados carregados, o sistema DEVE orientar o usuário a carregá-los, sem falhar.
 
 #### Scenario: Fundamentos da watchlist
 - **WHEN** há fundamentos carregados e uma pergunta é feita na aba "Chat AI"
@@ -61,3 +69,7 @@ O sistema DEVE expor os dados da tabela de fundamentos carregada no momento como
 #### Scenario: Sem dados carregados
 - **WHEN** não há fundamentos carregados
 - **THEN** o sistema DEVE orientar a carregar os dados, sem erro
+
+#### Scenario: Sub-ramo de fundamentos vazio é omitido
+- **WHEN** há tickers mas não há campos ou valores serializados
+- **THEN** os sub-ramos `/fundamentos/campos` e `/fundamentos/valores` NÃO DEVEM existir, sem gerar `nao_interno` ao navegar

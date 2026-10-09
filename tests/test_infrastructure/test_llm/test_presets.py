@@ -105,6 +105,41 @@ class TestJanelaECache:
         assert resolve_context_window("openai", "") == 1048576
         assert resolve_context_window("custom", None) == 131072
 
+    def test_import_litellm_silencia_banner(self, monkeypatch):
+        import sys
+        import types
+
+        fake = types.ModuleType("litellm")
+        fake.suppress_debug_info = False
+        monkeypatch.setitem(sys.modules, "litellm", fake)
+
+        assert presets_module._import_litellm() is fake
+        assert fake.suppress_debug_info is True
+
+    def test_janela_litellm_le_info_e_silencia(self, monkeypatch):
+        import sys
+        import types
+
+        fake = types.ModuleType("litellm")
+        fake.suppress_debug_info = False
+        fake.get_model_info = lambda model: {"max_input_tokens": 123}
+        monkeypatch.setitem(sys.modules, "litellm", fake)
+
+        assert presets_module._janela_litellm("deepseek-chat") == 123
+        assert fake.suppress_debug_info is True
+
+    def test_contar_litellm_silencia(self, monkeypatch):
+        import sys
+        import types
+
+        fake = types.ModuleType("litellm")
+        fake.suppress_debug_info = False
+        fake.token_counter = lambda model, text: len(text) + 1
+        monkeypatch.setitem(sys.modules, "litellm", fake)
+
+        assert presets_module._contar_litellm("deepseek-chat", "abc") == 4
+        assert fake.suppress_debug_info is True
+
     def test_contador_memoiza_por_texto(self, monkeypatch):
         chamadas: list[str] = []
 

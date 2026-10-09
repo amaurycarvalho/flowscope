@@ -615,3 +615,68 @@ class TestHistoricoPainel:
             assert "segunda pergunta" in mensagens[0]["content"]
         finally:
             root.destroy()
+
+
+class _GuidanceFake:
+    """Serviço de guidance mínimo com entradas pré-configuradas."""
+
+    def __init__(self, entradas) -> None:
+        self._entradas = entradas
+
+    def entradas_arvore(self, ticker):
+        return list(self._entradas.get(ticker, []))
+
+
+
+
+class TestMontarArvoreGuidance:
+    def _entrada(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from flowscope.application.documentos.document_guidance import (
+            EntradaGuidanceArvore,
+        )
+        from flowscope.domain.fii import Guidance
+
+        data = date(2026, 8, 1)
+        return EntradaGuidanceArvore(
+            ticker="HGBS11",
+            ano=2026,
+            mes=8,
+            chave="chave-1",
+            data_relatorio=data,
+            caminho_pdf="/cache/rg/10.pdf",
+            guidance=Guidance(
+                valor_min=Decimal("0.85"),
+                valor_max=Decimal("0.85"),
+                periodo="2026",
+                data_relatorio=data,
+            ),
+        )
+
+    def _painel(self, ledger, service):
+        from flowscope.application.chat.conhecimento import FonteConhecimento
+
+        painel = ChatPanel.__new__(ChatPanel)
+        painel._fonte_conhecimento = FonteConhecimento({"versao": "1.0"})
+        painel._catalogo = None
+        painel._noticias_catalog = None
+        painel._guidance_service = service
+        painel._guidance_paths = lambda tickers: [ledger]
+        return painel
+
+    def test_montar_arvore_inclui_guidance_e_assinatura(self, tmp_path):
+        ledger = tmp_path / "HGBS11.json"
+        service = _GuidanceFake({"HGBS11": [self._entrada()]})
+        painel = self._painel(ledger, service)
+
+        arvore = painel.montar_arvore({}, ["HGBS11"])
+
+        assert arvore.existe("/guidance/HGBS11")
+        assert arvore.existe("/direitos-obrigacoes/direitos")
+        antes = arvore.assinatura
+
+        ledger.write_text("{}")
+        arvore2 = painel.montar_arvore({}, ["HGBS11"])
+        assert arvore2.assinatura != antes

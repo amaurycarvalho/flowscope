@@ -98,6 +98,37 @@ class TestNavegacao:
         assert not arvore.existe("/documentos/PETR4/curto")
 
 
+class TestRamosVazios:
+    def test_flowscope_omite_ramos_vazios(self) -> None:
+        raiz = no_interno("/", "raiz")
+        raiz.filho(ramo_flowscope({"versao": "1.0"}))
+        arvore = ArvoreConhecimento(raiz)
+        assert arvore.existe("/flowscope")
+        assert not arvore.existe("/flowscope/abas")
+        assert not arvore.existe("/flowscope/indicadores")
+
+    def test_flowscope_mantem_ramos_preenchidos(self) -> None:
+        raiz = no_interno("/", "raiz")
+        raiz.filho(
+            ramo_flowscope(
+                {"versao": "1.0"},
+                abas={"X": "x"},
+                indicadores={"RSI": "r"},
+            )
+        )
+        arvore = ArvoreConhecimento(raiz)
+        assert arvore.existe("/flowscope/abas/X")
+        assert arvore.existe("/flowscope/indicadores/RSI")
+
+    def test_fundamentos_omite_ramos_vazios(self) -> None:
+        raiz = no_interno("/", "raiz")
+        raiz.filho(ramo_fundamentos(tickers=["PETR4"]))
+        arvore = ArvoreConhecimento(raiz)
+        assert arvore.existe("/fundamentos/tickers/PETR4")
+        assert not arvore.existe("/fundamentos/campos")
+        assert not arvore.existe("/fundamentos/valores")
+
+
 class TestBusca:
     def test_buscar_por_campo(self) -> None:
         resultado = _arvore().buscar(

@@ -195,6 +195,31 @@ class ProtocoloNavegacao:
                 )
         self._validar_em(solicitacao)
         self._validar_max(solicitacao)
+        self._validar_paginacao(solicitacao)
+
+    @staticmethod
+    def _validar_paginacao(solicitacao: Solicitacao) -> None:
+        """Valida os campos opcionais ``offset``/``limite`` de ``obter``."""
+        if solicitacao.op != "obter":
+            return
+        offset = solicitacao.campos.get("offset")
+        if offset is not None and (
+            isinstance(offset, bool) or not isinstance(offset, int) or offset < 0
+        ):
+            raise ErroNavegacao(
+                "tipo_invalido",
+                "offset",
+                "o campo 'offset' deve ser um inteiro maior ou igual a zero",
+            )
+        limite = solicitacao.campos.get("limite")
+        if limite is not None and (
+            isinstance(limite, bool) or not isinstance(limite, int) or limite <= 0
+        ):
+            raise ErroNavegacao(
+                "tipo_invalido",
+                "limite",
+                "o campo 'limite' deve ser um inteiro maior que zero",
+            )
 
     @staticmethod
     def _validar_curinga(op: str, caminho: str) -> None:
@@ -304,7 +329,11 @@ class ProtocoloNavegacao:
                 for no in self._arvore.listar(campos["caminho"])
             ]
         if op == "obter":
-            return self._arvore.obter(campos["caminho"])
+            return self._arvore.obter(
+                campos["caminho"],
+                offset=campos.get("offset"),
+                limite=campos.get("limite"),
+            )
         if op == "contar":
             return self._arvore.contar(campos["caminho"])
         if op == "existe":
@@ -321,11 +350,21 @@ class ProtocoloNavegacao:
         return "navegacao_descartada"
 
     @staticmethod
-    def serializar(resultados: list[dict]) -> str:
-        """Serializa os resultados em um bloco determinístico."""
-        corpo = json.dumps({"resultados": resultados}, ensure_ascii=False)
-        return f"{MARCADOR_RESULTADO} {corpo}"
+    def serializar(resultados: list[dict], foco: str | None = None) -> str:
+        """Serializa os resultados em um bloco determinístico.
 
-    def executar_e_serializar(self: ProtocoloNavegacao, solicitacoes: list[Solicitacao]) -> str:
+        O ``foco`` é o último caminho obtido com sucesso e acompanha o bloco
+        para o turno seguinte resolver referências anafóricas.
+        """
+        corpo: dict = {"resultados": resultados}
+        if foco:
+            corpo["foco"] = foco
+        return f"{MARCADOR_RESULTADO} {json.dumps(corpo, ensure_ascii=False)}"
+
+    def executar_e_serializar(
+        self: ProtocoloNavegacao,
+        solicitacoes: list[Solicitacao],
+        foco: str | None = None,
+    ) -> str:
         """Executa as operações e devolve o bloco serializado."""
-        return self.serializar(self.executar(solicitacoes))
+        return self.serializar(self.executar(solicitacoes), foco)

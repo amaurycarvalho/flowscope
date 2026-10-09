@@ -134,3 +134,55 @@ class TestAplicarResultadoResumo:
 
         painel.refletir_resumo.assert_not_called()
         painel.aplicar_resumo.assert_not_called()
+
+
+class _HostRemontagem(ResumosActionsMixin):
+    """Host headless que registra o despacho da remontagem pós-lote."""
+
+    def __init__(self, *, continuar: bool = False) -> None:
+        self._resumos_continuar = continuar
+        self._ticker_selecionado = "HGBS11"
+        self._resumos_painel = MagicMock()
+        self.agendados: list = []
+        self.documentos: list = []
+        self.noticias: list = []
+        self._flash_status = MagicMock()
+
+    def after(self, ms, callback):
+        self.agendados.append(callback)
+        return "id"
+
+    def _ticker_apresentado(self):
+        return self._ticker_selecionado
+
+    def _data_referencia(self):
+        return date(2026, 2, 1)
+
+    def _submeter_leitura_documentos(self, ticker):
+        self.documentos.append(ticker)
+
+    def _submeter_leitura_noticias(self, referencia):
+        self.noticias.append(referencia)
+
+
+class TestRecarregarPainelResumos:
+    def test_documentos_despacha_leitura(self):
+        host = _HostRemontagem(continuar=False)
+        host._recarregar_painel_resumos()
+        assert host.documentos == ["HGBS11"]
+        assert host.noticias == []
+
+    def test_noticias_despacha_leitura(self):
+        host = _HostRemontagem(continuar=True)
+        host._recarregar_painel_resumos()
+        assert host.noticias == [date(2026, 2, 1)]
+        assert host.documentos == []
+
+
+class TestFinalizarAgendaRemontagem:
+    def test_agenda_recarga_do_origem(self):
+        host = _HostRemontagem(continuar=False)
+        host._finalizar_resumos_job(False, None, 0)
+        assert host.agendados
+        host.agendados[0]()
+        assert host.documentos == ["HGBS11"]

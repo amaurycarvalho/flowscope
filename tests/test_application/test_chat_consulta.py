@@ -150,3 +150,72 @@ def resolved_block(mensagens: list[dict]) -> str | None:
         if "RESULTADO_NAVEGACAO" in mensagem.get("content", ""):
             return mensagem["content"]
     return None
+
+
+class TestFoco:
+    def test_foco_devolvido_apos_obter(self) -> None:
+        llm = _FakeLLM([
+            '{"resposta": null, "solicitacoes": [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}]}',
+            '{"resposta": "PL 3.2", "solicitacoes": []}',
+        ])
+        ConsultarChatUseCase(llm).consultar("PL?", _arvore())
+        bloco = resolved_block(llm.chamadas[1][0])
+        assert bloco is not None
+        assert '"foco": "/fundamentos/valores/PETR4"' in bloco
+
+    def test_foco_ausente_sem_obter(self) -> None:
+        llm = _FakeLLM([
+            '{"resposta": null, "solicitacoes": [{"op": "existe", "caminho": "/fundamentos"}]}',
+            '{"resposta": "ok", "solicitacoes": []}',
+        ])
+        ConsultarChatUseCase(llm).consultar("p", _arvore())
+        bloco = resolved_block(llm.chamadas[1][0])
+        assert bloco is not None and "foco" not in bloco
+
+    def test_reset_descarta_navegacao_acumulada(self) -> None:
+        llm = _FakeLLM([
+            '{"resposta": null, "solicitacoes": [{"op": "resetar_navegacao"}]}',
+            '{"resposta": "ok", "solicitacoes": []}',
+        ])
+        par = ParNavegacao("assistant antigo", "[RESULTADO_NAVEGACAO] {}")
+        resposta = ConsultarChatUseCase(llm).consultar("p", _arvore(), navegacao=[par])
+        assert not any(p.assistant == "assistant antigo" for p in resposta.navegacao)
+
+    def test_reset_limpa_foco_do_turno(self) -> None:
+        llm = _FakeLLM([
+            '{"resposta": null, "solicitacoes": [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}]}',
+            '{"resposta": null, "solicitacoes": [{"op": "resetar_navegacao"}]}',
+            '{"resposta": "ok", "solicitacoes": []}',
+        ])
+        ConsultarChatUseCase(llm).consultar("p", _arvore())
+        bloco_reset = llm.chamadas[2][0][-1]["content"]
+        assert "foco" not in bloco_reset
+
+
+class TestPromptSistema:
+    def test_orienta_regex_quando_sem_indice(self):
+        from flowscope.application.chat.consultar import SYSTEM_PROMPT
+
+        assert "regex" in SYSTEM_PROMPT
+        assert "semântica" in SYSTEM_PROMPT
+
+    def test_orienta_texto_integral(self):
+        from flowscope.application.chat.consultar import SYSTEM_PROMPT
+
+        assert "texto integral" in SYSTEM_PROMPT
+        assert "/documentos/<ticker>/<chave>/texto" in SYSTEM_PROMPT
+        assert "/curto" in SYSTEM_PROMPT
+        assert "/longo" in SYSTEM_PROMPT
+
+    def test_orienta_nao_prometer_navegar(self):
+        from flowscope.application.chat.consultar import SYSTEM_PROMPT
+
+        assert "prometendo" in SYSTEM_PROMPT
+        assert "foco" in SYSTEM_PROMPT
+
+    def test_orienta_paginacao_de_textos_longos(self):
+        from flowscope.application.chat.consultar import SYSTEM_PROMPT
+
+        assert "offset" in SYSTEM_PROMPT
+        assert "limite" in SYSTEM_PROMPT
+        assert "continua" in SYSTEM_PROMPT
