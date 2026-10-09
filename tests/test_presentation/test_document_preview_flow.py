@@ -6,6 +6,8 @@ são dirigidas por um manager fake que roda o worker sob demanda.
 """
 
 from dataclasses import replace
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
 
 from flowscope.application.document_preview import (
@@ -17,8 +19,10 @@ from flowscope.application.documentos.document_summary import (
     DocumentSummaryService,
 )
 from flowscope.application.documentos.mensagens import mensagem_indisponivel
+from flowscope.application.fundamental.linhas import formatar_guidance
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.fii import AvaliacaoGuidance, Guidance
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
@@ -458,3 +462,134 @@ class TestGeracaoDeResumoHeadless:
         host.manager.executar()
 
         assert mensagem_indisponivel(True) in (host.texto_exibido or "")
+
+
+_GUIDANCE = Guidance(
+    valor_min=Decimal("0.85"),
+    valor_max=Decimal("0.85"),
+    periodo="2S26",
+    data_relatorio=date(2026, 2, 1),
+)
+_AVALIACAO_GUIDANCE = AvaliacaoGuidance(
+    metodo="ia", data_relatorio=date(2026, 2, 1), guidance=_GUIDANCE
+)
+_AUSENCIA = AvaliacaoGuidance(metodo="ia", data_relatorio=date(2026, 2, 1))
+
+
+class TestComposicaoComGuidance:
+    def test_mostrar_documento_intercala_guidance_entre_resumo_e_separador(self):
+        host = _PreviewHost()
+
+        host._mostrar_documento(
+            "corpo", "resumo", guidance_texto=formatar_guidance(_GUIDANCE)
+        )
+
+        assert host.texto_exibido == (
+            f"resumo\n\n{formatar_guidance(_GUIDANCE)}\n\n---\n\ncorpo"
+        )
+
+    def test_guidance_sem_resumo_fica_imediatamente_antes_do_separador(self):
+        host = _PreviewHost()
+
+        host._mostrar_documento(
+            "corpo", None, guidance_texto=formatar_guidance(_GUIDANCE)
+        )
+
+        assert host.texto_exibido == (
+            f"{formatar_guidance(_GUIDANCE)}\n\n---\n\ncorpo"
+        )
+
+    def test_sem_guidance_mantem_composicao_anterior(self):
+        host = _PreviewHost()
+
+        host._mostrar_documento("corpo", "resumo")
+
+        assert host.texto_exibido == "resumo\n\n---\n\ncorpo"
+
+    def test_guidance_texto_formata_avaliacao_com_guidance(self):
+        assert _PreviewHost._guidance_texto(_AVALIACAO_GUIDANCE) == (
+            formatar_guidance(_GUIDANCE)
+        )
+
+    def test_guidance_texto_nulo_na_ausencia(self):
+        assert _PreviewHost._guidance_texto(_AUSENCIA) is None
+        assert _PreviewHost._guidance_texto(None) is None
+
+    def test_aplicar_preview_deriva_guidance_da_avaliacao(self):
+        host = _PreviewHost()
+        arquivo = _arquivo()
+        host.selecionado = arquivo
+
+        host._aplicar_preview(
+            arquivo,
+            ExtracaoTexto("corpo", StatusExtracao.OK),
+            True,
+            ResumoDocumento("curto", "longo"),
+            _AVALIACAO_GUIDANCE,
+        )
+
+        assert host.texto_exibido == (
+            f"longo\n\n{formatar_guidance(_GUIDANCE)}\n\n---\n\ncorpo"
+        )
+
+    def test_aplicar_preview_omite_guidance_na_ausencia(self):
+        host = _PreviewHost()
+        arquivo = _arquivo()
+        host.selecionado = arquivo
+
+        host._aplicar_preview(
+            arquivo,
+            ExtracaoTexto("corpo", StatusExtracao.OK),
+            True,
+            ResumoDocumento("curto", "longo"),
+            _AUSENCIA,
+        )
+
+        assert host.texto_exibido == "longo\n\n---\n\ncorpo"
+
+    def test_refletir_guidance_recompoe_com_resumo_vigente(self):
+        host = _PreviewHost()
+        arquivo = _arquivo(long_summary="resumo vigente")
+        host.selecionado = arquivo
+        host._por_caminho[arquivo.caminho] = arquivo
+        host._preview_cache[arquivo.caminho] = "corpo"
+
+        host.refletir_guidance(arquivo, _AVALIACAO_GUIDANCE)
+
+        assert host.texto_exibido == (
+            f"resumo vigente\n\n{formatar_guidance(_GUIDANCE)}\n\n---\n\ncorpo"
+        )
+
+    def test_refletir_guidance_ignora_documento_nao_selecionado(self):
+        host = _PreviewHost()
+        arquivo = _arquivo(long_summary="resumo")
+        host.selecionado = _arquivo("20.pdf")
+
+        host.refletir_guidance(arquivo, _AVALIACAO_GUIDANCE)
+
+        assert host.texto_exibido is None
+
+    def test_refletir_guidance_por_ia_remove_da_lista_de_pendentes(self):
+        host = _PreviewHost()
+        arquivo = _arquivo(long_summary="resumo")
+        host.selecionado = arquivo
+        host._guidance_pendentes = frozenset({arquivo.caminho})
+
+        host.refletir_guidance(arquivo, _AVALIACAO_GUIDANCE)
+
+        assert arquivo.caminho not in host._guidance_pendentes
+
+    def test_refletir_guidance_deterministica_mantem_pendente(self):
+        host = _PreviewHost()
+        arquivo = _arquivo(long_summary="resumo")
+        host.selecionado = arquivo
+        host._guidance_pendentes = frozenset({arquivo.caminho})
+        deterministica = AvaliacaoGuidance(
+            metodo="deterministico",
+            data_relatorio=date(2026, 2, 1),
+            guidance=_GUIDANCE,
+        )
+
+        host.refletir_guidance(arquivo, deterministica)
+
+        assert arquivo.caminho in host._guidance_pendentes

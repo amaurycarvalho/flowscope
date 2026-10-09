@@ -69,7 +69,7 @@ class AvaliarGuidanceUseCase:
         existente = self._store.obter_avaliacao(ticker, chave)
         if existente is not None and existente.metodo == METODO_IA:
             return existente
-        ia_disponivel = self._ia_disponivel()
+        ia_disponivel = self.ia_disponivel()
         if (
             existente is not None
             and existente.metodo == METODO_DETERMINISTICO
@@ -87,7 +87,7 @@ class AvaliarGuidanceUseCase:
         self._store.salvar_avaliacao(ticker, chave, resultado)
         return resultado
 
-    def _ia_disponivel(self: "AvaliarGuidanceUseCase") -> bool:
+    def ia_disponivel(self: "AvaliarGuidanceUseCase") -> bool:
         """Indica se a avaliação pela IA está disponível e funcional."""
         if self._llm_available is not None:
             try:

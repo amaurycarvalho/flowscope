@@ -40,7 +40,11 @@ class ResumosActionsMixin:
             return
         if self._resumos_em_andamento():
             return
-        pendentes = painel.documentos_sem_resumo()
+        sem_resumo = painel.documentos_sem_resumo()
+        pendentes_guidance = getattr(
+            painel, "documentos_pendentes_guidance", list
+        )()
+        pendentes = list(sem_resumo) + list(pendentes_guidance)
         if not pendentes:
             painel.refresh_resumir_button()
             return
@@ -136,18 +140,22 @@ class ResumosActionsMixin:
     def _aplicar_resultado_resumo(
         self: "ResumosActionsMixin", evento: Resultado, guarda: object
     ) -> None:
-        """Aplica um resumo gerado, descartando-o se o escopo mudou."""
+        """Aplica um resumo e a avaliação de guidance, descartando se o escopo mudou."""
         arquivo = evento.dados
-        resumo = evento.valor
+        resumo, avaliacao = evento.valor
         if guarda is not None and guarda != self._ticker_apresentado():
             return
         painel = self._painel_resumos()
-        if painel is None or resumo is None:
+        if painel is None:
+            return
+        if resumo is None:
+            if avaliacao is not None:
+                painel.refletir_guidance(arquivo, avaliacao)
             return
         if getattr(self, "_resumos_persistir_worker", False):
-            painel.refletir_resumo(arquivo, resumo)
+            painel.refletir_resumo(arquivo, resumo, avaliacao)
         else:
-            painel.aplicar_resumo(arquivo, resumo)
+            painel.aplicar_resumo(arquivo, resumo, avaliacao)
         self._resumos_resumidos = getattr(self, "_resumos_resumidos", 0) + 1
 
     def _interromper_resumos(self: "ResumosActionsMixin", evento: Erro) -> None:

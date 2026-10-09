@@ -18,7 +18,7 @@ from flowscope.application.document_preview import (
 from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
-from flowscope.domain.fii import Guidance
+from flowscope.domain.fii import AvaliacaoGuidance, Guidance
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
 from flowscope.presentation.gui.background.job import JobHandle, Politica
@@ -67,11 +67,13 @@ class _PainelFake:
         falha_preparar=None,
         falha_resumir=None,
         falha_guidance=None,
+        avaliacao=None,
     ):
         self._textos = textos
         self._falha_preparar = falha_preparar
         self._falha_resumir = falha_resumir
         self._falha_guidance = falha_guidance
+        self._avaliacao = avaliacao
         self.preparados: list[str] = []
         self.gerados: list[str] = []
         self.guidances: list[tuple] = []
@@ -97,6 +99,7 @@ class _PainelFake:
         if self._falha_guidance == arquivo.nome:
             raise RuntimeError("guidance falhou")
         self.guidances.append((arquivo.nome, texto, resumo))
+        return self._avaliacao
 
 
 class TestResumosPendentes:
@@ -195,6 +198,22 @@ class TestGuidanceNoLote:
         assert [r.dados.nome for r in resultados] == ["10.pdf", "20.pdf"]
         assert [g[0] for g in painel.guidances] == ["10.pdf"]
 
+    def test_resultado_carrega_avaliacao_de_guidance(self):
+        arquivos = [_arquivo("10.pdf")]
+        avaliacao = AvaliacaoGuidance(
+            metodo="ia", data_relatorio=date(2026, 2, 1)
+        )
+        painel = _PainelFake({"10.pdf": "texto"}, avaliacao=avaliacao)
+        ctx, eventos = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert resultados[0].valor == (
+            ResumoDocumento("curto", "longo"),
+            avaliacao,
+        )
+
 
 class _PainelPersistente(_PainelFake):
     """Painel fake que grava no worker e opcionalmente cancela após cada item."""
@@ -227,7 +246,7 @@ class TestPersistenciaNoWorker:
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert set(store) == {"10.pdf", "20.pdf"}
         for evento in resultados:
-            assert store[evento.dados.nome] is evento.valor
+            assert store[evento.dados.nome] is evento.valor[0]
 
     def test_cancelamento_preserva_resumos_ja_gerados(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf"), _arquivo("30.pdf")]
@@ -282,7 +301,7 @@ class _PainelComGuidance(_PainelFake):
         )
 
     def avaliar_guidance(self, arquivo, texto, resumo=None):
-        self.service.avaliar(arquivo, texto, resumo)
+        return self.service.avaliar(arquivo, texto, resumo)
 
 
 def _arquivo_relatorio(nome: str) -> DocumentoArquivo:

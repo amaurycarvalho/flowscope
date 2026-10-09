@@ -1,38 +1,4 @@
-# documentos-ticker-panel Specification
-
-## Purpose
-
-Disponibilizar uma sub-aba na "Análise do Ticker" para navegar, pré-visualizar e abrir os documentos em cache relacionados ao ticker selecionado.
-
-## Requirements
-
-### Requirement: Sub-aba "Documentos" na Análise do Ticker
-
-O sistema DEVE adicionar a sub-aba "Documentos" à "Análise do Ticker". Ao se tornar ativa, a sub-aba DEVE carregar o catálogo de documentos do ticker apresentado e exibir a árvore correspondente.
-
-#### Scenario: Sub-aba disponível
-- **WHEN** o usuário navega para a "Análise do Ticker"
-- **THEN** a sub-aba "Documentos" DEVE estar disponível
-
-#### Scenario: Ativação carrega o catálogo
-- **WHEN** a sub-aba "Documentos" se torna ativa para o ticker apresentado
-- **THEN** a árvore DEVE ser montada a partir do catálogo do ticker
-
-#### Scenario: Ticker sincronizado com a Evolução dos Fundamentos
-- **WHEN** há um ticker fixado na sub-aba "Evolução dos Fundamentos"
-- **THEN** a sub-aba "Documentos" DEVE carregar o catálogo desse mesmo ticker
-
-### Requirement: Árvore hierárquica de documentos
-
-A sub-aba DEVE exibir uma árvore com o nome do ticker no topo e, abaixo, os níveis de ano, mês e categoria, e por fim os arquivos. Pastas DEVEM expandir e recolher; somente arquivos DEVEM abrir.
-
-#### Scenario: Estrutura da árvore
-- **WHEN** o catálogo do ticker contém documentos em `2026/02/aviso-aos-acionistas`
-- **THEN** a árvore DEVE exibir o ticker, o ano, o mês, a categoria e os arquivos nessa ordem
-
-#### Scenario: Duplo-clique em pasta
-- **WHEN** o usuário dá duplo-clique em um nó de pasta
-- **THEN** a pasta DEVE expandir ou recolher, sem abrir arquivo
+## MODIFIED Requirements
 
 ### Requirement: Pré-visualização textual
 
@@ -100,6 +66,10 @@ Quando a extração resultar parcial (ao menos uma página não extraída), a pr
 - **WHEN** o resumo em lote processa um PDF protegido
 - **THEN** o sistema NÃO DEVE abrir diálogo de senha e DEVE pular o documento
 
+#### Scenario: Documento com resumo longo
+- **WHEN** o documento selecionado tem `long_summary` preenchido
+- **THEN** a caixa DEVE exibir o `long_summary`, seguido de linha em branco, `---`, linha em branco e o texto integral do documento
+
 #### Scenario: RG com guidance intercala o texto
 - **WHEN** o usuário seleciona um Relatório Gerencial com guidance avaliado
 - **THEN** a caixa DEVE exibir o `long_summary`, uma linha em branco, o texto do guidance, uma linha em branco, `---`, uma linha em branco e o texto integral do documento
@@ -111,10 +81,6 @@ Quando a extração resultar parcial (ao menos uma página não extraída), a pr
 #### Scenario: Documento de outra categoria não exibe guidance
 - **WHEN** o usuário seleciona um documento que não é um Relatório Gerencial e existe guidance no ledger do ticker
 - **THEN** a caixa NÃO DEVE exibir o item de guidance
-
-#### Scenario: Documento com resumo longo
-- **WHEN** o documento selecionado tem `long_summary` preenchido
-- **THEN** a caixa DEVE exibir o `long_summary`, seguido de linha em branco, `---`, linha em branco e o texto integral do documento
 
 #### Scenario: Texto lido do cache
 - **WHEN** o texto de um documento já está em cache e o documento é selecionado
@@ -139,205 +105,6 @@ Quando a extração resultar parcial (ao menos uma página não extraída), a pr
 #### Scenario: Lote recompõe o preview com o guidance
 - **WHEN** o resumo em lote é aplicado ao documento atualmente selecionado e há guidance avaliado para ele
 - **THEN** a pré-visualização recomposta DEVE incluir o item de guidance
-
-### Requirement: Abertura no aplicativo padrão
-
-O sistema DEVE abrir o arquivo selecionado no aplicativo padrão do sistema operacional — PDF no leitor de PDFs e HTML no navegador — por duplo-clique, pela tecla Enter ou pelo botão "Abrir documento". O botão "Abrir documento" DEVE permanecer desabilitado enquanto nenhum arquivo estiver selecionado, habilitando-se apenas quando um documento for selecionado.
-
-#### Scenario: Abrir PDF
-- **WHEN** o usuário dá duplo-clique em um arquivo PDF
-- **THEN** o arquivo DEVE ser aberto no leitor de PDFs padrão do sistema
-
-#### Scenario: Abrir HTML
-- **WHEN** o usuário dá duplo-clique em um arquivo HTML
-- **THEN** o arquivo DEVE ser aberto no navegador padrão do sistema
-
-#### Scenario: Abrir pela tecla ou botão
-- **WHEN** o usuário pressiona Enter ou clica em "Abrir documento" com um arquivo selecionado
-- **THEN** o arquivo DEVE ser aberto no aplicativo padrão correspondente ao seu tipo
-
-#### Scenario: Botão desabilitado sem documento selecionado
-- **WHEN** nenhum arquivo está selecionado ou uma pasta está selecionada
-- **THEN** o botão "Abrir documento" DEVE estar desabilitado
-
-### Requirement: Estado vazio e atualização
-
-A sub-aba DEVE exibir uma mensagem informativa quando o ticker não tem documentos em cache e DEVE oferecer um controle para atualizar o catálogo. Ao acionar o controle, o sistema DEVE adquirir os documentos do ticker (quando houver aquisição disponível), executar o housekeeping de deduplicação por conteúdo do ticker e remontar a árvore do catálogo.
-
-#### Scenario: Ticker sem documentos
-- **WHEN** o ticker selecionado não tem documentos em cache
-- **THEN** a sub-aba DEVE exibir mensagem de ausência de documentos
-
-#### Scenario: Atualização manual
-- **WHEN** o usuário aciona o controle de atualização
-- **THEN** o sistema DEVE adquirir os documentos do ticker (quando disponível), executar o housekeeping de deduplicação por conteúdo e remontar a árvore do ticker
-
-#### Scenario: Deduplicação no Atualizar
-- **WHEN** o ticker tem documentos em cache com o mesmo conteúdo, em datas ou raízes diferentes
-- **THEN** após o "Atualizar" apenas o registro mais antigo DEVE permanecer na árvore
-
-### Requirement: Seletor de modelo ativo e botão de configuração na barra de documentos
-
-A sub-aba "Documentos" DEVE exibir, na barra de controles e imediatamente após o botão "Abrir documento", um combobox com os provedores ativos e a opção `None` e, logo após, um botão de configuração com o ícone `ai-properties.png`. O botão "I.A." textual NÃO DEVE mais existir. O combobox e o botão DEVEM estar disponíveis independentemente de haver documentos em cache ou ticker selecionado, pois a configuração de LLM é global. Trocar o item do combobox DEVE persistir imediatamente o novo provedor ativo e reavaliar o estado dos resumos; acionar o botão DEVE abrir o diálogo de configuração de LLM. Durante processamentos, o combobox e o botão DEVEM ser desabilitados e restaurados ao estado anterior, junto com os demais controles do painel.
-
-#### Scenario: Botão disponível na barra
-
-- **WHEN** o usuário navega para a sub-aba "Documentos"
-- **THEN** o combobox de modelo ativo DEVE ser exibido imediatamente após o botão "Abrir documento" e o botão de configuração com ícone logo após o combobox
-
-#### Scenario: Acionamento abre o diálogo de configuração
-
-- **WHEN** o usuário clica no botão de configuração com ícone
-- **THEN** o diálogo de configuração de LLM DEVE ser aberto
-
-#### Scenario: Botão disponível sem documentos
-
-- **WHEN** o ticker não tem documentos em cache ou nenhum ticker está selecionado
-- **THEN** o combobox e o botão de configuração DEVEM permanecer habilitados
-
-#### Scenario: Botão desabilitado durante cargas de dados
-
-- **WHEN** uma carga de dados ou um resumo em lote está em andamento
-- **THEN** o combobox e o botão de configuração DEVEM ser desabilitados junto com os demais controles do painel e restaurados ao término
-
-#### Scenario: Troca de modelo pelo combobox
-
-- **WHEN** o usuário seleciona um provedor ativo no combobox
-- **THEN** o provedor ativo DEVE ser persistido e o estado do botão "Resumir pendentes" DEVE ser reavaliado
-
-### Requirement: Lista Markdown do agrupamento
-
-Ao selecionar um nó de agrupamento da árvore (ticker, ano, mês ou categoria), o sistema DEVE exibir no campo de texto uma lista textual, em Markdown, de todos os documentos contidos nesse agrupamento. O agrupamento selecionado DEVE ser o cabeçalho de nível `#` e cada sub-agrupamento contido DEVE incrementar o nível (`##`, `###`, ...). Cada documento DEVE aparecer como um item de lista seguido do seu `short_summary`.
-
-#### Scenario: Agrupamento do ticker selecionado
-- **WHEN** o usuário seleciona o nó do ticker
-- **THEN** o campo de texto DEVE exibir o ticker como `#`, os anos como `##`, os meses como `###`, as categorias como `####` e os documentos como itens de lista com seus resumos curtos
-
-#### Scenario: Agrupamento de categoria selecionado
-- **WHEN** o usuário seleciona um nó de categoria
-- **THEN** a categoria DEVE ser o cabeçalho de nível `#` e os documentos contidos DEVEM aparecer como itens de lista com seus resumos curtos
-
-#### Scenario: Documento sem resumo curto na lista
-- **WHEN** um documento da lista não tem `short_summary` preenchido
-- **THEN** o item DEVE exibir a mensagem de resumo indisponível definida pela regra de indisponibilidade
-
-### Requirement: Mensagem de indisponibilidade de resumo
-
-Quando um resumo não estiver preenchido, o sistema DEVE exibir `Resumo indisponível.` seguido de ` Clique no documento para análise.` se a LLM estiver configurada, ou seguido de ` Configure a LLM pelo botão de configuração e teste a comunicação.` caso contrário. A LLM DEVE ser considerada configurada quando o provedor for diferente de `none` e as dependências `[llm]` estiverem presentes.
-
-#### Scenario: LLM configurada
-
-- **WHEN** o resumo está ausente e a LLM está configurada
-- **THEN** a mensagem DEVE orientar clicar no documento para análise
-
-#### Scenario: LLM não configurada
-
-- **WHEN** o resumo está ausente e a LLM não está configurada
-- **THEN** a mensagem DEVE ser `Resumo indisponível. Configure a LLM pelo botão de configuração e teste a comunicação.`
-
-### Requirement: Geração de resumo sob demanda
-
-Ao selecionar um documento sem `long_summary` com a LLM configurada, o sistema DEVE enviar o texto integral do documento ao serviço de resumo, persistir o `short_summary` e o `long_summary` resultantes no catálogo do documento e exibir a pré-visualização composta. A geração DEVE ocorrer fora da thread da interface, com estado de carregamento, e resultados de seleções anteriores DEVEM ser descartados quando a seleção mudar. Quando não houver texto extraível para o documento, o sistema NÃO DEVE gerar resumo nem chamar a LLM, exibindo o marcador de ausência de texto.
-
-#### Scenario: Documento sem resumo com LLM configurada
-- **WHEN** o usuário seleciona um documento sem `long_summary` e a LLM está configurada
-- **THEN** o sistema DEVE gerar os dois resumos, persistí-los e exibir o `long_summary` seguido de `---` e do texto do documento
-
-#### Scenario: Resumo gerado fica disponível na lista
-- **WHEN** o resumo de um documento é gerado
-- **THEN** uma seleção posterior do agrupamento DEVE exibir o `short_summary` desse documento
-
-#### Scenario: Resultado obsoleto descartado
-- **WHEN** o usuário troca a seleção enquanto um resumo é gerado
-- **THEN** o resultado da geração anterior NÃO DEVE ser exibido para a nova seleção
-
-#### Scenario: LLM não configurada
-- **WHEN** o usuário seleciona um documento sem `long_summary` e a LLM não está configurada
-- **THEN** o sistema DEVE exibir a mensagem de indisponibilidade como `long_summary`, sem chamar a LLM
-
-#### Scenario: Falha na geração
-- **WHEN** a geração do resumo falha por indisponibilidade, comunicação, provedor ou cota
-- **THEN** o sistema DEVE exibir a mensagem de indisponibilidade, sem interromper a interface
-
-#### Scenario: Sem texto extraível não gera resumo
-- **WHEN** o documento não tem texto extraível e a LLM está configurada
-- **THEN** o sistema NÃO DEVE chamar a LLM nem persistir resumo, exibindo o marcador de ausência de texto
-
-### Requirement: Campo de texto somente-leitura com atalhos e cursor
-
-O campo de texto DEVE permanecer somente-leitura, impedindo alterações de conteúdo, e ao mesmo tempo DEVE aceitar os atalhos de teclado de seleção e cópia (Ctrl+A, Ctrl+C, Shift+setas) e a navegação pelo teclado, exibindo o cursor de foco. A seleção com o mouse DEVE continuar funcionando. O atalho Ctrl+A DEVE ser vinculado explicitamente ao campo, independentemente do mapeamento padrão do toolkit.
-
-#### Scenario: Selecionar tudo com Ctrl+A
-- **WHEN** o campo de texto está focado e o usuário pressiona Ctrl+A
-- **THEN** todo o conteúdo DEVE ser selecionado
-
-#### Scenario: Ctrl+A independente do toolkit
-- **WHEN** o atalho padrão de "selecionar tudo" do toolkit não estiver associado a Ctrl+A (ex.: X11, onde `<<SelectAll>>` é Ctrl+barra)
-- **THEN** Ctrl+A DEVE ainda selecionar todo o conteúdo do campo
-
-#### Scenario: Cópia com Ctrl+C
-- **WHEN** o usuário pressiona Ctrl+C com texto selecionado
-- **THEN** a seleção DEVE ser copiada para a área de transferência
-
-#### Scenario: Cursor visível
-- **WHEN** o campo de texto recebe o foco
-- **THEN** o cursor de inserção DEVE ser visível
-
-#### Scenario: Edição bloqueada
-- **WHEN** o usuário pressiona uma tecla que alteraria o conteúdo (ex.: uma letra)
-- **THEN** o conteúdo DEVE permanecer inalterado
-
-### Requirement: Cópia do conteúdo da pré-visualização
-
-Quando a sub-aba "Documentos" estiver ativa, o botão "Copiar dados CSV" DEVE copiar o conteúdo atual do campo de texto da pré-visualização para a área de transferência e DEVE estar habilitado nessa sub-aba mesmo sem dados da B3 carregados. Nas demais sub-abas, o botão DEVE preservar o comportamento de cópia de CSV.
-
-#### Scenario: Documentos ativa copia a pré-visualização
-- **WHEN** a sub-aba "Documentos" está ativa e o usuário aciona o botão "Copiar dados CSV"
-- **THEN** o conteúdo atual do campo de texto DEVE ser copiado para a área de transferência
-
-#### Scenario: Botão habilitado em Documentos sem dados
-- **WHEN** o usuário entra na sub-aba "Documentos" sem dados da B3 carregados
-- **THEN** o botão "Copiar dados CSV" DEVE estar habilitado
-
-#### Scenario: Outra sub-aba mantém a cópia de CSV
-- **WHEN** a sub-aba ativa não é "Documentos" e o usuário aciona o botão "Copiar dados CSV"
-- **THEN** o CSV do contexto atual DEVE ser copiado
-
-### Requirement: Persistência da configuração de I.A.
-
-O botão "Salvar" do diálogo de configuração de I.A. DEVE gravar a última configuração de `llm.chat` e fechar o diálogo. A configuração DEVE permanecer no arquivo após o fechamento da aplicação, DEVE ser recarregada para uso do sistema no próximo início e DEVE aparecer preenchida quando o diálogo for reaberto. A gravação das preferências da interface NÃO DEVE sobrescrever o bloco `llm`.
-
-#### Scenario: Salvar fecha o diálogo
-- **WHEN** o usuário aciona "Salvar" no diálogo de I.A.
-- **THEN** a configuração DEVE ser gravada e o diálogo DEVE ser fechado
-
-#### Scenario: Reabertura mostra a última configuração
-- **WHEN** o diálogo de I.A. é reaberto após um salvamento
-- **THEN** os campos DEVEM exibir os últimos valores salvos
-
-#### Scenario: Configuração sobrevive ao fechamento da aplicação
-- **WHEN** a aplicação é fechada após salvar a configuração de I.A.
-- **THEN** o bloco `llm.chat` DEVE permanecer no arquivo e ser recarregado no próximo início
-
-### Requirement: Rolagem vertical na árvore e na pré-visualização
-
-A árvore de documentos e o campo de texto da pré-visualização DEVEM exibir uma barra de rolagem vertical visível e funcional, inclusive quando o painel for mais estreito que a largura requisitada pelo conteúdo. A rolagem vertical DEVE funcionar pela barra e pela roda do mouse.
-
-#### Scenario: Barra visível na árvore
-- **WHEN** a sub-aba "Documentos" exibe a árvore
-- **THEN** a barra de rolagem vertical da árvore DEVE estar visível e mapeada
-
-#### Scenario: Barra visível na pré-visualização
-- **WHEN** a sub-aba "Documentos" exibe o campo de texto
-- **THEN** a barra de rolagem vertical do campo DEVE estar visível e mapeada
-
-#### Scenario: Painel estreito não oculta a barra
-- **WHEN** o painel da árvore ou da pré-visualização é mais estreito que a largura requisitada pelo conteúdo
-- **THEN** a barra de rolagem vertical DEVE permanecer visível
-
-#### Scenario: Rolagem pela roda do mouse
-- **WHEN** o ponteiro está sobre a árvore ou sobre o campo de texto e o usuário usa a roda do mouse
-- **THEN** o conteúdo DEVE rolar verticalmente
 
 ### Requirement: Botão "Resumir pendentes" na barra de documentos
 
@@ -375,12 +142,12 @@ A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de con
 
 #### Scenario: Desabilitado sem pendentes
 
-- **WHEN** todos os documentos do ticker apresentado já têm `long_summary`
+- **WHEN** todos os documentos do ticker apresentado já têm `long_summary` e não há Relatório Gerencial pendente de guidance
 - **THEN** o botão "Resumir pendentes" DEVE estar desabilitado
 
 #### Scenario: Reavaliação quando o catálogo muda
 
-- **WHEN** o último documento pendente passa a ter `long_summary` por um resumo individual (sem troca de aba)
+- **WHEN** o último documento pendente passa a ter `long_summary` por um resumo individual (sem troca de aba) e não há RGs pendentes de guidance
 - **THEN** o botão "Resumir pendentes" DEVE ser reavaliado e ficar desabilitado
 
 #### Scenario: Reavaliação após salvar a configuração
@@ -423,7 +190,7 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 - **THEN** a fase "preparar texto" DEVE ter sido exibida na barra de status antes de "resumir", ainda que por tempo mínimo
 
 #### Scenario: Documento já resumido é pulado
-- **WHEN** um documento do ticker já tem `long_summary`
+- **WHEN** um documento do ticker já tem `long_summary` e não é um RG pendente de guidance
 - **THEN** ele NÃO DEVE ser reprocessado no lote
 
 #### Scenario: Documento sem texto extraível é pulado
@@ -469,41 +236,3 @@ Enquanto um resumo em lote estiver em andamento, o estado derivado do botão "Re
 #### Scenario: Desabilitado ao término sem pendentes restantes
 - **WHEN** o lote conclui e todos os documentos do ticker já têm `long_summary` e não há RGs pendentes de guidance
 - **THEN** o botão "Resumir pendentes" DEVE permanecer desabilitado
-
-### Requirement: Leitura do catálogo fora da thread da interface
-
-O sistema DEVE ler o catálogo de documentos do ticker fora da thread da interface e montar a árvore a partir de um evento na thread do Tk. Enquanto a leitura ocorre, a sub-aba DEVE exibir um estado de carregamento, e a thread do Tk DEVE permanecer responsiva. Trocar de ticker ou acionar a atualização DEVE descartar a leitura anterior em favor da mais recente.
-
-#### Scenario: Ativação com estado de carregamento
-- **WHEN** a sub-aba "Documentos" se torna ativa para o ticker apresentado
-- **THEN** a leitura do catálogo DEVE ocorrer fora da thread da interface e a árvore DEVE ser montada por evento ao concluir
-
-#### Scenario: Interface responsiva durante a varredura
-- **WHEN** a varredura do catálogo de um ticker com muitos documentos está em andamento
-- **THEN** a thread do Tk DEVE continuar processando eventos
-
-#### Scenario: Cache frio resulta em estado vazio
-- **WHEN** o ticker não tem documentos em cache
-- **THEN** a sub-aba DEVE exibir a mensagem de ausência de documentos, sem erro
-
-#### Scenario: Atualização manual relê em background
-- **WHEN** o usuário aciona o controle de atualização
-- **THEN** a nova varredura DEVE ocorrer fora da thread da interface e remontar a árvore por evento
-
-#### Scenario: Troca de ticker descarta leitura obsoleta
-- **WHEN** o ticker apresentado muda enquanto uma leitura de catálogo está em andamento
-- **THEN** o resultado da leitura anterior NÃO DEVE ser aplicado ao novo ticker
-
-### Requirement: Falha na pré-visualização sai do carregamento
-
-Quando a extração de texto ou a geração do resumo da pré-visualização de um documento falhar, o sistema DEVE abandonar o estado de carregamento e exibir uma mensagem informativa na caixa de pré-visualização, sem permanecer "Carregando…" indefinidamente e sem erro fatal. O desfecho da pré-visualização de um documento que já não está mais selecionado NÃO DEVE alterar a caixa.
-
-#### Scenario: Falha de extração ou resumo exibe mensagem
-
-- **WHEN** o trabalho de pré-visualização falha ao extrair o texto ou ao gerar o resumo
-- **THEN** a caixa de pré-visualização DEVE sair do estado de carregamento e exibir mensagem informativa
-
-#### Scenario: Falha de documento não selecionado é descartada
-
-- **WHEN** o trabalho de pré-visualização de um documento falha após o usuário selecionar outro documento
-- **THEN** o desfecho NÃO DEVE alterar a pré-visualização do documento atualmente selecionado

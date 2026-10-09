@@ -8,7 +8,7 @@ extrator determinístico, as estratégias de IA e a resolução da chave são
 injetados pelo ponto de composição.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 
 from flowscope.application.avaliar_guidance import (
@@ -20,6 +20,7 @@ from flowscope.application.guidance_port import GuidanceStore
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
+from flowscope.domain.fii.guidance import METODO_IA
 from flowscope.domain.llm import LLMPort
 
 #: Resolve a chave de conteúdo (hash) de um documento.
@@ -88,6 +89,44 @@ class GuidanceService:
             str(arquivo.caminho),
             fontes,
         )
+
+    def ia_disponivel(self: "GuidanceService") -> bool:
+        """Indica se a avaliação de guidance pela IA está disponível."""
+        return self._avaliador.ia_disponivel()
+
+    def pendente(self: "GuidanceService", arquivo: DocumentoArquivo) -> bool:
+        """Indica se o RG carece de avaliação de guidance pela IA.
+
+        Um RG é pendente quando a IA está disponível e sua entrada no ledger
+        está ausente ou não foi marcada como `ia`. Não avalia nem grava.
+        """
+        return bool(self.pendentes([arquivo]))
+
+    def pendentes(
+        self: "GuidanceService", arquivos: Iterable[DocumentoArquivo]
+    ) -> list[DocumentoArquivo]:
+        """Filtra os RGs pendentes de avaliação de guidance pela IA.
+
+        Lê o ledger no máximo uma vez por ticker; devolve ``[]`` quando a IA
+        não está disponível. Não avalia nem altera o ledger.
+        """
+        if not self.ia_disponivel():
+            return []
+        candidatos = [
+            arquivo
+            for arquivo in arquivos
+            if arquivo.categoria == CATEGORIA_RELATORIO
+            and _data_do_arquivo(arquivo) is not None
+        ]
+        entradas: dict[str, Mapping[str, AvaliacaoGuidance]] = {}
+        pendentes: list[DocumentoArquivo] = []
+        for arquivo in candidatos:
+            if arquivo.ticker not in entradas:
+                entradas[arquivo.ticker] = self._store.avaliacoes(arquivo.ticker)
+            avaliacao = entradas[arquivo.ticker].get(self._chave_rg(arquivo))
+            if avaliacao is None or avaliacao.metodo != METODO_IA:
+                pendentes.append(arquivo)
+        return pendentes
 
 
 def _data_do_arquivo(arquivo: DocumentoArquivo) -> date | None:

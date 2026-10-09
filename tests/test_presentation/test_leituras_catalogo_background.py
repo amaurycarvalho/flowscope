@@ -257,7 +257,9 @@ class TestLeituraDocumentosBackground:
         host._documents_panel.mostrar_carregando.assert_called_once_with("ALZR11")
         _drenar(background)
         host._documents_panel.aplicar_catalogo.assert_called_once_with(
-            "ALZR11", host._documents_panel.carregar_catalogo.return_value
+            "ALZR11",
+            host._documents_panel.carregar_catalogo.return_value,
+            host._documents_panel.carregar_pendentes_guidance.return_value,
         )
 
     def test_troca_de_ticker_descarta_leitura_obsoleta(self):
@@ -279,7 +281,9 @@ class TestLeituraDocumentosBackground:
         _drenar(background)
 
         host._documents_panel.aplicar_catalogo.assert_called_once_with(
-            "PETR4", "cat-PETR4"
+            "PETR4",
+            "cat-PETR4",
+            host._documents_panel.carregar_pendentes_guidance.return_value,
         )
 
     def test_sem_ticker_aplica_estado_vazio(self):

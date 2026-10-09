@@ -23,6 +23,7 @@ from flowscope.application.documentos.lote import (
 )
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.fii import AvaliacaoGuidance
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 
@@ -58,8 +59,8 @@ class _PainelDocumentos(PainelLote, Protocol):
         arquivo: DocumentoArquivo,
         texto: str,
         resumo: ResumoDocumento | None = None,
-    ) -> None:
-        """Avalia o guidance do documento, tolerando falhas."""
+    ) -> AvaliacaoGuidance | None:
+        """Avalia o guidance do documento, devolvendo a avaliação ou ``None``."""
         ...
 
 
@@ -143,14 +144,15 @@ def _avaliar_guidance(
     arquivo: DocumentoArquivo,
     texto: str,
     resumo: ResumoDocumento | None,
-) -> None:
-    """Avalia o guidance sem interromper o lote em caso de falha."""
+) -> AvaliacaoGuidance | None:
+    """Avalia o guidance devolvendo o resultado, sem interromper o lote."""
     try:
-        painel.avaliar_guidance(arquivo, texto, resumo)
+        return painel.avaliar_guidance(arquivo, texto, resumo)
     except Exception:  # falha isolada não deve abortar o lote
         logger.warning(
             "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
         )
+        return None
 
 
 def _resumir(
@@ -171,8 +173,8 @@ def _resumir(
             if not continuar_em_erro:
                 return
             continue
-        _avaliar_guidance(painel, arquivo, texto, resumo)
-        ctx.resultado(valor=resumo, dados=arquivo)
+        avaliacao = _avaliar_guidance(painel, arquivo, texto, resumo)
+        ctx.resultado(valor=(resumo, avaliacao), dados=arquivo)
         _progresso(ctx, 2, indice, total)
 
 

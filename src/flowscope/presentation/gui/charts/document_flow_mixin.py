@@ -16,8 +16,11 @@ from flowscope.application.document_preview import (
     extrair_arquivo,
     tem_texto,
 )
+from flowscope.application.fundamental.linhas import formatar_guidance
 from flowscope.application.resumo_documento import ResumoDocumento
-from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
+from flowscope.domain.fii import AvaliacaoGuidance
+from flowscope.domain.fii.guidance import METODO_IA
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
@@ -41,6 +44,19 @@ GRUPO_PREVIEW = "preview"
 MAX_TENTATIVAS_SENHA = 3
 
 
+def _documentos_do_catalogo(
+    catalogo: CatalogoTicker,
+) -> list[DocumentoArquivo]:
+    """Achata a hierarquia do catálogo na lista de arquivos."""
+    return [
+        arquivo
+        for ano in catalogo.anos
+        for mes in ano.meses
+        for categoria in mes.categorias
+        for arquivo in categoria.arquivos
+    ]
+
+
 class DocumentFlowMixin:
     """Extrai texto, gera resumo e compõe a pré-visualização do documento."""
 
@@ -54,10 +70,56 @@ class DocumentFlowMixin:
             if arquivo.long_summary is None
         ]
 
+    def carregar_pendentes_guidance(
+        self: "DocumentFlowMixin",
+        ticker: str | None,
+        catalogo: CatalogoTicker | None,
+    ) -> frozenset:
+        """Resolve os RGs já resumidos pendentes de avaliação de guidance.
+
+        Considera apenas os documentos da categoria ``Relatorio`` (própria de
+        FIIs), filtrados pelo serviço de guidance quanto à IA e ao ledger; por
+        consultar o ledger, é seguro apenas fora da thread do Tk (no worker de
+        leitura do catálogo). Não toca em widgets.
+        """
+        servico = getattr(self, "_guidance", None)
+        if servico is None or not ticker or catalogo is None:
+            return frozenset()
+        documentos = [
+            arquivo
+            for arquivo in _documentos_do_catalogo(catalogo)
+            if arquivo.long_summary is not None
+        ]
+        try:
+            pendentes = servico.pendentes(documentos)
+        except Exception:  # ledger ilegível não deve bloquear o painel
+            logger.warning(
+                "Falha ao consultar guidance pendente de %s",
+                ticker,
+                exc_info=True,
+            )
+            return frozenset()
+        return frozenset(arquivo.caminho for arquivo in pendentes)
+
+    def documentos_pendentes_guidance(
+        self: "DocumentFlowMixin",
+    ) -> list[DocumentoArquivo]:
+        """Retorna os RGs já resumidos pendentes de guidance do catálogo."""
+        pendentes = getattr(self, "_guidance_pendentes", frozenset())
+        if not pendentes:
+            return []
+        return [
+            arquivo
+            for arquivo in self._itens.values()
+            if arquivo.caminho in pendentes
+        ]
+
     def resumir_habilitado(self: "DocumentFlowMixin") -> bool:
         """Indica se o botão "Resumir pendentes" deve estar habilitado.
 
-        Decisão pura, sem tocar em widgets: verificável sem ``DISPLAY``.
+        Decisão pura, sem tocar em widgets: verificável sem ``DISPLAY``. Habilita
+        quando há documentos sem resumo ou, para ticker FII com IA ativa, RGs
+        já resumidos pendentes de avaliação de guidance.
         """
         em_andamento = (
             self._resumir_ativo_callback() if self._resumir_ativo_callback else False
@@ -65,7 +127,10 @@ class DocumentFlowMixin:
         return (
             not em_andamento
             and self._summary.disponivel()
-            and bool(self.documentos_sem_resumo())
+            and bool(
+                self.documentos_sem_resumo()
+                or self.documentos_pendentes_guidance()
+            )
         )
 
     def refresh_resumir_button(self: "DocumentFlowMixin") -> None:
@@ -241,9 +306,10 @@ class DocumentFlowMixin:
         resumo = (
             self._summary.gerar(arquivo, resultado.texto) if precisa else None
         )
+        avaliacao = None
         if self._precisa_guidance(arquivo):
-            self.avaliar_guidance(arquivo, resultado.texto, resumo)
-        ctx.resultado(valor=(resultado, precisa, resumo))
+            avaliacao = self.avaliar_guidance(arquivo, resultado.texto, resumo)
+        ctx.resultado(valor=(resultado, precisa, resumo, avaliacao))
 
     def _precisa_guidance(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo
@@ -265,22 +331,25 @@ class DocumentFlowMixin:
         arquivo: DocumentoArquivo,
         texto: str | None,
         resumo: ResumoDocumento | None = None,
-    ) -> None:
+    ) -> AvaliacaoGuidance | None:
         """Avalia o guidance do documento, tolerando falhas.
 
         Aplica o gatilho de categoria e a cascata de fontes por meio do serviço
-        de guidance; é seguro chamar fora da thread do Tk e a partir do
-        processamento em lote.
+        de guidance, devolvendo a avaliação registrada (ou ``None`` quando não
+        há serviço, o documento não é um Relatório Gerencial ou a avaliação
+        falha); é seguro chamar fora da thread do Tk e a partir do processamento
+        em lote.
         """
         servico = getattr(self, "_guidance", None)
         if servico is None:
-            return
+            return None
         try:
-            servico.avaliar(arquivo, texto, resumo)
+            return servico.avaliar(arquivo, texto, resumo)
         except Exception:  # falha de avaliação não deve derrubar a thread
             logger.warning(
                 "Falha ao avaliar guidance de %s", arquivo.caminho, exc_info=True
             )
+            return None
 
     def _aplicar_preview(
         self: "DocumentFlowMixin",
@@ -288,22 +357,30 @@ class DocumentFlowMixin:
         resultado: ExtracaoTexto,
         precisa_resumo: bool,
         resumo: ResumoDocumento | None = None,
+        avaliacao: AvaliacaoGuidance | None = None,
     ) -> None:
         """Cacheia o texto e exibe a pré-visualização se o arquivo seguir selecionado.
 
-        Recebe o resultado da extração, a decisão de resumo e o resumo gerado
-        pelo worker. Um PDF protegido dispara a solicitação de senha (quando
-        interativo). Um documento já resumido tem ``precisa_resumo`` falso e
-        reutiliza o resumo em memória; quando o resumo era necessário mas a
-        geração falhou, exibe a mensagem de indisponibilidade.
+        Recebe o resultado da extração, a decisão de resumo, o resumo gerado e
+        a avaliação de guidance pelo worker. Um PDF protegido dispara a
+        solicitação de senha (quando interativo). Um documento já resumido tem
+        ``precisa_resumo`` falso e reutiliza o resumo em memória; quando o
+        resumo era necessário mas a geração falhou, exibe a mensagem de
+        indisponibilidade. O texto de guidance é derivado da avaliação do RG,
+        quando houver.
         """
         if self._arquivo_selecionado() is not arquivo:
             return
         if self._tentar_senha(arquivo, resultado):
             return
+        guidance_texto = self._guidance_texto(avaliacao)
         if resumo is not None:
             self._atualizar_resumo(self._summary.persistir(arquivo, resumo))
-            self._mostrar_documento(resultado.texto, resumo.long_summary)
+            self._mostrar_documento(
+                resultado.texto,
+                resumo.long_summary,
+                guidance_texto=guidance_texto,
+            )
             return
         long_summary = (
             self._summary.mensagem_indisponivel()
@@ -315,7 +392,23 @@ class DocumentFlowMixin:
             if resultado.status is StatusExtracao.PARCIAL
             else None
         )
-        self._mostrar_documento(resultado.texto, long_summary, anotacao)
+        self._mostrar_documento(
+            resultado.texto, long_summary, anotacao, guidance_texto
+        )
+
+    @staticmethod
+    def _guidance_texto(
+        avaliacao: AvaliacaoGuidance | None,
+    ) -> str | None:
+        """Deriva o texto de guidance da avaliação, ou ``None`` quando ausente.
+
+        Documentos não-Relatório não têm avaliação e avaliações de ausência têm
+        ``guidance`` nulo: em ambos os casos não há item a exibir.
+        """
+        guidance = getattr(avaliacao, "guidance", None)
+        if guidance is None:
+            return None
+        return formatar_guidance(guidance)
 
     def _tentar_senha(
         self: "DocumentFlowMixin",
@@ -388,47 +481,92 @@ class DocumentFlowMixin:
         self: "DocumentFlowMixin",
         arquivo: DocumentoArquivo,
         resumo: ResumoDocumento,
+        avaliacao: AvaliacaoGuidance | None = None,
     ) -> None:
         """Grava o resumo e reflete-o no catálogo e na pré-visualização."""
         atualizado = self._summary.persistir(arquivo, resumo)
-        self._refletir_resumo(arquivo, resumo, atualizado)
+        self._refletir_resumo(arquivo, resumo, atualizado, avaliacao)
 
     def refletir_resumo(
         self: "DocumentFlowMixin",
         arquivo: DocumentoArquivo,
         resumo: ResumoDocumento,
+        avaliacao: AvaliacaoGuidance | None = None,
     ) -> None:
         """Reflete um resumo já persistido, sem regravar no store.
 
-        Usado pela thread do Tk quando a gravação ocorreu no worker do lote.
+        Usado pela thread do Tk quando a gravação ocorreu no worker do lote. A
+        avaliação de guidance do RG, quando presente, é propagada à
+        pré-visualização recomposta.
         """
-        self._refletir_resumo(arquivo, resumo, self._summary.atualizar(arquivo, resumo))
+        self._refletir_resumo(
+            arquivo, resumo, self._summary.atualizar(arquivo, resumo), avaliacao
+        )
 
     def _refletir_resumo(
         self: "DocumentFlowMixin",
         arquivo: DocumentoArquivo,
         resumo: ResumoDocumento,
         atualizado: DocumentoArquivo,
+        avaliacao: AvaliacaoGuidance | None = None,
     ) -> None:
         """Atualiza o catálogo em memória e recompõe a pré-visualização."""
         self._atualizar_resumo(atualizado)
         selecionado = self._arquivo_selecionado()
         if selecionado is not None and selecionado.caminho == arquivo.caminho:
             texto = self._texto_cacheado(arquivo) or ""
-            self._mostrar_documento(texto, resumo.long_summary)
+            self._mostrar_documento(
+                texto,
+                resumo.long_summary,
+                guidance_texto=self._guidance_texto(avaliacao),
+            )
+
+    def refletir_guidance(
+        self: "DocumentFlowMixin",
+        arquivo: DocumentoArquivo,
+        avaliacao: AvaliacaoGuidance | None,
+    ) -> None:
+        """Recompõe a pré-visualização de um RG já resumido com o guidance.
+
+        Usado quando o lote publica apenas a avaliação de guidance de um RG que
+        já tinha resumo (sem novo resumo); reutiliza o ``long_summary`` vigente
+        do documento em memória.
+        """
+        if avaliacao is not None and avaliacao.metodo == METODO_IA:
+            pendentes = getattr(self, "_guidance_pendentes", frozenset())
+            self._guidance_pendentes = pendentes - {arquivo.caminho}
+        selecionado = self._arquivo_selecionado()
+        if selecionado is None or selecionado.caminho != arquivo.caminho:
+            return
+        atual = getattr(self, "_por_caminho", {}).get(arquivo.caminho, arquivo)
+        texto = self._texto_cacheado(arquivo) or ""
+        self._mostrar_documento(
+            texto,
+            atual.long_summary,
+            guidance_texto=self._guidance_texto(avaliacao),
+        )
 
     def _mostrar_documento(
         self: "DocumentFlowMixin",
         texto: str,
         long_summary: str | None,
         anotacao: str | None = None,
+        guidance_texto: str | None = None,
     ) -> None:
-        """Compõe a pré-visualização do documento com o resumo longo."""
+        """Compõe a pré-visualização do documento com resumo e guidance.
+
+        As partes presentes (resumo longo e guidance) são intercaladas por uma
+        linha em branco e seguidas do separador ``---``; o guidance, quando
+        houver, fica imediatamente antes do separador na ausência de resumo.
+        Sem nenhuma das partes, exibe apenas o corpo.
+        """
         corpo = texto if tem_texto(texto) else SEM_TEXTO
         if anotacao:
             corpo = f"{anotacao}\n\n{corpo}"
-        if long_summary:
-            self._set_preview_text(f"{long_summary}\n\n---\n\n{corpo}")
+        partes = [parte for parte in (long_summary, guidance_texto) if parte]
+        if partes:
+            cabecalho = "\n\n".join(partes)
+            self._set_preview_text(f"{cabecalho}\n\n---\n\n{corpo}")
         else:
             self._set_preview_text(corpo)
 

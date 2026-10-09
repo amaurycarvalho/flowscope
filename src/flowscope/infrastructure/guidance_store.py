@@ -62,6 +62,12 @@ class JsonGuidanceStore:
         """Retorna a avaliação do RG identificado por ``chave``, ou ``None``."""
         return self._entradas(ticker).get(chave)
 
+    def avaliacoes(
+        self: "JsonGuidanceStore", ticker: str
+    ) -> dict[str, AvaliacaoGuidance]:
+        """Retorna uma cópia do mapa de avaliações do ticker, por chave."""
+        return dict(self._entradas(ticker))
+
     def salvar_avaliacao(
         self: "JsonGuidanceStore",
         ticker: str,

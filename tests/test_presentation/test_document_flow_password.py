@@ -177,7 +177,7 @@ class TestParcial:
         ctx, eventos = _contexto()
         host._trabalhar(ctx, _arquivo())
         assert host._summary.gerados == []
-        assert eventos == [Resultado(valor=(_PARCIAL, False, None))]
+        assert eventos == [Resultado(valor=(_PARCIAL, False, None, None))]
 
     def test_completo_gera_resumo(self):
         host = _Host()

@@ -6,6 +6,7 @@ consumido pelo serviço de avaliação, sem acoplar os consumidores à implement
 de infraestrutura.
 """
 
+from collections.abc import Mapping
 from typing import Protocol
 
 from flowscope.domain.fii.guidance import AvaliacaoGuidance, Guidance
@@ -22,6 +23,12 @@ class GuidanceStore(Protocol):
         self: "GuidanceStore", ticker: str, chave: str
     ) -> AvaliacaoGuidance | None:
         """Retorna a avaliação do Relatório Gerencial identificado por ``chave``."""
+        ...
+
+    def avaliacoes(
+        self: "GuidanceStore", ticker: str
+    ) -> Mapping[str, AvaliacaoGuidance]:
+        """Retorna o mapa das avaliações do ticker, por chave de conteúdo."""
         ...
 
     def salvar_avaliacao(

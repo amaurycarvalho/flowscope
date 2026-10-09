@@ -30,6 +30,7 @@ from flowscope.domain.fii import (
     TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClassificacaoExibicao,
+    Guidance,
     MargensFii,
     MetricasShort,
     classificar_exibicao,
@@ -172,11 +173,13 @@ def _mes_ano(data: date) -> str:
     return f"{_MESES_ABREVIADOS[data.month - 1]}/{data.year % 100:02d}"
 
 
-def _itens_guidance(analise: AnaliseFundamental) -> list[str]:
-    """Monta o item de guidance lido do cache, ou lista vazia quando ausente."""
-    guidance = analise.guidance
-    if guidance is None:
-        return []
+def formatar_guidance(guidance: Guidance) -> str:
+    """Formata o guidance no padrão da coluna ``Informações adicionais``.
+
+    Um valor único (``valor_min == valor_max``) é exibido sem a faixa; caso
+    contrário, exibe ``R$ mínimo a R$ máximo``. O período, quando presente, e o
+    mês/ano do relatório de origem compõem os detalhes entre parênteses.
+    """
     if guidance.valor_max == guidance.valor_min:
         valor = formatar_valor(guidance.valor_min)
     else:
@@ -189,7 +192,15 @@ def _itens_guidance(analise: AnaliseFundamental) -> list[str]:
         for parte in (guidance.periodo.strip(), _mes_ano(guidance.data_relatorio))
         if parte
     ]
-    return [f"Guidance R$ {valor}/cota ({', '.join(detalhes)})"]
+    return f"Guidance R$ {valor}/cota ({', '.join(detalhes)})"
+
+
+def _itens_guidance(analise: AnaliseFundamental) -> list[str]:
+    """Monta o item de guidance lido do cache, ou lista vazia quando ausente."""
+    guidance = analise.guidance
+    if guidance is None:
+        return []
+    return [formatar_guidance(guidance)]
 
 
 def _itens_bdr(analise: AnaliseFundamental) -> list[str]:

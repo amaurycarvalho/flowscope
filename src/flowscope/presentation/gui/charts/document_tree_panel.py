@@ -97,6 +97,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._itens: dict[str, DocumentoArquivo] = {}
         self._grupos: dict[str, Agrupamento] = {}
         self._por_caminho: dict[Path, DocumentoArquivo] = {}
+        self._guidance_pendentes: frozenset[Path] = frozenset()
         self._catalogo_atual: CatalogoTicker | None = None
         self._preview_cache: dict[Path, str] = {}
         self._current_ticker: str | None = None
@@ -247,10 +248,12 @@ class DocumentTreePanel(DocumentFlowMixin):
         self: "DocumentTreePanel",
         ticker: str | None,
         catalogo: CatalogoTicker | None,
+        pendentes_guidance: frozenset[Path] | None = None,
     ) -> None:
         """Aplica o catálogo lido, remontando a árvore na thread do Tk."""
         self._current_ticker = ticker
         self._limpar()
+        self._guidance_pendentes = frozenset(pendentes_guidance or ())
         if not ticker:
             self._show_empty("Selecione um ticker")
         elif catalogo is None or catalogo.vazio:
@@ -268,7 +271,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         A exibição é somente-leitura: nenhuma aquisição é acionada aqui. A
         aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
         """
-        self.aplicar_catalogo(ticker, self.carregar_catalogo(ticker))
+        catalogo = self.carregar_catalogo(ticker)
+        pendentes = self.carregar_pendentes_guidance(ticker, catalogo)
+        self.aplicar_catalogo(ticker, catalogo, pendentes)
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os controles do painel para o bloqueio global da interface."""
@@ -315,6 +320,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._view.limpar()
         self._catalogo_atual = None
         self._preview_cache.clear()
+        self._guidance_pendentes = frozenset()
         self._set_preview_text("")
         self._atualizar_botao_abrir()
 

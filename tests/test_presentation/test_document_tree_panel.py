@@ -20,7 +20,13 @@ from flowscope.application.cancellation import (
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.application.documentos.catalogo import ConsultarCatalogoUseCase
 from flowscope.application.documentos.document_summary import DocumentSummaryService
-from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.documents import (
+    AnoDocumentos,
+    CatalogoTicker,
+    CategoriaDocumentos,
+    DocumentoArquivo,
+    MesDocumentos,
+)
 from flowscope.domain.llm import LLMResposta
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
@@ -1020,6 +1026,130 @@ class TestResumirHabilitadoLote:
         painel.refresh_resumir_button()
         assert painel.documentos_sem_resumo()
         assert painel._resumir_btn.state == tk.DISABLED
+
+
+def _catalogo_com_rg(
+    caminho: Path, *, long_summary: str | None = "longo"
+) -> CatalogoTicker:
+    arquivo = DocumentoArquivo(
+        ticker="HGBS11",
+        ano=2026,
+        mes=2,
+        categoria="Relatorio",
+        nome=caminho.name,
+        tipo="pdf",
+        caminho=caminho,
+        long_summary=long_summary,
+    )
+    return CatalogoTicker(
+        "HGBS11",
+        (
+            AnoDocumentos(
+                2026,
+                (
+                    MesDocumentos(
+                        2,
+                        (CategoriaDocumentos("Relatorio", (arquivo,)),),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+
+class _GuidancePendenteFake:
+    """Serviço de guidance mínimo para a verificação de pendências."""
+
+    def __init__(self, pendentes, *, ia: bool = True) -> None:
+        self._pendentes = list(pendentes)
+        self._ia = ia
+        self.chamadas: list[list] = []
+
+    def ia_disponivel(self) -> bool:
+        return self._ia
+
+    def pendentes(self, arquivos):
+        self.chamadas.append(list(arquivos))
+        return list(self._pendentes)
+
+
+class TestCarregarPendentesGuidance:
+    def _painel(self, guidance):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._guidance = guidance
+        return painel
+
+    def test_fii_com_rg_pendente_retorna_caminho(self, tmp_path):
+        catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
+        arquivo = catalogo.anos[0].meses[0].categorias[0].arquivos[0]
+        guidance = _GuidancePendenteFake([arquivo])
+        painel = self._painel(guidance)
+
+        pendentes = painel.carregar_pendentes_guidance("HGBS11", catalogo)
+
+        assert pendentes == frozenset({arquivo.caminho})
+
+    def test_documento_sem_resumo_e_ignorado(self, tmp_path):
+        catalogo = _catalogo_com_rg(tmp_path / "10.pdf", long_summary=None)
+        guidance = _GuidancePendenteFake([])
+        painel = self._painel(guidance)
+
+        painel.carregar_pendentes_guidance("HGBS11", catalogo)
+
+        assert guidance.chamadas == [[]]
+
+    def test_sem_servico_retorna_vazio(self, tmp_path):
+        catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
+        painel = self._painel(None)
+
+        assert (
+            painel.carregar_pendentes_guidance("HGBS11", catalogo) == frozenset()
+        )
+
+    def test_erro_no_ledger_retorna_vazio(self, tmp_path):
+        catalogo = _catalogo_com_rg(tmp_path / "10.pdf")
+
+        class _Falha:
+            def pendentes(self, arquivos):
+                raise RuntimeError("ledger ilegível")
+
+        painel = self._painel(_Falha())
+
+        assert (
+            painel.carregar_pendentes_guidance("HGBS11", catalogo) == frozenset()
+        )
+
+
+class TestResumirHabilitadoGuidance:
+    def _host(self, tmp_path, *, disponivel=True, with_pending=True):
+        arquivo = replace(_arquivo(tmp_path), long_summary="longo")
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._itens = {"a": arquivo}
+        painel._por_caminho = {arquivo.caminho: arquivo}
+        painel._summary = _SummaryFake(disponivel)
+        painel._resumir_ativo_callback = None
+        painel._guidance_pendentes = (
+            frozenset({arquivo.caminho}) if with_pending else frozenset()
+        )
+        return painel
+
+    def test_habilita_com_rg_pendente_e_ia(self, tmp_path):
+        painel = self._host(tmp_path, disponivel=True, with_pending=True)
+        assert painel.resumir_habilitado() is True
+
+    def test_desabilitado_com_rg_pendente_sem_ia(self, tmp_path):
+        painel = self._host(tmp_path, disponivel=False, with_pending=True)
+        assert painel.resumir_habilitado() is False
+
+    def test_desabilitado_sem_pendentes(self, tmp_path):
+        painel = self._host(tmp_path, disponivel=True, with_pending=False)
+        assert painel.resumir_habilitado() is False
+
+    def test_documentos_pendentes_guidance_usa_o_catalogo(self, tmp_path):
+        painel = self._host(tmp_path, with_pending=True)
+        assert [a.nome for a in painel.documentos_pendentes_guidance()] == [
+            "10.pdf"
+        ]
 
 
 class _Host(TabActionsMixin, TabsLayoutMixin):

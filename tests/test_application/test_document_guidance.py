@@ -1,5 +1,6 @@
 """Testes do portão e da execução da avaliação de guidance de um documento."""
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -23,6 +24,7 @@ class _StoreFake:
     def __init__(self, inicial: dict | None = None) -> None:
         self._dados = dict(inicial or {})
         self.salvos: list[tuple] = []
+        self.consultas: list[str] = []
 
     def obter(self, ticker):
         return next(
@@ -32,6 +34,14 @@ class _StoreFake:
 
     def obter_avaliacao(self, ticker, chave):
         return self._dados.get((ticker, chave))
+
+    def avaliacoes(self, ticker):
+        self.consultas.append(ticker)
+        return {
+            chave: avaliacao
+            for (t, chave), avaliacao in self._dados.items()
+            if t == ticker
+        }
 
     def salvar_avaliacao(self, ticker, chave, avaliacao):
         self._dados[(ticker, chave)] = avaliacao
@@ -193,3 +203,71 @@ class TestRecuperacaoDeEntrada:
         assert servico.avaliar(_arquivo(), "texto") == existente
         assert store.salvos == []
         assert extrator.chamadas == []
+
+
+def _servico_com_ia(
+    store: _StoreFake, *, disponivel: bool = True
+) -> GuidanceService:
+    return GuidanceService(
+        store,
+        extrator=_ExtratorFake(GUIDANCE),
+        llm_factory=lambda: _LLMFake(),
+        llm_available=lambda: disponivel,
+    )
+
+
+class TestPendentesGuidance:
+    def test_ia_disponivel_reflete_a_estrategia(self):
+        assert _servico_com_ia(_StoreFake()).ia_disponivel() is True
+        assert (
+            _servico_com_ia(_StoreFake(), disponivel=False).ia_disponivel()
+            is False
+        )
+
+    def test_entrada_ausente_e_pendente_com_ia(self):
+        servico = _servico_com_ia(_StoreFake())
+        assert servico.pendente(_arquivo()) is True
+
+    def test_entrada_ia_nao_e_pendente(self):
+        existente = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        assert _servico_com_ia(store).pendente(_arquivo()) is False
+
+    def test_entrada_deterministica_e_pendente_com_ia(self):
+        existente = AvaliacaoGuidance(
+            metodo="deterministico",
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        assert _servico_com_ia(store).pendente(_arquivo()) is True
+
+    def test_sem_ia_nada_e_pendente(self):
+        servico = _servico_com_ia(_StoreFake(), disponivel=False)
+        assert servico.pendente(_arquivo()) is False
+        assert servico.pendentes([_arquivo()]) == []
+
+    def test_outra_categoria_nao_e_pendente(self):
+        servico = _servico_com_ia(_StoreFake())
+        assert servico.pendente(_arquivo(categoria="Comunicado")) is False
+
+    def test_data_invalida_nao_e_pendente(self):
+        servico = _servico_com_ia(_StoreFake())
+        assert servico.pendente(_arquivo(ano=0, mes=0)) is False
+
+    def test_pendentes_le_o_ledger_uma_vez_por_ticker(self):
+        store = _StoreFake()
+        servico = _servico_com_ia(store)
+        primeiro = _arquivo()
+        segundo = replace(
+            primeiro,
+            nome="20.pdf",
+            caminho=Path("/cache/relatorio/20.pdf"),
+        )
+        pendentes = servico.pendentes([primeiro, segundo])
+        assert pendentes == [primeiro, segundo]
+        assert store.consultas == ["HGBS11"]
