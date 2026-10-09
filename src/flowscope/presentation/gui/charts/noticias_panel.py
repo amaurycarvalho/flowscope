@@ -56,6 +56,7 @@ from flowscope.presentation.gui.document_actions import abrir_url
 from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 logger = logging.getLogger("flowscope")
 
@@ -210,6 +211,10 @@ class NoticiasPanel(DocumentFlowMixin):
             state=tk.DISABLED,
         )
         self._resumir_btn.pack(side=tk.LEFT, padx=2)
+
+        ToolTip(self._refresh_btn, "Atualizar a lista de notícias em cache")
+        ToolTip(self._open_btn, "Abrir a notícia selecionada no navegador")
+        ToolTip(self._resumir_btn, "Resumir as notícias pendentes com a I.A.")
 
     def _build_container(self: "NoticiasPanel") -> None:
         """Constrói a área de conteúdo com a árvore e a pré-visualização."""

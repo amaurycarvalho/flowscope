@@ -39,6 +39,7 @@ from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
 from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 logger = logging.getLogger("flowscope")
 
@@ -184,6 +185,10 @@ class DocumentTreePanel(DocumentFlowMixin):
             state=tk.DISABLED,
         )
         self._resumir_btn.pack(side=tk.LEFT, padx=2)
+
+        ToolTip(self._refresh_btn, "Atualizar a lista de documentos em cache")
+        ToolTip(self._open_btn, "Abrir o documento selecionado no aplicativo padrão")
+        ToolTip(self._resumir_btn, "Resumir os documentos pendentes com a I.A.")
 
     def _build_container(self: "DocumentTreePanel") -> None:
         """Constrói a área de conteúdo com a árvore e a pré-visualização."""

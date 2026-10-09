@@ -9,7 +9,7 @@ Ver `proposal.md` — Why. `presentation/gui/widgets/tooltip.py` é a única imp
 - Cobrir o comportamento com testes unitários do widget.
 
 **Non-Goals:**
-- Alterar textos, atraso, posição, aparência ou pontos de uso.
+- Alterar textos, atraso, posição ou aparência dos botões e dos tooltips já existentes.
 - Investigar/reproduzir o gatilho exato de eventos no ambiente do usuário (a correção torna o sintoma impossível independentemente do gatilho).
 
 ## Decisions
@@ -26,7 +26,11 @@ Corrigir `ToolTip` centralmente beneficia todos os tooltips e evita duplicar def
 
 ### 3. Testes do ciclo de vida
 
-Testes de widget (marcados com `needs_display`, como os demais de apresentação) que disparam dois `<Enter>` sem `<Leave>` e verificam que resta uma única janela; que um `<Leave>` destrói a janela; e que sair antes do atraso não exibe a dica. Alternativa: teste de integração pela GUI. Rejeitada: o comportamento é da classe e o teste unitário é direto e estável.
+Testes headless (sem `needs_display`) que usam um widget falso e substituem `tk.Toplevel`/`tk.Label`, disparando dois `<Enter>` sem `<Leave>` e verificando que resta uma única janela; que um `<Leave>` destrói a janela; que um clique destrói a janela; e que sair antes do atraso não exibe a dica. Alternativa: testes de widget com `needs_display`. Rejeitada: o comportamento é puro e a suíte tem um teto de testes de UI que só encolhe, então cobri-lo sem `DISPLAY` mantém o orçamento e é mais estável.
+
+### 4. Cobertura de tooltips em todos os botões
+
+Todos os botões da aplicação devem expor uma dica. A decisão é varrer os pontos de criação de `tk.Button`/`ttk.Button` e atribuir uma dica descritiva aos que ainda não tinham, reutilizando a `ToolTip` endurecida em vez de qualquer mecanismo paralelo. Alternativa: cobrir apenas os botões de ícone (sem texto visível). Rejeitada: botões com texto também se beneficiam de descrições mais completas, e a uniformidade evita pontos cegos. As dicas foram adicionadas em `app_layout` (botão de atalho no desktop e parada), `charts/noticias_panel` (Atualizar, Abrir, Resumir pendentes), `charts/document_tree_panel` (Atualizar, Abrir documento, Resumir pendentes), `chat/chat_panel` (Copiar chat, Limpar, Enviar, Cancelar), `llm/config_dialog` (Salvar, Cancelar, Testar) e `widgets/about_panel` (GitHub, log e release).
 
 ## Risks / Trade-offs
 

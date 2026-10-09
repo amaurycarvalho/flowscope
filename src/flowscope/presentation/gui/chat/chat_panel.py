@@ -47,6 +47,7 @@ from flowscope.presentation.gui.widgets.about_panel import (
     REPOSITORIO_URL,
 )
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
 from flowscope.presentation.shortcuts import _resolve_icon_path
 
 logger = logging.getLogger("flowscope")
@@ -178,6 +179,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
             cabecalho, text="Limpar", command=self._limpar_chat
         )
         self._clear_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+        ToolTip(self._copy_btn, "Copiar a conversa para a área de transferência")
+        ToolTip(self._clear_btn, "Limpar a conversa atual")
 
     def _on_model_changed(self: "ChatPanel", provider: str | None = None) -> None:
         """Reavalia o estado após a troca de modelo e notifica o host."""
@@ -220,6 +223,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
             state=tk.DISABLED,
         )
         self._cancel_btn.pack(side=tk.RIGHT, padx=4, pady=4)
+        ToolTip(self._send_btn, "Enviar a mensagem para a I.A.")
+        ToolTip(self._cancel_btn, "Cancelar o envio em andamento")
 
     def _load_icon(
         self: "ChatPanel", filename: str, size: tuple = (20, 20)

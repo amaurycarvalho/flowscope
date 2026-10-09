@@ -7,6 +7,7 @@ from tkinter import ttk
 from flowscope import __release_date__, __version__
 from flowscope.presentation.gui.app_constants import PAD, PAD_LARGE, PAD_SMALL
 from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 #: Texto de apresentação derivado da seção de descrição do README.md.
 APRESENTACAO = (
@@ -110,18 +111,22 @@ class AboutPanel:
 
         botoes = tk.Frame(container)
         botoes.pack(anchor=tk.CENTER)
-        tk.Button(
+        repo_btn = tk.Button(
             botoes,
             text="Repositório no GitHub",
             command=self._on_open_repository,
             cursor="hand2",
-        ).pack(side=tk.LEFT, padx=(0, PAD))
-        tk.Button(
+        )
+        repo_btn.pack(side=tk.LEFT, padx=(0, PAD))
+        log_btn = tk.Button(
             botoes,
             text="Abrir log da aplicação",
             command=self._on_open_log,
             cursor="hand2",
-        ).pack(side=tk.LEFT)
+        )
+        log_btn.pack(side=tk.LEFT)
+        ToolTip(repo_btn, "Abrir o repositório do projeto no GitHub")
+        ToolTip(log_btn, "Abrir o arquivo de log da aplicação")
 
         self._update_area = tk.Frame(container)
         self._update_area.pack(fill=tk.X, pady=(PAD_LARGE, 0))
@@ -142,9 +147,11 @@ class AboutPanel:
             fg="#8a6d00",
             font=("TkDefaultFont", 10, "bold"),
         ).pack(anchor=tk.CENTER)
-        tk.Button(
+        release_btn = tk.Button(
             self._update_area,
             text="Abrir página da release",
             command=on_open_release,
             cursor="hand2",
-        ).pack(anchor=tk.CENTER, pady=(PAD_SMALL, 0))
+        )
+        release_btn.pack(anchor=tk.CENTER, pady=(PAD_SMALL, 0))
+        ToolTip(release_btn, "Abrir a página da nova versão no navegador")

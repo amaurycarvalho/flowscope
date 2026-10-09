@@ -19,6 +19,7 @@ from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.llm.config_form import LLMConfigForm
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
+from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 logger = logging.getLogger("flowscope")
 
@@ -158,6 +159,9 @@ class LLMConfigDialog(tk.Toplevel):
         )
         self._test_btn.pack(side=tk.LEFT, padx=2)
         self._widgets_config.append(self._save_btn)
+        ToolTip(self._save_btn, "Salvar as configurações de I.A.")
+        ToolTip(self._cancel_btn, "Descartar as alterações e fechar o diálogo")
+        ToolTip(self._test_btn, "Testar a conexão com o provedor configurado")
 
         ttk.Label(
             corpo,

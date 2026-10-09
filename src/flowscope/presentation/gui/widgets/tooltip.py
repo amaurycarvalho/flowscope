@@ -21,16 +21,26 @@ class ToolTip:
 
     def _enter(self: "ToolTip", event: tk.Event | None = None) -> None:
         """Agenda a exibição do tooltip após o atraso configurado."""
+        if self._after_id:
+            self._widget.after_cancel(self._after_id)
+            self._after_id = None
         self._after_id = self._widget.after(self._delay_ms, self._show)
 
     def _leave(self: "ToolTip", event: tk.Event | None = None) -> None:
         """Cancela o atraso e oculta o tooltip ao sair do widget."""
         if self._after_id:
-            self._widget.after_cancel(self._after_id)
+            try:
+                self._widget.after_cancel(self._after_id)
+            except tk.TclError:
+                pass
             self._after_id = None
         self._hide()
 
     def _show(self: "ToolTip") -> None:
+        self._after_id = None
+        if self._tip_window:
+            self._tip_window.destroy()
+            self._tip_window = None
         x = self._widget.winfo_rootx() + 15
         y = self._widget.winfo_rooty() + 25
         self._tip_window = tk.Toplevel(self._widget)

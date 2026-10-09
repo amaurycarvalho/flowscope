@@ -107,6 +107,7 @@ class LayoutMixin:
                 command=self._on_create_shortcut, cursor="hand2",
             )
             self._shortcut_btn.pack(side=tk.LEFT, padx=PAD_SMALL)
+            ToolTip(self._shortcut_btn, "Criar um atalho no desktop para abrir o aplicativo")
 
         self._date_label = tk.Label(top, text="", fg="gray")
         self._date_label.pack(side=tk.LEFT, padx=PAD)
@@ -248,6 +249,7 @@ class LayoutMixin:
             cursor="hand2",
         )
         self._stop_button_visivel = False
+        ToolTip(self._stop_button, "Interromper o processamento em andamento")
 
     def _bind_shortcuts(self: "LayoutMixin") -> None:
         self._date_entry.bind("<Return>", lambda e: self._on_load_data())
