@@ -8,9 +8,11 @@ from tkinter import ttk
 
 import numpy as np
 import pytest
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from flowscope.application.network.dados import AVISO_COINT_INDISPONIVEL
 from flowscope.presentation.gui.charts.correlation_network_panel import (
+    CorrelationNetworkFigure,
     CorrelationNetworkPanel,
 )
 
@@ -60,62 +62,92 @@ def _widgets(widget: tk.Widget) -> list[tk.Widget]:
     return encontrados
 
 
-class TestCorrelationNetworkPanel:
-    @needs_display
+class _FigureHeadless(CorrelationNetworkFigure):
+    """Host headless que registra os redesenhos sem canvas Tk."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.draws = 0
+
+    def _draw(self) -> None:
+        self.draws += 1
+
+
+class TestCorrelationNetworkFigure:
     def test_update_desenha_grafo(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(45))
-            assert painel._empty_label.get_visible() is False
-            assert painel._resultado is not None
-            assert painel._resultado.correlation_available is True
-            assert painel._positions
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_dados(45))
+        assert painel._empty_label.get_visible() is False
+        assert painel._resultado is not None
+        assert painel._resultado.correlation_available is True
+        assert painel._positions
 
-    @needs_display
     def test_estado_vazio_sem_dados(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update({})
-            assert painel._empty_label.get_visible() is True
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update({})
+        assert painel._empty_label.get_visible() is True
 
-    @needs_display
     def test_estado_vazio_sem_densidade(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(10))
-            assert painel._empty_label.get_visible() is True
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_dados(10))
+        assert painel._empty_label.get_visible() is True
 
-    @needs_display
     def test_mensagem_estado_vazio_quebra_em_multiplas_linhas(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(10))
-            assert painel._empty_label.get_visible() is True
-            assert painel._empty_label.get_wrap() is True
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_dados(10))
+        assert painel._empty_label.get_visible() is True
+        assert painel._empty_label.get_wrap() is True
 
-    @needs_display
     def test_mensagem_estado_vazio_cabe_na_figura(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(10))
-            renderer = painel.get_figure().canvas.get_renderer()
-            largura = painel._empty_label.get_window_extent(renderer).width
-            assert largura <= painel.get_figure().bbox.width
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_dados(10))
+        figura = painel.get_figure()
+        renderer = FigureCanvasAgg(figura).get_renderer()
+        largura = painel._empty_label.get_window_extent(renderer).width
+        assert largura <= figura.bbox.width
+
+    def test_calculo_sobre_dados_carregados(self):
+        painel = _FigureHeadless()
+        painel.update(_dados(45))
+        antes = painel._resultado.tickers
+        painel.update({"PETR4": _dados(45)["PETR4"]})
+        assert painel._resultado.tickers != antes
+        assert painel._resultado.tickers == ("PETR4",)
+
+    def test_layout_deterministico(self):
+        painel = _FigureHeadless()
+        dados = _dados(45)
+        painel.update(dados)
+        primeiro = {k: v.copy() for k, v in painel._positions.items()}
+        painel.update(dados)
+        segundo = painel._positions
+        assert set(primeiro) == set(segundo)
+        for node in primeiro:
+            assert np.allclose(primeiro[node], segundo[node])
+
+    def test_aviso_cointegracao_indisponivel(self):
+        painel = _FigureHeadless()
+        painel.update(_dados(35))
+        assert painel._resultado.cointegration_available is False
+        textos = [texto.get_text() for texto in painel._ax.texts]
+        assert any(AVISO_COINT_INDISPONIVEL in t for t in textos)
+
+    def test_reset_exibe_estado_vazio(self):
+        painel = _FigureHeadless()
+        painel.update(_dados(45))
+        painel.reset()
+        assert painel._empty_label.get_visible() is True
+
+    def test_colorbar_removida_no_estado_vazio(self):
+        painel = _FigureHeadless()
+        painel.update(_dados(45))
+        assert painel._colorbar is not None
+        painel.update({})
+        assert painel._colorbar is None
+
+
+class TestCorrelationNetworkShell:
+    """A casca Tk restrita ao invólucro (widgets e barra de ferramentas)."""
 
     @needs_display
     def test_sem_seletor_de_janela_proprio(self):
@@ -125,58 +157,6 @@ class TestCorrelationNetworkPanel:
             widgets = _widgets(painel.frame)
             assert not any(isinstance(w, ttk.Combobox) for w in widgets)
             assert not any(isinstance(w, tk.Scale) for w in widgets)
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_calculo_sobre_dados_carregados(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(45))
-            antes = painel._resultado.tickers
-            painel.update({"PETR4": _dados(45)["PETR4"]})
-            assert painel._resultado.tickers != antes
-            assert painel._resultado.tickers == ("PETR4",)
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_layout_deterministico(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            dados = _dados(45)
-            painel.update(dados)
-            primeiro = {k: v.copy() for k, v in painel._positions.items()}
-            painel.update(dados)
-            segundo = painel._positions
-            assert set(primeiro) == set(segundo)
-            for node in primeiro:
-                assert np.allclose(primeiro[node], segundo[node])
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_aviso_cointegracao_indisponivel(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(35))
-            assert painel._resultado.cointegration_available is False
-            textos = [texto.get_text() for texto in painel._ax.texts]
-            assert any(AVISO_COINT_INDISPONIVEL in t for t in textos)
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_reset_exibe_estado_vazio(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(45))
-            painel.reset()
-            assert painel._empty_label.get_visible() is True
         finally:
             root.destroy()
 
@@ -233,17 +213,5 @@ class TestCorrelationNetworkPanel:
             root.update()
             assert painel._toolbar.winfo_ismapped()
             assert painel._toolbar.winfo_height() > 1
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_colorbar_removida_no_estado_vazio(self):
-        root = tk.Tk()
-        try:
-            painel = CorrelationNetworkPanel(root)
-            painel.update(_dados(45))
-            assert painel._colorbar is not None
-            painel.update({})
-            assert painel._colorbar is None
         finally:
             root.destroy()

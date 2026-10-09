@@ -365,14 +365,18 @@ class DocumentTreePanel(DocumentFlowMixin):
         if selecionado is not None and selecionado.caminho == arquivo.caminho:
             self._agendar_preview(arquivo)
 
+    def abrir_habilitado(self: "DocumentTreePanel") -> bool:
+        """Indica se o botão "Abrir documento" deve estar habilitado.
+
+        Decisão pura, sem tocar em widgets: verificável sem ``DISPLAY``.
+        """
+        return self._arquivo_selecionado() is not None
+
     def _atualizar_botao_abrir(self: "DocumentTreePanel") -> None:
         """Habilita o botão "Abrir documento" somente com arquivo selecionado."""
-        estado = (
-            tk.NORMAL
-            if self._arquivo_selecionado() is not None
-            else tk.DISABLED
+        self._open_btn.config(
+            state=tk.NORMAL if self.abrir_habilitado() else tk.DISABLED
         )
-        self._open_btn.config(state=estado)
 
     def _no_selecionado(self: "DocumentTreePanel") -> str | None:
         """Retorna o iid do nó selecionado, ou ``None``."""

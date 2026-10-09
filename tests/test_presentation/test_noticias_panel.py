@@ -22,6 +22,7 @@ from flowscope.application.cancellation import (
 )
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
 from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.domain.structured import CensuraPublica, NoticiaB3
 from flowscope.infrastructure.b3.noticias_aquisicao import (
@@ -164,6 +165,131 @@ def _arquivo_por_nome(painel, nome):
     raise AssertionError(f"notícia {nome} não encontrada na árvore")
 
 
+class _SummaryFake:
+    """Serviço de resumo mínimo com disponibilidade controlável."""
+
+    def __init__(self, disponivel=True, mensagem="Resumo indisponível"):
+        self._disponivel = disponivel
+        self._mensagem = mensagem
+
+    def disponivel(self):
+        return self._disponivel
+
+    def mensagem_indisponivel(self):
+        return self._mensagem
+
+    def chave(self, arquivo):
+        return arquivo.nome
+
+
+class _FakeButton:
+    """Botão mínimo que registra o último estado configurado, sem Tk."""
+
+    def __init__(self):
+        self.state = None
+
+    def config(self, **kwargs):
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+
+class _FakeNoticiasView:
+    """View de árvore mínima que registra limpezas e populações."""
+
+    def __init__(self):
+        self.limpou = 0
+        self.populado = None
+        self._sel = None
+        self.catalogos_por_no = {}
+
+    def limpar(self):
+        self.limpou += 1
+
+    def popular_secoes(self, catalogo):
+        self.populado = catalogo
+
+    def selecionado(self):
+        return self._sel
+
+    def arquivo_selecionado(self):
+        return None
+
+
+class _NoticiasHost(NoticiasPanel):
+    """Host headless do painel de notícias: reusa a lógica sem widgets Tk."""
+
+    def __init__(
+        self,
+        *,
+        catalogo_uc=None,
+        summary=None,
+        text_store=None,
+        itens=None,
+        por_caminho=None,
+        selecionado=None,
+        open_callback=None,
+        status_callback=None,
+        config_callback=None,
+        resumir_callback=None,
+        resumir_ativo_callback=None,
+        acquire_callback=None,
+    ):
+        self._catalogo_uc = catalogo_uc
+        self._summary = summary or _SummaryFake()
+        self._text_store = text_store
+        self._baixar_vinculo = lambda _texto, _senha=None: None
+        self._senha_interativa = False
+        self._senha_max_tentativas = 3
+        self._open_callback = open_callback or (lambda _url: None)
+        self._status_callback = status_callback
+        self._acquire_callback = acquire_callback
+        self._config_callback = config_callback
+        self._model_changed_callback = None
+        self._resumir_callback = resumir_callback
+        self._resumir_ativo_callback = resumir_ativo_callback
+        self._reference_date = None
+        self._itens = dict(itens or {})
+        self._por_caminho = dict(por_caminho or {})
+        self._grupos: dict = {}
+        self._preview_cache: dict = {}
+        self._catalogo_noticias = None
+        self._catalogo_selecionado = None
+        self._req_id = 0
+        self._resumir_btn = _FakeButton()
+        self._selecionado = selecionado
+        self._view = _FakeNoticiasView()
+        self.empty = None
+        self.conteudo = False
+        self.preview = None
+        self.refresh = 0
+
+    def _set_preview_text(self, texto):
+        self.preview = texto
+
+    def _show_empty(self, mensagem):
+        self.empty = mensagem
+        self.conteudo = False
+
+    def _show_content(self):
+        self.conteudo = True
+
+    def _atualizar_botao_abrir(self):
+        pass
+
+    def _status(self, msg, icon=""):
+        if self._status_callback is not None:
+            self._status_callback(msg, icon)
+
+    def refresh_resumir_button(self):
+        self.refresh += 1
+        self._resumir_btn.config(
+            state=tk.NORMAL if self.resumir_habilitado() else tk.DISABLED
+        )
+
+    def _arquivo_selecionado(self):
+        return self._selecionado
+
+
 class TestConstrucao:
     @needs_display
     def test_constroi_widgets(self, tmp_path):
@@ -234,18 +360,14 @@ class TestArvorePreview:
         finally:
             root.destroy()
 
-    @needs_display
     def test_estado_vazio_sem_cache(self, tmp_path):
         catalogo = NoticiasCatalog(cache_dir=tmp_path)
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(root, catalog=catalogo, debounce_ms=0)
-            painel.update(_REFERENCIA)
-            assert "Sem notícias" in painel._empty_label.cget("text")
-        finally:
-            root.destroy()
+        host = _NoticiasHost(
+            catalogo_uc=ConsultarCatalogoNoticiasUseCase(catalogo)
+        )
+        host.update(_REFERENCIA)
+        assert "Sem notícias" in host.empty
 
-    @needs_display
     def test_cache_frio_nao_quebra(self, tmp_path):
         cache = NoticiasCache(tmp_path)
         NoticiasIndexStore(cache_dir=tmp_path).registrar(
@@ -259,13 +381,11 @@ class TestArvorePreview:
             ),
         )
         catalogo = NoticiasCatalog(cache_dir=tmp_path)
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(root, catalog=catalogo, debounce_ms=0)
-            painel.update(_REFERENCIA)
-            assert "Sem notícias" in painel._empty_label.cget("text")
-        finally:
-            root.destroy()
+        host = _NoticiasHost(
+            catalogo_uc=ConsultarCatalogoNoticiasUseCase(catalogo)
+        )
+        host.update(_REFERENCIA)
+        assert "Sem notícias" in host.empty
 
 
 def _semear_censura(tmp_path, censura):
@@ -311,7 +431,6 @@ class TestSecoesPainel:
         finally:
             root.destroy()
 
-    @needs_display
     def test_selecao_da_raiz_renderiza_secoes(self, tmp_path):
         censura = CensuraPublica(
             titulo="FII TORDE EI (TORD)",
@@ -320,16 +439,11 @@ class TestSecoesPainel:
             conteudo="Corpo da censura.",
         )
         catalogo = _semear_censura(tmp_path, censura)
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(root, catalog=catalogo, debounce_ms=0)
-            painel.update(_REFERENCIA)
-            raiz = painel._tree.get_children()[0]
-            painel._tree.selection_set(raiz)
-            painel._on_select()
-            assert SECAO_CENSURAS in painel.texto_atual()
-        finally:
-            root.destroy()
+        host = _NoticiasHost(
+            catalogo_uc=ConsultarCatalogoNoticiasUseCase(catalogo)
+        )
+        host.update(_REFERENCIA)
+        assert SECAO_CENSURAS in host._render_raiz()
 
 
 class TestExtracaoNoticias:
@@ -688,26 +802,12 @@ class TestSolicitarSenhaDialogo:
 
 
 class TestAbertura:
-    @needs_display
     def test_abre_url_no_callback(self, tmp_path):
-        noticia = _noticia(titulo="Abrir - Suspensão de negociação")
-        catalogo = _semear(tmp_path, [noticia])
+        arquivo = _arquivo_lote("noticia", tmp_path / "noticia.html")
         abertas: list[str] = []
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(
-                root,
-                catalog=catalogo,
-                open_callback=abertas.append,
-                debounce_ms=0,
-            )
-            painel.update(_REFERENCIA)
-            painel._view.tree.selection_set(_no_arquivo(painel, noticia.titulo))
-            painel._on_select()
-            painel._open_btn.invoke()
-            assert abertas == [noticia.url]
-        finally:
-            root.destroy()
+        host = _NoticiasHost(selecionado=arquivo, open_callback=abertas.append)
+        host._on_open_selected()
+        assert abertas == [arquivo.url]
 
     def test_abrir_sem_url_informa_status(self, tmp_path):
         status: list[tuple] = []
@@ -727,59 +827,34 @@ class TestAbertura:
         painel._abrir(arquivo)
         assert status and "sem URL" in status[0][0]
 
-    @needs_display
     def test_botao_abrir_desabilitado_sem_selecao(self, tmp_path):
-        catalogo = _semear(tmp_path, [_noticia()])
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(root, catalog=catalogo, debounce_ms=0)
-            painel.update(_REFERENCIA)
-            assert str(painel._open_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        assert _NoticiasHost(selecionado=None).abrir_habilitado() is False
+        com_url = _arquivo_lote("noticia", tmp_path / "n.html")
+        assert _NoticiasHost(selecionado=com_url).abrir_habilitado() is True
 
 
 class TestCallbacks:
-    @needs_display
-    def test_acquire_config_e_resumir(self, tmp_path):
-        catalogo = _semear(tmp_path, [_noticia()])
-        root = tk.Tk()
-        try:
-            chamadas: list[str] = []
-            painel = NoticiasPanel(
-                root,
-                catalog=catalogo,
-                acquire_callback=lambda: chamadas.append("atualizar"),
-                config_callback=lambda: chamadas.append("config"),
-                resumir_callback=lambda: chamadas.append("resumir"),
-                llm_available=lambda: True,
-                debounce_ms=0,
-            )
-            painel.update(_REFERENCIA)
-            painel._refresh_btn.invoke()
-            painel._model_selector.botao.invoke()
-            painel._resumir_btn.config(state=tk.NORMAL)
-            painel._resumir_btn.invoke()
-            assert chamadas == ["atualizar", "config", "resumir"]
-        finally:
-            root.destroy()
+    def test_acquire_config_e_resumir(self):
+        chamadas: list[str] = []
+        host = _NoticiasHost(
+            acquire_callback=lambda: chamadas.append("atualizar"),
+            config_callback=lambda: chamadas.append("config"),
+            resumir_callback=lambda: chamadas.append("resumir"),
+        )
+        host._on_refresh()
+        host._on_configurar()
+        host._on_resumir()
+        assert chamadas == ["atualizar", "config", "resumir"]
 
-    @needs_display
     def test_resumir_ativo_desabilita_botao(self, tmp_path):
-        catalogo = _semear(tmp_path, [_noticia()])
-        root = tk.Tk()
-        try:
-            painel = NoticiasPanel(
-                root,
-                catalog=catalogo,
-                llm_available=lambda: True,
-                resumir_ativo_callback=lambda: True,
-                debounce_ms=0,
-            )
-            painel.update(_REFERENCIA)
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        arquivo = _arquivo_lote("noticia", tmp_path / "n.html")
+        host = _NoticiasHost(
+            itens={"n": arquivo},
+            resumir_ativo_callback=lambda: True,
+        )
+        host.refresh_resumir_button()
+        assert host._resumir_btn.state == tk.DISABLED
+        assert host.resumir_habilitado() is False
 
 
 class TestResumos:

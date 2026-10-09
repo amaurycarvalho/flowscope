@@ -502,11 +502,19 @@ class NoticiasPanel(DocumentFlowMixin):
             if secao.catalogo.anos
         )
 
+    def abrir_habilitado(self: "NoticiasPanel") -> bool:
+        """Indica se o botão "Abrir" deve estar habilitado (notícia com URL).
+
+        Decisão pura, sem tocar em widgets: verificável sem ``DISPLAY``.
+        """
+        arquivo = self._arquivo_selecionado()
+        return arquivo is not None and bool(getattr(arquivo, "url", None))
+
     def _atualizar_botao_abrir(self: "NoticiasPanel") -> None:
         """Habilita o botão "Abrir" somente com notícia com URL selecionada."""
-        arquivo = self._arquivo_selecionado()
-        tem_url = arquivo is not None and bool(getattr(arquivo, "url", None))
-        self._open_btn.config(state=tk.NORMAL if tem_url else tk.DISABLED)
+        self._open_btn.config(
+            state=tk.NORMAL if self.abrir_habilitado() else tk.DISABLED
+        )
 
     def _no_selecionado(self: "NoticiasPanel") -> str | None:
         """Retorna o iid do nó selecionado, ou ``None``."""

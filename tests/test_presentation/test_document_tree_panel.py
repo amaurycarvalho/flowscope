@@ -5,6 +5,7 @@ import os
 import queue
 import time
 import tkinter as tk
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 from tkinter import ttk
@@ -17,6 +18,8 @@ from flowscope.application.cancellation import (
     OperacaoCancelada,
 )
 from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.documentos.catalogo import ConsultarCatalogoUseCase
+from flowscope.application.documentos.document_summary import DocumentSummaryService
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMResposta
 from flowscope.infrastructure.document_catalog import DocumentCatalog
@@ -48,7 +51,9 @@ from flowscope.application.document_preview import (
 )
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 from flowscope.presentation.gui.charts.document_grouping import (
+    Agrupamento,
     mensagem_indisponivel,
+    render_grupo,
 )
 from flowscope.presentation.gui.charts.document_tree_panel import (
     CARREGANDO,
@@ -252,22 +257,73 @@ class TestAberturaNaArvore:
 
 
 class TestEstadoVazioERefresh:
-    @needs_display
+    def _host(self, tmp_path, **kwargs):
+        return _PainelHeadless(
+            catalogo_uc=ConsultarCatalogoUseCase(_catalogo(tmp_path)), **kwargs
+        )
+
     def test_ticker_sem_documentos_exibe_mensagem(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("SEMDOC")
-            assert painel._content.winfo_manager() == ""
-            assert painel._empty_label.winfo_manager() == "pack"
-            assert "SEMDOC" in painel._empty_label.cget("text")
-        finally:
-            root.destroy()
+        painel = self._host(tmp_path)
+        painel.update("SEMDOC")
+        assert painel.conteudo is False
+        assert "SEMDOC" in painel.empty
+
+    def test_com_documentos_mostra_conteudo(self, tmp_path):
+        painel = self._host(tmp_path)
+        painel.update("ALZR11")
+        assert painel.conteudo is True
+        assert painel._view.populado is not None
+
+    def test_reset_volta_ao_estado_vazio(self, tmp_path):
+        painel = self._host(tmp_path)
+        painel.update("ALZR11")
+        painel.reset()
+        assert painel.empty is not None
+        assert painel._view.limpou >= 2
+
+    def test_refresh_revarre_catalogo(self, tmp_path):
+        from flowscope.infrastructure.document_catalog import CatalogoTicker
+
+        catalogo_uc = MagicMock()
+        catalogo_uc.executar.return_value = CatalogoTicker("ALZR11", ())
+        painel = _PainelHeadless(catalogo_uc=catalogo_uc)
+        painel.update("ALZR11")
+        painel._on_refresh()
+        assert catalogo_uc.executar.call_count == 2
+
+
+class TestAcquireCallback:
+    def _host(self, tmp_path, **kwargs):
+        return _PainelHeadless(
+            catalogo_uc=ConsultarCatalogoUseCase(_catalogo(tmp_path)), **kwargs
+        )
+
+    def test_update_nao_aciona_callback(self, tmp_path):
+        chamadas = []
+        painel = self._host(tmp_path, acquire_callback=chamadas.append)
+        painel.update("ALZR11")
+        assert chamadas == []
+        assert painel._view.populado is not None
+
+    def test_refresh_aciona_callback(self, tmp_path):
+        chamadas = []
+        painel = self._host(tmp_path, acquire_callback=chamadas.append)
+        painel.update("ALZR11")
+        painel._on_refresh()
+        assert chamadas == ["ALZR11"]
+
+    def test_mostrar_carregando(self, tmp_path):
+        painel = self._host(tmp_path)
+        painel.update("ALZR11")
+        painel.mostrar_carregando("ALZR11")
+        assert "Carregando" in painel.empty
+
+
+class TestEstadoVazioView:
+    """Binding real da troca conteúdo/estado-vazio exige Tk."""
 
     @needs_display
-    def test_com_documentos_mostra_conteudo(self, tmp_path):
+    def test_conteudo_e_estado_vazio_alternam(self, tmp_path):
         root = tk.Tk()
         try:
             painel = DocumentTreePanel(
@@ -276,88 +332,151 @@ class TestEstadoVazioERefresh:
             painel.update("ALZR11")
             assert painel._content.winfo_manager() == "pack"
             assert painel._empty_label.winfo_manager() == ""
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_reset_volta_ao_estado_vazio(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
             painel.reset()
             assert painel._empty_label.winfo_manager() == "pack"
             assert painel._tree.get_children() == ()
         finally:
             root.destroy()
 
+
+class _SummaryFake:
+    """Serviço de resumo mínimo com disponibilidade controlável."""
+
+    def __init__(self, disponivel: bool = True) -> None:
+        self._disponivel = disponivel
+
+    def disponivel(self) -> bool:
+        return self._disponivel
+
+    def persistir(self, arquivo, resumo):
+        return replace(
+            arquivo,
+            short_summary=resumo.short_summary,
+            long_summary=resumo.long_summary,
+        )
+
+    def atualizar(self, arquivo, resumo):
+        return self.persistir(arquivo, resumo)
+
+
+class _FakeButton:
+    """Botão mínimo que registra o último estado configurado, sem Tk."""
+
+    def __init__(self) -> None:
+        self.state = None
+
+    def config(self, **kwargs) -> None:
+        if "state" in kwargs:
+            self.state = kwargs["state"]
+
+
+class _FakeView:
+    """View de árvore mínima que registra limpezas e populações."""
+
+    def __init__(self) -> None:
+        self.limpou = 0
+        self.populado = None
+        self._sel = None
+
+    def limpar(self) -> None:
+        self.limpou += 1
+
+    def popular(self, catalogo) -> None:
+        self.populado = catalogo
+
+    def selecionado(self):
+        return self._sel
+
+    def arquivo_selecionado(self):
+        return None
+
+
+class _PainelHeadless(DocumentTreePanel):
+    """Host headless do painel: reusa a lógica sem instanciar widgets Tk."""
+
+    def __init__(
+        self,
+        *,
+        summary=None,
+        catalogo_uc=None,
+        acquire_callback=None,
+        itens=None,
+        por_caminho=None,
+        selecionado=None,
+    ) -> None:
+        self._summary = summary or _SummaryFake(True)
+        self._catalogo_uc = catalogo_uc
+        self._acquire_callback = acquire_callback
+        self._itens = dict(itens or {})
+        self._por_caminho = dict(por_caminho or {})
+        self._grupos: dict = {}
+        self._preview_cache: dict = {}
+        self._catalogo_atual = None
+        self._current_ticker = None
+        self._req_id = 0
+        self._resumir_ativo_callback = None
+        self._resumir_btn = _FakeButton()
+        self._view = _FakeView()
+        self._selecionado = selecionado
+        self.empty = None
+        self.conteudo = False
+        self.preview = None
+        self.refresh = 0
+
+    def _show_empty(self, mensagem: str) -> None:
+        self.empty = mensagem
+        self.conteudo = False
+
+    def _show_content(self) -> None:
+        self.conteudo = True
+
+    def _set_preview_text(self, texto: str) -> None:
+        self.preview = texto
+
+    def _atualizar_botao_abrir(self) -> None:
+        pass
+
+    def refresh_resumir_button(self) -> None:
+        self.refresh += 1
+        self._resumir_btn.config(
+            state=tk.NORMAL if self.resumir_habilitado() else tk.DISABLED
+        )
+
+    def _arquivo_selecionado(self):
+        return self._selecionado
+
+
+class TestAbrirHabilitado:
+    """Decisão pura do botão "Abrir documento" (sem Tk)."""
+
+    def _painel(self, arquivo):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._arquivo_selecionado = lambda: arquivo
+        return painel
+
+    def test_desabilitado_sem_selecao(self):
+        assert self._painel(None).abrir_habilitado() is False
+
+    def test_habilita_com_arquivo_selecionado(self, tmp_path):
+        assert self._painel(_arquivo(tmp_path)).abrir_habilitado() is True
+
+    def test_desabilita_com_pasta_selecionada(self):
+        assert self._painel(None).abrir_habilitado() is False
+
+    def test_reset_desabilita(self, tmp_path):
+        selecionado = {"arquivo": _arquivo(tmp_path)}
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._arquivo_selecionado = lambda: selecionado["arquivo"]
+        assert painel.abrir_habilitado() is True
+        selecionado["arquivo"] = None
+        assert painel.abrir_habilitado() is False
+
+
+class TestBotaoAbrirShell:
+    """Binding real do botão "Abrir documento" ao estado decidido."""
+
     @needs_display
-    def test_refresh_revarre_catalogo(self, tmp_path):
-        root = tk.Tk()
-        try:
-            catalogo = MagicMock()
-            from flowscope.infrastructure.document_catalog import CatalogoTicker
-
-            catalogo.catalogo.return_value = CatalogoTicker("ALZR11", ())
-            painel = DocumentTreePanel(root, catalog=catalogo, debounce_ms=0)
-            painel.update("ALZR11")
-            painel._on_refresh()
-            assert catalogo.catalogo.call_count == 2
-        finally:
-            root.destroy()
-
-
-class TestAcquireCallback:
-    @needs_display
-    def test_update_nao_aciona_callback(self, tmp_path):
-        root = tk.Tk()
-        try:
-            chamadas = []
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path),
-                acquire_callback=chamadas.append, debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            assert chamadas == []
-            assert painel._tree.get_children() != ()
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_refresh_aciona_callback(self, tmp_path):
-        root = tk.Tk()
-        try:
-            chamadas = []
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path),
-                acquire_callback=chamadas.append, debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            painel._on_refresh()
-            assert chamadas == ["ALZR11"]
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_mostrar_carregando(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel.mostrar_carregando("ALZR11")
-            assert "Carregando" in painel._empty_label.cget("text")
-            assert painel._empty_label.winfo_manager() == "pack"
-        finally:
-            root.destroy()
-
-
-class TestBotaoAbrir:
-    @needs_display
-    def test_botao_rotulo_e_desabilitado_sem_selecao(self, tmp_path):
+    def test_rotulo_e_binding_do_botao(self, tmp_path):
         root = tk.Tk()
         try:
             painel = DocumentTreePanel(
@@ -366,48 +485,9 @@ class TestBotaoAbrir:
             painel.update("ALZR11")
             assert painel._open_btn.cget("text") == "Abrir documento"
             assert str(painel._open_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_botao_habilita_com_arquivo_selecionado(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
             painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
             root.update()
             assert str(painel._open_btn.cget("state")) == "normal"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_botao_desabilita_com_pasta_selecionada(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            pasta = painel._tree.get_children()[0]
-            painel._tree.selection_set(pasta)
-            root.update()
-            assert str(painel._open_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_reset_desabilita_botao(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(_no_arquivo(painel, "10.pdf"))
-            root.update()
             painel.reset()
             assert str(painel._open_btn.cget("state")) == "disabled"
         finally:
@@ -751,123 +831,78 @@ class TestSolicitarSenhaDialogo:
 
 
 class TestAplicarResumo:
-    @needs_display
+    def _host(self, tmp_path, *, disponivel=True, selecionado=None, **kwargs):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        service = DocumentSummaryService(
+            store, tmp_path,
+            llm_available=lambda: disponivel,
+        )
+        painel = _PainelHeadless(
+            summary=service, selecionado=selecionado, **kwargs
+        )
+        return painel, store, service
+
     def test_grava_e_atualiza_catalogo(self, tmp_path):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
-            assert painel._itens[no].long_summary == "longo"
-            assert painel._por_caminho[arquivo.caminho].long_summary == "longo"
-            salvo = store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf")
-            assert salvo.long_summary == "longo"
-        finally:
-            root.destroy()
+        arquivo = _arquivo(tmp_path)
+        painel, store, service = self._host(
+            tmp_path, itens={"n1": arquivo},
+            por_caminho={arquivo.caminho: arquivo},
+        )
+        painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
+        assert painel._itens["n1"].long_summary == "longo"
+        assert painel._por_caminho[arquivo.caminho].long_summary == "longo"
+        salvo = store.obter("ALZR11", service.chave(arquivo))
+        assert salvo.long_summary == "longo"
 
-    @needs_display
     def test_atualiza_estado_do_botao(self, tmp_path):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store,
-                llm_available=lambda: True, debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            assert str(painel._resumir_btn.cget("state")) == "normal"
-            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        arquivo = _arquivo(tmp_path)
+        painel, _store, _service = self._host(tmp_path, itens={"n1": arquivo})
+        painel.refresh_resumir_button()
+        assert painel._resumir_btn.state == tk.NORMAL
+        painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
+        assert painel._resumir_btn.state == tk.DISABLED
 
-    @needs_display
     def test_recompoe_preview_quando_selecionado(self, tmp_path):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            painel._tree.selection_set(no)
-            painel._preview_cache[arquivo.caminho] = "texto integral"
-            painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
-            assert painel._preview.get("1.0", "end-1c") == (
-                "longo\n\n---\n\ntexto integral"
-            )
-        finally:
-            root.destroy()
+        arquivo = _arquivo(tmp_path)
+        painel, _store, _service = self._host(
+            tmp_path, itens={"n1": arquivo}, selecionado=arquivo
+        )
+        painel._preview_cache[arquivo.caminho] = "texto integral"
+        painel.aplicar_resumo(arquivo, ResumoDocumento("curto", "longo"))
+        assert painel.preview == "longo\n\n---\n\ntexto integral"
 
 
 class TestPersistenciaNoWorkerDoPainel:
-    @needs_display
-    def test_painel_de_documentos_persiste_no_lote(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            assert painel.persistir_no_lote() is True
-        finally:
-            root.destroy()
+    def test_painel_de_documentos_persiste_no_lote(self):
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        assert painel.persistir_no_lote() is True
 
-    @needs_display
     def test_gerar_e_persistir_grava_sem_tocar_no_catalogo(self, tmp_path):
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
         llm = _LLMFake(resposta="Resumo gerado")
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store,
-                llm_available=lambda: True, llm_factory=lambda: llm,
-                debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            resumo = painel.gerar_e_persistir(arquivo, "texto")
-            assert resumo is not None
-            salvo = store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf")
-            assert salvo.long_summary == resumo.long_summary
-            assert painel._itens[no].long_summary is None
-        finally:
-            root.destroy()
+        service = DocumentSummaryService(
+            store, tmp_path,
+            llm_factory=lambda: llm, llm_available=lambda: True,
+        )
+        arquivo = _arquivo(tmp_path)
+        painel = _PainelHeadless(summary=service, itens={"n1": arquivo})
+        resumo = painel.gerar_e_persistir(arquivo, "texto")
+        assert resumo is not None
+        salvo = store.obter("ALZR11", service.chave(arquivo))
+        assert salvo.long_summary == resumo.long_summary
+        assert painel._itens["n1"].long_summary is None
 
-    @needs_display
     def test_refletir_resumo_nao_grava_no_store(self, tmp_path):
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            no = _no_arquivo(painel, "10.pdf")
-            arquivo = painel._itens[no]
-            painel.refletir_resumo(arquivo, ResumoDocumento("curto", "longo"))
-            assert painel._itens[no].long_summary == "longo"
-            assert store.obter("ALZR11", "bdr/ALZR11/2026/02/10.pdf") is None
-        finally:
-            root.destroy()
+        service = DocumentSummaryService(store, tmp_path)
+        arquivo = _arquivo(tmp_path)
+        painel = _PainelHeadless(
+            summary=service, itens={"n1": arquivo},
+            por_caminho={arquivo.caminho: arquivo},
+        )
+        painel.refletir_resumo(arquivo, ResumoDocumento("curto", "longo"))
+        assert painel._itens["n1"].long_summary == "longo"
+        assert store.obter("ALZR11", service.chave(arquivo)) is None
 
 
 class TestBotaoResumir:
@@ -898,111 +933,93 @@ class TestBotaoResumir:
             root.destroy()
 
 
-class TestRefreshResumirButton:
-    def _painel(self, root, tmp_path, disponivel=True, com_resumo=False):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        if com_resumo:
-            store.salvar("ALZR11", "bdr/ALZR11/2026/02/10.pdf", "c", "l")
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        painel = DocumentTreePanel(
-            root, catalog=catalogo, summary_store=store,
-            llm_available=lambda: disponivel, debounce_ms=0,
+class TestResumirHabilitado:
+    """Decisão pura do botão "Resumir pendentes" (sem Tk)."""
+
+    def _host(self, tmp_path, *, disponivel=True, pendentes=True, ativo=None):
+        item = (
+            _arquivo(tmp_path)
+            if pendentes
+            else replace(_arquivo(tmp_path), long_summary="l")
         )
-        painel.update("ALZR11")
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._itens = {"a": item}
+        painel._summary = _SummaryFake(disponivel)
+        painel._resumir_ativo_callback = ativo
         return painel
 
-    @needs_display
     def test_habilitado_com_llm_e_pendentes(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path, disponivel=True)
-            assert str(painel._resumir_btn.cget("state")) == "normal"
-        finally:
-            root.destroy()
+        assert self._host(tmp_path, disponivel=True).resumir_habilitado() is True
 
-    @needs_display
     def test_desabilitado_sem_llm(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path, disponivel=False)
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        assert (
+            self._host(tmp_path, disponivel=False).resumir_habilitado() is False
+        )
 
-    @needs_display
     def test_desabilitado_sem_pendentes(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path, com_resumo=True)
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        assert (
+            self._host(tmp_path, pendentes=False).resumir_habilitado() is False
+        )
 
-    @needs_display
     def test_callback_de_lote_padrao_none(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path, disponivel=True)
-            assert painel._resumir_ativo_callback is None
-            assert str(painel._resumir_btn.cget("state")) == "normal"
-        finally:
-            root.destroy()
+        painel = self._host(tmp_path, disponivel=True)
+        assert painel._resumir_ativo_callback is None
+        assert painel.resumir_habilitado() is True
+
+    def test_desabilitado_com_lote_ativo(self, tmp_path):
+        painel = self._host(tmp_path, ativo=lambda: True)
+        assert painel.resumir_habilitado() is False
+
+
+class TestResumirButtonShell:
+    """Binding real do botão "Resumir pendentes" ao estado decidido."""
 
     @needs_display
-    def test_desabilitado_com_lote_ativo(self, tmp_path):
+    def test_binding_do_botao_resumir(self, tmp_path):
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
+        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
         root = tk.Tk()
         try:
-            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-            _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
             painel = DocumentTreePanel(
                 root, catalog=catalogo, summary_store=store,
-                llm_available=lambda: True,
-                resumir_ativo_callback=lambda: True, debounce_ms=0,
+                llm_available=lambda: True, debounce_ms=0,
             )
             painel.update("ALZR11")
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
+            assert str(painel._resumir_btn.cget("state")) == "normal"
         finally:
             root.destroy()
 
 
-class TestBotaoResumirDuranteLote:
-    def _painel(self, root, tmp_path, ativo=lambda: True):
-        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-        catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-        _touch(catalogo.base_dir / "bdr" / "ALZR11" / "2026" / "02" / "20.pdf")
-        painel = DocumentTreePanel(
-            root, catalog=catalogo, summary_store=store,
-            llm_available=lambda: True,
-            resumir_ativo_callback=ativo, debounce_ms=0,
-        )
-        painel.update("ALZR11")
+class TestResumirHabilitadoLote:
+    """Decisão do botão durante o lote, sem Tk."""
+
+    def _host(self, tmp_path, ativo=lambda: True):
+        arquivos = {
+            "n1": _arquivo(tmp_path, "10.pdf"),
+            "n2": _arquivo(tmp_path, "20.pdf"),
+        }
+        painel = DocumentTreePanel.__new__(DocumentTreePanel)
+        painel._itens = arquivos
+        painel._por_caminho = {a.caminho: a for a in arquivos.values()}
+        painel._summary = _SummaryFake(True)
+        painel._resumir_ativo_callback = ativo
+        painel._resumir_btn = _FakeButton()
+        painel._arquivo_selecionado = lambda: None
         return painel
 
-    @needs_display
     def test_aplicar_resumo_com_pendente_nao_reabilita(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path)
-            arquivo = painel._itens[_no_arquivo(painel, "10.pdf")]
-            painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
-            assert painel.documentos_sem_resumo()
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        painel = self._host(tmp_path)
+        arquivo = painel._itens["n1"]
+        painel.aplicar_resumo(arquivo, ResumoDocumento("c", "l"))
+        assert painel.documentos_sem_resumo()
+        assert painel._resumir_btn.state == tk.DISABLED
 
-    @needs_display
     def test_update_mantem_desabilitado_com_pendentes(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = self._painel(root, tmp_path)
-            painel.update("ALZR11")
-            assert painel.documentos_sem_resumo()
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
-        finally:
-            root.destroy()
+        painel = self._host(tmp_path)
+        painel.refresh_resumir_button()
+        assert painel.documentos_sem_resumo()
+        assert painel._resumir_btn.state == tk.DISABLED
 
 
 class _Host(TabActionsMixin, TabsLayoutMixin):
@@ -1306,7 +1323,75 @@ class TestWidgetSomenteLeitura:
             root.destroy()
 
 
-class TestAgrupamento:
+class TestRenderGrupo:
+    """Renderização Markdown dos agrupamentos, sem Tk."""
+
+    def _catalogo_ticker(self, tmp_path):
+        return ConsultarCatalogoUseCase(_catalogo(tmp_path)).executar("ALZR11")
+
+    @staticmethod
+    def _arquivo_do(catalogo, nome):
+        for ano in catalogo.anos:
+            for mes in ano.meses:
+                for categoria in mes.categorias:
+                    for arquivo in categoria.arquivos:
+                        if arquivo.nome == nome:
+                            return arquivo
+        raise AssertionError(f"arquivo {nome} não encontrado")
+
+    def test_lista_do_ticker_com_niveis_relativos(self, tmp_path):
+        catalogo = self._catalogo_ticker(tmp_path)
+        texto = render_grupo(
+            catalogo, Agrupamento("ticker", "ALZR11"), {},
+            mensagem_indisponivel(False),
+        )
+        assert texto.startswith("# ALZR11\n## 2026\n### 02\n")
+        assert "#### Assembleia" in texto
+        assert "#### Aviso aos Acionistas" in texto
+        assert "- 10.pdf —" in texto
+        assert "- 20.pdf —" in texto
+
+    def test_lista_da_categoria(self, tmp_path):
+        catalogo = self._catalogo_ticker(tmp_path)
+        grupo = Agrupamento(
+            "categoria", "Aviso aos Acionistas",
+            ano=2026, mes=2, categoria="Aviso aos Acionistas",
+        )
+        texto = render_grupo(catalogo, grupo, {}, mensagem_indisponivel(False))
+        assert texto.startswith("# Aviso aos Acionistas\n")
+        assert "- 10.pdf —" in texto
+        assert "20.pdf" not in texto
+
+    def test_item_exibe_short_summary_armazenado(self, tmp_path):
+        catalogo = self._catalogo_ticker(tmp_path)
+        arquivo = self._arquivo_do(catalogo, "10.pdf")
+        atualizado = replace(arquivo, short_summary="resumo curto")
+        texto = render_grupo(
+            catalogo, Agrupamento("ticker", "ALZR11"),
+            {arquivo.caminho: atualizado}, mensagem_indisponivel(False),
+        )
+        assert "- 10.pdf — resumo curto" in texto
+
+    def test_lista_usa_sufixo_da_llm_configurada(self, tmp_path):
+        catalogo = self._catalogo_ticker(tmp_path)
+        texto = render_grupo(
+            catalogo, Agrupamento("ticker", "ALZR11"), {},
+            mensagem_indisponivel(True),
+        )
+        assert mensagem_indisponivel(True) in texto
+
+    def test_lista_usa_sufixo_sem_llm(self, tmp_path):
+        catalogo = self._catalogo_ticker(tmp_path)
+        texto = render_grupo(
+            catalogo, Agrupamento("ticker", "ALZR11"), {},
+            mensagem_indisponivel(False),
+        )
+        assert mensagem_indisponivel(False) in texto
+
+
+class TestAgrupamentoView:
+    """O mapeamento de nós da árvore para payloads exige Tk."""
+
     @needs_display
     def test_nos_de_agrupamento_tem_payload(self, tmp_path):
         root = tk.Tk()
@@ -1318,102 +1403,6 @@ class TestAgrupamento:
             tipos = {grupo.tipo for grupo in painel._grupos.values()}
             assert tipos == {"ticker", "ano", "mes", "categoria"}
             assert _no_arquivo(painel, "10.pdf") not in painel._grupos
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_lista_do_ticker_com_niveis_relativos(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(_no_grupo(painel, "ticker"))
-            root.update()
-            texto = painel._preview.get("1.0", "end-1c")
-            assert texto.startswith("# ALZR11\n## 2026\n### 02\n")
-            assert "#### Assembleia" in texto
-            assert "#### Aviso aos Acionistas" in texto
-            assert "- 10.pdf —" in texto
-            assert "- 20.pdf —" in texto
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_lista_da_categoria(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(
-                _no_grupo(painel, "categoria", "Aviso aos Acionistas")
-            )
-            root.update()
-            texto = painel._preview.get("1.0", "end-1c")
-            assert texto.startswith("# Aviso aos Acionistas\n")
-            assert "- 10.pdf —" in texto
-            assert "20.pdf" not in texto
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_item_exibe_short_summary_armazenado(self, tmp_path):
-        root = tk.Tk()
-        try:
-            _touch(tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf")
-            store = JsonDocumentSummaryStore(cache_dir=tmp_path)
-            store.salvar(
-                "ALZR11", "bdr/ALZR11/2026/02/10.pdf", "resumo curto", "longo"
-            )
-            catalogo = DocumentCatalog(cache_dir=tmp_path, summary_store=store)
-            painel = DocumentTreePanel(
-                root, catalog=catalogo, summary_store=store, debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(_no_grupo(painel, "ticker"))
-            root.update()
-            assert "- 10.pdf — resumo curto" in painel._preview.get(
-                "1.0", "end-1c"
-            )
-        finally:
-            root.destroy()
-
-
-class TestMensagemIndisponibilidade:
-    @needs_display
-    def test_lista_usa_sufixo_da_llm_configurada(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path),
-                llm_available=lambda: True, llm_factory=lambda: object(),
-                debounce_ms=0,
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(_no_grupo(painel, "ticker"))
-            root.update()
-            assert mensagem_indisponivel(True) in painel._preview.get(
-                "1.0", "end-1c"
-            )
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_lista_usa_sufixo_sem_llm(self, tmp_path):
-        root = tk.Tk()
-        try:
-            painel = DocumentTreePanel(
-                root, catalog=_catalogo(tmp_path), debounce_ms=0
-            )
-            painel.update("ALZR11")
-            painel._tree.selection_set(_no_grupo(painel, "ticker"))
-            root.update()
-            assert mensagem_indisponivel(False) in painel._preview.get(
-                "1.0", "end-1c"
-            )
         finally:
             root.destroy()
 

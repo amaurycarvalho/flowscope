@@ -17,6 +17,7 @@ from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import Resultado
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
+from flowscope.presentation.gui.llm.config_form import LLMConfigForm
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 
 logger = logging.getLogger("flowscope")
@@ -90,10 +91,8 @@ class LLMConfigDialog(tk.Toplevel):
         self._port = config_port
         self._config_path = config_path
         self._on_saved = on_saved
-        self._presets = config_port.get_presets()
+        self._form = LLMConfigForm(config_port, config_path)
         self._widgets_config: list[tk.Widget] = []
-        self._working: dict[str, dict] = {}
-        self._provider_atual = "none"
         self._background = (
             background if background is not None else BackgroundManager(self.after)
         )
@@ -130,7 +129,7 @@ class LLMConfigDialog(tk.Toplevel):
         corpo = ttk.Frame(self, padding=10)
         corpo.pack(fill=tk.BOTH, expand=True)
         self._provider_combo = self._add_combo(
-            corpo, "Provedor", self._provider_var, list(self._presets)
+            corpo, "Provedor", self._provider_var, self._form.presets
         )
         self._provider_combo.bind(
             "<<ComboboxSelected>>", self._on_preset_change
@@ -219,75 +218,37 @@ class LLMConfigDialog(tk.Toplevel):
 
     def _carregar(self: "LLMConfigDialog") -> None:
         """Preenche os campos com a configuração salva do provedor ativo."""
-        self._working = self._port.load_provider_configs(self._config_path)
-        config = self._port.load_llm_config(self._config_path)
-        self._provider_atual = config["provider"]
-        self._provider_var.set(config["provider"])
-        self._api_url_var.set(config["api_url"])
-        self._model_var.set(config["model"])
-        self._api_key_var.set(config["api_key"])
-        self._rpm_var.set(str(config["rpm"]))
+        self._form.carregar_inicial()
+        self._refletir_modelo()
+
+    def _sincronizar_modelo(self: "LLMConfigDialog") -> None:
+        """Copia os valores dos ``StringVar`` para o modelo puro."""
+        self._form.provider = self._provider_var.get()
+        self._form.api_url = self._api_url_var.get()
+        self._form.model = self._model_var.get()
+        self._form.api_key = self._api_key_var.get()
+        self._form.rpm = self._rpm_var.get()
+
+    def _refletir_modelo(self: "LLMConfigDialog") -> None:
+        """Copia os valores do modelo puro para os ``StringVar``."""
+        self._provider_var.set(self._form.provider)
+        self._api_url_var.set(self._form.api_url)
+        self._model_var.set(self._form.model)
+        self._api_key_var.set(self._form.api_key)
+        self._rpm_var.set(self._form.rpm)
 
     def _on_preset_change(
         self: "LLMConfigDialog", event: tk.Event | None = None
     ) -> None:
         """Restaura a configuração do provedor selecionado ao trocar o preset."""
-        self._descarregar_provedor_atual()
-        self._provider_atual = self._provider_var.get()
-        self._carregar_provedor(self._provider_atual)
-
-    def _descarregar_provedor_atual(self: "LLMConfigDialog") -> None:
-        """Guarda o formulário atual em memória para o provedor ativo."""
-        if self._provider_atual == "none":
-            return
-        self._working[self._provider_atual] = self._coletar_campos_provedor()
-
-    def _coletar_campos_provedor(self: "LLMConfigDialog") -> dict:
-        """Monta os campos de um provedor a partir do formulário atual."""
-        return {
-            "api_url": self._api_url_var.get().strip(),
-            "model": self._model_var.get().strip(),
-            "api_key": self._api_key_var.get().strip(),
-            "rpm": self._rpm(),
-        }
-
-    def _carregar_provedor(self: "LLMConfigDialog", provider: str) -> None:
-        """Exibe a configuração salva do provedor ou os defaults do preset."""
-        if provider == "none":
-            self._api_url_var.set("")
-            self._model_var.set("")
-            self._api_key_var.set("")
-            self._rpm_var.set(str(self._port.default_config()["rpm"]))
-            return
-        entrada = self._working.get(provider)
-        if entrada is not None:
-            self._api_url_var.set(str(entrada["api_url"]))
-            self._model_var.set(str(entrada["model"]))
-            self._api_key_var.set(str(entrada["api_key"]))
-            self._rpm_var.set(str(entrada["rpm"]))
-            return
-        preset = self._presets.get(provider)
-        self._api_url_var.set(str(preset["api_url"]) if preset else "")
-        self._model_var.set(str(preset["model"]) if preset else "")
-        self._api_key_var.set("")
-        self._rpm_var.set(str(self._port.default_config()["rpm"]))
-
-    def _rpm(self: "LLMConfigDialog") -> int:
-        """Retorna o RPM informado, caindo no padrão 5 quando inválido."""
-        try:
-            return int(self._rpm_var.get())
-        except (TypeError, ValueError):
-            return 5
+        self._sincronizar_modelo()
+        self._form.trocar_provider(self._provider_var.get())
+        self._refletir_modelo()
 
     def _coletar_config(self: "LLMConfigDialog") -> dict:
         """Monta a configuração a partir dos valores atualmente preenchidos."""
-        return {
-            "provider": self._provider_var.get(),
-            "api_url": self._api_url_var.get().strip(),
-            "model": self._model_var.get().strip(),
-            "api_key": self._api_key_var.get().strip(),
-            "rpm": self._rpm(),
-        }
+        self._sincronizar_modelo()
+        return self._form.coletar_config()
 
     def _salvar(self: "LLMConfigDialog") -> None:
         """Grava o bloco ``llm.chat``, ativando só se o salvo foi testado."""

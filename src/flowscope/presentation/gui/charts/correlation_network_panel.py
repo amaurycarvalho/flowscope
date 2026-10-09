@@ -46,33 +46,30 @@ _MAX_NODE_SIZE = 900.0
 _N_COMPORTAMENTOS = 20
 
 
-class CorrelationNetworkPanel:
-    """Grafo de correlação/cointegração dos tickers selecionados."""
+class CorrelationNetworkFigure:
+    """Grafo de correlação/cointegração sobre uma figura pura (sem Tk).
 
-    def __init__(
-        self: "CorrelationNetworkPanel",
-        parent: tk.Widget,
-        *,
-        copy_chart_callback: Callable[[Figure], None] | None = None,
-    ) -> None:
-        """Constrói a figura, o eixo único e a barra de ferramentas."""
-        self.frame = tk.Frame(parent)
+    Concentra o cálculo e o desenho da ``Figure``/``Axes`` para que a lógica
+    seja verificável sem ``DISPLAY``. O redesenho é delegado ao hook ``_draw``,
+    sobrescrito pela casca Tk.
+    """
+
+    def __init__(self: "CorrelationNetworkFigure") -> None:
+        """Constrói a figura e o eixo único, sem tocar em Tk."""
         self._figure = Figure(figsize=(7, 6), dpi=100)
         self._figure.subplots_adjust(left=0.05, right=0.90, top=0.88, bottom=0.10)
         self._ax = self._figure.add_subplot(111)
-        self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
-        self._toolbar = ToolbarBR(
-            self._canvas, self.frame, copy_chart_callback=copy_chart_callback
-        )
-        self._canvas.get_tk_widget().pack(fill="both", expand=True)
         self._empty_label = create_empty(self._figure, [self._ax])
         self._empty_label.set_wrap(True)
         self._colorbar = None
         self._resultado: NetworkResult | None = None
         self._positions: dict = {}
 
+    def _draw(self: "CorrelationNetworkFigure") -> None:
+        """Redesenha a figura; a casca Tk sobrescreve com o canvas."""
+
     def update(
-        self: "CorrelationNetworkPanel",
+        self: "CorrelationNetworkFigure",
         current_data: Mapping[str, object],
         tickers: list[str] | None = None,
     ) -> None:
@@ -82,7 +79,7 @@ class CorrelationNetworkPanel:
         self._render(dados, self._resultado)
 
     def _render(
-        self: "CorrelationNetworkPanel",
+        self: "CorrelationNetworkFigure",
         dados: DadosRede,
         resultado: NetworkResult,
     ) -> None:
@@ -110,16 +107,16 @@ class CorrelationNetworkPanel:
         self._ax.axis("off")
         if not resultado.cointegration_available:
             self._draw_warning()
-        self._canvas.draw()
+        self._draw()
 
-    def _layout(self: "CorrelationNetworkPanel", resultado: NetworkResult) -> dict:
+    def _layout(self: "CorrelationNetworkFigure", resultado: NetworkResult) -> dict:
         """Calcula as posições dos nós com semente fixa."""
         if resultado.graph.number_of_nodes() == 0:
             return {}
         return nx.spring_layout(resultado.graph, seed=_SEED)
 
     def _draw_edges(
-        self: "CorrelationNetworkPanel", resultado: NetworkResult
+        self: "CorrelationNetworkFigure", resultado: NetworkResult
     ) -> None:
         """Desenha as arestas com cor por correlação e estilo por cointegração."""
         cmap = colormaps["coolwarm"]
@@ -139,7 +136,7 @@ class CorrelationNetworkPanel:
             )
 
     def _draw_nodes(
-        self: "CorrelationNetworkPanel", resultado: NetworkResult
+        self: "CorrelationNetworkFigure", resultado: NetworkResult
     ) -> None:
         """Desenha os nós com cor por comunidade e tamanho por centralidade."""
         nodes = list(resultado.graph.nodes())
@@ -160,12 +157,12 @@ class CorrelationNetworkPanel:
             resultado.graph, self._positions, ax=self._ax, font_size=8
         )
 
-    def _node_size(self: "CorrelationNetworkPanel", centrality: float) -> float:
+    def _node_size(self: "CorrelationNetworkFigure", centrality: float) -> float:
         """Calcula o tamanho do nó a partir da centralidade, na faixa fixa."""
         valor = max(0.0, min(1.0, centrality))
         return _MIN_NODE_SIZE + (_MAX_NODE_SIZE - _MIN_NODE_SIZE) * valor
 
-    def _draw_colorbar(self: "CorrelationNetworkPanel") -> None:
+    def _draw_colorbar(self: "CorrelationNetworkFigure") -> None:
         """Adiciona a colorbar da correlação assinada."""
         mappable = ScalarMappable(
             norm=Normalize(vmin=-1.0, vmax=1.0), cmap=colormaps["coolwarm"]
@@ -177,7 +174,7 @@ class CorrelationNetworkPanel:
         self._colorbar.set_label("Correlação assinada", fontsize=8)
         self._colorbar.ax.tick_params(labelsize=7)
 
-    def _draw_legend(self: "CorrelationNetworkPanel") -> None:
+    def _draw_legend(self: "CorrelationNetworkFigure") -> None:
         """Exibe a legenda que distingue arestas cointegradas das demais."""
         handles = [
             Line2D([0], [0], color="#333333", linewidth=2.6, label="Cointegrado"),
@@ -188,7 +185,7 @@ class CorrelationNetworkPanel:
         ]
         self._ax.legend(handles=handles, loc="lower left", fontsize=8)
 
-    def _draw_warning(self: "CorrelationNetworkPanel") -> None:
+    def _draw_warning(self: "CorrelationNetworkFigure") -> None:
         """Sinaliza que a cointegração está indisponível por densidade."""
         self._ax.text(
             0.5, -0.02, AVISO_COINT_INDISPONIVEL,
@@ -196,14 +193,14 @@ class CorrelationNetworkPanel:
             fontsize=8, color="#b8860b",
         )
 
-    def _remove_colorbar(self: "CorrelationNetworkPanel") -> None:
+    def _remove_colorbar(self: "CorrelationNetworkFigure") -> None:
         """Remove a colorbar anterior, se existir."""
         if self._colorbar is not None:
             self._colorbar.remove()
             self._colorbar = None
 
     def _show_empty(
-        self: "CorrelationNetworkPanel", mensagem: str
+        self: "CorrelationNetworkFigure", mensagem: str
     ) -> None:
         """Limpa o eixo e exibe a mensagem de estado vazio."""
         self._remove_colorbar()
@@ -211,12 +208,35 @@ class CorrelationNetworkPanel:
         self._empty_label.set_text(mensagem)
         self._figure.suptitle("")
         show_empty(self._figure, [self._ax], self._empty_label)
-        self._canvas.draw()
+        self._draw()
 
-    def reset(self: "CorrelationNetworkPanel") -> None:
+    def reset(self: "CorrelationNetworkFigure") -> None:
         """Limpa o painel e exibe o estado vazio."""
         self._show_empty(MENSAGEM_SEM_TICKERS)
 
-    def get_figure(self: "CorrelationNetworkPanel") -> Figure:
+    def get_figure(self: "CorrelationNetworkFigure") -> Figure:
         """Retorna a figura matplotlib utilizada pelo painel."""
         return self._figure
+
+
+class CorrelationNetworkPanel(CorrelationNetworkFigure):
+    """Casca Tk que embute a figura da rede de correlação."""
+
+    def __init__(
+        self: "CorrelationNetworkPanel",
+        parent: tk.Widget,
+        *,
+        copy_chart_callback: Callable[[Figure], None] | None = None,
+    ) -> None:
+        """Monta a figura pura e a embute no canvas Tk com a barra de ferramentas."""
+        super().__init__()
+        self.frame = tk.Frame(parent)
+        self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
+        self._toolbar = ToolbarBR(
+            self._canvas, self.frame, copy_chart_callback=copy_chart_callback
+        )
+        self._canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def _draw(self: "CorrelationNetworkPanel") -> None:
+        """Redesenha a figura pelo canvas Tk."""
+        self._canvas.draw()

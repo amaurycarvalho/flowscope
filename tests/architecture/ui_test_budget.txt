@@ -6,5 +6,7 @@
 # AST: declarações decoradas com `@needs_display` (funções e classes) e funções
 # de teste que criam `tk.Tk`/`tk.Toplevel` sem gating.
 #
-# Valor inicial herdado da fatia `background-job-manager` (250).
-225
+# Valor inicial herdado da fatia `background-job-manager` (250). A change
+# `testes-ui-headless` separa figura/canvas dos painéis matplotlib e expõe
+# decisões puras nos mixins, convertendo testes gated para headless.
+142

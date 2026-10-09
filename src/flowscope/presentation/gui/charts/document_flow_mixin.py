@@ -54,18 +54,24 @@ class DocumentFlowMixin:
             if arquivo.long_summary is None
         ]
 
-    def refresh_resumir_button(self: "DocumentFlowMixin") -> None:
-        """Reavalia o estado do botão "Resumir pendentes"."""
+    def resumir_habilitado(self: "DocumentFlowMixin") -> bool:
+        """Indica se o botão "Resumir pendentes" deve estar habilitado.
+
+        Decisão pura, sem tocar em widgets: verificável sem ``DISPLAY``.
+        """
         em_andamento = (
             self._resumir_ativo_callback() if self._resumir_ativo_callback else False
         )
-        habilitado = (
+        return (
             not em_andamento
             and self._summary.disponivel()
             and bool(self.documentos_sem_resumo())
         )
+
+    def refresh_resumir_button(self: "DocumentFlowMixin") -> None:
+        """Aplica ao botão o estado decidido por ``resumir_habilitado``."""
         self._resumir_btn.config(
-            state=tk.NORMAL if habilitado else tk.DISABLED
+            state=tk.NORMAL if self.resumir_habilitado() else tk.DISABLED
         )
 
     def _mostrar_grupo(self: "DocumentFlowMixin", grupo: Agrupamento) -> None:

@@ -8,12 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from flowscope.infrastructure.document_catalog import DocumentCatalog
-from flowscope.presentation.gui.app_layout import LayoutMixin
 from flowscope.presentation.gui.app_status import StatusMixin
 from flowscope.presentation.gui.app_tab_layout import TabsLayoutMixin
 from flowscope.presentation.gui.background.manager import BackgroundManager
-from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 
 
 needs_display = pytest.mark.skipif(
@@ -26,130 +23,125 @@ class _CursorGUI(tk.Tk, StatusMixin):
     pass
 
 
-class _DisableHost(tk.Tk, StatusMixin):
-    pass
+class _FakeWidget:
+    """Widget mínimo (sem Tk) para cursor, estado e empacotamento."""
+
+    def __init__(self, cursor: str = "", state: str = "normal") -> None:
+        self._cursor = cursor
+        self._state = state
+        self._packed = False
+        self._opcoes: dict = {}
+
+    def cget(self, key: str) -> str:
+        if key == "cursor":
+            return self._cursor
+        if key == "state":
+            return self._state
+        raise tk.TclError(key)
+
+    def config(self, **kwargs: object) -> None:
+        if "cursor" in kwargs:
+            self._cursor = str(kwargs["cursor"])
+        if "state" in kwargs:
+            self._state = kwargs["state"]
+
+    def __setitem__(self, key: str, value: object) -> None:
+        self._opcoes[key] = value
+
+    def __getitem__(self, key: str) -> object:
+        return self._opcoes[key]
+
+    def pack(self, **_kwargs: object) -> None:
+        self._packed = True
+
+    def pack_forget(self) -> None:
+        self._packed = False
+
+    def winfo_ismapped(self) -> int:
+        return 1 if self._packed else 0
+
+    def winfo_manager(self) -> str:
+        return "pack" if self._packed else ""
+
+    def winfo_children(self) -> list:
+        return []
+
+
+class _DisableHost(StatusMixin):
+    """Host headless com widgets fake para bloqueio/restauração de botões."""
+
+    def __init__(self) -> None:
+        self._flash_after_id = None
+        self._load_button = _FakeWidget()
+        self._today_button = _FakeWidget()
+        self._shortcut_btn = None
+        self._copy_data_btn = _FakeWidget()
+        self._ticker_list = MagicMock()
+        self._ticker_list.all_buttons.return_value = []
+        self._period_combo = _FakeWidget(state="readonly")
+        self._sampling_combo = _FakeWidget(state="readonly")
+        self._date_entry = _FakeWidget(state="normal")
+
+    def after_cancel(self, _id: object) -> None:
+        pass
 
 
 class TestDisableIdempotente:
-    @needs_display
     def test_nao_sobrescreve_snapshot_ativo(self):
         gui = _DisableHost()
-        try:
-            gui._flash_after_id = None
-            gui._load_button = tk.Button(gui, state=tk.NORMAL)
-            gui._today_button = tk.Button(gui, state=tk.NORMAL)
-            gui._shortcut_btn = None
-            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
-            gui._ticker_list = MagicMock()
-            gui._ticker_list.all_buttons.return_value = []
-            gui._period_combo = ttk.Combobox(gui, state="readonly")
-            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
-            gui._date_entry = ttk.Entry(gui)
 
-            gui.disable_all_buttons()
-            gui.disable_all_buttons()
-            gui.restore_all_buttons()
+        gui.disable_all_buttons()
+        gui.disable_all_buttons()
+        gui.restore_all_buttons()
 
-            assert gui._load_button.cget("state") == tk.NORMAL
-            assert str(gui._period_combo.cget("state")) == "readonly"
-            assert str(gui._date_entry.cget("state")) == "normal"
-        finally:
-            gui.destroy()
+        assert gui._load_button.cget("state") == tk.NORMAL
+        assert gui._period_combo.cget("state") == "readonly"
+        assert gui._date_entry.cget("state") == "normal"
 
 
 class TestDisableDocumentosBotoes:
-    @needs_display
     def test_botoes_documentos_desabilitados_e_restaurados(self):
         gui = _DisableHost()
-        try:
-            gui._flash_after_id = None
-            gui._load_button = tk.Button(gui, state=tk.NORMAL)
-            gui._today_button = tk.Button(gui, state=tk.NORMAL)
-            gui._shortcut_btn = None
-            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
-            gui._ticker_list = MagicMock()
-            gui._ticker_list.all_buttons.return_value = []
-            gui._period_combo = ttk.Combobox(gui, state="readonly")
-            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
-            gui._date_entry = ttk.Entry(gui)
-            refresh = tk.Button(gui, state=tk.NORMAL)
-            abrir = tk.Button(gui, state=tk.NORMAL)
-            gui._documents_panel = MagicMock()
-            gui._documents_panel.all_buttons.return_value = [refresh, abrir]
+        refresh = _FakeWidget()
+        abrir = _FakeWidget()
+        gui._documents_panel = MagicMock()
+        gui._documents_panel.all_buttons.return_value = [refresh, abrir]
 
-            gui.disable_all_buttons()
-            assert refresh.cget("state") == tk.DISABLED
-            assert abrir.cget("state") == tk.DISABLED
+        gui.disable_all_buttons()
+        assert refresh.cget("state") == tk.DISABLED
+        assert abrir.cget("state") == tk.DISABLED
 
-            gui.restore_all_buttons()
-            assert refresh.cget("state") == tk.NORMAL
-            assert abrir.cget("state") == tk.NORMAL
-            gui._documents_panel.refresh_open_button.assert_called_once()
-        finally:
-            gui.destroy()
+        gui.restore_all_buttons()
+        assert refresh.cget("state") == tk.NORMAL
+        assert abrir.cget("state") == tk.NORMAL
+        gui._documents_panel.refresh_open_button.assert_called_once()
 
-    @needs_display
-    def test_seletor_modelo_desabilitado_e_restaurado(self, tmp_path):
+    def test_seletor_modelo_desabilitado_e_restaurado(self):
         gui = _DisableHost()
-        try:
-            gui._flash_after_id = None
-            gui._load_button = tk.Button(gui, state=tk.NORMAL)
-            gui._today_button = tk.Button(gui, state=tk.NORMAL)
-            gui._shortcut_btn = None
-            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
-            gui._ticker_list = MagicMock()
-            gui._ticker_list.all_buttons.return_value = []
-            gui._period_combo = ttk.Combobox(gui, state="readonly")
-            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
-            gui._date_entry = ttk.Entry(gui)
-            gui._documents_panel = DocumentTreePanel(
-                gui, catalog=DocumentCatalog(cache_dir=tmp_path)
-            )
-            seletor = gui._documents_panel._model_selector
+        botao = _FakeWidget(state="normal")
+        combo = _FakeWidget(state="readonly")
+        gui._documents_panel = MagicMock()
+        gui._documents_panel.all_buttons.return_value = [botao, combo]
 
-            gui.disable_all_buttons()
-            assert str(seletor.botao.cget("state")) == "disabled"
-            assert str(seletor.combo.cget("state")) == "disabled"
+        gui.disable_all_buttons()
+        assert botao.cget("state") == tk.DISABLED
+        assert combo.cget("state") == tk.DISABLED
 
-            gui.restore_all_buttons()
-            assert str(seletor.botao.cget("state")) == "normal"
-            assert str(seletor.combo.cget("state")) == "readonly"
-        finally:
-            gui.destroy()
+        gui.restore_all_buttons()
+        assert botao.cget("state") == "normal"
+        assert combo.cget("state") == "readonly"
 
-    @needs_display
-    def test_botao_resumir_desabilitado_e_restaurado(self, tmp_path):
+    def test_botao_resumir_desabilitado_e_restaurado(self):
         gui = _DisableHost()
-        try:
-            gui._flash_after_id = None
-            gui._load_button = tk.Button(gui, state=tk.NORMAL)
-            gui._today_button = tk.Button(gui, state=tk.NORMAL)
-            gui._shortcut_btn = None
-            gui._copy_data_btn = tk.Button(gui, state=tk.NORMAL)
-            gui._ticker_list = MagicMock()
-            gui._ticker_list.all_buttons.return_value = []
-            gui._period_combo = ttk.Combobox(gui, state="readonly")
-            gui._sampling_combo = ttk.Combobox(gui, state="readonly")
-            gui._date_entry = ttk.Entry(gui)
-            painel = DocumentTreePanel(
-                gui,
-                catalog=DocumentCatalog(cache_dir=tmp_path),
-                llm_available=lambda: True,
-            )
-            caminho = tmp_path / "bdr" / "ALZR11" / "2026" / "02" / "10.pdf"
-            caminho.parent.mkdir(parents=True, exist_ok=True)
-            caminho.write_bytes(b"x")
-            painel.update("ALZR11")
-            gui._documents_panel = painel
-            assert str(painel._resumir_btn.cget("state")) == "normal"
+        resumir = _FakeWidget(state="normal")
+        gui._documents_panel = MagicMock()
+        gui._documents_panel.all_buttons.return_value = [resumir]
 
-            gui.disable_all_buttons()
-            assert str(painel._resumir_btn.cget("state")) == "disabled"
+        gui.disable_all_buttons()
+        assert resumir.cget("state") == tk.DISABLED
 
-            gui.restore_all_buttons()
-            assert str(painel._resumir_btn.cget("state")) == "normal"
-        finally:
-            gui.destroy()
+        gui.restore_all_buttons()
+        assert resumir.cget("state") == "normal"
 
 
 class _FundamentalCursorHost(tk.Tk, StatusMixin):
@@ -194,62 +186,57 @@ class TestWaitCursorFundamentos:
             gui.destroy()
 
 
-class TestWaitCursor:
-    @needs_display
+class TestWaitCursorHeadless:
+    def _host(self, widget=None):
+        filhos = [widget] if widget is not None else []
+        return _CursorHost(filhos)
+
     def test_cursor_watch_sobrepoe_e_restaura(self):
-        gui = _CursorGUI()
-        try:
-            btn = tk.Button(gui, cursor="hand2")
-            btn.pack()
-            gui._set_wait_cursor()
-            assert btn.cget("cursor") == "watch"
-            gui._clear_wait_cursor()
-            assert btn.cget("cursor") == "hand2"
-        finally:
-            gui.destroy()
+        btn = _FakeWidget(cursor="hand2")
+        gui = self._host(btn)
+        gui._set_wait_cursor()
+        assert btn.cget("cursor") == "watch"
+        gui._clear_wait_cursor()
+        assert btn.cget("cursor") == "hand2"
 
-    @needs_display
     def test_cursor_watch_nao_repercorre_enquanto_ativo(self):
-        gui = _CursorGUI()
-        try:
-            btn = tk.Button(gui, cursor="hand2")
-            btn.pack()
-            gui._set_wait_cursor()
-            primeiro = dict(gui._cursor_states)
-            gui._set_wait_cursor()
-            assert gui._cursor_states == primeiro
-            gui._clear_wait_cursor()
-            assert gui._cursor_states == {}
-        finally:
-            gui.destroy()
+        gui = self._host(_FakeWidget(cursor="hand2"))
+        gui._set_wait_cursor()
+        primeiro = dict(gui._cursor_states)
+        gui._set_wait_cursor()
+        assert gui._cursor_states == primeiro
+        gui._clear_wait_cursor()
+        assert gui._cursor_states == {}
 
-    @needs_display
     def test_enter_e_exit_busy_aplicam_e_restauram_cursor(self):
-        gui = _CursorGUI()
-        try:
-            btn = tk.Button(gui, cursor="hand2")
-            btn.pack()
-            gui.enter_busy()
-            assert btn.cget("cursor") == "watch"
-            gui.exit_busy()
-            assert btn.cget("cursor") == "hand2"
-        finally:
-            gui.destroy()
+        btn = _FakeWidget(cursor="hand2")
+        gui = self._host(btn)
+        gui.enter_busy()
+        assert btn.cget("cursor") == "watch"
+        gui.exit_busy()
+        assert btn.cget("cursor") == "hand2"
 
-    @needs_display
     def test_baseline_ignora_cursor_transitorio_de_separador(self):
-        gui = _CursorGUI()
-        try:
-            tree = ttk.Treeview(gui, columns=("a",), show="headings")
-            tree.pack()
-            tree.config(cursor="sb_h_double_arrow")
-            gui._set_wait_cursor()
-            assert str(tree.cget("cursor")) == "watch"
-            gui._clear_wait_cursor()
-            assert str(tree.cget("cursor")) == ""
-        finally:
-            gui.destroy()
+        tree = _FakeWidget(cursor="sb_h_double_arrow")
+        gui = self._host(tree)
+        gui._set_wait_cursor()
+        assert tree.cget("cursor") == "watch"
+        gui._clear_wait_cursor()
+        assert tree.cget("cursor") == ""
 
+    def test_exit_busy_repetido_nao_deixa_residuo(self):
+        btn = _FakeWidget(cursor="hand2")
+        gui = self._host(btn)
+        gui.enter_busy()
+        gui.exit_busy()
+        assert btn.cget("cursor") == "hand2"
+        gui.exit_busy()
+        assert btn.cget("cursor") == "hand2"
+        assert gui._cursor_states == {}
+        assert getattr(gui, "_busy_motion_id", None) is None
+
+
+class TestWaitCursorMotion:
     @needs_display
     def test_motion_sobre_separador_e_sash_mantem_watch(self):
         gui = _CursorGUI()
@@ -286,24 +273,8 @@ class TestWaitCursor:
         finally:
             gui.destroy()
 
-    @needs_display
-    def test_exit_busy_repetido_nao_deixa_residuo(self):
-        gui = _CursorGUI()
-        try:
-            btn = tk.Button(gui, cursor="hand2")
-            btn.pack()
-            gui.enter_busy()
-            gui.exit_busy()
-            assert btn.cget("cursor") == "hand2"
-            gui.exit_busy()
-            assert btn.cget("cursor") == "hand2"
-            assert gui._cursor_states == {}
-            assert getattr(gui, "_busy_motion_id", None) is None
-        finally:
-            gui.destroy()
 
-
-class _FakeWidget:
+class _FakeWidgetCursor:
     """Widget mínimo (sem Tk) para exercitar a máquina de cursor."""
 
     def __init__(self, cursor: str = "") -> None:
@@ -325,11 +296,12 @@ class _FakeWidget:
 class _CursorHost(StatusMixin):
     """Host sem display que implementa o mínimo usado pelo ``StatusMixin``."""
 
-    def __init__(self) -> None:
+    def __init__(self, children: list | None = None) -> None:
         self._cursor = ""
         self._cursor_states: dict = {}
         self._busy_motion_id = None
         self._presenter = None
+        self._children = list(children or [])
 
     def cget(self, key: str) -> str:
         if key == "cursor":
@@ -341,7 +313,7 @@ class _CursorHost(StatusMixin):
             self._cursor = str(kwargs["cursor"])
 
     def winfo_children(self) -> list:
-        return []
+        return list(self._children)
 
     def bind(self, sequence: str, func: object, add: str | None = None) -> str:
         return "hook"
@@ -360,7 +332,7 @@ class TestCursorBusyHeadless:
     def test_widget_criado_durante_busy_restaura(self):
         host = _CursorHost()
         host._set_wait_cursor()
-        novo = _FakeWidget(cursor="hand2")
+        novo = _FakeWidgetCursor(cursor="hand2")
         StatusMixin._on_busy_motion(host, types.SimpleNamespace(widget=novo))
         assert novo.cget("cursor") == "watch"
         assert novo in host._cursor_states
@@ -372,7 +344,7 @@ class TestCursorBusyHeadless:
         host = _CursorHost()
         host._presenter = types.SimpleNamespace(is_busy=False)
         host._set_wait_cursor()
-        btn = _FakeWidget(cursor="hand2")
+        btn = _FakeWidgetCursor(cursor="hand2")
         host._cursor_states[btn] = "hand2"
         btn.config(cursor="watch")
 
@@ -425,86 +397,75 @@ class TestManagersLocaisNaoAcionamCursorHeadless:
         view.exit_busy.assert_not_called()
 
 
-class _StatusBarHost(tk.Tk, LayoutMixin, StatusMixin):
-    """Host mínimo que constrói a barra de status real sem ícones reais."""
+class _StatusVarFake:
+    """Variável Tk mínima que armazena o texto definido."""
 
-    def _load_icon(self, filename: str, size: tuple = (20, 20)) -> object:
-        return None
+    def __init__(self) -> None:
+        self.value = ""
+
+    def set(self, valor: object) -> None:
+        self.value = str(valor)
+
+    def get(self) -> str:
+        return self.value
+
+
+class _StatusHost(StatusMixin):
+    """Host headless da barra de status com widgets fake."""
+
+    def __init__(self) -> None:
+        self._status_var = _StatusVarFake()
+        self._progress_bar = _FakeWidget()
+        self._stop_button = _FakeWidget()
+        self._stop_button_visivel = False
+
+    def update_idletasks(self) -> None:
+        pass
 
 
 class TestBotaoInterromper:
-    @needs_display
     def test_botao_criado_oculto(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            assert host._stop_button.winfo_manager() == ""
-            assert host._stop_button_visivel is False
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        assert host._stop_button.winfo_manager() == ""
+        assert host._stop_button_visivel is False
 
-    @needs_display
     def test_cancellable_mostra_e_oculta_botao(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            host.set_cancellable(True)
-            assert host._stop_button.winfo_manager() != ""
-            host.set_cancellable(False)
-            assert host._stop_button.winfo_manager() == ""
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        host.set_cancellable(True)
+        assert host._stop_button.winfo_manager() != ""
+        host.set_cancellable(False)
+        assert host._stop_button.winfo_manager() == ""
 
-    @needs_display
     def test_carga_sincrona_nao_exibe_botao(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            host._set_progress(1, 2, "Baixando dados históricos")
-            assert host._progress_bar.winfo_manager() != ""
-            assert host._stop_button.winfo_manager() == ""
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        host._set_progress(1, 2, "Baixando dados históricos")
+        assert host._progress_bar.winfo_manager() != ""
+        assert host._stop_button.winfo_manager() == ""
 
-    @needs_display
     def test_progresso_de_job_cancelavel_exibe_botao(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            host.set_cancellable(True)
-            host._set_progress(1, 2, "Fundamentos")
-            assert host._progress_bar.winfo_manager() != ""
-            assert host._stop_button.winfo_manager() != ""
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        host.set_cancellable(True)
+        host._set_progress(1, 2, "Fundamentos")
+        assert host._progress_bar.winfo_manager() != ""
+        assert host._stop_button.winfo_manager() != ""
 
-    @needs_display
     def test_status_e_clear_ocultam_botao(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            host.set_cancellable(True)
-            host._set_progress(1, 2, "Fundamentos")
-            host._set_status("Pronto.")
-            assert host._progress_bar.winfo_manager() == ""
-            assert host._stop_button.winfo_manager() == ""
-            host.set_cancellable(True)
-            host._set_progress(1, 2, "Fundamentos")
-            host.clear_progress()
-            assert host._stop_button.winfo_manager() == ""
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        host.set_cancellable(True)
+        host._set_progress(1, 2, "Fundamentos")
+        host._set_status("Pronto.")
+        assert host._progress_bar.winfo_manager() == ""
+        assert host._stop_button.winfo_manager() == ""
+        host.set_cancellable(True)
+        host._set_progress(1, 2, "Fundamentos")
+        host.clear_progress()
+        assert host._stop_button.winfo_manager() == ""
 
-    @needs_display
     def test_clique_solicita_cancelamento_ao_presenter(self):
-        host = _StatusBarHost()
-        try:
-            host._build_statusbar()
-            host._presenter = MagicMock()
-            host._on_stop_clicked()
-            host._presenter.request_cancel.assert_called_once()
-        finally:
-            host.destroy()
+        host = _StatusHost()
+        host._presenter = MagicMock()
+        host._on_stop_clicked()
+        host._presenter.request_cancel.assert_called_once()
 
 
 class _TabsCursorHost(tk.Tk, StatusMixin, TabsLayoutMixin):

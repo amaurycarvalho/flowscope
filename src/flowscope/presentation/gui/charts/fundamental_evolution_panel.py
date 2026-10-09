@@ -77,21 +77,20 @@ def formatar_ponto(tipo: str, valor: object) -> str:
         return str(valor)
 
 
-class FundamentalEvolutionPanel:
-    """Small multiples da evolução dos fundamentos de um ticker."""
+class FundamentalEvolutionFigure:
+    """Small multiples da evolução dos fundamentos (figura pura, sem Tk).
+
+    Concentra a construção e o desenho da ``Figure``/``Axes`` para que a
+    lógica seja verificável sem ``DISPLAY``. O redesenho é delegado aos hooks
+    ``_draw``/``_draw_idle``, sobrescritos pela casca Tk.
+    """
 
     #: Número de linhas e colunas da grade de painéis.
     _LINHAS = 4
     _COLUNAS = 2
 
-    def __init__(
-        self: "FundamentalEvolutionPanel",
-        parent: tk.Widget,
-        *,
-        copy_chart_callback: Callable[[Figure], None] | None = None,
-    ) -> None:
-        """Constrói a figura, os oito eixos e a barra de ferramentas."""
-        self.frame = tk.Frame(parent)
+    def __init__(self: "FundamentalEvolutionFigure") -> None:
+        """Constrói a figura e os oito eixos, sem tocar em Tk."""
         self._figure = Figure(figsize=(6, 6), dpi=100)
         self._figure.subplots_adjust(
             top=0.90, bottom=0.07, left=0.09, right=0.97,
@@ -106,21 +105,19 @@ class FundamentalEvolutionPanel:
             )
             for indice in range(self._LINHAS * self._COLUNAS)
         ]
-        self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
-        self._canvas.get_tk_widget().pack(fill="both", expand=True)
-
-        self._toolbar = ToolbarBR(
-            self._canvas, self.frame, copy_chart_callback=copy_chart_callback
-        )
-
         self._all_axes = list(self._axes)
         self._empty_label = create_empty(self._figure, self._all_axes)
         self._anotacoes: list[Annotation | None] = [None] * len(self._axes)
         self._series_plot: list[SerieEvolucao | None] = [None] * len(self._axes)
-        self._canvas.mpl_connect("motion_notify_event", self._on_motion)
+
+    def _draw(self: "FundamentalEvolutionFigure") -> None:
+        """Redesenha a figura; a casca Tk sobrescreve com o canvas."""
+
+    def _draw_idle(self: "FundamentalEvolutionFigure") -> None:
+        """Agenda um redesenho; a casca Tk sobrescreve com o canvas."""
 
     def update(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         series: Sequence[SerieEvolucao] = (),
         ticker: str | None = None,
     ) -> None:
@@ -134,10 +131,10 @@ class FundamentalEvolutionPanel:
         self._definir_titulo(series, ticker)
         self._desenhar_paineis(series)
         self._configurar_eixos_x()
-        self._canvas.draw()
+        self._draw()
 
     def _definir_titulo(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         series: Sequence[SerieEvolucao],
         ticker: str | None,
     ) -> None:
@@ -151,7 +148,7 @@ class FundamentalEvolutionPanel:
         )
 
     def _desenhar_paineis(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         series: Sequence[SerieEvolucao],
     ) -> None:
         """Desenha cada painel e registra a série e a anotação de hover."""
@@ -172,14 +169,14 @@ class FundamentalEvolutionPanel:
         return serie
 
     def _configurar_eixos_x(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
     ) -> None:
         """Configura o eixo de datas de todos os painéis."""
         for indice, ax in enumerate(self._axes):
             self._configurar_eixo_x(ax, indice)
 
     def _desenhar_serie(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         ax: Axes,
         serie: SerieEvolucao | None,
     ) -> Annotation | None:
@@ -218,7 +215,7 @@ class FundamentalEvolutionPanel:
         return self._criar_anotacao(ax)
 
     def _criar_anotacao(
-        self: "FundamentalEvolutionPanel", ax: Axes
+        self: "FundamentalEvolutionFigure", ax: Axes
     ) -> Annotation:
         """Cria a anotação de hover oculta de um painel."""
         return ax.annotate(
@@ -231,7 +228,7 @@ class FundamentalEvolutionPanel:
         )
 
     def _configurar_eixo_x(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         ax: Axes,
         indice: int,
     ) -> None:
@@ -250,7 +247,7 @@ class FundamentalEvolutionPanel:
         ax.tick_params(axis="x", labelsize=7, labelrotation=30)
 
     def _ultimo_com_dado(
-        self: "FundamentalEvolutionPanel", coluna: int
+        self: "FundamentalEvolutionFigure", coluna: int
     ) -> int | None:
         """Retorna o painel inferior da coluna que possui série desenhada."""
         return max(
@@ -263,31 +260,31 @@ class FundamentalEvolutionPanel:
         )
 
     def _on_motion(
-        self: "FundamentalEvolutionPanel", event: MouseEvent
+        self: "FundamentalEvolutionFigure", event: MouseEvent
     ) -> None:
         """Exibe o tooltip do ponto mais próximo do cursor, se houver."""
         ax = event.inaxes
         indice = self._indice_do_eixo(ax)
         if indice is None:
             self._ocultar_anotacoes()
-            self._canvas.draw_idle()
+            self._draw_idle()
             return
         serie = self._series_plot[indice]
         anotacao = self._anotacoes[indice]
         if serie is None or anotacao is None:
             self._ocultar_anotacoes()
-            self._canvas.draw_idle()
+            self._draw_idle()
             return
         ponto = self._ponto_mais_proximo(ax, serie, event.x, event.y)
         if ponto is None:
             self._ocultar_anotacoes()
-            self._canvas.draw_idle()
+            self._draw_idle()
             return
         self._mostrar_anotacao(serie, anotacao, ponto)
-        self._canvas.draw_idle()
+        self._draw_idle()
 
     def _indice_do_eixo(
-        self: "FundamentalEvolutionPanel", ax: Axes | None
+        self: "FundamentalEvolutionFigure", ax: Axes | None
     ) -> int | None:
         """Retorna o índice do eixo na grade, ou ``None`` se não pertencer."""
         if ax is None:
@@ -298,7 +295,7 @@ class FundamentalEvolutionPanel:
             return None
 
     def _ponto_mais_proximo(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         ax: Axes,
         serie: SerieEvolucao,
         x: float,
@@ -315,7 +312,7 @@ class FundamentalEvolutionPanel:
         return serie.pontos[indice]
 
     def _mostrar_anotacao(
-        self: "FundamentalEvolutionPanel",
+        self: "FundamentalEvolutionFigure",
         serie: SerieEvolucao,
         anotacao: Annotation,
         ponto: PontoEvolucao,
@@ -329,14 +326,14 @@ class FundamentalEvolutionPanel:
         anotacao.xy = (date2num(ponto.data), float(ponto.valor))
         anotacao.set_visible(True)
 
-    def _ocultar_anotacoes(self: "FundamentalEvolutionPanel") -> None:
+    def _ocultar_anotacoes(self: "FundamentalEvolutionFigure") -> None:
         """Oculta todas as anotações de hover dos painéis."""
         for anotacao in self._anotacoes:
             if anotacao is not None:
                 anotacao.set_visible(False)
 
     def mostrar_carregando(
-        self: "FundamentalEvolutionPanel", ticker: str | None = None
+        self: "FundamentalEvolutionFigure", ticker: str | None = None
     ) -> None:
         """Exibe o estado de carregamento enquanto as séries são montadas."""
         if ticker:
@@ -347,10 +344,10 @@ class FundamentalEvolutionPanel:
         show_empty(self._figure, self._all_axes, self._empty_label)
         self._anotacoes = [None] * len(self._axes)
         self._series_plot = [None] * len(self._axes)
-        self._canvas.draw()
+        self._draw()
 
     def _show_empty(
-        self: "FundamentalEvolutionPanel", ticker: str | None = None
+        self: "FundamentalEvolutionFigure", ticker: str | None = None
     ) -> None:
         """Limpa os painéis e exibe o rótulo de estado vazio."""
         if ticker:
@@ -361,12 +358,40 @@ class FundamentalEvolutionPanel:
         show_empty(self._figure, self._all_axes, self._empty_label)
         self._anotacoes = [None] * len(self._axes)
         self._series_plot = [None] * len(self._axes)
-        self._canvas.draw()
+        self._draw()
 
-    def reset(self: "FundamentalEvolutionPanel") -> None:
+    def reset(self: "FundamentalEvolutionFigure") -> None:
         """Limpa o painel e exibe o estado vazio."""
         self._show_empty()
 
-    def get_figure(self: "FundamentalEvolutionPanel") -> Figure:
+    def get_figure(self: "FundamentalEvolutionFigure") -> Figure:
         """Retorna a figura matplotlib utilizada pelo painel."""
         return self._figure
+
+
+class FundamentalEvolutionPanel(FundamentalEvolutionFigure):
+    """Casca Tk que embute a figura de evolução dos fundamentos."""
+
+    def __init__(
+        self: "FundamentalEvolutionPanel",
+        parent: tk.Widget,
+        *,
+        copy_chart_callback: Callable[[Figure], None] | None = None,
+    ) -> None:
+        """Monta a figura pura e a embute no canvas Tk com a barra de ferramentas."""
+        super().__init__()
+        self.frame = tk.Frame(parent)
+        self._canvas = FigureCanvasTkAgg(self._figure, master=self.frame)
+        self._canvas.get_tk_widget().pack(fill="both", expand=True)
+        self._toolbar = ToolbarBR(
+            self._canvas, self.frame, copy_chart_callback=copy_chart_callback
+        )
+        self._canvas.mpl_connect("motion_notify_event", self._on_motion)
+
+    def _draw(self: "FundamentalEvolutionPanel") -> None:
+        """Redesenha a figura pelo canvas Tk."""
+        self._canvas.draw()
+
+    def _draw_idle(self: "FundamentalEvolutionPanel") -> None:
+        """Agenda o redesenho pelo canvas Tk."""
+        self._canvas.draw_idle()

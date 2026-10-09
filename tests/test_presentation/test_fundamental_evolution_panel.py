@@ -7,11 +7,9 @@ import warnings
 from datetime import date, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from matplotlib.dates import date2num
-from matplotlib.figure import Figure
 
 from flowscope.application.fundamental.evolucao import (
     TIPO_INTEIRO,
@@ -38,6 +36,7 @@ from flowscope.domain.fii import (
     UltimoDividendo,
 )
 from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
+    FundamentalEvolutionFigure,
     FundamentalEvolutionPanel,
     formatar_ponto,
     selecionar_ticks,
@@ -179,237 +178,190 @@ class TestSelecionarTicks:
         assert ticks == sorted(set(ticks))
 
 
-class TestFundamentalEvolutionPanel:
-    @needs_display
+class _FigureHeadless(FundamentalEvolutionFigure):
+    """Host headless que registra os redesenhos sem canvas Tk."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.draws = 0
+        self.draws_idle = 0
+
+    def _draw(self) -> None:
+        self.draws += 1
+
+    def _draw_idle(self) -> None:
+        self.draws_idle += 1
+
+
+class TestFundamentalEvolutionFigure:
     def test_update_monta_small_multiples_sem_erro(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            assert painel._empty_label.get_visible() is False
-            titulos = [ax.get_title() for ax in painel._axes]
-            assert "Cotação (R$)" in titulos
-            assert "Nº de cotas" in titulos
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        assert painel._empty_label.get_visible() is False
+        titulos = [ax.get_title() for ax in painel._axes]
+        assert "Cotação (R$)" in titulos
+        assert "Nº de cotas" in titulos
 
-    @needs_display
     def test_titulos_trazem_unidade_por_campo(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            titulos = [ax.get_title() for ax in painel._axes]
-            assert "Cotação (R$)" in titulos
-            assert "VP (VP/Cota) (R$)" in titulos
-            assert "P/VP" in titulos
-            assert "Dividend Yield" in titulos
-            assert "Último dividendo (R$)" in titulos
-            assert "Nº de cotistas" in titulos
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        titulos = [ax.get_title() for ax in painel._axes]
+        assert "Cotação (R$)" in titulos
+        assert "VP (VP/Cota) (R$)" in titulos
+        assert "P/VP" in titulos
+        assert "Dividend Yield" in titulos
+        assert "Último dividendo (R$)" in titulos
+        assert "Nº de cotistas" in titulos
 
-    @needs_display
     def test_oito_paineis_incluindo_shorts(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            assert len(painel._axes) == 8
-            titulos = [ax.get_title() for ax in painel._axes]
-            assert titulos[-1] == "Shorts%"
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        assert len(painel._axes) == 8
+        titulos = [ax.get_title() for ax in painel._axes]
+        assert titulos[-1] == "Shorts%"
 
     def test_titulo_informa_datas_no_periodo(self):
-        painel = FundamentalEvolutionPanel.__new__(FundamentalEvolutionPanel)
-        painel._figure = Figure()
+        painel = _FigureHeadless()
         painel._definir_titulo(_series(), ticker="HGBS11")
         titulo = painel._figure.get_suptitle()
         assert "datas no período" in titulo
         assert "HGBS11" in titulo
 
-    @needs_display
     def test_rotulos_de_data_com_dia_mes_e_ano(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            for indice in (5, 6):
-                textos = [
-                    t.get_text()
-                    for t in painel._axes[indice].get_xticklabels()
-                ]
-                assert textos
-                assert all(
-                    re.fullmatch(r"\d{2}/\d{2}/\d{2}", t) for t in textos
-                )
-            assert painel._axes[7].get_xticklabels() == []
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_rotulos_vao_para_o_ultimo_painel_com_dado(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series_com_shorts(), ticker="HGBS11")
-            textos = [t.get_text() for t in painel._axes[7].get_xticklabels()]
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        for indice in (5, 6):
+            textos = [
+                t.get_text()
+                for t in painel._axes[indice].get_xticklabels()
+            ]
             assert textos
-            assert all(re.fullmatch(r"\d{2}/\d{2}/\d{2}", t) for t in textos)
-            assert painel._axes[5].get_xticklabels() == []
-        finally:
-            root.destroy()
+            assert all(
+                re.fullmatch(r"\d{2}/\d{2}/\d{2}", t) for t in textos
+            )
+        assert painel._axes[7].get_xticklabels() == []
 
-    @needs_display
+    def test_rotulos_vao_para_o_ultimo_painel_com_dado(self):
+        painel = _FigureHeadless()
+        painel.update(_series_com_shorts(), ticker="HGBS11")
+        textos = [t.get_text() for t in painel._axes[7].get_xticklabels()]
+        assert textos
+        assert all(re.fullmatch(r"\d{2}/\d{2}/\d{2}", t) for t in textos)
+        assert painel._axes[5].get_xticklabels() == []
+
     def test_tooltip_dispara_redesenho_ao_aparecer(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            series = _series()
-            painel.update(series, ticker="HGBS11")
-            painel._canvas.draw_idle = MagicMock()
-            ax = painel._axes[0]
-            ponto = series[0].pontos[-1]
-            x, y = ax.transData.transform(
-                (date2num(ponto.data), float(ponto.valor))
-            )
-            painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
-            painel._canvas.draw_idle.assert_called()
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        series = _series()
+        painel.update(series, ticker="HGBS11")
+        ax = painel._axes[0]
+        ponto = series[0].pontos[-1]
+        x, y = ax.transData.transform(
+            (date2num(ponto.data), float(ponto.valor))
+        )
+        painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
+        assert painel.draws_idle > 0
 
-    @needs_display
     def test_tooltip_mostra_data_e_valor_e_some_distante(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            series = _series()
-            painel.update(series, ticker="HGBS11")
-            ax = painel._axes[0]
-            ponto = series[0].pontos[-1]
-            x, y = ax.transData.transform(
-                (date2num(ponto.data), float(ponto.valor))
-            )
-            painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
-            anotacao = painel._anotacoes[0]
-            assert anotacao.get_visible() is True
-            texto = anotacao.get_text()
-            assert "Data:" in texto
-            assert "Valor: R$ 10,00" in texto
-            painel._on_motion(
-                SimpleNamespace(inaxes=ax, x=x - 500.0, y=y - 500.0)
-            )
-            assert anotacao.get_visible() is False
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        series = _series()
+        painel.update(series, ticker="HGBS11")
+        ax = painel._axes[0]
+        ponto = series[0].pontos[-1]
+        x, y = ax.transData.transform(
+            (date2num(ponto.data), float(ponto.valor))
+        )
+        painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
+        anotacao = painel._anotacoes[0]
+        assert anotacao.get_visible() is True
+        texto = anotacao.get_text()
+        assert "Data:" in texto
+        assert "Valor: R$ 10,00" in texto
+        painel._on_motion(
+            SimpleNamespace(inaxes=ax, x=x - 500.0, y=y - 500.0)
+        )
+        assert anotacao.get_visible() is False
 
-    @needs_display
     def test_tooltip_oculto_fora_dos_eixos(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            ax = painel._axes[0]
-            x, y = ax.transData.transform((date2num(BASE), 10.0))
-            painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
-            assert painel._anotacoes[0].get_visible() is True
-            painel._on_motion(SimpleNamespace(inaxes=None, x=x, y=y))
-            assert painel._anotacoes[0].get_visible() is False
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        ax = painel._axes[0]
+        x, y = ax.transData.transform((date2num(BASE), 10.0))
+        painel._on_motion(SimpleNamespace(inaxes=ax, x=x, y=y))
+        assert painel._anotacoes[0].get_visible() is True
+        painel._on_motion(SimpleNamespace(inaxes=None, x=x, y=y))
+        assert painel._anotacoes[0].get_visible() is False
 
-    @needs_display
     def test_anotacoes_zeradas_no_estado_vazio(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            painel.update((), ticker="HGBS11")
-            assert painel._anotacoes == [None] * len(painel._axes)
-            assert painel._series_plot == [None] * len(painel._axes)
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        painel.update((), ticker="HGBS11")
+        assert painel._anotacoes == [None] * len(painel._axes)
+        assert painel._series_plot == [None] * len(painel._axes)
 
-    @needs_display
     def test_tooltip_sem_serie_nao_falha(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            ax = painel._axes[7]
-            assert painel._anotacoes[7] is None
-            painel._on_motion(SimpleNamespace(inaxes=ax, x=10.0, y=10.0))
-            assert painel._anotacoes[7] is None
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        ax = painel._axes[7]
+        assert painel._anotacoes[7] is None
+        painel._on_motion(SimpleNamespace(inaxes=ax, x=10.0, y=10.0))
+        assert painel._anotacoes[7] is None
 
-    @needs_display
     def test_motion_ignora_eixo_externo(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            externo = painel._figure.add_axes([0.0, 0.0, 0.1, 0.1])
-            assert painel._indice_do_eixo(externo) is None
-            painel._on_motion(
-                SimpleNamespace(inaxes=externo, x=1.0, y=1.0)
-            )
-            assert painel._indice_do_eixo(None) is None
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        externo = painel._figure.add_axes([0.0, 0.0, 0.1, 0.1])
+        assert painel._indice_do_eixo(externo) is None
+        painel._on_motion(
+            SimpleNamespace(inaxes=externo, x=1.0, y=1.0)
+        )
+        assert painel._indice_do_eixo(None) is None
 
-    @needs_display
     def test_estado_vazio_aparece_sem_historico(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update((), ticker="HGBS11")
-            assert painel._empty_label.get_visible() is True
-            assert "HGBS11" in painel._empty_label.get_text()
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update((), ticker="HGBS11")
+        assert painel._empty_label.get_visible() is True
+        assert "HGBS11" in painel._empty_label.get_text()
 
-    @needs_display
     def test_estado_vazio_some_com_historico(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update((), ticker="HGBS11")
-            painel.update(_series(), ticker="HGBS11")
-            assert painel._empty_label.get_visible() is False
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update((), ticker="HGBS11")
+        painel.update(_series(), ticker="HGBS11")
+        assert painel._empty_label.get_visible() is False
 
-    @needs_display
     def test_reset_exibe_estado_vazio(self):
-        root = tk.Tk()
-        try:
-            painel = FundamentalEvolutionPanel(root)
-            painel.update(_series(), ticker="HGBS11")
-            painel.reset()
-            assert painel._empty_label.get_visible() is True
-        finally:
-            root.destroy()
+        painel = _FigureHeadless()
+        painel.update(_series(), ticker="HGBS11")
+        painel.reset()
+        assert painel._empty_label.get_visible() is True
+
+    def test_sem_aviso_do_autodatelocator_com_uma_data(self):
+        painel = _FigureHeadless()
+        series = montar_series(
+            [
+                ObservacaoFundamental(
+                    ticker="HGBS11",
+                    data=BASE,
+                    analise=_analise("10", "0.55"),
+                    schema_version=SCHEMA_VERSION_FUNDAMENTOS,
+                )
+            ]
+        )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error", message=".*AutoDateLocator.*")
+            painel.update(series, ticker="HGBS11")
+
+
+class TestFundamentalEvolutionShell:
+    """A casca Tk restrita ao invólucro (canvas e barra de ferramentas)."""
 
     @needs_display
-    def test_sem_aviso_do_autodatelocator_com_uma_data(self):
+    def test_casca_tk_embute_canvas_e_toolbar(self):
         root = tk.Tk()
         try:
             painel = FundamentalEvolutionPanel(root)
-            series = montar_series(
-                [
-                    ObservacaoFundamental(
-                        ticker="HGBS11",
-                        data=BASE,
-                        analise=_analise("10", "0.55"),
-                        schema_version=SCHEMA_VERSION_FUNDAMENTOS,
-                    )
-                ]
-            )
-            with warnings.catch_warnings():
-                warnings.filterwarnings("error", message=".*AutoDateLocator.*")
-                painel.update(series, ticker="HGBS11")
+            assert painel.get_figure() is painel._figure
+            assert painel._canvas is not None
+            assert painel._toolbar is not None
         finally:
             root.destroy()
 

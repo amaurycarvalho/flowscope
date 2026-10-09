@@ -23,6 +23,7 @@ from flowscope.presentation.gui.llm.config_dialog import (
     assinatura_conexao,
     deve_ativar,
 )
+from flowscope.presentation.gui.llm.config_form import LLMConfigForm
 
 pytestmark = pytest.mark.llm
 
@@ -55,22 +56,9 @@ def _config_salva(tmp_path, **chat):
     return caminho
 
 
-class _EventoResultado:
-    """Evento mínimo com o desfecho do teste para a thread do Tk."""
+class TestCargaESalvamentoForm:
+    """Carga, presets e salvamento do modelo puro, sem Tk."""
 
-    def __init__(self, valor):
-        self.valor = valor
-
-
-def _simular_teste_ok(dialog, config):
-    """Aplica um desfecho de teste bem-sucedido para os valores informados."""
-    dialog._aplicar_resultado_teste(
-        _EventoResultado(("ok", "olá", config, None))
-    )
-
-
-class TestCargaESalvamento:
-    @needs_display
     def test_abertura_carrega_config(self, tmp_path):
         caminho = _config_salva(
             tmp_path,
@@ -80,37 +68,65 @@ class TestCargaESalvamento:
             api_key="sk-9",
             rpm=7,
         )
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=caminho)
-            assert dialog._provider_var.get() == "deepseek"
-            assert dialog._api_url_var.get() == "https://api.deepseek.com/v1"
-            assert dialog._model_var.get() == "deepseek-chat"
-            assert dialog._api_key_var.get() == "sk-9"
-            assert dialog._rpm_var.get() == "7"
-        finally:
-            root.destroy()
+        form = LLMConfigForm(InfrastructureLLMConfig(), caminho)
+        form.carregar_inicial()
+        assert form.provider == "deepseek"
+        assert form.api_url == "https://api.deepseek.com/v1"
+        assert form.model == "deepseek-chat"
+        assert form.api_key == "sk-9"
+        assert form.rpm == "7"
 
-    @needs_display
     def test_salvar_sem_teste_grava_sem_ativar(self, tmp_path):
         caminho = tmp_path / "config.json"
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=caminho)
-            dialog._provider_var.set("openai")
-            dialog._api_url_var.set("https://api.openai.com/v1")
-            dialog._model_var.set("gpt-4o-mini")
-            dialog._api_key_var.set("sk-2")
-            dialog._rpm_var.set("9")
-            dialog._salvar()
-            dados = json.loads(caminho.read_text(encoding="utf-8"))
-            chat = dados["llm"]["chat"]
-            assert chat["provider"] == "none"
-            assert chat["active"] == []
-            assert chat["providers"]["openai"]["api_key"] == "sk-2"
-            assert chat["providers"]["openai"]["rpm"] == 9
-        finally:
-            root.destroy()
+        port = InfrastructureLLMConfig()
+        form = LLMConfigForm(port, caminho)
+        form.provider = "openai"
+        form.api_url = "https://api.openai.com/v1"
+        form.model = "gpt-4o-mini"
+        form.api_key = "sk-2"
+        form.rpm = "9"
+        config = form.coletar_config()
+        port.save_llm_config(config, caminho, ativar=deve_ativar(config, None))
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+        chat = dados["llm"]["chat"]
+        assert chat["provider"] == "none"
+        assert chat["active"] == []
+        assert chat["providers"]["openai"]["api_key"] == "sk-2"
+        assert chat["providers"]["openai"]["rpm"] == 9
+
+    def test_reabertura_mostra_config_salva(self, tmp_path):
+        caminho = tmp_path / "config.json"
+        port = InfrastructureLLMConfig()
+        form = LLMConfigForm(port, caminho)
+        form.provider = "deepseek"
+        form.api_url = "https://api.deepseek.com/v1"
+        form.model = "deepseek-chat"
+        form.api_key = "sk-9"
+        form.rpm = "8"
+        port.save_llm_config(form.coletar_config(), caminho, ativar=True)
+        reaberto = LLMConfigForm(port, caminho)
+        reaberto.carregar_inicial()
+        assert reaberto.provider == "deepseek"
+        assert reaberto.api_url == "https://api.deepseek.com/v1"
+        assert reaberto.model == "deepseek-chat"
+        assert reaberto.api_key == "sk-9"
+        assert reaberto.rpm == "8"
+
+    def test_preset_preenche_modelo_e_url(self, tmp_path):
+        form = LLMConfigForm(InfrastructureLLMConfig(), tmp_path / "c.json")
+        form.trocar_provider("deepseek")
+        assert form.model == "deepseek-chat"
+        assert form.api_url == "https://api.deepseek.com/v1"
+
+    def test_preset_custom_fica_em_branco(self, tmp_path):
+        form = LLMConfigForm(InfrastructureLLMConfig(), tmp_path / "c.json")
+        form.trocar_provider("custom")
+        assert form.model == ""
+        assert form.api_url == ""
+
+
+class TestDialogoShell:
+    """Comportamento do diálogo que só existe com Tk."""
 
     @needs_display
     def test_salvar_fecha_dialogo(self, tmp_path):
@@ -124,60 +140,11 @@ class TestCargaESalvamento:
             root.destroy()
 
     @needs_display
-    def test_reabertura_mostra_config_salva(self, tmp_path):
-        caminho = tmp_path / "config.json"
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=caminho)
-            dialog._provider_var.set("deepseek")
-            dialog._api_url_var.set("https://api.deepseek.com/v1")
-            dialog._model_var.set("deepseek-chat")
-            dialog._api_key_var.set("sk-9")
-            dialog._rpm_var.set("8")
-            _simular_teste_ok(dialog, dialog._coletar_config())
-            dialog._salvar()
-            reaberto = _dialog(root, config_path=caminho)
-            try:
-                assert reaberto._provider_var.get() == "deepseek"
-                assert reaberto._api_url_var.get() == "https://api.deepseek.com/v1"
-                assert reaberto._model_var.get() == "deepseek-chat"
-                assert reaberto._api_key_var.get() == "sk-9"
-                assert reaberto._rpm_var.get() == "8"
-            finally:
-                reaberto.destroy()
-        finally:
-            root.destroy()
-
-    @needs_display
     def test_chave_mascarada(self, tmp_path):
         root = tk.Tk()
         try:
             dialog = _dialog(root, config_path=tmp_path / "c.json")
             assert dialog._api_key_entry.cget("show") == "*"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_preset_preenche_modelo_e_url(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=tmp_path / "c.json")
-            dialog._provider_var.set("deepseek")
-            dialog._on_preset_change()
-            assert dialog._model_var.get() == "deepseek-chat"
-            assert dialog._api_url_var.get() == "https://api.deepseek.com/v1"
-        finally:
-            root.destroy()
-
-    @needs_display
-    def test_preset_custom_fica_em_branco(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=tmp_path / "c.json")
-            dialog._provider_var.set("custom")
-            dialog._on_preset_change()
-            assert dialog._model_var.get() == ""
-            assert dialog._api_url_var.get() == ""
         finally:
             root.destroy()
 
@@ -213,90 +180,55 @@ class TestConfigPorProvedor:
         )
         return caminho
 
-    @needs_display
+    def _form(self, tmp_path):
+        form = LLMConfigForm(
+            InfrastructureLLMConfig(), self._config_dois_provedores(tmp_path)
+        )
+        form.carregar_inicial()
+        return form
+
     def test_abertura_carrega_provedor_ativo(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(
-                root, config_path=self._config_dois_provedores(tmp_path)
-            )
-            assert dialog._working["deepseek"]["api_key"] == "sk-deep"
-            assert dialog._provider_var.get() == "openai"
-            assert dialog._api_key_var.get() == "sk-open"
-        finally:
-            root.destroy()
+        form = self._form(tmp_path)
+        assert form.provider == "openai"
+        assert form.api_key == "sk-open"
+        form.trocar_provider("deepseek")
+        assert form.api_key == "sk-deep"
 
-    @needs_display
     def test_troca_restaura_provedor_salvo(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(
-                root, config_path=self._config_dois_provedores(tmp_path)
-            )
-            dialog._provider_var.set("deepseek")
-            dialog._on_preset_change()
-            assert dialog._api_url_var.get() == "https://api.deepseek.com/v1"
-            assert dialog._model_var.get() == "deepseek-chat"
-            assert dialog._api_key_var.get() == "sk-deep"
-            assert dialog._rpm_var.get() == "7"
-        finally:
-            root.destroy()
+        form = self._form(tmp_path)
+        form.trocar_provider("deepseek")
+        assert form.api_url == "https://api.deepseek.com/v1"
+        assert form.model == "deepseek-chat"
+        assert form.api_key == "sk-deep"
+        assert form.rpm == "7"
 
-    @needs_display
     def test_troca_para_nao_configurado_limpa_chave(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(
-                root, config_path=self._config_dois_provedores(tmp_path)
-            )
-            dialog._provider_var.set("gemini")
-            dialog._on_preset_change()
-            assert dialog._api_url_var.get() == (
-                "https://generativelanguage.googleapis.com/v1beta/openai/"
-            )
-            assert dialog._api_key_var.get() == ""
-        finally:
-            root.destroy()
+        form = self._form(tmp_path)
+        form.trocar_provider("gemini")
+        assert form.api_url == (
+            "https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        assert form.api_key == ""
 
-    @needs_display
     def test_none_limpa_e_volta_restaura(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(
-                root, config_path=self._config_dois_provedores(tmp_path)
-            )
-            dialog._provider_var.set("none")
-            dialog._on_preset_change()
-            assert dialog._api_url_var.get() == ""
-            assert dialog._model_var.get() == ""
-            assert dialog._api_key_var.get() == ""
-            assert "none" not in dialog._working
+        form = self._form(tmp_path)
+        form.trocar_provider("none")
+        assert form.api_url == ""
+        assert form.model == ""
+        assert form.api_key == ""
+        assert "none" not in form._working
 
-            dialog._provider_var.set("deepseek")
-            dialog._on_preset_change()
-            assert dialog._api_key_var.get() == "sk-deep"
-        finally:
-            root.destroy()
+        form.trocar_provider("deepseek")
+        assert form.api_key == "sk-deep"
 
-    @needs_display
     def test_edicao_nao_salva_sobrevive_na_sessao(self, tmp_path):
-        root = tk.Tk()
-        try:
-            dialog = _dialog(
-                root, config_path=self._config_dois_provedores(tmp_path)
-            )
-            dialog._provider_var.set("deepseek")
-            dialog._on_preset_change()
-            dialog._api_key_var.set("sk-nova")
-            dialog._provider_var.set("openai")
-            dialog._on_preset_change()
-            dialog._provider_var.set("deepseek")
-            dialog._on_preset_change()
-            assert dialog._api_key_var.get() == "sk-nova"
-        finally:
-            root.destroy()
+        form = self._form(tmp_path)
+        form.trocar_provider("deepseek")
+        form.api_key = "sk-nova"
+        form.trocar_provider("openai")
+        form.trocar_provider("deepseek")
+        assert form.api_key == "sk-nova"
 
-    @needs_display
     def test_trocar_sem_salvar_nao_grava(self, tmp_path):
         caminho = _config_salva(
             tmp_path,
@@ -307,15 +239,10 @@ class TestConfigPorProvedor:
             rpm=7,
         )
         antes = caminho.read_text(encoding="utf-8")
-        root = tk.Tk()
-        try:
-            dialog = _dialog(root, config_path=caminho)
-            dialog._provider_var.set("openai")
-            dialog._on_preset_change()
-            dialog._api_key_var.set("sk-open")
-            dialog.destroy()
-        finally:
-            root.destroy()
+        form = LLMConfigForm(InfrastructureLLMConfig(), caminho)
+        form.carregar_inicial()
+        form.trocar_provider("openai")
+        form.api_key = "sk-open"
         assert caminho.read_text(encoding="utf-8") == antes
 
 
