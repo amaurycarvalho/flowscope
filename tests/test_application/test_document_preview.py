@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pypdf
+from pypdf.errors import LimitReachedError
 
 from flowscope.application import document_preview
 from flowscope.application.document_preview import (
@@ -75,6 +76,25 @@ class _LeitorTudoErro:
 
     def __init__(self, _dados):
         self.pages = [_PaginaFake(erro=True), _PaginaFake(erro=True)]
+
+
+class _PaginaLimite:
+    def extract_text(self):
+        raise LimitReachedError("Maximum /ToUnicode size limit reached")
+
+
+class _LeitorComLimite:
+    is_encrypted = False
+
+    def __init__(self, _dados):
+        self.pages = [_PaginaFake("página boa"), _PaginaLimite()]
+
+
+class _LeitorSoLimite:
+    is_encrypted = False
+
+    def __init__(self, _dados):
+        self.pages = [_PaginaLimite(), _PaginaLimite()]
 
 
 class TestPreview:
@@ -180,3 +200,19 @@ class TestExtracaoPdf:
     def test_cifrado_com_senha_errada_fica_protegido(self):
         dados = _pdf_cifrado("segredo")
         assert extrair_pdf(dados, "errada").status is StatusExtracao.PROTEGIDO
+
+
+class TestLimiteDeRecursos:
+    def test_limit_reached_em_uma_pagina_preserva_as_demais(self, monkeypatch):
+        monkeypatch.setattr(pypdf, "PdfReader", _LeitorComLimite)
+        resultado = extrair_pdf(b"%PDF-1.4")
+        assert resultado.status is StatusExtracao.PARCIAL
+        assert resultado.paginas_com_falha == 1
+        assert "página boa" in resultado.texto
+
+    def test_limit_reached_em_todas_e_falha(self, monkeypatch):
+        monkeypatch.setattr(pypdf, "PdfReader", _LeitorSoLimite)
+        resultado = extrair_pdf(b"%PDF-1.4")
+        assert resultado.status is StatusExtracao.FALHA
+        assert resultado.texto == ""
+        assert resultado.paginas_com_falha == 2

@@ -19,7 +19,6 @@ from flowscope.application.document_preview import (
     SELETOR_CONTEUDO_DETALHE,
     ExtracaoTexto,
     StatusExtracao,
-    extrair_arquivo,
     tem_texto,
     texto_preview,
 )
@@ -28,6 +27,7 @@ from flowscope.application.documentos.document_summary import DocumentSummarySer
 from flowscope.application.documentos.document_summary_port import (
     DocumentSummaryStore,
 )
+from flowscope.application.extracao_orcada import extrair_arquivo_com_orcamento
 from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.application.noticias.catalogo import (
     ConsultarCatalogoNoticiasUseCase,
@@ -407,7 +407,7 @@ class NoticiasPanel(DocumentFlowMixin):
         original como texto) para a apresentação solicitar a senha. Roda na
         thread de trabalho.
         """
-        resultado = extrair_arquivo(
+        resultado = extrair_arquivo_com_orcamento(
             arquivo.caminho, SELETOR_CONTEUDO_DETALHE
         )
         if getattr(arquivo, "secao", "") != SECAO_GERAL:

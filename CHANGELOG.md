@@ -29,6 +29,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.6] — 2026-10-11
 
+### [limite-tempo-extracao-pdf](openspec/changes/archive/2026-10-11-limite-tempo-extracao-pdf) Orçamento de tempo de 90 s por documento na extração de PDF em subprocesso, preservando o texto parcial e sem bloquear o lote nem a pré-visualização
+
+#### Added
+
+- A extração de texto de cada PDF passa a rodar em processo separado com orçamento de 90 segundos por documento (abaixo do limite de inatividade do job de background).
+- Ao estourar o orçamento, o resultado é o texto parcial já extraído, classificado como `PARCIAL` sem propagar exceção; o documento permanece pendente e o lote prossegue para o próximo.
+
+#### Changed
+
+- Tolerância explícita a `LimitReachedError` por página: a página é contabilizada como falha, as seguintes continuam sendo extraídas e o resultado é `PARCIAL`.
+- Documentos sem texto continuam sendo ausência definitiva (`SEM_TEXTO`); estouro de orçamento e erro de limite classificam como `PARCIAL`/`FALHA`, nunca `SEM_TEXTO`.
+- O mesmo caminho limitado atende a pré-visualização sob demanda e a fase de preparação do lote de resumos em Documentos e Notícias; a extração de HTML permanece imediata, sem subprocesso.
+- O ponto de entrada passa a chamar `multiprocessing.freeze_support()` para o subprocesso funcionar no executável empacotado.
+
+### [log-pypdf-controlado](openspec/changes/archive/2026-10-11-log-pypdf-controlado) Controle do log da biblioteca `pypdf` na extração: `WARNING`/`INFO`/`DEBUG` suprimidos e `ERROR` ou acima gravado no `flowscope.log`, sem poluir o terminal
+
+#### Added
+
+- No processo filho da extração, registros de `ERROR` ou acima do `pypdf` passam a ser gravados no `flowscope.log` (mesmo formato do app), permanecendo auditáveis e sem cair no `stderr`/console.
+
+#### Changed
+
+- O logger `pypdf` (e filhos, como `pypdf._reader` e `pypdf._cmap`) passa a ter nível `ERROR`, suprimindo `WARNING`/`INFO`/`DEBUG`, tanto em `_configure_logging` quanto no processo filho da extração.
+- O módulo de caminhos de log sai de `presentation` para `flowscope/log_paths.py`, permitindo que a camada de aplicação referencie o arquivo de log do app sem violar as fronteiras de camadas.
+
 ### [politica-erros-http](openspec/changes/archive/2026-10-11-politica-erros-http) Política central de erros HTTP por status e motor de retry uniforme aplicado a todos os acessos de leitura/download
 
 #### Added

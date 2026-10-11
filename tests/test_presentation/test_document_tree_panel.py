@@ -895,7 +895,7 @@ class TestPrepararTextoHeadless:
         arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
-            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo",
+            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo_com_orcamento",
             lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
             or ExtracaoTexto("extraído", StatusExtracao.OK),
         )
@@ -911,7 +911,7 @@ class TestPrepararTextoHeadless:
         arquivo = _arquivo(tmp_path, "10.pdf")
         chamadas = []
         monkeypatch.setattr(
-            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo",
+            "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo_com_orcamento",
             lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
             or ExtracaoTexto("convertido", StatusExtracao.OK),
         )

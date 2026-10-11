@@ -10,6 +10,7 @@ consumidores decidam exibir, cachear ou reprocessar. É uma regra de aplicação
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
 from io import BytesIO
@@ -26,8 +27,11 @@ __all__ = [
     "SEM_TEXTO",
     "ExtracaoTexto",
     "StatusExtracao",
+    "abrir_pdf",
     "extrair_arquivo",
     "extrair_pdf",
+    "iterar_paginas",
+    "montar_resultado",
     "tem_texto",
     "texto_de_html",
     "texto_de_pdf",
@@ -86,18 +90,76 @@ def extrair_pdf(dados: bytes, senha: str | None = None) -> ExtracaoTexto:
     ``FALHA`` (não foi possível ler) ou ``PROTEGIDO`` (criptografado sem senha
     válida). Nunca propaga exceção da biblioteca de PDF.
     """
+    leitor, erro = abrir_pdf(dados, senha)
+    if erro is not None:
+        return erro
+    gerador = iterar_paginas(leitor)
+    if gerador is None:
+        return ExtracaoTexto("", StatusExtracao.FALHA)
+    textos: list[str] = []
+    falhas = 0
+    for texto, falhou in gerador:
+        if falhou:
+            falhas += 1
+        else:
+            textos.append(texto)
+    return montar_resultado(textos, falhas)
+
+
+def abrir_pdf(
+    dados: bytes, senha: str | None = None
+) -> tuple[object | None, ExtracaoTexto | None]:
+    """Abre (e descriptografa) um PDF, devolvendo o leitor ou o erro tipado.
+
+    Em sucesso devolve ``(leitor, None)``; caso contrário ``(None,
+    ExtracaoTexto)`` com estado ``SEM_TEXTO`` (dados vazios), ``FALHA`` (não
+    abriu) ou ``PROTEGIDO`` (criptografado sem senha válida).
+    """
     if not dados:
-        return ExtracaoTexto("", StatusExtracao.SEM_TEXTO)
+        return None, ExtracaoTexto("", StatusExtracao.SEM_TEXTO)
     leitor = _abrir_leitor(dados)
     if leitor is None:
-        return ExtracaoTexto("", StatusExtracao.FALHA)
+        return None, ExtracaoTexto("", StatusExtracao.FALHA)
     if not _liberar(leitor, senha):
-        return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
-    extraido = _extrair_paginas(leitor)
-    if extraido is None:
-        return ExtracaoTexto("", StatusExtracao.FALHA)
-    textos, falhas = extraido
-    return _montar_resultado(textos, falhas)
+        return None, ExtracaoTexto("", StatusExtracao.PROTEGIDO)
+    return leitor, None
+
+
+def iterar_paginas(
+    leitor: object,
+) -> Iterator[tuple[str, bool]] | None:
+    """Itera ``(texto, falhou)`` por página, ou ``None`` se a árvore falhar.
+
+    Cada página é extraída de forma isolada: uma falha — inclusive
+    ``LimitReachedError`` (subclasse de ``PyPdfError``), que a biblioteca deixa
+    propagar da extração — conta como página com falha e NÃO descarta as
+    demais.
+    """
+    try:
+        paginas = list(leitor.pages)  # type: ignore[attr-defined]
+    except Exception:  # árvore de páginas ilegível
+        logger.warning("Falha ao ler as páginas do PDF", exc_info=True)
+        return None
+
+    def _gerar() -> Iterator[tuple[str, bool]]:
+        for pagina in paginas:
+            try:
+                yield pagina.extract_text() or "", False
+            except Exception:  # página isolada ilegível (inclui LimitReachedError)
+                yield "", True
+
+    return _gerar()
+
+
+def montar_resultado(textos: list[str], falhas: int) -> ExtracaoTexto:
+    """Deriva o status final a partir do texto lido e das páginas com falha."""
+    conteudo = "\n".join(texto for texto in textos if texto)
+    if conteudo.strip():
+        status = StatusExtracao.PARCIAL if falhas else StatusExtracao.OK
+        return ExtracaoTexto(conteudo, status, falhas)
+    if falhas and not textos:
+        return ExtracaoTexto("", StatusExtracao.FALHA, falhas)
+    return ExtracaoTexto("", StatusExtracao.SEM_TEXTO, falhas)
 
 
 def _abrir_leitor(dados: bytes) -> object | None:
@@ -124,34 +186,6 @@ def _liberar(leitor: object, senha: str | None) -> bool:
         logger.warning("Falha ao descriptografar o PDF", exc_info=True)
         return False
     return bool(resultado)
-
-
-def _extrair_paginas(leitor: object) -> tuple[list[str], int] | None:
-    """Extrai o texto de cada página, contando as que falham isoladamente."""
-    try:
-        paginas = list(leitor.pages)
-    except Exception:  # árvore de páginas ilegível
-        logger.warning("Falha ao ler as páginas do PDF", exc_info=True)
-        return None
-    textos: list[str] = []
-    falhas = 0
-    for pagina in paginas:
-        try:
-            textos.append(pagina.extract_text() or "")
-        except Exception:  # página isolada ilegível
-            falhas += 1
-    return textos, falhas
-
-
-def _montar_resultado(textos: list[str], falhas: int) -> ExtracaoTexto:
-    """Deriva o status final a partir do texto lido e das páginas com falha."""
-    conteudo = "\n".join(texto for texto in textos if texto)
-    if conteudo.strip():
-        status = StatusExtracao.PARCIAL if falhas else StatusExtracao.OK
-        return ExtracaoTexto(conteudo, status, falhas)
-    if falhas and not textos:
-        return ExtracaoTexto("", StatusExtracao.FALHA, falhas)
-    return ExtracaoTexto("", StatusExtracao.SEM_TEXTO, falhas)
 
 
 def texto_de_pdf(dados: bytes) -> str:

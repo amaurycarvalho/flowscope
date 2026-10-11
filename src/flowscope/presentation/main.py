@@ -3,6 +3,7 @@
 import argparse
 import copy
 import logging
+import multiprocessing
 import platform
 import sys
 from datetime import datetime, timezone
@@ -12,8 +13,8 @@ from pathlib import Path
 import requests
 
 from flowscope import __version__
+from flowscope.log_paths import LOG_DATEFMT, LOG_FILE_RELATIVE_PATH, LOG_FORMAT
 from flowscope.presentation.cli import build_parser, run_cli
-from flowscope.presentation.log_paths import LOG_FILE_RELATIVE_PATH
 from flowscope.presentation.shortcuts import (
     _create_desktop_shortcut,
     _desktop_path,
@@ -31,6 +32,7 @@ __all__ = [
 
 def main() -> None:
     """Executa o fluxo principal, interpretando os argumentos e delegando para GUI ou CLI."""
+    multiprocessing.freeze_support()
     parser = build_parser()
     args = parser.parse_args()
 
@@ -163,6 +165,16 @@ class _CommunicationAwareFormatter(_MillisecondFormatter):
         return f"{super().format(registro)} [{type(causa).__name__}: {causa}]"
 
 
+def _silenciar_pypdf() -> None:
+    """Silencia o logger do ``pypdf`` abaixo de ``ERROR``.
+
+    Os avisos de autorreparo de PDFs malformados ("Ignoring wrong pointing
+    object …") são ruído: só ``ERROR`` ou acima é preservado (na configuração do
+    app, gravado nos handlers de arquivo/syslog).
+    """
+    logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+
 def _configure_logging() -> None:
     log_path = Path.home() / LOG_FILE_RELATIVE_PATH
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -186,13 +198,14 @@ def _configure_logging() -> None:
             pass
 
     formatter = _CommunicationAwareFormatter(
-        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S,%f",
+        LOG_FORMAT,
+        datefmt=LOG_DATEFMT,
     )
     for handler in handlers:
         handler.setFormatter(formatter)
 
     logging.basicConfig(level=logging.WARNING, handlers=handlers, force=True)
+    _silenciar_pypdf()
 
 
 def _open_gui() -> None:

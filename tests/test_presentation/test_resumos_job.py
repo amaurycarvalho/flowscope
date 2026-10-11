@@ -437,6 +437,36 @@ class TestNaoDefinitivosNoLote:
         assert painel.guidances == []
         assert not any(isinstance(e, Resultado) for e in eventos)
 
+    def test_parcial_por_estouro_segue_para_o_proximo(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelParcial(parcial="10.pdf")
+        ctx, eventos = _contexto()
+
+        sem_texto = executar_resumos(ctx, painel, arquivos)
+
+        preparar = [
+            e for e in eventos if isinstance(e, Progresso) and e.dados == 1
+        ]
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        assert painel.preparados == ["10.pdf", "20.pdf"]
+        assert [r.dados.nome for r in resultados] == ["20.pdf"]
+        assert sem_texto == 1
+        assert preparar[-1].atual == preparar[-1].total == 2
+
+
+class _PainelParcial(_PainelFake):
+    """Painel fake em que um documento estoura e devolve texto parcial."""
+
+    def __init__(self, parcial: str) -> None:
+        super().__init__({})
+        self._parcial = parcial
+
+    def preparar_texto(self, arquivo, senha=None):
+        self.preparados.append(arquivo.nome)
+        if arquivo.nome == self._parcial:
+            return ExtracaoTexto("texto parcial", StatusExtracao.PARCIAL, 1)
+        return ExtracaoTexto("texto completo", StatusExtracao.OK)
+
 
 class TestCancelamento:
     def test_cancelamento_interrompe_preparacao(self):

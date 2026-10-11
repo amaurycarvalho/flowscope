@@ -13,9 +13,9 @@ from flowscope.application.document_preview import (
     SEM_TEXTO,
     ExtracaoTexto,
     StatusExtracao,
-    extrair_arquivo,
     tem_texto,
 )
+from flowscope.application.extracao_orcada import extrair_arquivo_com_orcamento
 from flowscope.application.fundamental.linhas import formatar_guidance
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
@@ -264,8 +264,13 @@ class DocumentFlowMixin:
         arquivo: DocumentoArquivo,
         senha: str | None = None,
     ) -> ExtracaoTexto:
-        """Extrai o texto do arquivo; subclasses podem restringir a extração."""
-        return extrair_arquivo(arquivo.caminho, senha=senha)
+        """Extrai o texto do arquivo; subclasses podem restringir a extração.
+
+        A extração de PDF é limitada por um orçamento de tempo (em processo
+        separado) para que um documento patologicamente lento não bloqueie a
+        pré-visualização nem o lote.
+        """
+        return extrair_arquivo_com_orcamento(arquivo.caminho, senha=senha)
 
     def preparar_texto(
         self: "DocumentFlowMixin",

@@ -5,11 +5,11 @@ import webbrowser
 
 from flowscope import __version__
 from flowscope.application.releases import ReleaseChecker, verificar_nova_versao
+from flowscope.log_paths import log_file_path
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
 from flowscope.presentation.gui.widgets.about_panel import REPOSITORIO_URL
-from flowscope.presentation.log_paths import log_file_path
 
 logger = logging.getLogger("flowscope")
 

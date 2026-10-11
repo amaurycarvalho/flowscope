@@ -214,6 +214,27 @@ class TestConfigureLogging:
             log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
             assert log_file.exists()
 
+    def test_silencia_pypdf_no_nivel_error(self, monkeypatch):
+        import logging
+
+        from flowscope.presentation import main
+
+        pypdf_logger = logging.getLogger("pypdf")
+        monkeypatch.setattr(pypdf_logger, "level", logging.DEBUG)
+        main._silenciar_pypdf()
+        assert pypdf_logger.level == logging.ERROR
+
+    def test_configure_logging_invoca_silenciamento_do_pypdf(
+        self, tmp_path, monkeypatch
+    ):
+        from flowscope.presentation import main
+
+        chamadas: list[bool] = []
+        monkeypatch.setattr(main, "_silenciar_pypdf", lambda: chamadas.append(True))
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+        assert chamadas == [True]
+
 
 class TestDesktopShortcutGuiButton:
     def test_on_create_shortcut_hides_button_on_success(self):
