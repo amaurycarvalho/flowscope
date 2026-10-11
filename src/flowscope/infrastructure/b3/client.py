@@ -9,6 +9,7 @@ from typing import Any
 
 from flowscope.infrastructure.b3.parser import parse_index_csv
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +50,18 @@ class B3Client:
             "fileName": file_name,
             "date": ref_date.strftime("%Y-%m-%d"),
         }
-        resp = requests.get(url, params=params, timeout=30)
-        try:
+
+        def _fazer() -> requests.Response:
+            resp = requests.get(url, params=params, timeout=30)
             resp.raise_for_status()
+            return resp
+
+        try:
+            resp = executar_com_retry(_fazer, metodo="GET")
         except requests.HTTPError as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
             raise RuntimeError(
-                f"Erro HTTP {resp.status_code} ao obter token para {file_name} em {ref_date}"
+                f"Erro HTTP {status} ao obter token para {file_name} em {ref_date}"
             ) from e
         return resp.json()
 
@@ -62,14 +69,18 @@ class B3Client:
         import requests
 
         url = f"{self._BASE_URL}/api/download/"
-        resp = requests.get(url, params={"token": token}, timeout=60)
-        try:
+
+        def _fazer() -> requests.Response:
+            resp = requests.get(url, params={"token": token}, timeout=60)
             resp.raise_for_status()
+            resp.encoding = resp.apparent_encoding or "utf-8"
+            return resp
+
+        try:
+            resp = executar_com_retry(_fazer, metodo="GET")
         except requests.HTTPError as e:
-            raise RuntimeError(
-                f"Erro HTTP {resp.status_code} ao baixar CSV"
-            ) from e
-        resp.encoding = resp.apparent_encoding or "utf-8"
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            raise RuntimeError(f"Erro HTTP {status} ao baixar CSV") from e
         return resp.text
 
     def fetch_file(self: "B3Client", date_key: date, file_name: str = "TradeInformationConsolidated",
@@ -106,8 +117,13 @@ class B3Client:
 
             url = self._build_portfolio_url(index, language)
             logger.info("Fetching portfolio %s via %s", index, url)
-            resp = requests.get(url, timeout=30)
-            resp.raise_for_status()
+
+            def _fazer() -> requests.Response:
+                resp = requests.get(url, timeout=30)
+                resp.raise_for_status()
+                return resp
+
+            resp = executar_com_retry(_fazer, metodo="GET")
             raw = resp.text.strip()
             logger.info("Response for %s: %d bytes", index, len(raw))
             if not raw:

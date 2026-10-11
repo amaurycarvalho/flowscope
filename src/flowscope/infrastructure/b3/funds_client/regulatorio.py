@@ -1,7 +1,6 @@
 """Listagem de censuras públicas, condições excepcionais e programas da B3."""
 
 import logging
-import time
 from datetime import date, datetime, timezone
 
 import requests
@@ -18,6 +17,7 @@ from flowscope.infrastructure.b3.structured_parser import (
     extrair_condicoes_excepcionais,
     extrair_programas_aquisicao,
 )
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger(__name__)
 
@@ -106,34 +106,41 @@ class FundosRegulatorioMixin:
     def _get_programas_json(
         self: "FundosRegulatorioMixin", payload: dict[str, object]
     ) -> object:
-        """Consulta a API de programas repetindo 404 intermitente."""
+        """Consulta a API de programas repetindo o 404 intermitente por override."""
         token = self._build_token(payload)
         url = f"{_PROGRAMAS_URL}/{token}"
         logger.info("Consultando %s", url)
-        ultimo: requests.RequestException | None = None
+        delays = tuple(
+            _PROGRAMAS_ESPERA * tentativa
+            for tentativa in range(_PROGRAMAS_TENTATIVAS)
+        )
+
+        def _fazer() -> requests.Response:
+            resposta = self._session.get(url, timeout=_TIMEOUT)
+            resposta.raise_for_status()
+            return resposta
+
         with self._serializador.serializar(url):
-            for tentativa in range(_PROGRAMAS_TENTATIVAS):
-                try:
-                    resposta = self._session.get(url, timeout=_TIMEOUT)
-                    if resposta.status_code == 200:
-                        return resposta.json()
-                    ultimo = requests.HTTPError(response=resposta)
-                except requests.RequestException as exc:
-                    ultimo = exc
-                if tentativa < _PROGRAMAS_TENTATIVAS - 1:
-                    time.sleep(_PROGRAMAS_ESPERA)
-        if ultimo is not None:
-            raise ultimo
-        raise requests.RequestException("Falha ao consultar programas de aquisição")
+            resposta = executar_com_retry(
+                _fazer,
+                metodo="GET",
+                transitorios_extra=frozenset({404}),
+                delays=delays,
+            )
+        return resposta.json()
 
     def _html_cacheado(self: "FundosRegulatorioMixin", key: str, url: str, descricao: str) -> str:
         """Baixa e cacheia o HTML de uma página estática da B3 por 7 dias."""
+        def _fazer() -> requests.Response:
+            resposta = requests.get(url, timeout=_TIMEOUT)
+            resposta.raise_for_status()
+            resposta.encoding = resposta.apparent_encoding or "utf-8"
+            return resposta
+
         def _fetch() -> dict[str, object]:
             logger.info("Baixando %s", url)
-            resp = requests.get(url, timeout=_TIMEOUT)
-            resp.raise_for_status()
-            resp.encoding = resp.apparent_encoding or "utf-8"
-            return {"html": resp.text}
+            resposta = executar_com_retry(_fazer, metodo="GET")
+            return {"html": resposta.text}
 
         try:
             payload = self._cache.get_or_fetch(key, ttl_days=TTL_PAGINA_ESTATICA_DIAS, fetch_fn=_fetch)

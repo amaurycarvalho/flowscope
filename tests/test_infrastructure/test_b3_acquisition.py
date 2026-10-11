@@ -30,7 +30,7 @@ from flowscope.infrastructure.b3.reports_repository import (
     B3ReportsRepository,
     _payload,
 )
-from flowscope.infrastructure.b3.retry import executar_com_retry
+from flowscope.infrastructure.http_retry import executar_com_retry
 from flowscope.infrastructure.cache import CacheManager
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "b3"
@@ -155,6 +155,50 @@ class TestRetry:
 class _Resposta:
     def __init__(self, status: int) -> None:
         self.status_code = status
+
+
+class _SessaoComFalha:
+    def __init__(self, falha_status: int, sucesso_payload: object) -> None:
+        self._falha_status = falha_status
+        self._payload = sucesso_payload
+        self.urls: list[str] = []
+
+    def get(self, url: str, **kwargs) -> _RespostaJson:
+        self.urls.append(url)
+        if len(self.urls) == 1:
+            resposta = _RespostaJson(self._payload)
+            resposta.status_code = self._falha_status
+
+            def _raise() -> None:
+                raise requests.HTTPError(response=resposta)
+
+            resposta.raise_for_status = _raise
+            return resposta
+        return _RespostaJson(self._payload)
+
+
+class TestRetryRequisicaoGet:
+    _URL = "https://exemplo.b3/teste"
+
+    def _client(self, tmp_path, sessao):
+        return B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path),
+            session=sessao,
+            retry_delays=(0, 0),
+        )
+
+    def test_403_nao_repete(self, tmp_path):
+        sessao = _SessaoComFalha(403, {})
+        client = self._client(tmp_path, sessao)
+        with pytest.raises(requests.HTTPError):
+            client._requisicao_get(self._URL)
+        assert len(sessao.urls) == 1
+
+    def test_502_repete(self, tmp_path):
+        sessao = _SessaoComFalha(502, {})
+        client = self._client(tmp_path, sessao)
+        client._requisicao_get(self._URL)
+        assert len(sessao.urls) == 2
 
 
 class TestSerializadorPorHost:

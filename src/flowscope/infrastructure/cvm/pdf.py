@@ -10,6 +10,8 @@ import logging
 
 import requests
 
+from flowscope.infrastructure.http_retry import executar_com_retry
+
 logger = logging.getLogger("flowscope")
 
 #: Endpoint do visualizador de arquivos externos da CVM.
@@ -67,7 +69,8 @@ def baixar_pdf_cvm(
             "versaoCaptcha": "",
         }
     )
-    try:
+
+    def _fazer() -> requests.Response:
         resposta = (session or requests).post(
             CVM_PDF_URL,
             data=corpo,
@@ -75,6 +78,10 @@ def baixar_pdf_cvm(
             timeout=timeout,
         )
         resposta.raise_for_status()
+        return resposta
+
+    try:
+        resposta = executar_com_retry(_fazer, metodo="POST", repetivel=True)
         payload = resposta.json()
     except (requests.RequestException, ValueError):
         logger.warning("Falha ao baixar PDF da CVM", exc_info=True)

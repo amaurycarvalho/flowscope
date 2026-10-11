@@ -40,6 +40,7 @@ from flowscope.domain.structured import (
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
 from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger("flowscope")
 
@@ -412,11 +413,16 @@ def itens_de_janela(
 
 def baixar_noticia(url: str, *, timeout: int = _TIMEOUT) -> bytes | None:
     """Baixa o HTML do artigo, devolvendo ``None`` em qualquer falha."""
-    try:
+
+    def _fazer() -> requests.Response:
         resposta = requests.get(
             url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"}
         )
         resposta.raise_for_status()
+        return resposta
+
+    try:
+        resposta = executar_com_retry(_fazer, metodo="GET")
     except requests.RequestException:
         logger.warning("Falha ao baixar notícia %s", url, exc_info=True)
         return None

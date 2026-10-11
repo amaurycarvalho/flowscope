@@ -23,6 +23,7 @@ from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger("flowscope")
 
@@ -287,17 +288,20 @@ class B3ShortInterestSource:
         """Baixa uma página da tabela BDI via POST JSON."""
         import requests
 
-        resposta = requests.post(
-            url,
-            json={},
-            timeout=60,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120 Safari/537.36"
-                ),
-                "Accept": "application/json",
-            },
-        )
-        resposta.raise_for_status()
-        return resposta.json()
+        def _fazer() -> requests.Response:
+            resposta = requests.post(
+                url,
+                json={},
+                timeout=60,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120 Safari/537.36"
+                    ),
+                    "Accept": "application/json",
+                },
+            )
+            resposta.raise_for_status()
+            return resposta
+
+        return executar_com_retry(_fazer, metodo="POST", repetivel=True).json()

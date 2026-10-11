@@ -21,6 +21,7 @@ from flowscope.infrastructure.b3.bdr.documents import (
 )
 from flowscope.infrastructure.b3.bdr.news import itens_de_noticias
 from flowscope.infrastructure.cvm.pdf import baixar_pdf_cvm
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger(__name__)
 
@@ -54,27 +55,34 @@ class BdrClient:
             "dataFinal": fim.isoformat(),
         }
         logger.info("Consultando %s", NOTICIAS_URL)
-        resposta = self._session.get(
-            NOTICIAS_URL, params=parametros, timeout=self._timeout
+        resposta = executar_com_retry(
+            lambda: self._get(NOTICIAS_URL, params=parametros),
+            metodo="GET",
         )
-        resposta.raise_for_status()
         return itens_de_noticias(resposta.json())
 
     def buscar_detalhe(
         self: "BdrClient", id_noticia: str, data_noticia: date
     ) -> str:
         """Baixa a página ``Detail`` da notícia informada."""
-        resposta = self._session.get(
-            DETAIL_URL,
-            params={
-                "agencia": AGENCIA,
-                "idNoticia": id_noticia,
-                "dataNoticia": data_noticia.isoformat(),
-            },
-            timeout=self._timeout,
+        resposta = executar_com_retry(
+            lambda: self._get(
+                DETAIL_URL,
+                params={
+                    "agencia": AGENCIA,
+                    "idNoticia": id_noticia,
+                    "dataNoticia": data_noticia.isoformat(),
+                },
+            ),
+            metodo="GET",
         )
-        resposta.raise_for_status()
         return resposta.text
+
+    def _get(self: "BdrClient", url: str, **kwargs: object) -> requests.Response:
+        """Executa um GET na sessão, propagando o erro HTTP para o motor."""
+        resposta = self._session.get(url, timeout=self._timeout, **kwargs)
+        resposta.raise_for_status()
+        return resposta
 
     def baixar_pdf(self: "BdrClient", numero_protocolo: str) -> bytes | None:
         """Baixa e decodifica o PDF do documento, ou ``None`` quando inválido."""

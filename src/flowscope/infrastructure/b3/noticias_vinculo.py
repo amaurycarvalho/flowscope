@@ -18,8 +18,7 @@ mantendo o corpo original. Um PDF protegido por senha devolve o estado
 import base64
 import json
 import logging
-import time
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import SplitResult, parse_qs, urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -34,6 +33,7 @@ from flowscope.domain.noticias import (
     extrair_url_vinculada,
     host_suportado,
 )
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger("flowscope")
 
@@ -130,6 +130,22 @@ def _baixar_cvm_rad(
             "versaoCaptcha": "",
         }
     )
+    resp = executar_com_retry(
+        lambda: _post_exibir_pdf(sessao, partes, corpo, timeout, url),
+        metodo="POST",
+        repetivel=True,
+    )
+    return _texto_da_resposta(resp.json(), senha)
+
+
+def _post_exibir_pdf(
+    sessao: requests.Session,
+    partes: SplitResult,
+    corpo: str,
+    timeout: int,
+    referer: str,
+) -> requests.Response:
+    """Executa o POST ``ExibirPDF`` e valida a resposta HTTP."""
     resp = sessao.post(
         f"{partes.scheme}://{partes.netloc}{partes.path}/ExibirPDF",
         data=corpo,
@@ -137,12 +153,12 @@ def _baixar_cvm_rad(
         headers={
             "Content-Type": "application/json; charset=utf-8",
             "X-Requested-With": "XMLHttpRequest",
-            "Referer": url,
+            "Referer": referer,
             "User-Agent": _USER_AGENT,
         },
     )
     resp.raise_for_status()
-    return _texto_da_resposta(resp.json(), senha)
+    return resp
 
 
 def _baixar_fnet(
@@ -180,23 +196,18 @@ def _obter(
     *,
     referer: str | None = None,
 ) -> requests.Response:
-    """Faz o GET com algumas tentativas, para tolerar a instabilidade do host."""
+    """Faz o GET com a política central de retry, tolerando host instável."""
     headers = {"User-Agent": _USER_AGENT}
     if referer:
         headers["Referer"] = referer
-    ultimo: Exception | None = None
-    for tentativa in range(TENTATIVAS):
-        try:
-            resposta = sessao.get(url, timeout=timeout, headers=headers)
-            resposta.raise_for_status()
-            return resposta
-        except requests.RequestException as exc:
-            ultimo = exc
-            if tentativa + 1 < TENTATIVAS:
-                time.sleep(ESPERA * (tentativa + 1))
-    if ultimo is not None:
-        raise ultimo
-    raise RuntimeError(url)
+    delays = tuple(ESPERA * tentativa for tentativa in range(TENTATIVAS))
+
+    def _fazer() -> requests.Response:
+        resposta = sessao.get(url, timeout=timeout, headers=headers)
+        resposta.raise_for_status()
+        return resposta
+
+    return executar_com_retry(_fazer, metodo="GET", delays=delays)
 
 
 def _e_pdf(resposta: requests.Response) -> bool:

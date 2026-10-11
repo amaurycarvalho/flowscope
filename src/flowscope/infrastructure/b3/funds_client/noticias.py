@@ -15,6 +15,7 @@ from flowscope.infrastructure.b3.funds_client.noticias_convert import (
     _converter_item_noticia,
     _itens_de_noticias,
 )
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger(__name__)
 
@@ -79,9 +80,13 @@ class FundosNoticiasMixin:
 
         def _buscar() -> object:
             logger.info("Consultando %s", _NOTICIAS_URL)
-            resp = requests.get(_NOTICIAS_URL, params=parametros, timeout=30)
-            resp.raise_for_status()
-            return resp.json()
+
+            def _fazer() -> requests.Response:
+                resp = requests.get(_NOTICIAS_URL, params=parametros, timeout=30)
+                resp.raise_for_status()
+                return resp
+
+            return executar_com_retry(_fazer, metodo="GET").json()
 
         dados = _buscar()
         itens = _itens_de_noticias(dados)

@@ -285,6 +285,33 @@ class TestBaixarConteudoFnet:
             resultado = baixar_conteudo_vinculado(_CORPO_FNET)
         assert resultado.texto == "texto recuperado"
 
+    def test_retry_apos_429(self, monkeypatch):
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_pdf",
+            lambda _dados, senha=None: ExtracaoTexto(
+                "texto apos 429", StatusExtracao.OK
+            ),
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(
+                responses.GET,
+                _FNET_VIEWER_URL,
+                status=429,
+                headers={"Retry-After": "0"},
+            )
+            rsps.add(responses.GET, _FNET_VIEWER_URL, body=_viewer_fnet(), status=200)
+            rsps.add(
+                responses.GET,
+                _FNET_PDF_URL,
+                body=_pdf(),
+                status=200,
+                content_type="application/pdf",
+            )
+            resultado = baixar_conteudo_vinculado(_CORPO_FNET)
+        assert resultado.texto == "texto apos 429"
+
     def test_falha_de_rede_retorna_none(self, monkeypatch):
         monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
         with responses.RequestsMock() as rsps:

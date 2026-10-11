@@ -33,6 +33,20 @@ class TestBaixarPdfCvm:
         responses.post(CVM_PDF_URL, body=requests.ConnectionError("offline"))
         assert baixar_pdf_cvm("1") is None
 
+    @responses.activate
+    def test_502_repete_e_retorna_pdf(self):
+        conteudo = base64.b64encode(_PDF).decode("ascii")
+        responses.post(CVM_PDF_URL, status=502)
+        responses.post(CVM_PDF_URL, json={"d": conteudo}, status=200)
+        assert baixar_pdf_cvm("1") == _PDF
+        assert len(responses.calls) == 2
+
+    @responses.activate
+    def test_403_nao_repete(self):
+        responses.post(CVM_PDF_URL, status=403)
+        assert baixar_pdf_cvm("1") is None
+        assert len(responses.calls) == 1
+
 
 class TestDecodificarPdf:
     def test_payload_valido(self):

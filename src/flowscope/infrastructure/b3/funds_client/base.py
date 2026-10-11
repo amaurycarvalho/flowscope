@@ -11,8 +11,8 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     _LISTED_BASE_URL,
 )
 from flowscope.infrastructure.b3.rate_limit import SerializadorPorHost
-from flowscope.infrastructure.b3.retry import RETRY_DELAYS, executar_com_retry
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.http_retry import RETRY_DELAYS, executar_com_retry
 
 logger = logging.getLogger(__name__)
 

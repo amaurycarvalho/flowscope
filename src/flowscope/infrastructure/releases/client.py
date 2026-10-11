@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 import requests
 
 from flowscope.domain.version import parse_version
+from flowscope.infrastructure.http_retry import executar_com_retry
 
 logger = logging.getLogger("flowscope")
 
@@ -21,10 +22,15 @@ def obter_ultima_release(timeout: float = _TIMEOUT_S) -> tuple[str, str] | None:
     Segue o redirecionamento de ``/releases/latest`` e extrai a tag do caminho
     final. Timeout, falha de rede ou ausência de tag resultam em ``None``.
     """
-    try:
+    def _fazer() -> requests.Response:
         resposta = requests.get(
             LATEST_RELEASE_URL, allow_redirects=True, timeout=timeout
         )
+        resposta.raise_for_status()
+        return resposta
+
+    try:
+        resposta = executar_com_retry(_fazer, metodo="GET")
     except requests.RequestException:
         logger.warning(
             "Falha ao consultar a última release do FlowScope", exc_info=True
