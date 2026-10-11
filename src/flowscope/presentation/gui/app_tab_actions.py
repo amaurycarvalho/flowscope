@@ -166,7 +166,12 @@ class TabActionsMixin:
         self._reavaliar_chat_llm()
         for nome in ("_documents_panel", "_noticias_panel"):
             painel = getattr(self, nome, None)
-            if painel is not None:
+            if painel is None:
+                continue
+            reabilitar = getattr(painel, "reabilitar_guidance", None)
+            if callable(reabilitar):
+                reabilitar()
+            else:
                 painel.refresh_resumir_button()
 
     def _recarregar_seletores_modelo(self: "TabActionsMixin") -> None:

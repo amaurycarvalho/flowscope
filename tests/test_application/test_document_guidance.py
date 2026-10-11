@@ -14,7 +14,7 @@ from flowscope.application.documentos.document_guidance import (
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import METODO_IA, AvaliacaoGuidance, Guidance
-from flowscope.domain.llm import LLMResposta
+from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 
 GUIDANCE = Guidance(
     valor_min=Decimal("0.74"),
@@ -278,6 +278,89 @@ class TestPendentesGuidance:
         pendentes = servico.pendentes([primeiro, segundo])
         assert pendentes == [primeiro, segundo]
         assert store.consultas == ["HGBS11"]
+
+
+class TestFalhaIAReabilita:
+    def _servico_com_falha(self, store):
+        class _LLMFalha:
+            def complete(self, messages, system_prompt=None):
+                raise LLMCommunicationError("cota esgotada")
+
+        return GuidanceService(
+            store,
+            extrator=_ExtratorFake(GUIDANCE),
+            llm_factory=lambda: _LLMFalha(),
+            llm_available=lambda: True,
+        )
+
+    def test_deterministica_com_falha_nao_e_pendente(self):
+        existente = AvaliacaoGuidance(
+            metodo="deterministico",
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        servico = self._servico_com_falha(store)
+        assert servico.pendente(_arquivo()) is True
+
+        resultado = servico.avaliar(_arquivo(), "texto")
+
+        assert resultado == existente
+        assert servico.falhou(_arquivo()) is True
+        assert servico.pendente(_arquivo()) is False
+
+    def test_limpar_falhas_reabilita(self):
+        existente = AvaliacaoGuidance(
+            metodo="deterministico",
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        servico = self._servico_com_falha(store)
+        servico.avaliar(_arquivo(), "texto")
+        assert servico.pendente(_arquivo()) is False
+
+        servico.limpar_falhas()
+
+        assert servico.falhou(_arquivo()) is False
+        assert servico.pendente(_arquivo()) is True
+
+    def test_sucesso_por_ia_reabilita(self):
+        existente = AvaliacaoGuidance(
+            metodo="deterministico",
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+
+        class _LLMSequencial:
+            def __init__(self) -> None:
+                self.falhar = True
+
+            def complete(self, messages, system_prompt=None):
+                if self.falhar:
+                    raise LLMCommunicationError("cota esgotada")
+                return LLMResposta(
+                    texto="GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99"
+                )
+
+        llm = _LLMSequencial()
+        servico = GuidanceService(
+            store,
+            extrator=_ExtratorFake(GUIDANCE),
+            llm_factory=lambda: llm,
+            llm_available=lambda: True,
+        )
+        servico.avaliar(_arquivo(), "texto")
+        assert servico.falhou(_arquivo()) is True
+        assert servico.pendente(_arquivo()) is False
+
+        llm.falhar = False
+        resultado = servico.avaliar(_arquivo(), "texto")
+
+        assert resultado.metodo == METODO_IA
+        assert servico.falhou(_arquivo()) is False
+        assert servico.pendente(_arquivo()) is False
 
 
 class TestEntradasArvore:

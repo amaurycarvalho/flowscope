@@ -438,7 +438,7 @@ class TestBotaoInterromper:
 
     def test_carga_sincrona_nao_exibe_botao(self):
         host = _StatusHost()
-        host._set_progress(1, 2, "Baixando dados históricos")
+        host._set_progress(1, 2, "⏳ Baixando dados históricos")
         assert host._progress_bar.winfo_manager() != ""
         assert host._stop_button.winfo_manager() == ""
 

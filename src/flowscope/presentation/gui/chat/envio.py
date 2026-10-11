@@ -123,7 +123,7 @@ class EnvioMixin:
         historico = list(self._sessao.messages)
         self._enviando = True
         self._registrar("user", pergunta)
-        self._status("Consultando a I.A.…", "")
+        self._status("Consultando a I.A.…", "⏳")
         snapshot_f = dict(self._fundamental_data_provider() or {})
         snapshot_w = list(self._watchlist_provider() or [])
         self._background.submit(
@@ -235,4 +235,4 @@ class EnvioMixin:
             return
         self._background.cancel_group(GRUPO_CHAT)
         self._atualizar_controles()
-        self._status(MENSAGEM_CANCELADO, "")
+        self._status(MENSAGEM_CANCELADO, "✖")

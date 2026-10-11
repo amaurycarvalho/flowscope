@@ -24,7 +24,11 @@ from flowscope.application.guidance_port import GuidanceStore
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
-from flowscope.domain.fii.guidance import METODO_IA, Guidance
+from flowscope.domain.fii.guidance import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
+    Guidance,
+)
 from flowscope.domain.llm import LLMPort
 
 #: Resolve a chave de conteúdo (hash) de um documento.
@@ -163,6 +167,9 @@ class GuidanceService:
         """Guarda o store, a estratégia de avaliação e a chave do documento."""
         self._store = store
         self._chave_rg = chave_rg if chave_rg is not None else _chave_padrao
+        # Registro volátil (por sessão) das avaliações por IA que falharam,
+        # distinguindo "IA tentou e falhou" de "IA nunca tentou".
+        self._falhas_ia: set[tuple[str, str]] = set()
         if avaliador is not None:
             self._avaliador = avaliador
         elif extrator is not None:
@@ -198,13 +205,48 @@ class GuidanceService:
         fontes = (curto, longo, texto)
         if not any(fonte and fonte.strip() for fonte in fontes):
             return None
-        return self._avaliador.avaliar_rg(
+        chave = self._chave_rg(arquivo)
+        resultado = self._avaliador.avaliar_rg(
             arquivo.ticker,
-            self._chave_rg(arquivo),
+            chave,
             data_relatorio,
             str(arquivo.caminho),
             fontes,
         )
+        self._atualizar_falha(arquivo.ticker, chave, resultado)
+        return resultado
+
+    def _atualizar_falha(
+        self: "GuidanceService",
+        ticker: str,
+        chave: str,
+        resultado: AvaliacaoGuidance | None,
+    ) -> None:
+        """Registra ou limpa a falha de IA para a entrada do RG.
+
+        Uma avaliação por IA bem-sucedida reabilita o RG; um resultado
+        determinístico obtido com a IA disponível significa que a interação
+        falhou e permanece registrado para não manter a pendência acionável.
+        """
+        if resultado is not None and resultado.metodo == METODO_IA:
+            self._falhas_ia.discard((ticker, chave))
+            return
+        if (
+            self.ia_disponivel()
+            and resultado is not None
+            and resultado.metodo == METODO_DETERMINISTICO
+        ):
+            self._falhas_ia.add((ticker, chave))
+
+    def falhou(self: "GuidanceService", arquivo: DocumentoArquivo) -> bool:
+        """Indica se a última avaliação por IA do RG está registrada como falha."""
+        if arquivo.categoria != CATEGORIA_RELATORIO:
+            return False
+        return (arquivo.ticker, self._chave_rg(arquivo)) in self._falhas_ia
+
+    def limpar_falhas(self: "GuidanceService") -> None:
+        """Reabilita todas as avaliações por IA registradas como falhas."""
+        self._falhas_ia.clear()
 
     def ia_disponivel(self: "GuidanceService") -> bool:
         """Indica se a avaliação de guidance pela IA está disponível."""
@@ -239,10 +281,29 @@ class GuidanceService:
         for arquivo in candidatos:
             if arquivo.ticker not in entradas:
                 entradas[arquivo.ticker] = self._store.avaliacoes(arquivo.ticker)
-            avaliacao = entradas[arquivo.ticker].get(self._chave_rg(arquivo))
-            if avaliacao is None or avaliacao.metodo != METODO_IA:
+            chave = self._chave_rg(arquivo)
+            avaliacao = entradas[arquivo.ticker].get(chave)
+            if self._acionavel(arquivo.ticker, chave, avaliacao):
                 pendentes.append(arquivo)
         return pendentes
+
+    def _acionavel(
+        self: "GuidanceService",
+        ticker: str,
+        chave: str,
+        avaliacao: AvaliacaoGuidance | None,
+    ) -> bool:
+        """Indica se a entrada do RG conta como pendência acionável.
+
+        É acionável quando ausente, ou quando determinística sem falha de IA
+        registrada. Uma entrada `ia` ou determinística com falha registrada não
+        mantém o botão habilitado indefinidamente.
+        """
+        if avaliacao is None:
+            return True
+        if avaliacao.metodo == METODO_IA:
+            return False
+        return (ticker, chave) not in self._falhas_ia
 
     def entradas_arvore(
         self: "GuidanceService", ticker: str
@@ -291,8 +352,9 @@ class GuidanceService:
                 continue
             if _data_do_arquivo(arquivo) is None:
                 continue
-            avaliacao = avaliacoes.get(self._chave_rg(arquivo))
-            if avaliacao is None or avaliacao.metodo != METODO_IA:
+            chave = self._chave_rg(arquivo)
+            avaliacao = avaliacoes.get(chave)
+            if self._acionavel(arquivo.ticker, chave, avaliacao):
                 pendentes.append(arquivo)
         return pendentes
 

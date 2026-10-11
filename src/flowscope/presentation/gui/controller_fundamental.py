@@ -47,7 +47,7 @@ class FundamentalMixin:
             bdr_provider=self._fundamental_bdr_provider,
             guidance_store=self._fundamental_guidance_store,
         )
-        self._presenter.on_progress(0, len(tickers), "• Fundamentos...")
+        self._presenter.on_progress(0, len(tickers), "⏳ Fundamentos...")
         if self._background is None:
             return
         self._background.submit(

@@ -27,6 +27,10 @@ from flowscope.infrastructure.content_hashes import (
     raiz_cache,
 )
 from flowscope.infrastructure.fii.fundamentus.normalizers import para_data
+from flowscope.infrastructure.url_downloads import (
+    JsonUrlStore,
+    url_store_documentos,
+)
 
 logger = logging.getLogger("flowscope")
 
@@ -145,6 +149,7 @@ class DocumentosRelevantesProvider:
         cache_dir: Path | None = None,
         cache: CacheManager | None = None,
         dedup_factory: Callable[[str], DeduplicacaoConteudo] | None = None,
+        url_factory: Callable[[str], JsonUrlStore] | None = None,
     ) -> None:
         """Inicializa o provider com o cliente, o cache JSON e a árvore de arquivos."""
         self._client = client or B3FundosClient()
@@ -157,6 +162,9 @@ class DocumentosRelevantesProvider:
         self._cache_root = raiz_cache(self._arquivos.base_dir)
         self._dedup_factory = dedup_factory or (
             lambda ticker: deduplicacao_documentos(self._cache_root, ticker)
+        )
+        self._url_factory = url_factory or (
+            lambda ticker: url_store_documentos(self._cache_root, ticker)
         )
 
     @property
@@ -174,6 +182,41 @@ class DocumentosRelevantesProvider:
     ) -> DeduplicacaoConteudo:
         """Retorna o serviço de deduplicação do ticker."""
         return self._dedup_factory(ticker)
+
+    def urls(self: "DocumentosRelevantesProvider", ticker: str) -> JsonUrlStore:
+        """Retorna o registro de URLs baixadas do ticker."""
+        return self._url_factory(ticker)
+
+    def caminho_registrado(
+        self: "DocumentosRelevantesProvider", ticker: str, url: str
+    ) -> Path | None:
+        """Retorna o arquivo canônico já registrado para a URL, se existir.
+
+        Uma URL registrada cujo arquivo desapareceu não bloqueia um novo
+        download: o registro é ignorado.
+        """
+        if not url:
+            return None
+        relativo = self.urls(ticker).canonico(url)
+        if relativo is None:
+            return None
+        caminho = self._cache_root / relativo
+        return caminho if caminho.is_file() else None
+
+    def registrar_url(
+        self: "DocumentosRelevantesProvider",
+        ticker: str,
+        url: str,
+        caminho: Path,
+    ) -> None:
+        """Registra a URL apontando para o caminho relativo canônico."""
+        if not url:
+            return
+        try:
+            relativo = Path(caminho).relative_to(self._cache_root).as_posix()
+        except ValueError:
+            relativo = Path(caminho).name
+        self.urls(ticker).registrar(url, relativo)
 
     def sincronizar(
         self: "DocumentosRelevantesProvider",
@@ -206,52 +249,88 @@ class DocumentosRelevantesProvider:
         exceção para não interromper os demais documentos. Conteúdo cujo hash já
         esteja registrado no escopo do ticker é descartado como duplicata.
         """
-        id_documento = _id_da_url(str(item.get("urlViewerFundosNet") or ""))
+        url = str(item.get("urlViewerFundosNet") or "")
+        id_documento = _id_da_url(url)
         codigo = item.get("category")
         if id_documento is None or codigo is None:
             return None
         referencia = resolver_data_referencia(item)
         slug = slug_categoria(codigo)
-        if self._arquivos.existe(ticker, referencia, slug, id_documento):
-            tamanho = (
-                self._arquivos.caminho(
-                    ticker, referencia, slug, id_documento
-                ).stat().st_size
-            )
-        else:
-            try:
-                conteudo = self._client.baixar_pdf_documento(id_documento)
-            except Exception:  # falha de rede isolada por documento
-                logger.warning(
-                    "Falha ao baixar documento relevante %s de %s",
-                    id_documento,
-                    ticker,
-                    exc_info=True,
-                )
-                return None
-            if not conteudo:
-                return None
-            caminho = self._arquivos.caminho(
-                ticker, referencia, slug, id_documento
-            )
-            dedup = self.deduplicacao(ticker)
-            if not dedup.processar(
-                conteudo,
-                caminho,
-                lambda dados: self._arquivos.gravar(
-                    ticker, referencia, slug, id_documento, dados
-                ),
-            ):
-                return None
-            tamanho = len(conteudo)
-        return _documento_relevante(
-            ticker, id_fnet, item, id_documento, codigo, tamanho
+        caminho = self._resolver_caminho(
+            ticker, url, referencia, slug, id_documento
         )
+        if caminho is None:
+            return None
+        return _documento_relevante(
+            ticker, id_fnet, item, id_documento, codigo, caminho.stat().st_size
+        )
+
+    def _resolver_caminho(
+        self: "DocumentosRelevantesProvider",
+        ticker: str,
+        url: str,
+        referencia: date,
+        slug: str,
+        id_documento: str,
+    ) -> Path | None:
+        """Resolve o arquivo do documento: registro, cache ou novo download.
+
+        Registra a URL em todos os caminhos de sucesso, inclusive quando o
+        conteúdo é descartado por duplicidade — nesse caso a URL aponta para o
+        arquivo canônico existente e o item não é listado.
+        """
+        caminho = self.caminho_registrado(ticker, url)
+        if caminho is not None:
+            return caminho
+        caminho = self._arquivos.caminho(ticker, referencia, slug, id_documento)
+        if self._arquivos.existe(ticker, referencia, slug, id_documento):
+            self.registrar_url(ticker, url, caminho)
+            return caminho
+        conteudo = self._baixar_documento(ticker, id_documento)
+        if not conteudo:
+            return None
+        dedup = self.deduplicacao(ticker)
+        gravado, canonico = dedup.processar_e_resolver(
+            conteudo,
+            caminho,
+            lambda dados: self._arquivos.gravar(
+                ticker, referencia, slug, id_documento, dados
+            ),
+        )
+        if canonico is None:
+            return None
+        caminho_canonico = self._cache_root / canonico
+        self.registrar_url(ticker, url, caminho_canonico)
+        if not gravado:
+            return None
+        return caminho_canonico if caminho_canonico.is_file() else None
+
+    def _baixar_documento(
+        self: "DocumentosRelevantesProvider", ticker: str, id_documento: str
+    ) -> bytes | None:
+        """Baixa o PDF do documento, tolerando falha de rede isolada."""
+        try:
+            return self._client.baixar_pdf_documento(id_documento)
+        except Exception:  # falha de rede isolada por documento
+            logger.warning(
+                "Falha ao baixar documento relevante %s de %s",
+                id_documento,
+                ticker,
+                exc_info=True,
+            )
+            return None
 
 
 def resolver_data_referencia(documento: dict) -> date:
-    """Deriva a data do documento: referência, entrega e, por fim, a corrente."""
+    """Deriva a data do documento: referência, entrega e, por fim, a corrente.
+
+    A data de referência pode vir com componente de hora; a hora é descartada,
+    de modo que o caminho derivado seja estável entre execuções.
+    """
     referencia = _data_iso(documento.get("referenceDate"))
+    if referencia is not None:
+        return referencia
+    referencia = para_data(_texto(documento.get("referenceDate")))
     if referencia is not None:
         return referencia
     entrega = para_data(_texto(documento.get("deliveryDateFormat")))

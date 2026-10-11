@@ -64,6 +64,19 @@ class TestNormalizadores:
         assert para_data("10/09/2026") == date(2026, 9, 10)
         assert para_data("") is None
 
+    def test_data_com_hora_descarta_a_hora(self):
+        assert para_data("10/09/2026 14:30") == date(2026, 9, 10)
+        assert para_data("10/09/2026 14:30:59") == date(2026, 9, 10)
+        assert para_data(" 10/09/2026  14:30:59 ") == date(2026, 9, 10)
+
+    def test_data_ano_com_dois_digitos_com_hora(self):
+        assert para_data("10/09/26 14:30") == date(2026, 9, 10)
+
+    def test_data_invalida(self):
+        assert para_data("10-09-2026") is None
+        assert para_data("not-a-date") is None
+        assert para_data("10/09/2026/12") is None
+
 
 class TestParser:
     def test_parse_acao(self):

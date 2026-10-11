@@ -240,3 +240,44 @@ class TestPrompt:
         caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
         caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, (None, "   ", "texto"))
         assert len(llm.chamadas) == 1
+
+
+class TestFalhaPosteriorNaoDescarta:
+    def test_preserva_avaliacao_ja_obtida(self):
+        class _LLMSequencial:
+            def __init__(self) -> None:
+                self.chamadas = 0
+
+            def complete(self, messages, system_prompt=None):
+                self.chamadas += 1
+                if self.chamadas == 1:
+                    return LLMResposta(texto="GUIDANCE: NAO")
+                raise LLMCommunicationError("cota esgotada")
+
+        llm = _LLMSequencial()
+        caso = _caso(_StoreFake(), _ExtratorFake(EXTRAIDO), llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("curto", "longo", "texto")
+        )
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance is None
+        assert llm.chamadas == 2
+
+    def test_falha_na_primeira_fonte_recorre_ao_deterministico(self):
+        class _LLMSequencial:
+            def __init__(self) -> None:
+                self.chamadas = 0
+
+            def complete(self, messages, system_prompt=None):
+                self.chamadas += 1
+                raise LLMCommunicationError("cota esgotada")
+
+        llm = _LLMSequencial()
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(_StoreFake(), extrator, llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("curto", "longo", "texto")
+        )
+        assert resultado.metodo == METODO_DETERMINISTICO
+        assert resultado.guidance == EXTRAIDO
+        assert llm.chamadas == 1

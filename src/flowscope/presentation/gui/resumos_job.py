@@ -24,6 +24,7 @@ from flowscope.application.documentos.lote import (
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
+from flowscope.domain.llm import LLMRateLimitError
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 
@@ -34,8 +35,8 @@ GRUPO = "resumos"
 POLITICA = Politica.LATEST_WINS
 
 #: Rótulos das duas fases do lote.
-FASE_PREPARAR = "• Preparando textos"
-FASE_RESUMIR = "• Resumindo documentos"
+FASE_PREPARAR = "⏳ Preparando textos"
+FASE_RESUMIR = "⏳ Resumindo documentos"
 
 _ROTULOS = {1: FASE_PREPARAR, 2: FASE_RESUMIR}
 
@@ -168,6 +169,11 @@ def _resumir(
         ctx.raise_if_cancelled()
         try:
             resumo = gerar_resumo_do_lote(painel, arquivo, texto)
+        except LLMRateLimitError as exc:
+            # Cota/limite do provedor esgotado: interrompe o lote mesmo quando a
+            # política é continuar em erro, pois insistir não tem chance de êxito.
+            ctx.erro(exc, dados=arquivo)
+            return
         except Exception as exc:
             ctx.erro(exc, dados=arquivo)
             if not continuar_em_erro:

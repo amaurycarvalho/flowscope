@@ -40,6 +40,10 @@ from flowscope.infrastructure.content_hashes import (
     deduplicacao_noticias,
     raiz_cache,
 )
+from flowscope.infrastructure.url_downloads import (
+    JsonUrlStore,
+    url_store_noticias,
+)
 
 logger = logging.getLogger("flowscope")
 
@@ -58,9 +62,11 @@ class AquisicaoNoticias:
         self._cache = NoticiasCache(cache.get_cache_dir() if cache else None)
         self._index = NoticiasIndexStore(cache_dir=self._cache.base_dir)
         self._baixar = baixar or baixar_noticia
+        self._root = raiz_cache(self._cache.base_dir)
         self._deduplicacao: DeduplicacaoConteudo = deduplicacao_noticias(
-            raiz_cache(self._cache.base_dir)
+            self._root
         )
+        self._urls: JsonUrlStore = url_store_noticias(self._root)
 
     @property
     def cache(self: "AquisicaoNoticias") -> NoticiasCache:
@@ -210,28 +216,76 @@ class AquisicaoNoticias:
         O conteúdo é baixado quando necessário; itens sem corpo (sem URL e sem
         conteúdo próprio) são ignorados. Itens já em cache têm os metadados
         registrados mesmo assim, reparando índices ausentes ou antigos.
-        Conteúdo cujo hash já esteja registrado é descartado como duplicata.
+        Conteúdo cujo hash já esteja registrado é descartado como duplicata —
+        mas a URL DEVE ser registrada apontando para o arquivo canônico, para
+        não rebaixar a mesma URL numa execução futura.
         """
         chave = chave_item(item)
         data = data_noticia(item.data_publicacao, fallback)
+        url = (item.url or "").strip()
+        registrado = self._caminho_registrado(url)
+        if registrado is not None:
+            return registrado, self._meta_do_item(item)
         caminho = self._cache.caminho(chave, data)
-        if not self._cache.existe(chave, data):
-            conteudo = self._conteudo(item)
-            if not conteudo:
-                return None
-            if not self._deduplicacao.processar(
-                conteudo,
-                caminho,
-                lambda dados: self._cache.gravar(chave, data, dados),
-            ):
-                return None
-        return caminho, NoticiaMeta(
+        if self._cache.existe(chave, data):
+            self._registrar_url(url, caminho)
+            return caminho, self._meta_do_item(item)
+        conteudo = self._conteudo(item)
+        if not conteudo:
+            return None
+        _gravado, canonico = self._deduplicacao.processar_e_resolver(
+            conteudo,
+            caminho,
+            lambda dados: self._cache.gravar(chave, data, dados),
+        )
+        if canonico is None:
+            return None
+        caminho_canonico = self._root / canonico
+        self._registrar_url(url, caminho_canonico)
+        if not _gravado:
+            return None  # duplicata: URL registrada, item não indexado
+        return caminho_canonico, self._meta_do_item(item)
+
+    def _registrar_url(
+        self: "AquisicaoNoticias", url: str, caminho: Path
+    ) -> None:
+        """Registra a URL apontando para o caminho relativo informado."""
+        if url:
+            self._urls.registrar(url, self._relativo(caminho))
+
+    @staticmethod
+    def _meta_do_item(item: ItemNoticia) -> NoticiaMeta:
+        """Monta os metadados de índice do item."""
+        return NoticiaMeta(
             secao=item.secao,
             titulo=item.titulo,
             data_publicacao=item.data_publicacao,
             categoria=item.categoria,
             url=item.url,
         )
+
+    def _caminho_registrado(
+        self: "AquisicaoNoticias", url: str
+    ) -> Path | None:
+        """Retorna o arquivo canônico já registrado para a URL, se existir.
+
+        Uma URL registrada cujo arquivo desapareceu não bloqueia um novo
+        download: o registro é ignorado.
+        """
+        if not url:
+            return None
+        relativo = self._urls.canonico(url)
+        if relativo is None:
+            return None
+        caminho = self._root / relativo
+        return caminho if caminho.is_file() else None
+
+    def _relativo(self: "AquisicaoNoticias", caminho: Path) -> str:
+        """Deriva o caminho relativo à raiz de cache, tolerando caminhos externos."""
+        try:
+            return Path(caminho).relative_to(self._root).as_posix()
+        except ValueError:
+            return Path(caminho).name
 
     def _conteudo(self: "AquisicaoNoticias", item: ItemNoticia) -> bytes | None:
         """Obtém o corpo do item, do download ou do próprio conteúdo.
@@ -257,7 +311,7 @@ class AquisicaoNoticias:
         """Anuncia o início da carga de uma categoria na barra de status."""
         if progress is None:
             return
-        progress(0, 1, f"• Carregando {secao}…")
+        progress(0, 1, f"⏳ Carregando {secao}…")
 
     @staticmethod
     def _reportar(
@@ -270,7 +324,7 @@ class AquisicaoNoticias:
         if progress is None:
             return
         if total > 0:
-            label = f"• {secao} ({current}/{total})"
+            label = f"⏳ {secao} ({current}/{total})"
         else:
-            label = f"• {secao}…"
+            label = f"⏳ {secao}…"
         progress(current, total, label)

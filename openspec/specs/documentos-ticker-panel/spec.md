@@ -349,7 +349,7 @@ A árvore de documentos e o campo de texto da pré-visualização DEVEM exibir u
 
 ### Requirement: Botão "Resumir pendentes" na barra de documentos
 
-A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de controles, imediatamente após o seletor de modelo ativo e o botão de configuração, sempre visível. O botão DEVE estar habilitado somente quando a LLM estiver configurada, nenhum resumo em lote estiver em andamento e existir, no ticker apresentado, ao menos um documento sem `long_summary` ou — quando a IA estiver ativa — ao menos um Relatório Gerencial (documento da categoria `Relatorio`, própria de FII) cuja avaliação de guidance no ledger esteja ausente ou não marcada como `ia`; caso contrário DEVE estar desabilitado. O Relatório Gerencial É o documento de FII usado como gatilho; não se DEVE depender da classificação de tipo do ticker, indisponível no painel. A LLM DEVE ser considerada configurada quando o provedor for diferente de `none` e as dependências `[llm]` estiverem presentes. A verificação de pendências de guidance DEVE consultar o ledger fora da thread da interface, junto da leitura do catálogo, e a thread do Tk NÃO DEVE ler o ledger ao reavaliar o botão. Ao salvar a configuração ou trocar o provedor pelo combobox, o estado do botão DEVE ser reavaliado. Durante o lote e durante as cargas de dados, o botão DEVE ser desabilitado e restaurado ao término, junto com os demais controles do painel.
+A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de controles, imediatamente após o seletor de modelo ativo e o botão de configuração, sempre visível. O botão DEVE estar habilitado somente quando a LLM estiver configurada, nenhum resumo em lote estiver em andamento e existir, no ticker apresentado, ao menos um documento que necessite de resumo ou — quando a IA estiver ativa — ao menos um Relatório Gerencial (documento da categoria `Relatorio`, própria de FII) cuja avaliação de guidance seja acionável. Um documento necessita de resumo quando não tem `long_summary` íntegro E o seu texto não foi concluído como ausente: documentos cuja ausência definitiva de texto já foi determinada e persistida (o marcador de ausência ou conteúdo apenas em branco) NÃO DEVEM contar como pendentes. Uma avaliação de guidance é acionável quando a entrada do RG no ledger está ausente, ou está marcada como `deterministico` e a IA está funcional sem falha de interação registrada para esse RG; uma entrada determinística cuja última tentativa de IA registrou falha NÃO DEVE manter o botão habilitado. Caso contrário, o botão DEVE estar desabilitado. O Relatório Gerencial É o documento de FII usado como gatilho; não se DEVE depender da classificação de tipo do ticker, indisponível no painel. A LLM DEVE ser considerada configurada quando o provedor for diferente de `none` e as dependências `[llm]` estiverem presentes. A verificação de pendências de guidance DEVE consultar o ledger fora da thread da interface, junto da leitura do catálogo, e a thread do Tk NÃO DEVE ler o ledger ao reavaliar o botão. Ao salvar a configuração ou trocar o provedor pelo combobox, o estado do botão DEVE ser reavaliado. Durante o lote e durante as cargas de dados, o botão DEVE ser desabilitado e restaurado ao término, junto com os demais controles do painel.
 
 #### Scenario: Botão disponível na barra
 
@@ -358,13 +358,23 @@ A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de con
 
 #### Scenario: Habilitado com pendentes e LLM configurada
 
-- **WHEN** a LLM está configurada e o ticker apresentado tem ao menos um documento sem `long_summary`
+- **WHEN** a LLM está configurada e o ticker apresentado tem ao menos um documento sem `long_summary` cujo texto não foi concluído como ausente
 - **THEN** o botão "Resumir pendentes" DEVE estar habilitado
+
+#### Scenario: Documento sem texto extraível não habilita
+
+- **WHEN** todos os documentos do ticker apresentado já têm `long_summary` ou tiveram a ausência de texto concluída e persistida
+- **THEN** o botão "Resumir pendentes" NÃO DEVE ser habilitado por esses documentos
 
 #### Scenario: Habilitado com RGs já resumidos pendentes de guidance
 
-- **WHEN** a LLM está configurada, todos os documentos do ticker apresentado já têm `long_summary` e ao menos um Relatório Gerencial (categoria `Relatorio`) não tem avaliação de guidance marcada como `ia`
+- **WHEN** a LLM está configurada e funcional, todos os documentos do ticker apresentado já têm `long_summary`, e ao menos um Relatório Gerencial (categoria `Relatorio`) tem avaliação de guidance acionável
 - **THEN** o botão "Resumir pendentes" DEVE estar habilitado
+
+#### Scenario: Falha de IA no guidance não mantém o botão
+
+- **WHEN** a única pendência seria um Relatório Gerencial já resumido cuja última avaliação por IA falhou
+- **THEN** o botão "Resumir pendentes" NÃO DEVE permanecer habilitado por conta dessa entrada
 
 #### Scenario: Desabilitado com pendências de guidance sem IA
 
@@ -408,14 +418,18 @@ A sub-aba "Documentos" DEVE exibir um botão "Resumir pendentes" na barra de con
 
 ### Requirement: Resumo em lote dos documentos pendentes
 
-Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da thread da interface, os documentos do ticker apresentado sem `long_summary` e os Relatórios Gerenciais (categoria `Relatorio`, própria de FII) já resumidos cuja avaliação de guidance esteja pendente (entrada ausente no ledger ou não marcada como `ia`, com a IA ativa), em duas fases: preparar o texto — reutilizando o texto em cache e convertendo apenas quando ausente — e gerar o resumo via LLM, como se cada documento tivesse sido selecionado. Para os Relatórios Gerenciais já resumidos, a geração de resumo DEVE ser pulada e apenas a avaliação de guidance DEVE ocorrer, reaproveitando os resumos e o texto em cache, sem reextrair o arquivo. Cada resumo gerado DEVE ser gravado no cache persistente imediatamente após a sua geração e antes de processar o próximo documento, na própria thread de trabalho, de modo que uma interrupção — cancelamento, fechamento do aplicativo ou falha — preserve todos os resumos já gerados e perca no máximo o documento em processamento. O `short_summary` e o `long_summary` resultantes DEVEM ser refletidos no catálogo do documento. O andamento DEVE ser exibido na barra de status com a barra de progresso, uma fase por vez. Documentos sem texto extraível DEVEM ser pulados, sem chamada à LLM. Ao concluir, o sistema DEVE exibir o desfecho e reavaliar o estado do botão.
+Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da thread da interface, os documentos do ticker apresentado que necessitam de resumo — sem `long_summary` íntegro cujo texto não tenha sido concluído como ausente — e os Relatórios Gerenciais (categoria `Relatorio`, própria de FII) já resumidos cuja avaliação de guidance seja acionável (entrada ausente no ledger, ou `deterministico` com a IA funcional e sem falha de interação registrada), em duas fases: preparar o texto — reutilizando o texto em cache e convertendo apenas quando ausente — e gerar o resumo via LLM, como se cada documento tivesse sido selecionado. Documentos cuja ausência definitiva de texto já foi determinada e persistida NÃO DEVEM integrar o conjunto de pendentes. Para os Relatórios Gerenciais já resumidos, a geração de resumo DEVE ser pulada e apenas a avaliação de guidance DEVE ocorrer, reaproveitando os resumos e o texto em cache, sem reextrair o arquivo. Cada resumo gerado DEVE ser gravado no cache persistente imediatamente após a sua geração e antes de processar o próximo documento, na própria thread de trabalho, de modo que uma interrupção — cancelamento, fechamento do aplicativo ou falha — preserve todos os resumos já gerados e perca no máximo o documento em processamento. O `short_summary` e o `long_summary` resultantes DEVEM ser refletidos no catálogo do documento. O andamento DEVE ser exibido na barra de status com a barra de progresso, uma fase por vez. Documentos sem texto extraível DEVEM ser pulados, sem chamada à LLM. Ao concluir, o sistema DEVE exibir o desfecho, incluindo as falhas de avaliação de guidance, e reavaliar o estado do botão.
 
 #### Scenario: Lote com documentos pendentes
-- **WHEN** o usuário aciona "Resumir pendentes" com a LLM configurada e documentos sem `long_summary`
+- **WHEN** o usuário aciona "Resumir pendentes" com a LLM configurada e documentos sem `long_summary` cujo texto não foi concluído como ausente
 - **THEN** o sistema DEVE gerar e persistir os resumos de cada documento pendente e exibir o desfecho
 
+#### Scenario: Documento com ausência de texto concluída não é alvo
+- **WHEN** o usuário aciona "Resumir pendentes" e há um documento sem `long_summary` cuja ausência de texto já foi determinada e persistida
+- **THEN** esse documento NÃO DEVE integrar o conjunto processado pelo lote
+
 #### Scenario: Lote avalia guidance de RG já resumido
-- **WHEN** o usuário aciona "Resumir pendentes" e há um Relatório Gerencial já resumido com avaliação de guidance pendente
+- **WHEN** o usuário aciona "Resumir pendentes" e há um Relatório Gerencial já resumido com avaliação de guidance acionável
 - **THEN** o sistema DEVE avaliar o guidance desse RG sem regerar seu resumo, reaproveitando os resumos e o texto em cache
 
 #### Scenario: Progresso em duas fases
@@ -431,7 +445,7 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 - **THEN** a fase "preparar texto" DEVE ter sido exibida na barra de status antes de "resumir", ainda que por tempo mínimo
 
 #### Scenario: Documento já resumido é pulado
-- **WHEN** um documento do ticker já tem `long_summary`
+- **WHEN** um documento do ticker já tem `long_summary` íntegro
 - **THEN** ele NÃO DEVE ser reprocessado no lote
 
 #### Scenario: Documento sem texto extraível é pulado
@@ -453,6 +467,10 @@ Ao acionar o botão "Resumir pendentes", o sistema DEVE processar, fora da threa
 #### Scenario: Interrupção por erro
 - **WHEN** ocorre um erro em qualquer documento durante o lote
 - **THEN** o lote DEVE ser interrompido, a barra de status DEVE reportar o documento e um motivo de falha amigável, e os controles DEVEM ser liberados
+
+#### Scenario: Falha de guidance é reportada no desfecho
+- **WHEN** a avaliação de guidance de um RG pendente falha por indisponibilidade da IA
+- **THEN** o desfecho do lote DEVE informar a falha de guidance, além dos resumos gerados
 
 #### Scenario: Resultado do lote é descartado ao trocar de ticker
 - **WHEN** o ticker apresentado muda enquanto o lote está em andamento

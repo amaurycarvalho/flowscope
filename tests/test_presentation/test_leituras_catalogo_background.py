@@ -254,6 +254,7 @@ class TestLeituraDocumentosBackground:
             frozenset(),
             [],
         )
+        host._documents_panel.carregar_ausencia_catalogo.return_value = frozenset()
 
         host._update_documents()
 
@@ -265,6 +266,7 @@ class TestLeituraDocumentosBackground:
             host._documents_panel.carregar_catalogo.return_value,
             frozenset(),
             [],
+            frozenset(),
         )
 
     def test_troca_de_ticker_descarta_leitura_obsoleta(self):
@@ -274,6 +276,7 @@ class TestLeituraDocumentosBackground:
             frozenset(),
             [],
         )
+        host._documents_panel.carregar_ausencia_catalogo.return_value = frozenset()
         liberar = threading.Event()
 
         def _carregar(ticker):
@@ -294,6 +297,7 @@ class TestLeituraDocumentosBackground:
             "cat-PETR4",
             frozenset(),
             [],
+            frozenset(),
         )
 
     def test_sem_ticker_aplica_estado_vazio(self):
@@ -383,8 +387,10 @@ class TestLeituraNoticiasBackground:
         assert background.tem_ativo("noticias-leitura") is True
         host._noticias_panel.mostrar_carregando.assert_called_once()
         _drenar(background)
-        host._noticias_panel.aplicar_secoes.assert_called_once_with(
-            host._noticias_panel.carregar_secoes.return_value
+        host._noticias_panel.aplicar_secoes.assert_called_once()
+        assert (
+            host._noticias_panel.aplicar_secoes.call_args.args[0]
+            is host._noticias_panel.carregar_secoes.return_value
         )
         host._noticias_panel.definir_referencia.assert_called_once_with(
             _REFERENCIA
@@ -413,7 +419,8 @@ class TestLeituraNoticiasBackground:
         liberar.set()
         _drenar(background)
 
-        host._noticias_panel.aplicar_secoes.assert_called_once_with("novo")
+        host._noticias_panel.aplicar_secoes.assert_called_once()
+        assert host._noticias_panel.aplicar_secoes.call_args.args[0] == "novo"
 
 
 class TestLeituraEvolucaoBackground:

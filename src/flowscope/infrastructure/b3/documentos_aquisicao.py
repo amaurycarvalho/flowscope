@@ -246,9 +246,9 @@ class AquisicaoDocumentos:
         if progress is None:
             return
         if total > 0:
-            label = f"• Documentos de {ticker} ({current}/{total})"
+            label = f"⏳ Documentos de {ticker} ({current}/{total})"
         else:
-            label = f"• Documentos de {ticker}..."
+            label = f"⏳ Documentos de {ticker}..."
         progress(current, total, label)
 
     def _listar_material_facts(
@@ -278,12 +278,17 @@ class AquisicaoDocumentos:
         reference_date: date,
     ) -> bool:
         """Baixa e grava o PDF de um material fact, retornando se persistiu."""
-        protocolo = id_protocolo(documento.url_documento or "")
+        url = documento.url_documento or ""
+        protocolo = id_protocolo(url)
         if protocolo is None:
             return False
+        if self._documentos.caminho_registrado(ticker, url) is not None:
+            return True
         referencia = _data_documento(documento.data_referencia, reference_date)
         cache = self._documentos.cache
+        caminho = cache.caminho(ticker, referencia, slug, protocolo)
         if cache.existe(ticker, referencia, slug, protocolo):
+            self._documentos.registrar_url(ticker, url, caminho)
             return True
         try:
             conteudo = self._baixar_cvm(protocolo)
@@ -297,16 +302,23 @@ class AquisicaoDocumentos:
             return False
         if not conteudo:
             return False
-        caminho = cache.caminho(ticker, referencia, slug, protocolo)
         dedup = self._documentos.deduplicacao(ticker)
-        dedup.processar(
+        _gravado, canonico = dedup.processar_e_resolver(
             conteudo,
             caminho,
             lambda dados: cache.gravar(
                 ticker, referencia, slug, protocolo, dados
             ),
         )
-        return cache.existe(ticker, referencia, slug, protocolo)
+        if canonico is None:
+            return False
+        caminho_canonico = self._documentos.cache_root / canonico
+        if not caminho_canonico.is_file():
+            return False
+        # Registra a URL mesmo quando o conteúdo foi descartado por duplicidade,
+        # apontando para o arquivo canônico já existente.
+        self._documentos.registrar_url(ticker, url, caminho_canonico)
+        return True
 
 
 def _data_documento(texto: object, fallback: date) -> date:

@@ -19,6 +19,7 @@ from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance, Guidance
+from flowscope.domain.llm import LLMRateLimitError
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
 from flowscope.presentation.gui.background.job import JobHandle, Politica
@@ -68,12 +69,14 @@ class _PainelFake:
         falha_resumir=None,
         falha_guidance=None,
         avaliacao=None,
+        falha_cota=None,
     ):
         self._textos = textos
         self._falha_preparar = falha_preparar
         self._falha_resumir = falha_resumir
         self._falha_guidance = falha_guidance
         self._avaliacao = avaliacao
+        self._falha_cota = falha_cota
         self.preparados: list[str] = []
         self.gerados: list[str] = []
         self.guidances: list[tuple] = []
@@ -90,6 +93,8 @@ class _PainelFake:
         return False
 
     def gerar_resumo_estrito(self, arquivo, texto):
+        if self._falha_cota == arquivo.nome:
+            raise LLMRateLimitError("Error code: 429 - quota exceeded")
         if self._falha_resumir == arquivo.nome:
             raise RuntimeError("llm falhou")
         self.gerados.append(arquivo.nome)
@@ -144,6 +149,24 @@ class TestResumosPendentes:
         assert [e.dados.nome for e in erros] == ["20.pdf"]
         assert resultados == []
         assert painel.gerados == []
+
+    def test_cota_esgotada_interrompe_mesmo_com_continuar(self):
+        arquivos = [
+            _arquivo("10.pdf"), _arquivo("20.pdf"), _arquivo("30.pdf")
+        ]
+        painel = _PainelFake(
+            {"10.pdf": "t", "20.pdf": "t", "30.pdf": "t"},
+            falha_cota="20.pdf",
+        )
+        ctx, eventos = _contexto()
+
+        executar_resumos(ctx, painel, arquivos, continuar_em_erro=True)
+
+        resultados = [e for e in eventos if isinstance(e, Resultado)]
+        erros = [e for e in eventos if isinstance(e, Erro)]
+        assert [r.dados.nome for r in resultados] == ["10.pdf"]
+        assert [e.dados.nome for e in erros] == ["20.pdf"]
+        assert "30.pdf" not in painel.gerados
 
     def test_erro_no_resumo_interrompe_sem_processar_seguintes(self):
         arquivos = [

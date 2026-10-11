@@ -77,7 +77,7 @@ class TestFundamentalProgress:
             ["PETR4", "VALE3"], date(2024, 1, 15), {},
         )
 
-        presenter.on_progress.assert_any_call(0, 2, "• Fundamentos...")
+        presenter.on_progress.assert_any_call(0, 2, "⏳ Fundamentos...")
 
 
 class TestOnTickerEdit:

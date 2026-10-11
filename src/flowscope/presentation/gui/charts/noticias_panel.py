@@ -32,6 +32,7 @@ from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.application.noticias.catalogo import (
     ConsultarCatalogoNoticiasUseCase,
     NoticiasCatalogo,
+    arquivos_das_secoes,
 )
 from flowscope.application.noticias.lote import pendentes_ordenados
 from flowscope.domain.documents import DocumentoArquivo
@@ -262,18 +263,34 @@ class NoticiasPanel(DocumentFlowMixin):
         """
         return self._catalogo_uc.secoes()
 
+    def carregar_ausencia_secoes(
+        self: "NoticiasPanel", catalogo: CatalogoNoticias
+    ) -> frozenset:
+        """Resolve, fora da thread do Tk, os caminhos sem texto conclusivo.
+
+        Achata as seções no conjunto de arquivos e delega ao gancho
+        compartilhado com a sub-aba "Documentos"; lê o text store em uma passada.
+        """
+        return self.carregar_ausencia(arquivos_das_secoes(catalogo))
+
     def definir_referencia(
         self: "NoticiasPanel", reference_date: date | None
     ) -> None:
         """Guarda a data de referência usada pelo fluxo de aquisição."""
         self._reference_date = reference_date
 
-    def aplicar_secoes(self: "NoticiasPanel", catalogo: CatalogoNoticias) -> None:
+    def aplicar_secoes(
+        self: "NoticiasPanel",
+        catalogo: CatalogoNoticias,
+        sem_texto: frozenset = frozenset(),
+    ) -> None:
         """Remonta a árvore com as seções lidas, na thread do Tk.
 
         Preserva o item selecionado quando ele continua no catálogo,
-        reexibindo o seu conteúdo.
+        reexibindo o seu conteúdo. ``sem_texto`` é o conjunto de caminhos com
+        ausência definitiva de texto, resolvido no worker de leitura.
         """
+        self._sem_texto = frozenset(sem_texto or ())
         selecionado = self._caminho_selecionado()
         self._limpar()
         if catalogo.vazio:
@@ -309,7 +326,9 @@ class NoticiasPanel(DocumentFlowMixin):
         data de referência é guardada para o fluxo de aquisição.
         """
         self._reference_date = reference_date
-        self.aplicar_secoes(self.carregar_secoes())
+        catalogo = self.carregar_secoes()
+        sem_texto = self.carregar_ausencia_secoes(catalogo)
+        self.aplicar_secoes(catalogo, sem_texto)
 
     def _texto_cacheado(
         self: "NoticiasPanel", arquivo: DocumentoArquivo
@@ -358,12 +377,20 @@ class NoticiasPanel(DocumentFlowMixin):
         return True
 
     def pendentes_ordenados(self: "NoticiasPanel") -> list[DocumentoArquivo]:
-        """Retorna as notícias sem resumo por grupo e da mais recente à mais antiga.
+        """Retorna as notícias pendentes por grupo e da mais recente à mais antiga.
 
-        A ordem é determinista e vive na aplicação; a apresentação apenas
-        delega os itens em memória.
+        A ordem é determinista e vive na aplicação. A pendência usa a regra
+        compartilhada de resumo íntegro (regerando resumos truncados) e exclui
+        os itens com ausência definitiva de texto já resolvida no worker,
+        mantendo pendentes os apontadores ainda não resolvidos.
         """
-        return pendentes_ordenados(list(self._itens.values()))
+        sem_texto = getattr(self, "_sem_texto", frozenset())
+        return pendentes_ordenados(
+            list(self._itens.values()),
+            precisa=lambda arquivo: self._summary.precisa_resumo_ausente(
+                arquivo, sem_texto=arquivo.caminho in sem_texto
+            ),
+        )
 
     def _texto_do_arquivo(
         self: "NoticiasPanel",

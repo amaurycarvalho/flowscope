@@ -259,12 +259,14 @@ class DocumentTreePanel(DocumentFlowMixin):
         catalogo: CatalogoTicker | None,
         pendentes_guidance: frozenset[Path] | None = None,
         guidances: list[EntradaGuidanceArvore] | None = None,
+        sem_texto: frozenset[Path] = frozenset(),
     ) -> None:
         """Aplica o catálogo lido, remontando a árvore na thread do Tk.
 
         Preserva a expansão e o arquivo selecionado nas exibições seguintes do
         mesmo ticker; na primeira exibição (e a cada troca) a árvore fica
-        expandida apenas até o primeiro nível.
+        expandida apenas até o primeiro nível. ``sem_texto`` é o conjunto de
+        caminhos com ausência definitiva de texto, resolvido no worker.
         """
         # A primeira exibição de um ticker na sessão monta só o primeiro nível;
         # as seguintes reaproveitam o estado de expansão e a seleção correntes.
@@ -277,6 +279,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._limpar_nos()
         self._guidance_pendentes = frozenset(pendentes_guidance or ())
         self._guidances = list(guidances or ())
+        self._sem_texto = frozenset(sem_texto)
         if ticker:
             self._tickers_expandidos.add(ticker)
         restaurado = False
@@ -305,7 +308,10 @@ class DocumentTreePanel(DocumentFlowMixin):
         """
         catalogo = self.carregar_catalogo(ticker)
         pendentes, guidances = self.carregar_guidance(ticker, catalogo)
-        self.aplicar_catalogo(ticker, catalogo, pendentes, guidances)
+        sem_texto = self.carregar_ausencia_catalogo(catalogo)
+        self.aplicar_catalogo(
+            ticker, catalogo, pendentes, guidances, sem_texto
+        )
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
         """Retorna os controles do painel para o bloqueio global da interface."""
@@ -508,8 +514,12 @@ class DocumentTreePanel(DocumentFlowMixin):
     def _on_model_changed(
         self: "DocumentTreePanel", provider: str | None = None
     ) -> None:
-        """Reavalia os resumos e notifica o host após trocar o modelo ativo."""
-        self.refresh_resumir_button()
+        """Reavalia os resumos e notifica o host após trocar o modelo ativo.
+
+        Trocar o modelo ativo reconfigura a IA: o registro de falhas de guidance
+        é limpo para que os RGs voltem a ser acionáveis com o novo provedor.
+        """
+        self.reabilitar_guidance()
         if self._model_changed_callback is not None:
             self._model_changed_callback()
 

@@ -18,7 +18,7 @@ from flowscope.application.documentos.mensagens import mensagem_indisponivel
 from flowscope.application.resumo_documento import (
     ResumirDocumentoUseCase,
     ResumoDocumento,
-    resumo_integro,
+    resumo_completo,
 )
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.documents.texto import tem_texto
@@ -61,21 +61,33 @@ class DocumentSummaryService:
         """Indica se o documento ainda precisa de geração de resumo.
 
         Um resumo persistido que não termina em pontuação final foi truncado e
-        é tratado como desatualizado, de modo que o lote o regenere.
+        é tratado como desatualizado, de modo que o lote o regenere. O texto
+        conclusivamente ausente (marcador ou branco) não conta como pendência.
         """
-        return (
-            not self.resumo_completo(arquivo)
-            and self.disponivel()
-            and tem_texto(texto)
+        return self.disponivel() and self.precisa_resumo_ausente(
+            arquivo, sem_texto=not tem_texto(texto)
         )
+
+    def precisa_resumo_ausente(
+        self: "DocumentSummaryService",
+        arquivo: DocumentoArquivo,
+        *,
+        sem_texto: bool,
+    ) -> bool:
+        """Indica se o documento precisa de resumo dada a ausência de texto.
+
+        Reusa a regra compartilhada de resumo íntegro; ``sem_texto`` é o estado
+        já resolvido (marcador de ausência ou conteúdo apenas em branco) pelo
+        worker. Não considera a disponibilidade da LLM: a decisão de "necessita
+        de resumo" é ortogonal, e o botão aplica o gate de disponibilidade.
+        """
+        return not self.resumo_completo(arquivo) and not sem_texto
 
     def resumo_completo(
         self: "DocumentSummaryService", arquivo: DocumentoArquivo
     ) -> bool:
         """Indica se os resumos persistidos estão íntegros (não truncados)."""
-        if not resumo_integro(arquivo.long_summary):
-            return False
-        return not arquivo.short_summary or resumo_integro(arquivo.short_summary)
+        return resumo_completo(arquivo.short_summary, arquivo.long_summary)
 
     def resumo_para_exibir(
         self: "DocumentSummaryService",

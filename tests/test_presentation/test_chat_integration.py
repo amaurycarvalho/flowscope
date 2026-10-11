@@ -134,3 +134,25 @@ class TestCoordenacaoProvider:
             setattr(host, nome, painel)
         host._on_provider_changed()
         assert len(recarregados) == 3
+
+    def test_on_provider_changed_reabilita_guidance(self):
+        from types import SimpleNamespace
+
+        from flowscope.presentation.gui.app_tab_actions import TabActionsMixin
+
+        class _Host(TabActionsMixin):
+            pass
+
+        host = _Host()
+        reabilitados: list[str] = []
+        for nome in ("_chat_panel", "_documents_panel", "_noticias_panel"):
+            seletor = SimpleNamespace(recarregar=lambda: None)
+            painel = SimpleNamespace(
+                _model_selector=seletor,
+                avaliar_estado=lambda: None,
+                reabilitar_guidance=lambda marca=nome: reabilitados.append(marca),
+            )
+            setattr(host, nome, painel)
+        host._on_provider_changed()
+        assert "_documents_panel" in reabilitados
+        assert "_noticias_panel" in reabilitados

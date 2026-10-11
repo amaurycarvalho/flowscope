@@ -182,7 +182,7 @@ class DataLoadMixin:
                 return
 
             reporter.start_phase(
-                "Baixando dados históricos", total=7, weight=3,
+                "⏳ Baixando dados históricos", total=7, weight=3,
             )
             result = self._analyze.execute(
                 instrucao.ref_date, tickers,

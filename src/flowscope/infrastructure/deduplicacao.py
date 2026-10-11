@@ -29,6 +29,10 @@ from flowscope.infrastructure.content_hashes import (
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.infrastructure.url_downloads import (
+    url_store_documentos,
+    url_store_noticias,
+)
 
 logger = logging.getLogger("flowscope")
 
@@ -62,20 +66,22 @@ class PodadorDerivados(Protocol):
 
 
 def podar_documento(cache_root: Path, ticker: str, relativo: str) -> None:
-    """Remove um documento e os seus resumos e textos do ticker."""
+    """Remove um documento, os seus derivados e a URL do registro do ticker."""
     root = Path(cache_root)
     (root / relativo).unlink(missing_ok=True)
     JsonDocumentSummaryStore(root).remover(ticker, relativo)
     JsonDocumentTextStore(root).remover(ticker, relativo)
+    url_store_documentos(root, ticker).remover_relativo(relativo)
 
 
 def podar_noticia(cache_root: Path, relativo: str) -> None:
-    """Remove uma notícia, a sua entrada de índice e os seus resumos e textos."""
+    """Remove uma notícia, os seus derivados, o índice e a URL do registro."""
     root = Path(cache_root)
     (root / relativo).unlink(missing_ok=True)
     NoticiasIndexStore(root).remover(relativo)
     NoticiasSummaryStore(root).remover(ESCOPO_NOTICIAS, relativo)
     NoticiasTextStore(root).remover(ESCOPO_NOTICIAS, relativo)
+    url_store_noticias(root).remover_relativo(relativo)
 
 
 def candidatos_documentos(cache_root: Path, ticker: str) -> list[CandidatoHash]:

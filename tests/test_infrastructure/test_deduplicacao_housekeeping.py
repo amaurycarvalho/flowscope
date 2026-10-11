@@ -36,6 +36,10 @@ from flowscope.infrastructure.deduplicacao import (
 )
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
+from flowscope.infrastructure.url_downloads import (
+    url_store_documentos,
+    url_store_noticias,
+)
 
 _CONTEUDO_A = b"A" * 2048
 _CONTEUDO_B = b"B" * 2048
@@ -74,6 +78,24 @@ class TestPodaDocumento:
         assert JsonDocumentSummaryStore(tmp_path).obter("ALZR11", relativo) is None
         assert JsonDocumentTextStore(tmp_path).obter("ALZR11", relativo) is None
 
+    def test_remove_a_url_registrada_preservando_as_demais(self, tmp_path):
+        alvo = _escrever(
+            tmp_path / "documentos-relevantes" / "ALZR11" / "2026"
+            / "07" / "assembleia" / "1.pdf",
+            _CONTEUDO_A,
+        )
+        outro = _escrever(
+            tmp_path / "bdr" / "ALZR11" / "2026" / "07" / "2.pdf",
+            _CONTEUDO_B,
+        )
+        relativo = alvo.relative_to(tmp_path).as_posix()
+        relativo_outro = outro.relative_to(tmp_path).as_posix()
+        urls = url_store_documentos(tmp_path, "ALZR11")
+        urls.registrar("https://x/1", relativo)
+        urls.registrar("https://x/2", relativo_outro)
+        podar_documento(tmp_path, "ALZR11", relativo)
+        assert urls.registrados() == {"https://x/2": relativo_outro}
+
 
 class TestPodaNoticia:
     def test_remove_arquivo_indice_resumo_e_texto(self, tmp_path):
@@ -91,6 +113,21 @@ class TestPodaNoticia:
         assert NoticiasIndexStore(tmp_path).itens() == {}
         assert NoticiasSummaryStore(tmp_path).obter("NOTICIAS", relativo) is None
         assert NoticiasTextStore(tmp_path).obter("NOTICIAS", relativo) is None
+
+    def test_remove_a_url_registrada_preservando_as_demais(self, tmp_path):
+        alvo = _escrever(
+            tmp_path / "noticias" / "2026" / "09" / "abc.html", _CONTEUDO_A
+        )
+        outro = _escrever(
+            tmp_path / "noticias" / "2026" / "09" / "def.html", _CONTEUDO_B
+        )
+        relativo = alvo.relative_to(tmp_path).as_posix()
+        relativo_outro = outro.relative_to(tmp_path).as_posix()
+        urls = url_store_noticias(tmp_path)
+        urls.registrar("https://x/1", relativo)
+        urls.registrar("https://x/2", relativo_outro)
+        podar_noticia(tmp_path, relativo)
+        assert urls.registrados() == {"https://x/2": relativo_outro}
 
 
 class TestRemocaoShards:

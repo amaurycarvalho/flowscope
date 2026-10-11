@@ -305,6 +305,24 @@ class TestDataReferencia:
             timezone.utc
         ).date()
 
+    def test_interpreta_data_com_hora(self):
+        documento = _item(referencia="17/07/2026 09:15:00")
+        assert resolver_data_referencia(documento) == date(2026, 7, 17)
+
+    def test_data_com_hora_estabiliza_o_caminho(self, tmp_path):
+        client = _ClienteFake([_item()], {"1252542": _PDF})
+        provider = DocumentosRelevantesProvider(
+            client=client, cache_dir=tmp_path
+        )
+        documento = provider.persistir(
+            "ALZR11", "20294", _item(referencia="17/07/2026 09:15:00")
+        )
+        assert documento is not None
+        esperado = (
+            tmp_path / "ALZR11" / "2026" / "07" / "assembleia" / "1252542.pdf"
+        )
+        assert esperado.is_file()
+
 
 class TestProvider:
     def test_persiste_pdf_valido(self, tmp_path):
@@ -334,6 +352,30 @@ class TestProvider:
         provider.persistir("ALZR11", "20294", _item())
         provider.persistir("ALZR11", "20294", _item())
         assert cliente.chamadas == ["1252542"]
+
+    def test_duplicata_registra_url_e_nao_rebaixa(self, tmp_path):
+        conteudo = b"%PDF-1.4\n" + b"x" * 2048
+        item_a = _item(id_=1252542)
+        item_b = _item(id_=999999)
+        cliente = _ClienteFake(
+            [item_a, item_b], {"1252542": conteudo, "999999": conteudo}
+        )
+        provider = DocumentosRelevantesProvider(
+            client=cliente, cache_dir=tmp_path
+        )
+
+        assert provider.persistir("ALZR11", "20294", item_a) is not None
+        assert provider.persistir("ALZR11", "20294", item_b) is None
+
+        urls = provider.urls("ALZR11")
+        url_a = item_a["urlViewerFundosNet"]
+        url_b = item_b["urlViewerFundosNet"]
+        assert urls.canonico(url_a) is not None
+        assert urls.canonico(url_b) == urls.canonico(url_a)
+        assert cliente.chamadas == ["1252542", "999999"]
+
+        provider.persistir("ALZR11", "20294", item_b)
+        assert cliente.chamadas == ["1252542", "999999"]
 
     def test_conteudo_nao_pdf_rejeitado_sem_arquivo(self, tmp_path):
         cliente = _ClienteFake([_item(id_=1)], {"1": None})

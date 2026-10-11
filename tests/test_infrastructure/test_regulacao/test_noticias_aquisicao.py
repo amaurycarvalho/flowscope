@@ -348,6 +348,42 @@ class TestAquisicao:
 
         assert baixados == [_URL]
 
+    def test_url_registrada_reusa_entre_datas_de_referencia(self, tmp_path):
+        baixados: list[str] = []
+
+        def _baixar(url):
+            baixados.append(url)
+            return b"<html>corpo</html>"
+
+        repo = _RepositorioFake([_noticia(data_publicacao="")])
+        aquisicao = _aquisicao(tmp_path, repo, _baixar)
+        aquisicao.adquirir(date(2026, 9, 25))
+        aquisicao.adquirir(date(2026, 10, 25))
+
+        assert baixados == [_URL]
+
+    def test_duplicata_registra_url_e_nao_rebaixa(self, tmp_path):
+        conteudo = b"<html>" + b"x" * 2048 + b"</html>"
+        repo = _RepositorioFake(
+            [
+                _noticia(url="https://x/1", titulo="A - Suspensão de negociação"),
+                _noticia(url="https://x/2", titulo="B - Suspensão de negociação"),
+            ]
+        )
+        baixados: list[str] = []
+
+        def _baixar(url):
+            baixados.append(url)
+            return conteudo
+
+        aquisicao = _aquisicao(tmp_path, repo, _baixar)
+        aquisicao.adquirir(_REFERENCIA)
+        assert baixados == ["https://x/1", "https://x/2"]
+
+        baixados.clear()
+        aquisicao.adquirir(_REFERENCIA)
+        assert baixados == []
+
     def test_noticia_sem_url_e_ignorada(self, tmp_path):
         baixados: list[str] = []
         repo = _RepositorioFake([_noticia(url=None)])

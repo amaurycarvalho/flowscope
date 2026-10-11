@@ -23,6 +23,8 @@ class TestMensagensPorTipo:
     def test_limite_de_uso(self):
         mensagem = mensagem_erro_llm(LLMRateLimitError("Error code: 429"))
         assert "Limite de uso da I.A." in mensagem
+        assert "renovação" in mensagem
+        assert "reconfigura o provedor" in mensagem
 
     def test_falha_de_comunicacao(self):
         mensagem = mensagem_erro_llm(LLMCommunicationError("timeout"))

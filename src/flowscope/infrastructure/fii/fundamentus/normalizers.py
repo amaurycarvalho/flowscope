@@ -47,10 +47,17 @@ def para_int(texto: str | None) -> int | None:
 
 
 def para_data(texto: str | None) -> date | None:
-    """Interpreta uma data no formato ``DD/MM/AAAA`` (ou ``DD/MM/AA``)."""
+    """Interpreta uma data em ``DD/MM/AAAA`` (ou ``DD/MM/AA``).
+
+    Aceita também o sufixo de hora (``DD/MM/AAAA HH:MM[:SS]``), descartando-o:
+    apenas o dia, o mês e o ano compõem a data resultante.
+    """
     if not texto:
         return None
-    partes = texto.strip().split("/")
+    limpo = texto.strip().split()
+    if not limpo:
+        return None
+    partes = limpo[0].split("/")
     if len(partes) != 3:
         return None
     try:

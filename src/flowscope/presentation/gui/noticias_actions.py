@@ -38,11 +38,17 @@ class NoticiasActionsMixin:
             painel.update(reference_date)
             return
         painel.mostrar_carregando()
+
+        def trabalho(ctx: object) -> None:
+            catalogo = painel.carregar_secoes()
+            sem_texto = painel.carregar_ausencia_secoes(catalogo)
+            ctx.resultado(valor=(catalogo, sem_texto))
+
         background.submit(
-            lambda ctx: ctx.resultado(valor=painel.carregar_secoes()),
+            trabalho,
             grupo=GRUPO_LEITURA,
             politica=POLITICA_LEITURA,
-            ao_resultado=lambda evento: painel.aplicar_secoes(evento.valor),
+            ao_resultado=lambda evento: painel.aplicar_secoes(*evento.valor),
         )
 
     def _adquirir_noticias(self: "NoticiasActionsMixin") -> None:

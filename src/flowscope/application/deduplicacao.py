@@ -133,9 +133,33 @@ class DeduplicacaoConteudo:
         Retorna ``True`` quando o conteúdo foi gravado e ``False`` quando foi
         descartado por duplicidade.
         """
+        gravado, _ = self.processar_e_resolver(conteudo, caminho, gravar)
+        return gravado
+
+    def processar_e_resolver(
+        self: "DeduplicacaoConteudo",
+        conteudo: bytes,
+        caminho: Path,
+        gravar: Callable[[bytes], None],
+    ) -> tuple[bool, str | None]:
+        """Grava o conteúdo e devolve ``(gravado, caminho relativo canônico)``.
+
+        Quando o conteúdo é novo, grava e devolve o relativo do próprio
+        caminho; quando é duplicata, não grava e devolve o relativo canônico do
+        conteúdo já registrado, permitindo ao chamador associar a URL de origem
+        ao arquivo existente.
+        """
         avaliacao = self.avaliar(conteudo, caminho)
         if avaliacao.duplicata:
-            return False
+            return False, self._canonico(avaliacao.digest)
         gravar(conteudo)
         self.registrar(avaliacao.digest, caminho)
-        return True
+        return True, self.relativo(caminho)
+
+    def _canonico(
+        self: "DeduplicacaoConteudo", digest: str | None
+    ) -> str | None:
+        """Retorna o caminho relativo canônico do hash, ou ``None``."""
+        if digest is None:
+            return None
+        return self._registry.canonico(digest)

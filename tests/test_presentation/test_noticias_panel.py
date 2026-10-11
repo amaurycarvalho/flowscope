@@ -21,7 +21,10 @@ from flowscope.application.cancellation import (
     OperacaoCancelada,
 )
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
-from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.resumo_documento import (
+    ResumoDocumento,
+    resumo_completo,
+)
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
@@ -181,6 +184,12 @@ class _SummaryFake:
 
     def chave(self, arquivo):
         return arquivo.nome
+
+    def precisa_resumo_ausente(self, arquivo, *, sem_texto: bool) -> bool:
+        return (
+            not resumo_completo(arquivo.short_summary, arquivo.long_summary)
+            and not sem_texto
+        )
 
 
 class _FakeButton:
@@ -757,6 +766,61 @@ class TestAutoRecuperacao:
         assert any(isinstance(e, Resultado) for e in eventos)
 
 
+class TestLoteRegeneraResumoTruncado:
+    def _painel(self, tmp_path, llm):
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._preview_cache = {}
+        painel._text_store = JsonDocumentTextStore(cache_dir=tmp_path)
+        painel._summary = DocumentSummaryService(
+            JsonDocumentSummaryStore(cache_dir=tmp_path),
+            tmp_path,
+            llm_factory=lambda: llm,
+            llm_available=lambda: True,
+        )
+        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        painel._senha_interativa = False
+        painel._senha_max_tentativas = 3
+        return painel
+
+    def _noticia(self, tmp_path, nome, resumo):
+        caminho = tmp_path / f"{nome}.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>"
+            f"Corpo de {nome}</pre></body></html>",
+            encoding="utf-8",
+        )
+        return NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="Outros",
+            nome=nome,
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+            long_summary=resumo,
+        )
+
+    def test_gera_apenas_o_truncado(self, tmp_path):
+        llm = _LLMFake()
+        painel = self._painel(tmp_path, llm)
+        truncado = self._noticia(tmp_path, "truncado", "cortado no meio")
+        integro = self._noticia(tmp_path, "integro", "resumo completo.")
+
+        sem_texto, eventos = _executar_lote(
+            painel, [truncado, integro]
+        )
+
+        chave_truncado = chave_documento(truncado.caminho, tmp_path)
+        chave_integro = chave_documento(integro.caminho, tmp_path)
+        store = painel._summary._store
+        assert len(llm.chamadas) == 1
+        assert store.obter(ESCOPO_NOTICIAS, chave_truncado) is not None
+        assert store.obter(ESCOPO_NOTICIAS, chave_integro) is None
+        assert any(isinstance(e, Resultado) for e in eventos)
+
+
 class TestReClickNoticias:
     def test_clique_no_mesmo_artigo_reprocessa(self):
         painel = NoticiasPanel.__new__(NoticiasPanel)
@@ -1002,13 +1066,13 @@ class TestExecutarNoticias:
     def test_publica_progresso(self):
         class _Aquisicao:
             def adquirir(self, reference_date, progress=None, cancel_token=None):
-                progress(1, 2, "• Notícias (1/2)")
+                progress(1, 2, "⏳ Notícias (1/2)")
 
         handle = JobHandle(id=1, grupo="noticias", politica=Politica.LATEST_WINS)
         eventos = []
         ctx = JobContext(handle, eventos.append)
         executar_noticias(ctx, _Aquisicao(), _REFERENCIA)
-        assert eventos == [Progresso("• Notícias (1/2)", 1, 2)]
+        assert eventos == [Progresso("⏳ Notícias (1/2)", 1, 2)]
 
     def test_cancelamento_nao_loga_falha(self, caplog):
         class _AquisicaoCancelada:
@@ -1088,7 +1152,8 @@ class TestNoticiasActions:
         assert host._background.tem_ativo(noticias_actions.GRUPO_LEITURA) is True
         liberar.set()
         _drenar(host)
-        painel.aplicar_secoes.assert_called_once_with("catalogo")
+        painel.aplicar_secoes.assert_called_once()
+        assert painel.aplicar_secoes.call_args.args[0] == "catalogo"
 
     def test_adquirir_executa_e_remonta(self):
         painel = MagicMock()
@@ -1234,6 +1299,28 @@ class TestResumirNoticiasPendentes:
         assert host.capturado[0] is painel
         assert host.capturado[1] == ordenados
         assert host.capturado[3] is True
+
+
+class TestAusenciaDeTextoNoticias:
+    def test_corpo_em_branco_nao_e_pendente(self, tmp_path):
+        arquivo = _arquivo_lote("vazia", tmp_path / "vazia.html")
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        store.salvar("NOTICIAS", "vazia", "   ")
+        host = _NoticiasHost(itens={"n": arquivo}, text_store=store)
+        host._sem_texto = host.carregar_ausencia([arquivo])
+        assert [a.nome for a in host.pendentes_ordenados()] == []
+
+    def test_corpo_de_apontador_permanece_pendente(self, tmp_path):
+        arquivo = _arquivo_lote("geral", tmp_path / "geral.html")
+        store = JsonDocumentTextStore(cache_dir=tmp_path)
+        apontador = (
+            "Titulo\nhttps://www.rad.cvm.gov.br/ENETWEB/"
+            "frmExibirArquivoIPEExterno.aspx?ID=1&flnk"
+        )
+        store.salvar("NOTICIAS", "geral", apontador)
+        host = _NoticiasHost(itens={"n": arquivo}, text_store=store)
+        host._sem_texto = host.carregar_ausencia([arquivo])
+        assert [a.nome for a in host.pendentes_ordenados()] == ["geral"]
 
 
 class TestSelecaoPreservadaNoticias:

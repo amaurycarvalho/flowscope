@@ -5,11 +5,13 @@ Ver `proposal.md - Why`. O fluxo atual (`controller.on_load_data`) executa a car
 ## Goals / Non-Goals
 
 **Goals:**
+
 - Exibir a barra de progresso durante a fase de Fundamentos, com `current`/`total` e estado inicial `0/N`.
 - Substituir o glifo `ℹ` por um marcador de renderização consistente.
 - Aplicar o cursor `watch` a todos os widgets interativos, restaurando os cursores originais.
 
 **Non-Goals:**
+
 - Reduzir o tempo de renderização síncrona dos gráficos em `on_result` (pausa distinta, fora dos três pontos).
 - Alterar o fluxo de progresso da carga histórica.
 - Mudar contratos de domínio ou de aplicação.
@@ -31,7 +33,7 @@ Ver `proposal.md - Why`. O fluxo atual (`controller.on_load_data`) executa a car
 
 ### Estado inicial `0/N` e limpeza condicional da barra
 
-`_iniciar_analise_fundamental` emite um `on_progress(0, N, "• Fundamentos...")` ao iniciar o job, para a barra aparecer imediatamente. `on_operation_finished` passa a limpar a barra apenas quando `_operacoes_ativas == 0`, evitando que o `finally` da carga esconda a barra antes da fase fundamental.
+`_iniciar_analise_fundamental` emite um `on_progress(0, N, "⏳ Fundamentos...")` ao iniciar o job, para a barra aparecer imediatamente. `on_operation_finished` passa a limpar a barra apenas quando `_operacoes_ativas == 0`, evitando que o `finally` da carga esconda a barra antes da fase fundamental.
 
 - **Alternativa descartada**: deixar a limpeza incondicional e depender da primeira mensagem de ticker — deixaria um intervalo sem barra durante o primeiro ticker.
 

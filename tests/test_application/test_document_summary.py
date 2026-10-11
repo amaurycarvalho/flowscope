@@ -14,6 +14,7 @@ from flowscope.application.documentos.document_summary_port import (
 from flowscope.application.documentos.mensagens import mensagem_indisponivel
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
+from flowscope.domain.documents.texto import SEM_TEXTO
 from flowscope.domain.llm import LLMCommunicationError, LLMResposta
 from flowscope.infrastructure.document_summaries import JsonDocumentSummaryStore
 from flowscope.infrastructure.document_texts import JsonDocumentTextStore
@@ -102,6 +103,33 @@ class TestPersistencia:
         _store, servico = self._servico(tmp_path)
         assert servico.precisa_resumo(_arquivo(tmp_path), "texto") is True
         assert servico.precisa_resumo(_arquivo(tmp_path), "") is False
+
+    def test_texto_conclusivamente_ausente_nao_e_pendente(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        # marcador de ausência, branco e None equivalem a ausência conclusiva
+        assert (
+            servico.precisa_resumo(_arquivo(tmp_path), SEM_TEXTO) is False
+        )
+        assert servico.precisa_resumo(_arquivo(tmp_path), "   ") is False
+        assert servico.precisa_resumo(_arquivo(tmp_path), None) is False
+
+    def test_precisa_resumo_ausente_isola_a_ausencia(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        arquivo = _arquivo(tmp_path)
+        assert (
+            servico.precisa_resumo_ausente(arquivo, sem_texto=False) is True
+        )
+        assert (
+            servico.precisa_resumo_ausente(arquivo, sem_texto=True) is False
+        )
+
+    def test_resumo_truncado_sem_texto_nao_e_pendente(self, tmp_path):
+        _store, servico = self._servico(tmp_path)
+        arquivo = replace(
+            _arquivo(tmp_path), long_summary="cortado no meio da pa"
+        )
+        assert servico.precisa_resumo(arquivo, "texto") is True
+        assert servico.precisa_resumo(arquivo, SEM_TEXTO) is False
 
     def test_resumo_truncado_e_pendente(self, tmp_path):
         _store, servico = self._servico(tmp_path)

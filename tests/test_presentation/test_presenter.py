@@ -106,7 +106,7 @@ class TestFlowScopePresenter:
         presenter = FlowScopePresenter(view)
         presenter.on_fundamental_progress("Fundamentos: HGBS11 (1/5)", 1, 5)
         view.set_progress.assert_called_once_with(
-            1, 5, "• Fundamentos: HGBS11 (1/5)"
+            1, 5, "⏳ Fundamentos: HGBS11 (1/5)"
         )
         view.set_status.assert_not_called()
 

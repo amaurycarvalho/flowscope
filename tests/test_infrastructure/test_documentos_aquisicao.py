@@ -154,6 +154,20 @@ class TestAcaoMaterialFacts:
             "PETR3", date(2026, 7, 17), "fato-relevante", "1510187"
         )
 
+    def test_data_de_referencia_com_hora_estabiliza_o_caminho(self, tmp_path):
+        cliente = _ClienteFake(
+            code_cvm="9512",
+            fatos={"4": [_fato(data_referencia="17/07/2026 09:15:00")]},
+        )
+        aquisicao, documentos, _informes = _aquisicao(
+            tmp_path, cliente, lambda _p: b"%PDF-1.4"
+        )
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+
+        assert documentos.cache.existe(
+            "PETR3", date(2026, 7, 17), "fato-relevante", "1510187"
+        )
+
     def test_falha_de_download_nao_cria_arquivo(self, tmp_path):
         cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
 
@@ -241,6 +255,80 @@ class TestReusoDeCache:
         aquisicao.adquirir("PETR3", _REFERENCIA)
 
         assert baixados == ["1510187"]
+
+
+class TestReusoPorUrl:
+    def test_url_registrada_nao_baixa_com_data_diferente(self, tmp_path):
+        cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
+        baixados: list[str] = []
+
+        def _baixar(protocolo):
+            baixados.append(protocolo)
+            return b"%PDF-1.4"
+
+        aquisicao, _documentos, _informes = _aquisicao(
+            tmp_path, cliente, _baixar
+        )
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+        # mesma URL reapresentada com data de referência em outro mês
+        cliente._fatos = {
+            "4": [_fato(data_referencia="2026-09-17T00:00:00-03:00")]
+        }
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+
+        assert baixados == ["1510187"]
+
+    def test_duplicata_registra_url_e_nao_rebaixa(self, tmp_path):
+        url_a = _URL_FATO
+        url_b = _URL_FATO.replace("1510187", "2000000")
+        conteudo = b"%PDF-1.4\n" + b"x" * 2048
+        cliente = _ClienteFake(
+            code_cvm="9512",
+            fatos={"4": [_fato(url=url_a), _fato(url=url_b)]},
+        )
+        baixados: list[str] = []
+
+        def _baixar(protocolo):
+            baixados.append(protocolo)
+            return conteudo
+
+        aquisicao, documentos, _informes = _aquisicao(
+            tmp_path, cliente, _baixar
+        )
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert baixados == ["1510187", "2000000"]
+
+        urls = documentos.urls("PETR3")
+        assert urls.canonico(url_a) is not None
+        assert urls.canonico(url_b) == urls.canonico(url_a)
+
+        baixados.clear()
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert baixados == []
+
+    def test_url_registrada_nao_baixa_para_fii(self, tmp_path):
+        item = {
+            "urlViewerFundosNet": "https://fnet?id=1",
+            "category": "2",
+            "referenceDate": "2026-07-01T00:00:00-03:00",
+        }
+        cliente = _ClienteFake(id_fnet="20294", documentos_relevantes=[item])
+        baixados: list[str] = []
+
+        def _baixar(id_documento):
+            baixados.append(id_documento)
+            return b"%PDF-1.4"
+
+        cliente.baixar_pdf_documento = _baixar  # type: ignore[method-assign]
+        aquisicao, _documentos, _informes = _aquisicao(tmp_path, cliente)
+        aquisicao.adquirir("ALZR11", _REFERENCIA)
+        # mesma URL com data de referência em outro mês
+        cliente._documentos_relevantes = [
+            {**item, "referenceDate": "2026-09-01T00:00:00-03:00"}
+        ]
+        aquisicao.adquirir("ALZR11", _REFERENCIA)
+
+        assert baixados == ["1"]
 
 
 class TestJanelaDe12Meses:

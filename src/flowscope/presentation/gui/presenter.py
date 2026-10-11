@@ -352,9 +352,9 @@ class FlowScopePresenter:
         sem eles, exibe apenas o texto na barra de status.
         """
         if current is None or total is None:
-            self._view.set_status(detalhe, "•")
+            self._view.set_status(detalhe, "⏳")
             return
-        self._view.set_progress(current, total, f"• {detalhe}")
+        self._view.set_progress(current, total, f"⏳ {detalhe}")
 
     def on_fundamental_result(
         self: "FlowScopePresenter", dados: dict, houve_falha: bool = False

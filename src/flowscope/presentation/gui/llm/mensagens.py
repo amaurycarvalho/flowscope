@@ -28,7 +28,10 @@ _MENSAGENS: tuple[tuple[type[BaseException], str], ...] = (
     ),
     (
         LLMRateLimitError,
-        "Limite de uso da I.A. atingido. Aguarde um momento e tente novamente.",
+        (
+            "Limite de uso da I.A. atingido. Aguarde a renovação da cota "
+            "ou reconfigura o provedor de I.A."
+        ),
     ),
     (
         LLMCommunicationError,

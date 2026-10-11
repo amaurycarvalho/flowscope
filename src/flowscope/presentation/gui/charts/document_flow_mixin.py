@@ -17,7 +17,7 @@ from flowscope.application.document_preview import (
     tem_texto,
 )
 from flowscope.application.fundamental.linhas import formatar_guidance
-from flowscope.application.resumo_documento import ResumoDocumento, resumo_integro
+from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
 from flowscope.domain.fii.guidance import METODO_IA
@@ -65,23 +65,83 @@ class DocumentFlowMixin:
     def documentos_sem_resumo(
         self: "DocumentFlowMixin",
     ) -> list[DocumentoArquivo]:
-        """Retorna os documentos sem resumo íntegro, na ordem da árvore.
+        """Retorna os documentos que necessitam de resumo, na ordem da árvore.
 
         Um resumo persistido truncado (sem pontuação final) é tratado como
-        pendente, para que o lote "Resumir pendentes" o regenere.
+        pendente; documentos cuja ausência definitiva de texto já foi resolvida
+        pelo worker não contam. A decisão reusa a regra compartilhada do serviço
+        de resumo e não toca em I/O (o conjunto ``_sem_texto`` é pré-computado).
         """
+        sem_texto = getattr(self, "_sem_texto", frozenset())
         return [
             arquivo
             for arquivo in self._itens.values()
-            if not self._resumo_integro(arquivo)
+            if self._summary.precisa_resumo_ausente(
+                arquivo, sem_texto=arquivo.caminho in sem_texto
+            )
         ]
 
+    def carregar_ausencia_catalogo(
+        self: "DocumentFlowMixin",
+        catalogo: CatalogoTicker | None,
+    ) -> frozenset:
+        """Resolve a ausência de texto a partir de um catálogo de ticker."""
+        if catalogo is None:
+            return frozenset()
+        return self.carregar_ausencia(_documentos_do_catalogo(catalogo))
+
+    def carregar_ausencia(
+        self: "DocumentFlowMixin",
+        arquivos: list[DocumentoArquivo],
+    ) -> frozenset:
+        """Resolve, fora da thread do Tk, os caminhos sem texto conclusivo.
+
+        Lê o text store do escopo em uma passada e marca os itens cujo texto
+        persistido é o marcador de ausência ou apenas branco. Itens nunca
+        convertidos (ausentes do store) permanecem pendentes.
+        """
+        lista = list(arquivos)
+        if not lista:
+            return frozenset()
+        store = getattr(self, "_text_store", None)
+        summary = getattr(self, "_summary", None)
+        if store is None or summary is None:
+            return frozenset()
+        textos = self._textos_em_massa(store, lista[0].ticker)
+        if not textos:
+            return frozenset()
+        sem_texto = set()
+        for arquivo in lista:
+            texto = textos.get(self._chave_texto(summary, arquivo))
+            if texto is not None and not tem_texto(texto):
+                sem_texto.add(arquivo.caminho)
+        return frozenset(sem_texto)
+
     @staticmethod
-    def _resumo_integro(arquivo: DocumentoArquivo) -> bool:
-        """Indica se os resumos persistidos do arquivo estão íntegros."""
-        if not resumo_integro(arquivo.long_summary):
-            return False
-        return not arquivo.short_summary or resumo_integro(arquivo.short_summary)
+    def _textos_em_massa(store: object, ticker: str) -> dict:
+        """Lê os textos do escopo em massa, quando o store suportar."""
+        bulk = getattr(store, "textos", None)
+        if not callable(bulk):
+            return {}
+        try:
+            textos = bulk(ticker)
+        except Exception:  # store ilegível não bloqueia a leitura do catálogo
+            logger.warning(
+                "Falha ao ler os textos de %s", ticker, exc_info=True
+            )
+            return {}
+        return textos if isinstance(textos, dict) else {}
+
+    @staticmethod
+    def _chave_texto(summary: object, arquivo: DocumentoArquivo) -> str:
+        """Deriva a chave do texto do arquivo, tolerando serviço parcial."""
+        metodo = getattr(summary, "chave", None)
+        if not callable(metodo):
+            return arquivo.nome
+        try:
+            return metodo(arquivo)
+        except (TypeError, ValueError):
+            return arquivo.nome
 
     def carregar_guidance(
         self: "DocumentFlowMixin",
@@ -533,6 +593,8 @@ class DocumentFlowMixin:
         avaliacao: AvaliacaoGuidance | None = None,
     ) -> None:
         """Atualiza o catálogo em memória e recompõe a pré-visualização."""
+        if self.guidance_falhou(arquivo):
+            self._remover_pendencia_guidance(arquivo)
         self._atualizar_resumo(atualizado)
         selecionado = self._arquivo_selecionado()
         if selecionado is not None and selecionado.caminho == arquivo.caminho:
@@ -554,9 +616,10 @@ class DocumentFlowMixin:
         já tinha resumo (sem novo resumo); reutiliza o ``long_summary`` vigente
         do documento em memória.
         """
-        if avaliacao is not None and avaliacao.metodo == METODO_IA:
-            pendentes = getattr(self, "_guidance_pendentes", frozenset())
-            self._guidance_pendentes = pendentes - {arquivo.caminho}
+        if (
+            avaliacao is not None and avaliacao.metodo == METODO_IA
+        ) or self.guidance_falhou(arquivo):
+            self._remover_pendencia_guidance(arquivo)
         selecionado = self._arquivo_selecionado()
         if selecionado is None or selecionado.caminho != arquivo.caminho:
             return
@@ -567,6 +630,38 @@ class DocumentFlowMixin:
             atual.long_summary,
             guidance_texto=self._guidance_texto(avaliacao),
         )
+
+    def guidance_falhou(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> bool:
+        """Indica se a última avaliação por IA do RG está registrada como falha."""
+        servico = getattr(self, "_guidance", None)
+        metodo = getattr(servico, "falhou", None)
+        if not callable(metodo):
+            return False
+        try:
+            return bool(metodo(arquivo))
+        except Exception:  # serviço sem suporte a falhas não bloqueia
+            return False
+
+    def reabilitar_guidance(self: "DocumentFlowMixin") -> None:
+        """Limpa o registro de falhas de IA e reavalia o botão.
+
+        Chamado na reconfiguração do provedor; uma nova sessão já começa sem
+        falhas registradas (o registro é volátil).
+        """
+        servico = getattr(self, "_guidance", None)
+        metodo = getattr(servico, "limpar_falhas", None)
+        if callable(metodo):
+            metodo()
+        self.refresh_resumir_button()
+
+    def _remover_pendencia_guidance(
+        self: "DocumentFlowMixin", arquivo: DocumentoArquivo
+    ) -> None:
+        """Remove o RG da pendência de guidance em memória."""
+        pendentes = getattr(self, "_guidance_pendentes", frozenset())
+        self._guidance_pendentes = pendentes - {arquivo.caminho}
 
     def _mostrar_documento(
         self: "DocumentFlowMixin",

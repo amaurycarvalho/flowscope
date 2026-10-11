@@ -1,5 +1,6 @@
 """Testes headless da orquestração do resumo em lote (pendentes e guidance)."""
 
+import logging
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -7,8 +8,9 @@ from unittest.mock import MagicMock
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
+from flowscope.domain.llm import LLMRateLimitError
 from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
-from flowscope.presentation.gui.background.events import Resultado
+from flowscope.presentation.gui.background.events import Erro, Resultado
 
 _AVALIACAO = AvaliacaoGuidance(
     metodo="ia", data_relatorio=date(2026, 2, 1)
@@ -135,18 +137,46 @@ class TestAplicarResultadoResumo:
         painel.refletir_resumo.assert_not_called()
         painel.aplicar_resumo.assert_not_called()
 
+    def test_falha_de_guidance_conta_no_desfecho(self):
+        painel = MagicMock()
+        painel.guidance_falhou.return_value = True
+        host = _Host(painel)
+        host._resumos_falhas = 0
+        arquivo = _arquivo("20.pdf")
+
+        host._aplicar_resultado_resumo(
+            Resultado(valor=(None, _AVALIACAO), dados=arquivo), None
+        )
+
+        assert host._resumos_falhas == 1
+
+    def test_sem_falha_de_guidance_nao_conta(self):
+        painel = MagicMock()
+        painel.guidance_falhou.return_value = False
+        host = _Host(painel)
+        host._resumos_falhas = 0
+        arquivo = _arquivo("20.pdf")
+
+        host._aplicar_resultado_resumo(
+            Resultado(valor=(None, _AVALIACAO), dados=arquivo), None
+        )
+
+        assert host._resumos_falhas == 0
+
 
 class _HostRemontagem(ResumosActionsMixin):
     """Host headless que registra o despacho da remontagem pós-lote."""
 
     def __init__(self, *, continuar: bool = False) -> None:
         self._resumos_continuar = continuar
+        self._resumos_cota = False
         self._ticker_selecionado = "HGBS11"
         self._resumos_painel = MagicMock()
         self.agendados: list = []
         self.documentos: list = []
         self.noticias: list = []
         self._flash_status = MagicMock()
+        self._set_status = MagicMock()
 
     def after(self, ms, callback):
         self.agendados.append(callback)
@@ -163,6 +193,47 @@ class _HostRemontagem(ResumosActionsMixin):
 
     def _submeter_leitura_noticias(self, referencia):
         self.noticias.append(referencia)
+
+
+class TestCotaEsgotadaNoLote:
+    def test_marca_interrupcao_por_cota_sem_traceback(self, caplog):
+        host = _HostRemontagem(continuar=True)
+        with caplog.at_level(logging.WARNING):
+            host._interromper_resumos(
+                Erro(
+                    excecao=LLMRateLimitError("Error code: 429"),
+                    dados=_arquivo("10.pdf"),
+                )
+            )
+
+        assert host._resumos_cota is True
+        registro = caplog.records[-1]
+        assert registro.levelno == logging.WARNING
+        assert registro.exc_info is None
+        assert "Cota da I.A. esgotada" in registro.message
+
+    def test_desfecho_unico_de_cota(self):
+        host = _HostRemontagem(continuar=True)
+        host._resumos_cota = True
+        host._resumos_total = 100
+        host._resumos_resumidos = 7
+
+        host._finalizar_resumos_job(False, None, 0)
+
+        host._flash_status.assert_called_once()
+        mensagem = host._flash_status.call_args.args[0]
+        assert "Cota da I.A. esgotada" in mensagem
+        assert "7 de 100" in mensagem
+
+    def test_erro_transitorio_mantem_registro_com_traceback(self, caplog):
+        host = _HostRemontagem(continuar=True)
+        with caplog.at_level(logging.ERROR):
+            host._interromper_resumos(
+                Erro(excecao=RuntimeError("boom"), dados=_arquivo("10.pdf"))
+            )
+
+        assert host._resumos_cota is False
+        assert caplog.records[-1].exc_info is not None
 
 
 class TestRecarregarPainelResumos:

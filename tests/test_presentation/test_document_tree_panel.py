@@ -18,7 +18,10 @@ from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
-from flowscope.application.resumo_documento import ResumoDocumento
+from flowscope.application.resumo_documento import (
+    ResumoDocumento,
+    resumo_completo,
+)
 from flowscope.application.documentos.catalogo import ConsultarCatalogoUseCase
 from flowscope.application.documentos.document_guidance import (
     EntradaGuidanceArvore,
@@ -363,6 +366,12 @@ class _SummaryFake:
 
     def disponivel(self) -> bool:
         return self._disponivel
+
+    def precisa_resumo_ausente(self, arquivo, *, sem_texto: bool) -> bool:
+        return (
+            not resumo_completo(arquivo.short_summary, arquivo.long_summary)
+            and not sem_texto
+        )
 
     def persistir(self, arquivo, resumo):
         return replace(
@@ -772,9 +781,11 @@ class TestFachadaDocumentos:
 class TestDocumentosPendentesHeadless:
     """Decisão de pendência de resumo, sem tocar em Tk."""
 
-    def _painel(self, arquivos):
+    def _painel(self, arquivos, sem_texto=frozenset()):
         painel = DocumentTreePanel.__new__(DocumentTreePanel)
         painel._itens = {str(i): a for i, a in enumerate(arquivos)}
+        painel._summary = _SummaryFake(True)
+        painel._sem_texto = frozenset(sem_texto)
         return painel
 
     def test_resumo_truncado_entra_nos_pendentes(self, tmp_path):
@@ -801,6 +812,66 @@ class TestDocumentosPendentesHeadless:
         )
         painel = self._painel([integro])
         assert painel.documentos_sem_resumo() == []
+
+    def test_ausencia_de_texto_confirmada_nao_e_pendente(self, tmp_path):
+        arquivo = _arquivo(tmp_path)
+        painel = self._painel([arquivo], sem_texto={arquivo.caminho})
+        assert painel.documentos_sem_resumo() == []
+
+    def test_nunca_convertido_permanece_pendente(self, tmp_path):
+        arquivo = _arquivo(tmp_path)
+        painel = self._painel([arquivo])
+        assert [a.nome for a in painel.documentos_sem_resumo()] == ["10.pdf"]
+
+    def test_botao_desabilitado_quando_so_restam_sem_texto(self, tmp_path):
+        arquivo = _arquivo(tmp_path)
+        painel = _PainelHeadless(itens={"1": arquivo})
+        painel._sem_texto = frozenset({arquivo.caminho})
+        assert painel.documentos_sem_resumo() == []
+        assert painel.resumir_habilitado() is False
+
+
+class TestCarregarAusenciaHeadless:
+    """Resolução do conjunto de ausência definitiva de texto, sem Tk."""
+
+    def _painel(self, tmp_path):
+        painel = DocumentFlowMixin.__new__(DocumentFlowMixin)
+        painel._text_store = JsonDocumentTextStore(cache_dir=tmp_path)
+        painel._summary = DocumentSummaryService(
+            JsonDocumentSummaryStore(cache_dir=tmp_path), tmp_path
+        )
+        return painel
+
+    def test_marcador_e_branco_sao_ausencia(self, tmp_path):
+        painel = self._painel(tmp_path)
+        marcador = _arquivo(tmp_path, "10.pdf")
+        branco = _arquivo(tmp_path, "20.pdf")
+        ok = _arquivo(tmp_path, "30.pdf")
+        store = painel._text_store
+        store.salvar("ALZR11", painel._summary.chave(marcador), document_preview.SEM_TEXTO)
+        store.salvar("ALZR11", painel._summary.chave(branco), "   ")
+        store.salvar("ALZR11", painel._summary.chave(ok), "conteudo real")
+
+        ausencia = painel.carregar_ausencia([marcador, branco, ok])
+
+        assert ausencia == frozenset({marcador.caminho, branco.caminho})
+
+    def test_sem_registros_nao_exclui(self, tmp_path):
+        painel = self._painel(tmp_path)
+        arquivo = _arquivo(tmp_path)
+        assert painel.carregar_ausencia([arquivo]) == frozenset()
+
+    def test_aplicar_catalogo_guarda_o_conjunto_sem_texto(self, tmp_path):
+        arquivo = _arquivo(tmp_path)
+        painel = _PainelHeadless(itens={})
+        painel.aplicar_catalogo(
+            "ALZR11",
+            None,
+            frozenset(),
+            [],
+            frozenset({arquivo.caminho}),
+        )
+        assert painel._sem_texto == frozenset({arquivo.caminho})
 
 
 class _FluxoDocumentosHeadless(DocumentFlowMixin):
@@ -1398,7 +1469,7 @@ class TestAbrirConfigLLM:
         host._documents_panel = painel
         host._abrir_config_llm()
         chamadas[0]["on_saved"]()
-        painel.refresh_resumir_button.assert_called_once_with()
+        painel.reabilitar_guidance.assert_called_once_with()
 
 
 class TestDeveAtualizar:

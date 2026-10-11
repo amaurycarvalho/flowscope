@@ -102,13 +102,23 @@ class AvaliarGuidanceUseCase:
         caminho_pdf: str | None,
         fontes: Sequence[str | None],
     ) -> AvaliacaoGuidance | None:
-        """Avalia as fontes pela IA em ordem; ``None`` quando a IA falha."""
+        """Avalia as fontes pela IA em ordem.
+
+        ``None`` apenas quando a IA falha antes de produzir qualquer avaliação.
+        Uma avaliação já obtida de uma fonte anterior NÃO é descartada por uma
+        falha em fonte posterior: nesse caso a cascata é encerrada preservando o
+        resultado obtido (possivelmente sem guidance).
+        """
+        obteve = False
         for fonte in fontes:
             if not _utilizavel(fonte):
                 continue
             funcional, guidance = self._tentar_llm(fonte, data_relatorio, caminho_pdf)
             if not funcional:
+                if obteve:
+                    break
                 return None
+            obteve = True
             if guidance is not None:
                 return AvaliacaoGuidance(
                     metodo=METODO_IA,

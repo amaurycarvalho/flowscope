@@ -9,6 +9,7 @@ controle.
 import logging
 import time
 
+from flowscope.domain.llm import LLMRateLimitError
 from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.progress import ProgressReporter
@@ -83,6 +84,7 @@ class ResumosActionsMixin:
         self._resumos_fase = None
         self._resumos_fase_inicio = None
         self._resumos_interrompido = False
+        self._resumos_cota = False
         self._resumos_reporter = ProgressReporter(
             on_update=self._presenter.on_progress
         )
@@ -151,17 +153,44 @@ class ResumosActionsMixin:
         if resumo is None:
             if avaliacao is not None:
                 painel.refletir_guidance(arquivo, avaliacao)
+            self._contar_falha_guidance(painel, arquivo)
             return
         if getattr(self, "_resumos_persistir_worker", False):
             painel.refletir_resumo(arquivo, resumo, avaliacao)
         else:
             painel.aplicar_resumo(arquivo, resumo, avaliacao)
         self._resumos_resumidos = getattr(self, "_resumos_resumidos", 0) + 1
+        self._contar_falha_guidance(painel, arquivo)
+
+    def _contar_falha_guidance(
+        self: "ResumosActionsMixin", painel: object, arquivo: object
+    ) -> None:
+        """Contabiliza a falha de guidance registrada para o item do lote."""
+        metodo = getattr(painel, "guidance_falhou", None)
+        if not callable(metodo):
+            return
+        try:
+            falhou = metodo(arquivo)
+        except Exception:  # painel sem suporte a guidance não conta falha
+            return
+        if falhou is True:
+            self._resumos_falhas = getattr(self, "_resumos_falhas", 0) + 1
 
     def _interromper_resumos(self: "ResumosActionsMixin", evento: Erro) -> None:
-        """Registra e reporta uma falha do lote por item."""
+        """Registra e reporta uma falha do lote por item.
+
+        A cota/limite do provedor é tratada à parte: interrompe o lote, é
+        registrada uma única vez (sem traceback por item) e o desfecho é
+        montado em :meth:`_finalizar_resumos_job`.
+        """
         arquivo = evento.dados
         exc = evento.excecao
+        if isinstance(exc, LLMRateLimitError):
+            self._resumos_cota = True
+            logger.warning(
+                "Cota da I.A. esgotada no resumo em lote; lote interrompido."
+            )
+            return
         if getattr(self, "_resumos_continuar", False):
             self._resumos_falhas = getattr(self, "_resumos_falhas", 0) + 1
         else:
@@ -187,6 +216,16 @@ class ResumosActionsMixin:
         painel = self._painel_resumos()
         if painel is not None:
             painel.refresh_resumir_button()
+        if getattr(self, "_resumos_cota", False):
+            total = getattr(self, "_resumos_total", 0)
+            resumidos = getattr(self, "_resumos_resumidos", 0)
+            self._flash_status(
+                "Cota da I.A. esgotada no lote. "
+                f"Resumos gerados: {resumidos} de {total}. "
+                "Aguarde a renovação ou reconfigura o provedor.",
+                "⚠",
+            )
+            return
         if getattr(self, "_resumos_interrompido", False):
             return
         if guarda is not None and guarda != self._ticker_apresentado():
@@ -200,9 +239,12 @@ class ResumosActionsMixin:
                 f"({sem_texto} sem texto, {falhas} falha(s))."
             )
         else:
+            falhas = getattr(self, "_resumos_falhas", 0)
+            complemento = f"{sem_texto} sem texto"
+            if falhas:
+                complemento = f"{complemento}, {falhas} falha(s)"
             mensagem = (
-                f"Resumos gerados: {resumidos} de {total} "
-                f"({sem_texto} sem texto)."
+                f"Resumos gerados: {resumidos} de {total} ({complemento})."
             )
         self._flash_status(mensagem, "✓")
 

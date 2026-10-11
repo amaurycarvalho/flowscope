@@ -129,3 +129,44 @@ class TestDeduplicacaoConteudo:
         )
         assert resultado is False
         assert gravados == []
+
+
+class TestProcessarEResolver:
+    def _servico(self, tmp_path: Path, registro: _RegistroFake):
+        return DeduplicacaoConteudo(registro, _hash, tmp_path)
+
+    def test_conteudo_novo_devolve_o_relativo_gravado(self, tmp_path):
+        servico = self._servico(tmp_path, _RegistroFake())
+        conteudo = b"x" * TAMANHO_MINIMO_CONTEUDO
+        gravados: list[bytes] = []
+        gravado, canonico = servico.processar_e_resolver(
+            conteudo, tmp_path / "a" / "b.pdf", gravados.append
+        )
+        assert gravado is True
+        assert canonico == "a/b.pdf"
+        assert gravados == [conteudo]
+
+    def test_duplicata_devolve_o_canonico_existente(self, tmp_path):
+        conteudo = b"x" * TAMANHO_MINIMO_CONTEUDO
+        digest = _hash(conteudo)
+        (tmp_path / "antigo.pdf").write_bytes(conteudo)
+        servico = self._servico(
+            tmp_path, _RegistroFake({digest: "antigo.pdf"})
+        )
+        gravados: list[bytes] = []
+        gravado, canonico = servico.processar_e_resolver(
+            conteudo, tmp_path / "novo.pdf", gravados.append
+        )
+        assert gravado is False
+        assert canonico == "antigo.pdf"
+        assert gravados == []
+
+    def test_conteudo_nao_hashavel_grava_e_devolve_o_relativo(self, tmp_path):
+        servico = self._servico(tmp_path, _RegistroFake())
+        gravados: list[bytes] = []
+        gravado, canonico = servico.processar_e_resolver(
+            b"curto", tmp_path / "a.pdf", gravados.append
+        )
+        assert gravado is True
+        assert canonico == "a.pdf"
+        assert gravados == [b"curto"]

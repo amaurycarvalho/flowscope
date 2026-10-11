@@ -90,6 +90,18 @@ def montar_secoes(arquivos: list[NoticiaArquivo]) -> CatalogoNoticias:
     )
 
 
+def arquivos_das_secoes(catalogo: CatalogoNoticias) -> list[NoticiaArquivo]:
+    """Achata a hierarquia de todas as seções na lista de arquivos."""
+    return [
+        arquivo
+        for secao in catalogo.secoes
+        for ano in secao.catalogo.anos
+        for mes in ano.meses
+        for categoria in mes.categorias
+        for arquivo in categoria.arquivos
+    ]
+
+
 def _catalogo_da_secao(
     nome: str, arquivos: list[NoticiaArquivo]
 ) -> CatalogoTicker:

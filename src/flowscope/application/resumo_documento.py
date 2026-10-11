@@ -65,6 +65,20 @@ def resumo_integro(resumo: str | None) -> bool:
     return bool(texto) and texto.endswith(_PONTUACAO_FINAL)
 
 
+def resumo_completo(
+    short_summary: str | None, long_summary: str | None
+) -> bool:
+    """Indica se o par de resumos persistidos está íntegro (não truncado).
+
+    O resumo longo precisa terminar em pontuação final; o curto, quando
+    presente, também. É a regra compartilhada pelas sub-abas "Documentos" e
+    "Notícias" para decidir se um item precisa ser resumido novamente.
+    """
+    if not resumo_integro(long_summary):
+        return False
+    return not short_summary or resumo_integro(short_summary)
+
+
 @dataclass(frozen=True)
 class ResumoDocumento:
     """Par de resumos de um documento, curto e longo."""

@@ -231,7 +231,7 @@ O resolvedor de documento vinculado injetado no painel de notícias DEVE aceitar
 
 ### Requirement: Resumo curto e longo por LLM
 
-O sistema DEVE gerar, para cada notícia, um resumo curto e um longo usando a LLM, persistindo-os em cache por notícia. A geração DEVE reutilizar o serviço de resumo existente e tolerar falhas da LLM sem interromper o processamento em lote. Quando a LLM não estiver configurada, a sub-aba DEVE orientar a configuração.
+O sistema DEVE gerar, para cada notícia, um resumo curto e um longo usando a LLM, persistindo-os em cache por notícia. A geração DEVE reutilizar o serviço de resumo existente e tolerar falhas transitórias da LLM sem interromper o processamento em lote, exceto quando a falha for de cota/limite do provedor (`LLMRateLimitError`), caso em que o lote DEVE ser interrompido imediatamente e o desfecho reportado uma única vez. Quando a LLM não estiver configurada, a sub-aba DEVE orientar a configuração.
 
 #### Scenario: Geração de resumo
 - **WHEN** a LLM está configurada e o artigo tem texto, mas não tem resumo
@@ -242,12 +242,16 @@ O sistema DEVE gerar, para cada notícia, um resumo curto e um longo usando a LL
 - **THEN** a sub-aba DEVE orientar a configuração, sem gerar resumos
 
 #### Scenario: Falha da LLM no lote
-- **WHEN** a geração de resumo de um item falha durante o lote
+- **WHEN** a geração de resumo de um item falha por erro transitório (não de cota) durante o lote
 - **THEN** o erro DEVE ser registrado e os demais itens DEVEM continuar
+
+#### Scenario: Cota esgotada interrompe o lote
+- **WHEN** a geração de resumo de um item falha com `LLMRateLimitError` durante o lote
+- **THEN** o lote NÃO DEVE processar os demais itens e DEVE reportar a cota esgotada uma única vez
 
 ### Requirement: Ordem do resumo em lote das notícias
 
-Ao acionar "Resumir pendentes" na sub-aba "Notícias", o sistema DEVE processar os itens sem `long_summary` agrupados pela categoria de topo na ordem "Censuras Públicas", "Condições Excepcionais", "Programas de Aquisição de Ações" e "Geral" e, dentro de cada grupo, da notícia mais recente para a mais antiga segundo a data de publicação. Datas ausentes ou empatadas DEVEM ter desempate determinista, de modo que a ordem do lote seja estável entre execuções.
+Ao acionar "Resumir pendentes" na sub-aba "Notícias", o sistema DEVE processar os itens que necessitam de resumo, agrupados pela categoria de topo na ordem "Censuras Públicas", "Condições Excepcionais", "Programas de Aquisição de Ações" e "Geral" e, dentro de cada grupo, da notícia mais recente para a mais antiga segundo a data de publicação. Um item necessita de resumo quando não tem `long_summary` íntegro, considerando desatualizado o resumo persistido que não termina em pontuação final (mesma regra de regeneração aplicada à sub-aba "Documentos"). Um item cuja ausência de texto foi conclusivamente determinada e persistida (corpo apenas em branco ou marcador de ausência de texto) NÃO DEVE ser considerado pendente; um item cujo corpo é um apontador para documento vinculado ainda não resolvido DEVE permanecer pendente para nova tentativa. Datas ausentes ou empatadas DEVEM ter desempate determinista, de modo que a ordem do lote seja estável entre execuções.
 
 #### Scenario: Grupos processados na ordem definida
 - **WHEN** há notícias pendentes em mais de uma categoria de topo
@@ -260,6 +264,22 @@ Ao acionar "Resumir pendentes" na sub-aba "Notícias", o sistema DEVE processar 
 #### Scenario: Data ausente ou empatada tem ordem estável
 - **WHEN** duas notícias do mesmo grupo têm a mesma data de publicação ou data ausente
 - **THEN** a ordem entre elas DEVE ser determinista e repetível entre execuções
+
+#### Scenario: Resumo truncado é regerado
+- **WHEN** o lote processa uma notícia cujo `long_summary` persistido não termina em pontuação final
+- **THEN** o resumo DEVE ser refeito e regravado, como no lote de documentos
+
+#### Scenario: Resumo íntegro não é regerado
+- **WHEN** o `long_summary` persistido termina em pontuação final
+- **THEN** a notícia NÃO DEVE ser reprocessada pelo lote por esse critério
+
+#### Scenario: Item sem texto conclusivo não é pendente
+- **WHEN** o corpo indexado de uma notícia não produz texto algum (apenas espaços em branco) e não há resumo
+- **THEN** a notícia NÃO DEVE integrar a lista de pendentes do lote
+
+#### Scenario: Apontador não resolvido permanece pendente
+- **WHEN** o corpo de uma notícia "Geral" é um apontador para documento vinculado ainda não resolvido e não há resumo
+- **THEN** a notícia DEVE permanecer na lista de pendentes para nova tentativa
 
 ### Requirement: Persistência imediata do resumo em lote das notícias
 

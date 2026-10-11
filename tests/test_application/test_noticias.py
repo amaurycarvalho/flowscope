@@ -13,7 +13,10 @@ from flowscope.application.noticias.fonte_chat import (
     intercalar,
     montar_indice,
 )
-from flowscope.application.noticias.lote import pendentes_ordenados
+from flowscope.application.noticias.lote import (
+    pendentes_ordenados,
+    precisa_resumo,
+)
 from flowscope.domain.noticias import (
     SECAO_CENSURAS,
     SECAO_CONDICOES,
@@ -64,10 +67,26 @@ class TestOrdenacaoDoLote:
             _arq_noticia(SECAO_CENSURAS, "c_new", "2026-08-01"),
             _arq_noticia(SECAO_PROGRAMAS, "p", "2026-05-05"),
             _arq_noticia(SECAO_CONDICOES, "co", "2026-03-03"),
-            _arq_noticia(SECAO_GERAL, "g_resumido", resumo="x"),
+            _arq_noticia(SECAO_GERAL, "g_resumido", resumo="x."),
         ]
         nomes = [a.nome for a in pendentes_ordenados(arquivos)]
         assert nomes == ["c_new", "c_old", "co", "p", "g_new", "g_old"]
+
+    def test_resumo_truncado_e_pendente(self):
+        arquivos = [
+            _arq_noticia(SECAO_GERAL, "integro", resumo="Resumo completo."),
+            _arq_noticia(
+                SECAO_GERAL, "truncado", resumo="Resumo cortado no meio"
+            ),
+        ]
+        nomes = [a.nome for a in pendentes_ordenados(arquivos)]
+        assert nomes == ["truncado"]
+
+    def test_predicado_reusa_resumo_integro(self):
+        integro = _arq_noticia(SECAO_GERAL, "a", resumo="Completo.")
+        truncado = _arq_noticia(SECAO_GERAL, "b", resumo="Cortado")
+        assert precisa_resumo(integro) is False
+        assert precisa_resumo(truncado) is True
 
     def test_data_ausente_ou_empatada_tem_ordem_estavel(self):
         arquivos = [
