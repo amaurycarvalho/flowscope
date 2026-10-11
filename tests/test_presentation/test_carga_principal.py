@@ -367,9 +367,9 @@ class TestTrabalhoCargaWorker:
         controller._trabalho_carga(ctx, _instrucao_index())
 
         labels = [e.detalhe for e in eventos if isinstance(e, Progresso)]
-        assert "Baixando portfólio IBOV..." in labels
-        assert "Baixando dados históricos" in labels
-        assert "Processando indicadores" in labels
+        assert "⏳ Baixando portfólio IBOV..." in labels
+        assert "⏳ Baixando dados históricos" in labels
+        assert "⏳ Processando indicadores" in labels
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert len(resultados) == 1
         assert resultados[0].valor.tickers == ["PETR4", "VALE3"]

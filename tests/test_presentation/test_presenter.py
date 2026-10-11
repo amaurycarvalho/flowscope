@@ -114,7 +114,7 @@ class TestFlowScopePresenter:
         view = MagicMock()
         presenter = FlowScopePresenter(view)
         presenter.on_fundamental_progress("Fundamentos: HGBS11")
-        view.set_status.assert_called_once_with("Fundamentos: HGBS11", "•")
+        view.set_status.assert_called_once_with("Fundamentos: HGBS11", "⏳")
         view.set_progress.assert_not_called()
 
     def test_on_result_formata_dados_corretamente(self):

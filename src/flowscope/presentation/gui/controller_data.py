@@ -193,7 +193,7 @@ class DataLoadMixin:
             reporter.finish_phase()
 
             reporter.start_phase(
-                "Processando indicadores", total=1, weight=2,
+                "⏳ Processando indicadores", total=1, weight=2,
             )
             reporter.finish_phase()
             ctx.raise_if_cancelled()
@@ -289,8 +289,8 @@ class DataLoadMixin:
 def _rotulo_portfolio(instrucao: InstrucaoCarga) -> str:
     """Retorna o rótulo da fase inicial de download da carteira."""
     if instrucao.origem == ORIGEM_INDEX:
-        return f"Baixando portfólio {instrucao.index}..."
-    return "Carregando IDIV..."
+        return f"⏳ Baixando portfólio {instrucao.index}..."
+    return "⏳ Carregando IDIV..."
 
 
 def _componente_log(origem: str) -> str:
