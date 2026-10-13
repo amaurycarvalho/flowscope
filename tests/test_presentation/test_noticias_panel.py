@@ -261,7 +261,7 @@ class _NoticiasHost(NoticiasPanel):
         self._catalogo_uc = catalogo_uc
         self._summary = summary or _SummaryFake()
         self._text_store = text_store
-        self._baixar_vinculo = lambda _texto, _senha=None: None
+        self._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: None
         self._senha_interativa = False
         self._senha_max_tentativas = 3
         self._open_callback = open_callback or (lambda _url: None)
@@ -516,7 +516,7 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        painel._baixar_vinculo = lambda _texto, _senha=None: ExtracaoTexto(
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: ExtracaoTexto(
             "texto do documento", StatusExtracao.OK
         )
         resultado = painel._texto_do_arquivo(arquivo)
@@ -541,7 +541,7 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
-        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: None
         assert painel._texto_do_arquivo(arquivo).texto == "Corpo"
 
     def test_regulatoria_nao_baixa_vinculo(self, tmp_path, monkeypatch):
@@ -564,7 +564,7 @@ class TestExtracaoNoticias:
         )
         painel = NoticiasPanel.__new__(NoticiasPanel)
         painel._baixar_vinculo = (
-            lambda texto, _senha=None: chamadas.append(texto)
+            lambda texto, _senha=None, timeout_total=None: chamadas.append(texto)
             or ExtracaoTexto("x", StatusExtracao.OK)
         )
         assert painel._texto_do_arquivo(arquivo).texto == "Corpo"
@@ -594,8 +594,8 @@ class TestExtracaoNoticias:
         )
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "texto do documento", StatusExtracao.OK
             ),
         )
@@ -647,7 +647,7 @@ class TestExtracaoNoticias:
             url="https://x/1",
         )
 
-        def _falha(_texto, _senha=None):
+        def _falha(_texto, _senha=None, timeout_total=None):
             raise TypeError(
                 "baixar_conteudo_vinculado() takes 1 positional argument "
                 "but 2 were given"
@@ -657,6 +657,75 @@ class TestExtracaoNoticias:
         painel._baixar_vinculo = _falha
         resultado = painel._texto_do_arquivo(arquivo)
         assert "Titulo" in resultado.texto
+
+    def test_vinculo_nao_resolvido_loga_a_noticia(self, tmp_path, caplog):
+        url = (
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk"
+        )
+        caminho = tmp_path / "noticia.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>"
+            f"Titulo\n{url}</pre></body></html>",
+            encoding="utf-8",
+        )
+        arquivo = NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="18",
+            nome="noticia",
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+        )
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = (
+            lambda _texto, _senha=None, timeout_total=None: None
+        )
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            resultado = painel._texto_do_arquivo(arquivo)
+
+        assert "Titulo" in resultado.texto
+        assert ESCOPO_NOTICIAS in caplog.text
+        assert "noticia" in caplog.text
+
+    def test_vinculo_recebe_orcamento_de_extracao(self, tmp_path):
+        url = (
+            "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
+            "?ID=1&flnk"
+        )
+        caminho = tmp_path / "noticia.html"
+        caminho.write_text(
+            "<html><body><pre id='conteudoDetalhe'>"
+            f"Titulo\n{url}</pre></body></html>",
+            encoding="utf-8",
+        )
+        arquivo = NoticiaArquivo(
+            ticker=ESCOPO_NOTICIAS,
+            ano=2026,
+            mes=9,
+            categoria="18",
+            nome="noticia",
+            tipo="html",
+            caminho=caminho,
+            secao=SECAO_GERAL,
+            url="https://x/1",
+        )
+        recebidos: list = []
+
+        def _vinculo(_texto, _senha=None, timeout_total=None):
+            recebidos.append(timeout_total)
+            return ExtracaoTexto("doc", StatusExtracao.OK)
+
+        painel = NoticiasPanel.__new__(NoticiasPanel)
+        painel._baixar_vinculo = _vinculo
+
+        painel._texto_do_arquivo(arquivo)
+
+        assert recebidos == [painel.timeout_extracao()]
 
 
 class TestAutoRecuperacao:
@@ -668,7 +737,7 @@ class TestAutoRecuperacao:
         painel._summary = DocumentSummaryService(
             JsonDocumentSummaryStore(cache_dir=tmp_path), tmp_path
         )
-        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: None
         return painel
 
     @staticmethod
@@ -728,7 +797,7 @@ class TestAutoRecuperacao:
         arquivo = self._arquivo_geral(tmp_path)
         chamadas: list[str] = []
 
-        def _baixar(texto, _senha=None):
+        def _baixar(texto, _senha=None, timeout_total=None):
             chamadas.append(texto)
             if len(chamadas) == 1:
                 return None
@@ -753,7 +822,7 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: None
         resultado, eventos = _executar_lote(painel, [arquivo])
         assert resultado.sem_texto == 1
         assert resultado.apontadores == [arquivo]
@@ -767,7 +836,7 @@ class TestAutoRecuperacao:
         store = JsonDocumentSummaryStore(cache_dir=tmp_path)
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
-        painel._baixar_vinculo = lambda _texto, _senha=None: ExtracaoTexto(
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: ExtracaoTexto(
             "CONTEUDO DO DOCUMENTO", StatusExtracao.OK
         )
         resultado, eventos = _executar_lote(painel, [arquivo])
@@ -789,7 +858,7 @@ class TestLoteRegeneraResumoTruncado:
             llm_factory=lambda: llm,
             llm_available=lambda: True,
         )
-        painel._baixar_vinculo = lambda _texto, _senha=None: None
+        painel._baixar_vinculo = lambda _texto, _senha=None, timeout_total=None: None
         painel._senha_interativa = False
         painel._senha_max_tentativas = 3
         return painel
@@ -846,7 +915,7 @@ class TestFinalizacaoDefinitivaNoticias:
         return painel, arquivo, store
 
     @staticmethod
-    def _protegido(_texto, _senha=None):
+    def _protegido(_texto, _senha=None, timeout_total=None):
         return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
 
     def test_documento_vinculado_protegido_entra_como_protegido(self, tmp_path):
@@ -878,7 +947,7 @@ class TestFinalizacaoDefinitivaNoticias:
         resultado, _ = _executar_lote(painel, [arquivo])
         _executar_finalizacao(painel, resultado.protegidos)
 
-        def _explodir(_texto, _senha=None):
+        def _explodir(_texto, _senha=None, timeout_total=None):
             raise AssertionError("não deveria reconverter")
 
         painel._baixar_vinculo = _explodir
@@ -1078,7 +1147,7 @@ class TestResumos:
             painel = NoticiasPanel(
                 root,
                 catalog=catalogo,
-                baixar_vinculo=lambda _texto, _senha=None: ExtracaoTexto(
+                baixar_vinculo=lambda _texto, _senha=None, timeout_total=None: ExtracaoTexto(
                     "CONTEUDO DO ARQUIVO VINCULADO", StatusExtracao.OK
                 ),
                 llm_factory=lambda: llm,

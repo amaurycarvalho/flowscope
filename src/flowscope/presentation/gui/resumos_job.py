@@ -166,6 +166,7 @@ def _preparar_textos(
     com_texto: list[tuple[DocumentoArquivo, str]] = []
     for indice, arquivo in enumerate(arquivos, start=1):
         ctx.raise_if_cancelled()
+        ctx.descrever(f"{arquivo.ticker}/{arquivo.nome}")
         try:
             extracao = painel.preparar_texto(arquivo, mapa.get(arquivo.caminho))
         except Exception as exc:
@@ -264,6 +265,7 @@ def _resumir(
     _progresso(ctx, 2, 0, total)
     for indice, (arquivo, texto) in enumerate(com_texto, start=1):
         ctx.raise_if_cancelled()
+        ctx.descrever(f"{arquivo.ticker}/{arquivo.nome}")
         try:
             resumo = gerar_resumo_do_lote(painel, arquivo, texto)
         except LLMRateLimitError as exc:

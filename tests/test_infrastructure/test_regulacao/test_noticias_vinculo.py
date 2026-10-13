@@ -8,11 +8,22 @@ import requests
 import responses
 
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
+from flowscope.application.extracao_orcada import EXTRACAO_TIMEOUT_S
 from flowscope.infrastructure.b3 import noticias_vinculo
 from flowscope.infrastructure.b3.noticias_vinculo import (
     baixar_conteudo_vinculado,
     extrair_url_vinculada,
 )
+
+
+class _Relogio:
+    """Relógio controlável para o orçamento total da resolução."""
+
+    def __init__(self, inicio: float = 0.0) -> None:
+        self.t = inicio
+
+    def __call__(self) -> float:
+        return self.t
 
 _VIEWER_URL = (
     "https://www.rad.cvm.gov.br/ENETWEB/frmExibirArquivoIPEExterno.aspx"
@@ -88,8 +99,8 @@ class TestBaixarConteudoVinculado:
     def test_baixa_e_extrai_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "texto do documento", StatusExtracao.OK
             ),
         )
@@ -107,11 +118,11 @@ class TestBaixarConteudoVinculado:
     def test_senha_posicional_e_repassada(self, monkeypatch):
         recebidas: list = []
 
-        def _extrair(_dados, senha=None):
+        def _extrair(_dados, senha=None, timeout=None):
             recebidas.append(senha)
             return ExtracaoTexto("texto do documento", StatusExtracao.OK)
 
-        monkeypatch.setattr(noticias_vinculo, "extrair_pdf", _extrair)
+        monkeypatch.setattr(noticias_vinculo, "extrair_pdf_com_orcamento", _extrair)
         with responses.RequestsMock() as rsps:
             rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
             rsps.add(
@@ -127,8 +138,8 @@ class TestBaixarConteudoVinculado:
     def test_pdf_protegido_nao_e_colapsado_em_none(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "", StatusExtracao.PROTEGIDO
             ),
         )
@@ -219,8 +230,8 @@ class TestBaixarConteudoFnet:
     def test_segue_iframe_e_extrai_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "texto do fnet", StatusExtracao.OK
             ),
         )
@@ -239,8 +250,8 @@ class TestBaixarConteudoFnet:
     def test_visualizador_ja_e_o_pdf(self, monkeypatch):
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto("pdf direto", StatusExtracao.OK),
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto("pdf direto", StatusExtracao.OK),
         )
         with responses.RequestsMock() as rsps:
             rsps.add(
@@ -267,8 +278,8 @@ class TestBaixarConteudoFnet:
         monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "texto recuperado", StatusExtracao.OK
             ),
         )
@@ -289,8 +300,8 @@ class TestBaixarConteudoFnet:
         monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
         monkeypatch.setattr(
             noticias_vinculo,
-            "extrair_pdf",
-            lambda _dados, senha=None: ExtracaoTexto(
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
                 "texto apos 429", StatusExtracao.OK
             ),
         )
@@ -318,3 +329,79 @@ class TestBaixarConteudoFnet:
             for _ in range(noticias_vinculo.TENTATIVAS):
                 rsps.add(responses.GET, _FNET_VIEWER_URL, status=500)
             assert baixar_conteudo_vinculado(_CORPO_FNET) is None
+
+
+class TestOrcamentoTotal:
+    def test_sem_orcamento_preserva_comportamento(self, monkeypatch):
+        monkeypatch.setattr(
+            noticias_vinculo,
+            "extrair_pdf_com_orcamento",
+            lambda _dados, senha=None, timeout=None: ExtracaoTexto(
+                "texto do documento", StatusExtracao.OK
+            ),
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
+            rsps.add(
+                responses.POST,
+                _POST_URL,
+                body=json.dumps({"d": _pdf_b64()}),
+                status=200,
+            )
+            resultado = baixar_conteudo_vinculado(
+                _CORPO, timeout_total=None
+            )
+        assert resultado.texto == "texto do documento"
+
+    def test_orcamento_esgotado_retorna_none_sem_requisicao(
+        self, monkeypatch, caplog
+    ):
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            with responses.RequestsMock() as rsps:
+                resultado = baixar_conteudo_vinculado(
+                    _CORPO, timeout_total=0.0
+                )
+                assert len(rsps.calls) == 0
+        assert resultado is None
+        assert "Traceback" not in caplog.text
+
+    def test_orcamento_esgotado_aborta_segunda_requisicao(self, monkeypatch):
+        relogio = _Relogio()
+        monkeypatch.setattr(noticias_vinculo.time, "monotonic", relogio)
+        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+
+        def _get_cb(_request):
+            relogio.t += 100.0
+            return (200, {}, _viewer_fnet())
+
+        with responses.RequestsMock() as rsps:
+            rsps.add_callback(responses.GET, _FNET_VIEWER_URL, _get_cb)
+            resultado = baixar_conteudo_vinculado(
+                _CORPO_FNET, timeout_total=50.0
+            )
+            assert len(rsps.calls) == 1
+        assert resultado is None
+
+    def test_parse_do_pdf_recebe_orcamento_restante(self, monkeypatch):
+        recebidos: dict = {}
+
+        def _extrair(_dados, senha=None, timeout=None):
+            recebidos["timeout"] = timeout
+            return ExtracaoTexto("ok", StatusExtracao.OK)
+
+        monkeypatch.setattr(
+            noticias_vinculo, "extrair_pdf_com_orcamento", _extrair
+        )
+        with responses.RequestsMock() as rsps:
+            rsps.add(responses.GET, _VIEWER_URL, body=_viewer("N"), status=200)
+            rsps.add(
+                responses.POST,
+                _POST_URL,
+                body=json.dumps({"d": _pdf_b64()}),
+                status=200,
+            )
+            baixar_conteudo_vinculado(_CORPO, timeout_total=90.0)
+        assert recebidos["timeout"] is not None
+        assert 0 < recebidos["timeout"] <= EXTRACAO_TIMEOUT_S
+

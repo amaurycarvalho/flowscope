@@ -59,6 +59,16 @@ class JobContext:
             Progresso(detalhe=detalhe, atual=atual, total=total, dados=dados)
         )
 
+    def descrever(self: "JobContext", descricao: str) -> None:
+        """Descreve a atividade ou o item em processamento no momento.
+
+        A descrição fica associada ao job para ser usada em um encerramento
+        involuntário do watchdog. Diferente de :meth:`progress`, NÃO atualiza o
+        marcador de atividade, de modo que um item travado continue sendo
+        detectado pela inatividade.
+        """
+        self.handle.descricao = descricao
+
     def emit(self: "JobContext", evento: Evento) -> None:
         """Publica um evento arbitrário."""
         self.publicar(evento)

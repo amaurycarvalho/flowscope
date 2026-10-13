@@ -90,6 +90,7 @@ class JobHandle:
     thread: threading.Thread | None = None
     fila: "queue.Queue[Evento]" = field(default_factory=queue.Queue)
     ultima_atividade: float = 0.0
+    descricao: str = ""
     outcome: Outcome | None = None
     falha_reportada: bool = False
     termino_entregue: bool = False

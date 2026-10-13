@@ -34,7 +34,11 @@ from flowscope.log_paths import LOG_DATEFMT, LOG_FORMAT, log_file_path
 
 logger = logging.getLogger("flowscope")
 
-__all__ = ["EXTRACAO_TIMEOUT_S", "extrair_arquivo_com_orcamento"]
+__all__ = [
+    "EXTRACAO_TIMEOUT_S",
+    "extrair_arquivo_com_orcamento",
+    "extrair_pdf_com_orcamento",
+]
 
 #: Orçamento de tempo (segundos) de extração por documento. DEVE ficar abaixo do
 #: limite de inatividade do job de background (``LIMITE_INATIVIDADE_S``), pois a
@@ -103,16 +107,49 @@ def extrair_arquivo_com_orcamento(
     return _extrair_pdf_orcado(Path(caminho), senha, timeout)
 
 
+def extrair_pdf_com_orcamento(
+    dados: bytes,
+    senha: str | None = None,
+    *,
+    timeout: float = EXTRACAO_TIMEOUT_S,
+) -> ExtracaoTexto:
+    """Extrai o texto de um PDF em memória limitando a extração a ``timeout``.
+
+    Espelha :func:`extrair_arquivo_com_orcamento` para conteúdo que não vive em
+    um arquivo (documento vinculado baixado). A extração roda em processo
+    separado; ao estourar o orçamento, o processo é encerrado e o resultado é o
+    texto parcial já produzido (``PARCIAL``, ou ``FALHA`` sem texto). Nunca
+    propaga exceção da biblioteca de extração.
+    """
+    return _extrair_pdf_orcado_bytes(dados, senha, timeout)
+
+
 def _extrair_pdf_orcado(
     caminho: Path, senha: str | None, timeout: float
 ) -> ExtracaoTexto:
     """Executa a extração do PDF em processo separado com prazo rígido."""
+    return _executar_orcado(
+        _extrair_pdf_filho, (str(caminho), senha), timeout
+    )
+
+
+def _extrair_pdf_orcado_bytes(
+    dados: bytes, senha: str | None, timeout: float
+) -> ExtracaoTexto:
+    """Executa a extração do PDF em memória em processo separado."""
+    return _executar_orcado(_extrair_pdf_bytes_filho, (dados, senha), timeout)
+
+
+def _executar_orcado(
+    alvo: Callable[..., None],
+    argumentos: tuple,
+    timeout: float,
+) -> ExtracaoTexto:
+    """Dispara o processo filho, consome suas mensagens e colhe o resultado."""
     contexto = multiprocessing.get_context("spawn")
     receber, enviar = contexto.Pipe(duplex=False)
     processo = contexto.Process(
-        target=_extrair_pdf_filho,
-        args=(str(caminho), senha, enviar),
-        daemon=True,
+        target=alvo, args=(*argumentos, enviar), daemon=True
     )
     processo.start()
     enviar.close()
@@ -223,6 +260,21 @@ def _extrair_pdf_filho(caminho: str, senha: str | None, conexao: Connection) -> 
     except OSError:
         conexao.send((_RESULTADO, "", StatusExtracao.FALHA.value, 0))
         return
+    _transmitir_paginas(dados, senha, conexao)
+
+
+def _extrair_pdf_bytes_filho(
+    dados: bytes, senha: str | None, conexao: Connection
+) -> None:
+    """Alvo do processo filho: extrai páginas de um PDF em memória."""
+    _configurar_log_pypdf()
+    _transmitir_paginas(dados, senha, conexao)
+
+
+def _transmitir_paginas(
+    dados: bytes, senha: str | None, conexao: Connection
+) -> None:
+    """Abre o PDF e transmite ``(texto, falhou)`` página a página ao pai."""
     leitor, erro = abrir_pdf(dados, senha)
     if erro is not None:
         conexao.send(

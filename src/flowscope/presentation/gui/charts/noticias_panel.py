@@ -81,7 +81,7 @@ class NoticiasPanel(DocumentFlowMixin):
         summary_service: DocumentSummaryService | None = None,
         summary_store: DocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
-        baixar_vinculo: Callable[[str, str | None], ExtracaoTexto | None] | None = None,
+        baixar_vinculo: Callable[..., ExtracaoTexto | None] | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[str], None] | None = None,
@@ -107,7 +107,7 @@ class NoticiasPanel(DocumentFlowMixin):
         )
         self._text_store = self._resolver_text_store(text_store, catalog)
         self._baixar_vinculo = baixar_vinculo or (
-            lambda _texto, _senha=None: None
+            lambda _texto, _senha=None, timeout_total=None: None
         )
         self._senha_interativa = True
         self._senha_max_tentativas = senha_max_tentativas
@@ -415,21 +415,43 @@ class NoticiasPanel(DocumentFlowMixin):
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
             return resultado
         try:
-            vinculo = self._baixar_vinculo(resultado.texto, senha)
+            vinculo = self._baixar_vinculo(
+                resultado.texto, senha, timeout_total=self.timeout_extracao()
+            )
         except Exception:  # resolvedor com falha não pode derrubar a pré-visualização
             logger.warning(
-                "Falha ao resolver o documento vinculado de %s",
-                arquivo.caminho,
+                "Falha ao resolver o documento vinculado de %s/%s",
+                arquivo.ticker,
+                arquivo.nome,
                 exc_info=True,
             )
             return resultado
-        if vinculo is None or vinculo.status is StatusExtracao.FALHA:
-            return resultado
-        if vinculo.status is StatusExtracao.PROTEGIDO:
+        if vinculo is not None and vinculo.status is StatusExtracao.PROTEGIDO:
             return ExtracaoTexto(resultado.texto, StatusExtracao.PROTEGIDO)
-        if not tem_texto(vinculo.texto):
+        # Corpo mantido quando o vínculo não resolve: a notícia segue pendente e
+        # o item é nomeado no log para diagnóstico do processamento demorado.
+        if vinculo is None or not tem_texto(vinculo.texto):
+            self._registrar_vinculo_nao_resolvido(arquivo, vinculo)
             return resultado
         return vinculo
+
+    @staticmethod
+    def _registrar_vinculo_nao_resolvido(
+        arquivo: DocumentoArquivo, vinculo: ExtracaoTexto | None
+    ) -> None:
+        """Registra a notícia cujo vínculo não foi resolvido, para diagnóstico.
+
+        Cobre a falha de download e o esgotamento do orçamento de extração,
+        nomeando a notícia afetada para que o item lento seja identificável no
+        log. O corpo original é preservado e a notícia permanece pendente.
+        """
+        motivo = "sem retorno" if vinculo is None else vinculo.status.value
+        logger.warning(
+            "Documento vinculado não resolvido para a notícia %s/%s (%s).",
+            arquivo.ticker,
+            arquivo.nome,
+            motivo,
+        )
 
     def _solicitar_senha(self: "NoticiasPanel", arquivo: DocumentoArquivo) -> str | None:
         """Solicita a senha do documento vinculado protegido."""

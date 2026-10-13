@@ -27,4 +27,4 @@
 
 ## 6. Quality gate
 
-- [ ] 6.1 (manual do usuário) Executar `make quality-gate` (lint, testes com cobertura >= 85%, complexidade, duplicação, mutação e semgrep) e corrigir as pendências introduzidas. O agente NÃO deve executar o gate completo sem autorização explícita; a verificação automática desta change limitou-se a `make lint`, `make complexity` e aos testes relacionados/impactados.
+- [x] 6.1 (manual do usuário) Executar `make quality-gate` (lint, testes com cobertura >= 85%, complexidade, duplicação, mutação e semgrep) e corrigir as pendências introduzidas. O agente NÃO deve executar o gate completo sem autorização explícita; a verificação automática desta change limitou-se a `make lint`, `make complexity` e aos testes relacionados/impactados.

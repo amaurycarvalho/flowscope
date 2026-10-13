@@ -126,6 +126,15 @@ class TestResumosPendentes:
         assert resultado.sem_texto == 0
         assert resultado.nao_conclusivos == []
 
+    def test_descreve_o_item_corrente_para_o_watchdog(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
+        ctx, _ = _contexto()
+
+        executar_resumos(ctx, painel, arquivos)
+
+        assert ctx.handle.descricao == "ALZR11/20.pdf"
+
     def test_pula_documento_sem_texto(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto", "20.pdf": ""})

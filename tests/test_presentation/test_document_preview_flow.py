@@ -245,6 +245,18 @@ class TestTrabalharEAplicar:
             "Resumo indisponível\n\n---\n\ndo cache"
         )
 
+    def test_descreve_o_arquivo_para_o_watchdog(self):
+        host = _PreviewHost()
+        arquivo = _arquivo()
+        handle = JobHandle(
+            id=1, grupo=GRUPO_PREVIEW, politica=Politica.LATEST_WINS
+        )
+        contexto = JobContext(handle, lambda evento: None)
+
+        host._trabalhar(contexto, arquivo)
+
+        assert handle.descricao == "ALZR11/10.pdf"
+
     def test_miss_converte_grava_e_exibe(self):
         store = _StoreFake()
         summary = _SummaryFake(disponivel=False)

@@ -41,6 +41,11 @@ LIMITE_INATIVIDADE_S = 120.0
 _PREFIXO_THREAD = "flowscope-"
 
 
+def _detalhe_atividade(handle: JobHandle) -> str:
+    """Formata o sufixo do log com a descrição da atividade corrente do job."""
+    return f" durante '{handle.descricao}'" if handle.descricao else ""
+
+
 def _excepthook_worker(args: threading.ExceptHookArgs) -> None:
     """Registra no log do app as exceções que escapam das threads de trabalho."""
     thread = args.thread
@@ -348,17 +353,19 @@ class BackgroundManager:
                 and handle.fila.empty()
             ):
                 logger.warning(
-                    "Job %s do grupo %s sem término; encerrado (ABORTADO).",
+                    "Job %s do grupo %s sem término; encerrado (ABORTADO)%s.",
                     handle.id,
                     handle.grupo,
+                    _detalhe_atividade(handle),
                 )
                 self._finalizar(handle, Outcome.ABORTADO)
                 continue
             if agora - handle.ultima_atividade > self._limite_inatividade_s:
                 logger.warning(
-                    "Job %s do grupo %s encerrado por inatividade (timeout).",
+                    "Job %s do grupo %s encerrado por inatividade (timeout)%s.",
                     handle.id,
                     handle.grupo,
+                    _detalhe_atividade(handle),
                 )
                 handle.token.request()
                 self._finalizar(handle, Outcome.ABORTADO)

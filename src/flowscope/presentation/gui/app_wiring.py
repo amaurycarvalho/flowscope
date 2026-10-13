@@ -175,7 +175,7 @@ class AdaptadoresNoticias:
     catalogo_use_case: ConsultarCatalogoNoticiasUseCase
     summary_service: DocumentSummaryService
     text_store: DocumentTextStore
-    baixar_vinculo: Callable[[str, str | None], ExtracaoTexto | None]
+    baixar_vinculo: Callable[..., ExtracaoTexto | None]
     llm_factory: Callable[[], LLMPort]
     llm_available: Callable[[], bool]
 

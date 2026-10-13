@@ -74,6 +74,20 @@ class TestExecutarFinalizacao:
         assert painel.guidances[0][0] == "10.pdf"
         assert any(isinstance(e, Progresso) for e in eventos)
 
+    def test_descreve_o_item_corrente_para_o_watchdog(self):
+        painel = _PainelFake()
+        ctx, _ = _contexto()
+
+        executar_finalizacao(
+            ctx,
+            painel,
+            [_item(StatusExtracao.PARCIAL, "10.pdf"), _item(
+                StatusExtracao.FALHA, "20.pdf"
+            )],
+        )
+
+        assert ctx.handle.descricao == "ALZR11/20.pdf"
+
     def test_falha_gera_resumo_deterministico_sem_llm(self):
         painel = _PainelFake()
         ctx, _ = _contexto()

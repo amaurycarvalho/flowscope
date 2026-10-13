@@ -6,6 +6,7 @@ patológico que motivou a change.
 """
 
 import base64
+import inspect
 import logging
 import multiprocessing
 from io import BytesIO
@@ -22,6 +23,7 @@ from flowscope.application.document_preview import (
 from flowscope.application.extracao_orcada import (
     EXTRACAO_TIMEOUT_S,
     extrair_arquivo_com_orcamento,
+    extrair_pdf_com_orcamento,
 )
 from flowscope.presentation.gui.background.manager import LIMITE_INATIVIDADE_S
 
@@ -197,6 +199,50 @@ class TestOrcamentoVsWatchdog:
         # A extração bloqueia o worker sem progresso; um orçamento >= ao limite
         # de inatividade faria o watchdog encerrar o lote por inatividade.
         assert EXTRACAO_TIMEOUT_S < LIMITE_INATIVIDADE_S
+
+
+class TestExtrairPdfEmMemoria:
+    def test_pdf_em_memoria_dentro_do_orcamento(self):
+        resultado = extrair_pdf_com_orcamento(_pdf_com_texto())
+        assert resultado.status is StatusExtracao.OK
+        assert resultado.texto.strip()
+
+    def test_orcamento_nulo_encerra_o_filho(self):
+        antes = set(multiprocessing.active_children())
+        resultado = extrair_pdf_com_orcamento(_pdf_com_texto(), timeout=0.0)
+        assert resultado.status is StatusExtracao.FALHA
+        assert resultado.texto == ""
+        novos = set(multiprocessing.active_children()) - antes
+        assert novos == set()
+
+    def test_estouro_nao_e_sem_texto(self):
+        resultado = extrair_pdf_com_orcamento(_pdf_com_texto(), timeout=0.0)
+        assert resultado.status is not StatusExtracao.SEM_TEXTO
+        assert resultado.status is StatusExtracao.FALHA
+
+    def test_senha_repassada_ao_pdf_em_memoria(self):
+        cifrado = _pdf_cifrado("segredo")
+        assert (
+            extrair_pdf_com_orcamento(cifrado, senha="segredo").status
+            is StatusExtracao.OK
+        )
+        assert (
+            extrair_pdf_com_orcamento(cifrado, senha="errada").status
+            is StatusExtracao.PROTEGIDO
+        )
+
+    def test_pdf_em_memoria_sem_texto_permanece_sem_texto(self):
+        assert (
+            extrair_pdf_com_orcamento(_pdf_vazio()).status
+            is StatusExtracao.SEM_TEXTO
+        )
+
+    def test_orcamento_padrao_abaixo_do_limite_de_inatividade(self):
+        padrao = inspect.signature(
+            extrair_pdf_com_orcamento
+        ).parameters["timeout"].default
+        assert padrao == EXTRACAO_TIMEOUT_S
+        assert padrao < LIMITE_INATIVIDADE_S
 
 
 class TestLogPypdf:

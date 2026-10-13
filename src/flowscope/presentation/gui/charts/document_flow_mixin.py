@@ -409,6 +409,7 @@ class DocumentFlowMixin(DocumentFinalizacaoMixin):
         resumo no resultado do job. Um resultado parcial não gera resumo,
         permanecendo pendente para nova extração.
         """
+        ctx.descrever(f"{arquivo.ticker}/{arquivo.nome}")
         resultado = self.preparar_texto(arquivo, senha)
         precisa = (
             resultado.status is StatusExtracao.OK

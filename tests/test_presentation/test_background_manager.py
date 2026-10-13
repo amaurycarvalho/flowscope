@@ -92,6 +92,23 @@ class TestContratoBase:
             "Erro",
         ]
 
+    def test_handle_novo_tem_descricao_vazia(self):
+        handle = JobHandle(id=1, grupo="g", politica=Politica.PARALLEL)
+
+        assert handle.descricao == ""
+
+    def test_descrever_registra_atividade_sem_contar_progresso(self):
+        handle = JobHandle(id=1, grupo="g", politica=Politica.PARALLEL)
+        handle.ultima_atividade = 10.0
+        eventos = []
+        contexto = JobContext(handle, eventos.append)
+
+        contexto.descrever("PETR4/negociação")
+
+        assert handle.descricao == "PETR4/negociação"
+        assert handle.ultima_atividade == 10.0
+        assert eventos == []
+
     def test_pacote_background_nao_importa_infrastructure(self):
         for caminho in sorted(_PACOTE_BACKGROUND.glob("*.py")):
             camadas = guardrail.imported_layers(caminho.read_text(encoding="utf-8"))
@@ -458,9 +475,10 @@ class TestCicloDeVida:
 
 
 class TestWatchdog:
-    def test_job_morto_sem_termino_e_encerrado(self):
+    def test_job_morto_sem_termino_e_encerrado(self, caplog):
         manager = BackgroundManager()
         handle = JobHandle(id=99, grupo="g", politica=Politica.PARALLEL)
+        handle.descricao = "PETR4/relatório"
         thread = threading.Thread(target=lambda: None)
         thread.start()
         thread.join()
@@ -471,11 +489,13 @@ class TestWatchdog:
         terminados = []
         manager.ao_terminar(terminados.append)
 
-        manager.drenar()
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            manager.drenar()
 
         assert handle.estado is EstadoJob.CONCLUIDO
         assert handle.outcome is Outcome.ABORTADO
         assert terminados == [handle]
+        assert "PETR4/relatório" in caplog.text
 
     def test_job_sem_progresso_e_encerrado_por_inatividade(self):
         relogio = _Relogio()
@@ -518,14 +538,21 @@ class TestWatchdog:
         relogio = _Relogio()
         manager = BackgroundManager(limite_inatividade_s=120.0, relogio=relogio)
         liberar = threading.Event()
+        descrito = threading.Event()
         recebidos: list = []
 
+        def trabalho(ctx):
+            ctx.descrever("PETR4/negociação")
+            descrito.set()
+            liberar.wait(2)
+
         handle = manager.submit(
-            lambda ctx: liberar.wait(2),
+            trabalho,
             grupo="resumos",
             cancelavel=True,
             ao_termino=recebidos.append,
         )
+        assert descrito.wait(2)
         relogio.avancar(120.1)
 
         with caplog.at_level(logging.WARNING, logger="flowscope"):
@@ -536,6 +563,7 @@ class TestWatchdog:
 
         assert [evento.outcome for evento in recebidos] == [Outcome.ABORTADO]
         assert "inatividade" in caplog.text
+        assert "PETR4/negociação" in caplog.text
 
 
 class TestDesfecho:

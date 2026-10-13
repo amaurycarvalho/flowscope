@@ -77,6 +77,7 @@ def executar_finalizacao(
     ctx.progress(detalhe=FASE_FINALIZAR, atual=0, total=total)
     for indice, item in enumerate(itens, start=1):
         ctx.raise_if_cancelled()
+        ctx.descrever(f"{item.arquivo.ticker}/{item.arquivo.nome}")
         try:
             _finalizar_item(painel, item)
         except Exception as exc:  # falha isolada não aborta os demais
