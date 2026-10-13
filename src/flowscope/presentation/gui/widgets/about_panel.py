@@ -120,13 +120,13 @@ class AboutPanel:
         repo_btn.pack(side=tk.LEFT, padx=(0, PAD))
         log_btn = tk.Button(
             botoes,
-            text="Abrir log da aplicação",
+            text="Abrir pasta de logs",
             command=self._on_open_log,
             cursor="hand2",
         )
         log_btn.pack(side=tk.LEFT)
         ToolTip(repo_btn, "Abrir o repositório do projeto no GitHub")
-        ToolTip(log_btn, "Abrir o arquivo de log da aplicação")
+        ToolTip(log_btn, "Abrir a pasta de logs da aplicação")
 
         self._update_area = tk.Frame(container)
         self._update_area.pack(fill=tk.X, pady=(PAD_LARGE, 0))

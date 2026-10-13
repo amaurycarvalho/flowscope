@@ -235,6 +235,22 @@ class TestConfigureLogging:
             main._configure_logging()
         assert chamadas == [True]
 
+    def test_configure_logging_encadeia_housekeeping(self, tmp_path, monkeypatch):
+        from flowscope.presentation import main
+
+        chamadas: list[str] = []
+        monkeypatch.setattr(
+            main, "rotacionar_log_obsoleto",
+            lambda *a: chamadas.append("rotacao"),
+        )
+        monkeypatch.setattr(
+            main, "limpar_backups_antigos",
+            lambda *a: chamadas.append("limpeza"),
+        )
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+        assert chamadas == ["rotacao", "limpeza"]
+
 
 class TestDesktopShortcutGuiButton:
     def test_on_create_shortcut_hides_button_on_success(self):

@@ -6,6 +6,7 @@ Resultados não definitivos (parcial, falha ou protegido) não são persistidos
 nem memoizados, permitindo a retentativa automática.
 """
 
+import logging
 from pathlib import Path
 
 from flowscope.application.document_preview import (
@@ -137,3 +138,60 @@ class TestPrepararTexto:
         assert host.preparar_texto(arquivo).status is StatusExtracao.PROTEGIDO
         assert store.salvos == []
         assert arquivo.caminho not in host._preview_cache
+
+
+class TestAvisosDeExtracao:
+    def test_parcial_registra_warning(self, caplog):
+        store = _StoreFake()
+        host = _FlowHost(
+            store, ExtracaoTexto("meio texto", StatusExtracao.PARCIAL, 2)
+        )
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host.preparar_texto(_arquivo())
+
+        assert (
+            "Extração parcial (2 página(s) com falha): ALZR11/10.pdf"
+            in caplog.text
+        )
+
+    def test_sem_texto_registra_warning(self, caplog):
+        store = _StoreFake()
+        host = _FlowHost(store, ExtracaoTexto("", StatusExtracao.SEM_TEXTO))
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host.preparar_texto(_arquivo())
+
+        assert "Documento sem texto extraível: ALZR11/10.pdf" in caplog.text
+
+    def test_cache_hit_nao_registra_aviso(self, caplog):
+        store = _StoreFake()
+        store.salvar("ALZR11", "ALZR11/10.pdf", "do cache")
+        host = _FlowHost(store)
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host.preparar_texto(_arquivo())
+
+        texto = caplog.text.lower()
+        assert "parcial" not in texto
+        assert "sem texto" not in texto
+
+    def test_falha_nao_registra_aviso(self, caplog):
+        host = _FlowHost(_StoreFake(), ExtracaoTexto("", StatusExtracao.FALHA))
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host.preparar_texto(_arquivo())
+
+        texto = caplog.text.lower()
+        assert "parcial" not in texto
+        assert "sem texto" not in texto
+
+    def test_protegido_nao_registra_aviso(self, caplog):
+        host = _FlowHost(_StoreFake(), ExtracaoTexto("", StatusExtracao.PROTEGIDO))
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            host.preparar_texto(_arquivo())
+
+        texto = caplog.text.lower()
+        assert "parcial" not in texto
+        assert "sem texto" not in texto

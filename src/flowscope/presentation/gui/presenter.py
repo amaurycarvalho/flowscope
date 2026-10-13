@@ -13,8 +13,7 @@ from flowscope.presentation.gui.background.events import Outcome
 
 #: Mensagem genérica de falha fatal sem tratador de erro consumidor.
 MENSAGEM_FALHA_NAO_REPORTADA = (
-    "Falha inesperada. Consulte o arquivo de log em "
-    "~/.flowscope/logs/flowscope.log"
+    "Falha inesperada. Consulte os logs em ~/.flowscope/logs"
 )
 
 #: Mensagem de encerramento involuntário pelo watchdog.
@@ -306,10 +305,9 @@ class FlowScopePresenter:
             self._view.config_copy_button_state(tk.DISABLED)
 
     def on_technical_error(self: "FlowScopePresenter", error: Exception, ref: LogReference) -> None:
-        """Exibe mensagem de erro técnico e orienta o usuário ao arquivo de log."""
+        """Exibe mensagem de erro técnico e orienta o usuário à pasta de logs."""
         self._view.set_status(
-            "⚠ Erro técnico. Consulte o arquivo de log em "
-            "~/.flowscope/logs/flowscope.log",
+            "⚠ Erro técnico. Consulte os logs em ~/.flowscope/logs",
         )
 
     def get_reference_date(self: "FlowScopePresenter") -> date:

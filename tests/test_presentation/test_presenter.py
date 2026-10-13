@@ -284,7 +284,7 @@ class TestFlowScopePresenter:
         view.set_status.assert_called_once()
         args = view.set_status.call_args[0]
         assert "Erro técnico" in args[0]
-        assert "flowscope.log" in args[0]
+        assert "~/.flowscope/logs" in args[0]
 
     def test_get_reference_date_le_da_view(self):
         view = MagicMock()

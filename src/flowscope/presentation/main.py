@@ -6,14 +6,19 @@ import logging
 import multiprocessing
 import platform
 import sys
-from datetime import datetime, timezone
-from logging.handlers import RotatingFileHandler, SysLogHandler
-from pathlib import Path
+from datetime import date, datetime, timezone
+from logging.handlers import SysLogHandler, TimedRotatingFileHandler
 
 import requests
 
 from flowscope import __version__
-from flowscope.log_paths import LOG_DATEFMT, LOG_FILE_RELATIVE_PATH, LOG_FORMAT
+from flowscope.infrastructure.logging.housekeeping import (
+    limpar_backups_antigos,
+    renomear_backup,
+    rotacionar_log_obsoleto,
+)
+from flowscope.infrastructure.logging.retention import log_retention_days
+from flowscope.log_paths import LOG_DATEFMT, LOG_FORMAT, log_dir, log_file_path
 from flowscope.presentation.cli import build_parser, run_cli
 from flowscope.presentation.shortcuts import (
     _create_desktop_shortcut,
@@ -176,12 +181,23 @@ def _silenciar_pypdf() -> None:
 
 
 def _configure_logging() -> None:
-    log_path = Path.home() / LOG_FILE_RELATIVE_PATH
-    log_path.parent.mkdir(parents=True, exist_ok=True)
+    diretorio = log_dir()
+    diretorio.mkdir(parents=True, exist_ok=True)
 
-    handlers: list[logging.Handler] = [
-        RotatingFileHandler(log_path, maxBytes=1_000_000, backupCount=3),
-    ]
+    log_path = log_file_path()
+    hoje = date.today()
+    rotacionar_log_obsoleto(log_path, hoje)
+    limpar_backups_antigos(diretorio, hoje, log_retention_days())
+
+    handler = TimedRotatingFileHandler(
+        log_path,
+        when="midnight",
+        interval=1,
+        backupCount=0,
+        encoding="utf-8",
+    )
+    handler.namer = renomear_backup
+    handlers: list[logging.Handler] = [handler]
 
     system = platform.system()
     if system in ("Linux", "Darwin"):

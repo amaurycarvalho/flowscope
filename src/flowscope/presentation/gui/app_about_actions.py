@@ -5,7 +5,7 @@ import webbrowser
 
 from flowscope import __version__
 from flowscope.application.releases import ReleaseChecker, verificar_nova_versao
-from flowscope.log_paths import log_file_path
+from flowscope.log_paths import log_dir
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
@@ -35,8 +35,8 @@ class AboutActionsMixin:
         self._abrir_url(REPOSITORIO_URL)
 
     def _abrir_log_flowscope(self: "AboutActionsMixin") -> None:
-        """Abre o log no aplicativo padrão ou informa a ausência na barra de status."""
-        caminho = log_file_path()
+        """Abre a pasta de logs no aplicativo padrão ou informa a ausência."""
+        caminho = log_dir()
         if not caminho.exists():
             self._set_status("O log da aplicação ainda não está disponível.", "⚠")
             return

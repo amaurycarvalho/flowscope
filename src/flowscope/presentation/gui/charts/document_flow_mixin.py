@@ -292,6 +292,19 @@ class DocumentFlowMixin:
             )
             return ExtracaoTexto(texto, status)
         resultado = self._texto_do_arquivo(arquivo, senha)
+        if resultado.status is StatusExtracao.PARCIAL:
+            logger.warning(
+                "Extração parcial (%d página(s) com falha): %s/%s",
+                resultado.paginas_com_falha,
+                arquivo.ticker,
+                arquivo.nome,
+            )
+        elif resultado.status is StatusExtracao.SEM_TEXTO:
+            logger.warning(
+                "Documento sem texto extraível: %s/%s",
+                arquivo.ticker,
+                arquivo.nome,
+            )
         if resultado.status in (StatusExtracao.OK, StatusExtracao.SEM_TEXTO):
             self._text_store.salvar(
                 arquivo.ticker,

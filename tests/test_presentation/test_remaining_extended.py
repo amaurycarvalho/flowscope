@@ -94,16 +94,16 @@ class TestCommunicationAwareFormatter:
 class TestConfigureLoggingArgs:
     def test_mkdir_with_parents(self, tmp_path):
         with patch("pathlib.Path.home", return_value=tmp_path):
-            with patch("flowscope.presentation.main.Path.mkdir") as mock_mkdir:
-                with patch("flowscope.presentation.main.RotatingFileHandler", return_value=MagicMock()):
+            with patch("pathlib.Path.mkdir") as mock_mkdir:
+                with patch("flowscope.presentation.main.TimedRotatingFileHandler", return_value=MagicMock()):
                     with patch("flowscope.presentation.main.logging.basicConfig"):
                         _configure_logging()
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
-    def test_rotating_file_handler_args(self, tmp_path):
+    def test_timed_rotating_file_handler_args(self, tmp_path):
         with patch("pathlib.Path.home", return_value=tmp_path):
             with patch(
-                "flowscope.presentation.main.RotatingFileHandler",
+                "flowscope.presentation.main.TimedRotatingFileHandler",
                 return_value=MagicMock(),
             ) as mock_handler:
                 with patch("flowscope.presentation.main.logging.basicConfig"):
@@ -112,12 +112,16 @@ class TestConfigureLoggingArgs:
         mock_handler.assert_called_once()
         args, kwargs = mock_handler.call_args
         assert str(args[0]).endswith("flowscope.log")
-        assert kwargs["maxBytes"] == 1_000_000
-        assert kwargs["backupCount"] == 3
+        assert kwargs["when"] == "midnight"
+        assert kwargs["backupCount"] == 0
+        assert kwargs["encoding"] == "utf-8"
+        from flowscope.infrastructure.logging.housekeeping import renomear_backup
+
+        assert mock_handler.return_value.namer is renomear_backup
 
     def test_basic_config_level(self, tmp_path):
         with patch("pathlib.Path.home", return_value=tmp_path):
-            with patch("flowscope.presentation.main.RotatingFileHandler", return_value=MagicMock()):
+            with patch("flowscope.presentation.main.TimedRotatingFileHandler", return_value=MagicMock()):
                 with patch("flowscope.presentation.main.logging.basicConfig") as mock_config:
                     with patch("flowscope.presentation.main.SysLogHandler", side_effect=OSError):
                         _configure_logging()

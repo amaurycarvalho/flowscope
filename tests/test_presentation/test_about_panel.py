@@ -70,7 +70,7 @@ class TestConteudo:
         panel = AboutPanel(root, on_open_repository=repo, on_open_log=log)
         por_texto = {b.cget("text"): b for b in _botoes(panel)}
         por_texto["Repositório no GitHub"].invoke()
-        por_texto["Abrir log da aplicação"].invoke()
+        por_texto["Abrir pasta de logs"].invoke()
         repo.assert_called_once()
         log.assert_called_once()
 

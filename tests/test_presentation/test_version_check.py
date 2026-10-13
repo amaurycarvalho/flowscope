@@ -118,17 +118,17 @@ class TestAcoesSobre:
 
     def test_abrir_log_existente(self, tmp_path):
         host = _Host()
-        arquivo = tmp_path / "flowscope.log"
-        arquivo.write_text("conteudo")
-        with patch(f"{_MODULO}.log_file_path", return_value=arquivo):
+        diretorio = tmp_path / "logs"
+        diretorio.mkdir()
+        with patch(f"{_MODULO}.log_dir", return_value=diretorio):
             with patch(f"{_MODULO}.abrir_no_aplicativo") as abrir:
                 host._abrir_log_flowscope()
-        abrir.assert_called_once_with(arquivo)
+        abrir.assert_called_once_with(diretorio)
 
     def test_abrir_log_ausente_informa_status(self, tmp_path):
         host = _Host()
-        inexistente = tmp_path / "nao-existe.log"
-        with patch(f"{_MODULO}.log_file_path", return_value=inexistente):
+        inexistente = tmp_path / "logs-ausente"
+        with patch(f"{_MODULO}.log_dir", return_value=inexistente):
             with patch(f"{_MODULO}.abrir_no_aplicativo") as abrir:
                 host._abrir_log_flowscope()
         abrir.assert_not_called()
@@ -138,9 +138,9 @@ class TestAcoesSobre:
 
     def test_erro_ao_abrir_log_informa_status(self, tmp_path):
         host = _Host()
-        arquivo = tmp_path / "flowscope.log"
-        arquivo.write_text("conteudo")
-        with patch(f"{_MODULO}.log_file_path", return_value=arquivo):
+        diretorio = tmp_path / "logs"
+        diretorio.mkdir()
+        with patch(f"{_MODULO}.log_dir", return_value=diretorio):
             with patch(f"{_MODULO}.abrir_no_aplicativo", side_effect=OSError("sem app")):
                 host._abrir_log_flowscope()
         assert host.status == ["Não foi possível abrir o log da aplicação."]
