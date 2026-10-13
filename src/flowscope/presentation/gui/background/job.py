@@ -92,3 +92,4 @@ class JobHandle:
     ultima_atividade: float = 0.0
     outcome: Outcome | None = None
     falha_reportada: bool = False
+    termino_entregue: bool = False

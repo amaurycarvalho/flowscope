@@ -26,6 +26,8 @@ from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.resumos_job import (
     FASE_PREPARAR,
     FASE_RESUMIR,
+    MotivoExtracao,
+    _motivo,
     _preparar_textos,
     _resumir,
     executar_resumos,
@@ -113,7 +115,7 @@ class TestResumosPendentes:
         painel = _PainelFake({"10.pdf": "texto A", "20.pdf": "texto B"})
         ctx, eventos = _contexto()
 
-        sem_texto = executar_resumos(ctx, painel, arquivos)
+        resultado = executar_resumos(ctx, painel, arquivos)
 
         progressos = [e for e in eventos if isinstance(e, Progresso)]
         resultados = [e for e in eventos if isinstance(e, Resultado)]
@@ -121,18 +123,20 @@ class TestResumosPendentes:
         assert any(p.dados == 1 and p.detalhe == FASE_PREPARAR for p in progressos)
         assert any(p.dados == 2 and p.detalhe == FASE_RESUMIR for p in progressos)
         assert [r.dados.nome for r in resultados] == ["10.pdf", "20.pdf"]
-        assert sem_texto == 0
+        assert resultado.sem_texto == 0
+        assert resultado.nao_conclusivos == []
 
     def test_pula_documento_sem_texto(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelFake({"10.pdf": "texto", "20.pdf": ""})
         ctx, eventos = _contexto()
 
-        sem_texto = executar_resumos(ctx, painel, arquivos)
+        resultado = executar_resumos(ctx, painel, arquivos)
 
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert [r.dados.nome for r in resultados] == ["10.pdf"]
-        assert sem_texto == 1
+        assert resultado.sem_texto == 1
+        assert resultado.nao_conclusivos == []
 
     def test_erro_na_preparacao_interrompe(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
@@ -430,19 +434,21 @@ class TestNaoDefinitivosNoLote:
         painel = _PainelNaoDefinitivo(status)
         ctx, eventos = _contexto()
 
-        sem_texto = executar_resumos(ctx, painel, arquivos)
+        resultado = executar_resumos(ctx, painel, arquivos)
 
-        assert sem_texto == 1
+        assert resultado.sem_texto == 1
         assert painel.gerados == []
         assert painel.guidances == []
         assert not any(isinstance(e, Resultado) for e in eventos)
+        assert len(resultado.nao_conclusivos) == 1
+        assert resultado.nao_conclusivos[0].status is status
 
     def test_parcial_por_estouro_segue_para_o_proximo(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         painel = _PainelParcial(parcial="10.pdf")
         ctx, eventos = _contexto()
 
-        sem_texto = executar_resumos(ctx, painel, arquivos)
+        resultado = executar_resumos(ctx, painel, arquivos)
 
         preparar = [
             e for e in eventos if isinstance(e, Progresso) and e.dados == 1
@@ -450,7 +456,8 @@ class TestNaoDefinitivosNoLote:
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         assert painel.preparados == ["10.pdf", "20.pdf"]
         assert [r.dados.nome for r in resultados] == ["20.pdf"]
-        assert sem_texto == 1
+        assert resultado.sem_texto == 1
+        assert [item.arquivo.nome for item in resultado.parciais] == ["10.pdf"]
         assert preparar[-1].atual == preparar[-1].total == 2
 
 
@@ -468,7 +475,37 @@ class _PainelParcial(_PainelFake):
         return ExtracaoTexto("texto completo", StatusExtracao.OK)
 
 
+class _PainelCancelaAposParcial:
+    """Painel fake que cancela o job após devolver um resultado parcial."""
+
+    def __init__(self, token):
+        self._token = token
+
+    def preparar_texto(self, arquivo, senha=None):
+        self._token.request()
+        return ExtracaoTexto("texto parcial", StatusExtracao.PARCIAL, 1)
+
+    def persistir_no_lote(self):
+        return False
+
+    def gerar_resumo_estrito(self, arquivo, texto):
+        return ResumoDocumento("curto", "longo")
+
+    def avaliar_guidance(self, arquivo, texto, resumo=None):
+        return None
+
+
 class TestCancelamento:
+    def test_classificacao_parcial_sobrevive_ao_cancelamento(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        token = CancellationToken()
+        painel = _PainelCancelaAposParcial(token)
+        ctx, _ = _contexto(token)
+
+        resultado = executar_resumos(ctx, painel, arquivos)
+
+        assert [i.arquivo.nome for i in resultado.parciais] == ["10.pdf"]
+
     def test_cancelamento_interrompe_preparacao(self):
         arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
         token = CancellationToken()
@@ -508,3 +545,118 @@ class TestCancelamento:
 
         assert painel.gerados == []
         assert not any(isinstance(e, Erro) for e in eventos)
+
+
+class TestMotivoExtracao:
+    def test_motivo_por_status(self):
+        painel = _PainelFake({})
+        arquivo = _arquivo("10.pdf")
+
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("t", StatusExtracao.OK))
+            is MotivoExtracao.OK
+        )
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("t", StatusExtracao.PARCIAL))
+            is MotivoExtracao.PARCIAL
+        )
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("", StatusExtracao.FALHA))
+            is MotivoExtracao.FALHA
+        )
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("", StatusExtracao.PROTEGIDO))
+            is MotivoExtracao.PROTEGIDO
+        )
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("", StatusExtracao.SEM_TEXTO))
+            is MotivoExtracao.SEM_TEXTO
+        )
+
+    def test_motivo_apontador_quando_gancho_recusa_texto(self):
+        painel = _PainelApontador()
+        arquivo = _arquivo("10.pdf")
+
+        assert (
+            _motivo(painel, arquivo, ExtracaoTexto("http://x", StatusExtracao.OK))
+            is MotivoExtracao.APONTADOR
+        )
+
+
+class _PainelApontador(_PainelFake):
+    """Painel fake que recusa todo texto completo como apontador pendente."""
+
+    def __init__(self) -> None:
+        super().__init__({})
+
+    def texto_utilizavel(self, arquivo, texto):
+        return False
+
+
+class TestConjuntosDoResultado:
+    def test_classifica_cada_motivo_nos_conjuntos(self):
+        arquivos = [
+            _arquivo("ok.pdf"),
+            _arquivo("parcial.pdf"),
+            _arquivo("falha.pdf"),
+            _arquivo("protegido.pdf"),
+            _arquivo("sem.pdf"),
+        ]
+        painel = _PainelClassificacao()
+        ctx, _ = _contexto()
+
+        resultado = executar_resumos(ctx, painel, arquivos)
+
+        assert [i.arquivo.nome for i in resultado.parciais] == ["parcial.pdf"]
+        assert [i.arquivo.nome for i in resultado.falhas] == ["falha.pdf"]
+        assert [i.arquivo.nome for i in resultado.protegidos] == ["protegido.pdf"]
+        assert resultado.sem_texto == 4
+        assert len(resultado.nao_conclusivos) == 3
+
+    def test_item_nao_processado_fica_fora_dos_conjuntos(self):
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+        painel = _PainelFake(
+            {"10.pdf": "texto", "20.pdf": "texto"}, falha_preparar="20.pdf"
+        )
+        ctx, eventos = _contexto()
+
+        resultado = executar_resumos(
+            ctx, painel, arquivos, continuar_em_erro=True
+        )
+
+        assert resultado.nao_conclusivos == []
+        assert resultado.sem_texto == 1
+        assert [e.dados.nome for e in eventos if isinstance(e, Erro)] == [
+            "20.pdf"
+        ]
+
+    def test_senha_pre_coletada_e_repassada(self):
+        arquivos = [_arquivo("protegido.pdf")]
+        painel = _PainelClassificacao()
+        ctx, _ = _contexto()
+
+        executar_resumos(
+            ctx, painel, arquivos, senhas={arquivos[0].caminho: "segredo"}
+        )
+
+        assert painel.senhas == ["segredo"]
+
+
+class _PainelClassificacao(_PainelFake):
+    """Painel fake que devolve um status distinto por nome de arquivo."""
+
+    def __init__(self) -> None:
+        super().__init__({})
+        self.senhas: list[str | None] = []
+
+    def preparar_texto(self, arquivo, senha=None):
+        self.senhas.append(senha)
+        if arquivo.nome == "parcial.pdf":
+            return ExtracaoTexto("texto parcial", StatusExtracao.PARCIAL, 2)
+        if arquivo.nome == "falha.pdf":
+            return ExtracaoTexto("", StatusExtracao.FALHA)
+        if arquivo.nome == "protegido.pdf":
+            return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
+        if arquivo.nome == "sem.pdf":
+            return ExtracaoTexto("", StatusExtracao.SEM_TEXTO)
+        return ExtracaoTexto("texto completo", StatusExtracao.OK)

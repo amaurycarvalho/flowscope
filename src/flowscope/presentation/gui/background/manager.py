@@ -105,6 +105,21 @@ class BackgroundManager:
         """Indica se o grupo possui um job ativo no agendador."""
         return self._scheduler.ativo(grupo) is not None
 
+    @property
+    def limite_inatividade_s(self: "BackgroundManager") -> float:
+        """Retorna o limite de inatividade corrente do watchdog."""
+        return self._limite_inatividade_s
+
+    def definir_limite_inatividade(
+        self: "BackgroundManager", segundos: float
+    ) -> None:
+        """Ajusta em memória o limite de inatividade do watchdog.
+
+        Usado para conceder mais tempo a um reprocessamento após um lote
+        encerrado por timeout; não persiste em disco.
+        """
+        self._limite_inatividade_s = float(segundos)
+
     def ao_iniciar(self: "BackgroundManager", callback: Callable[[JobHandle], None]) -> None:
         """Registra um callback chamado quando um job inicia."""
         self._listeners_iniciado.append(callback)
@@ -274,13 +289,25 @@ class BackgroundManager:
         self: "BackgroundManager", handle: JobHandle, evento: Termino
     ) -> None:
         """Entrega o término ao callback do job e o finaliza."""
+        self._notificar_termino(
+            handle, replace(evento, falha_reportada=handle.falha_reportada)
+        )
+        self._finalizar(handle, evento.outcome)
+
+    def _notificar_termino(
+        self: "BackgroundManager", handle: JobHandle, evento: Termino
+    ) -> None:
+        """Entrega o término ao callback do job, no máximo uma vez.
+
+        Garante que cancelamento e aborto por inatividade — que finalizam o job
+        fora da drenagem normal — também encaminhem o término à interface.
+        """
+        if handle.termino_entregue:
+            return
+        handle.termino_entregue = True
         callback = handle.callbacks.termino
         if callback is not None:
-            evento = replace(
-                evento, falha_reportada=handle.falha_reportada
-            )
             self._invocar(callback, evento)
-        self._finalizar(handle, evento.outcome)
 
     def _finalizar(
         self: "BackgroundManager", handle: JobHandle, outcome: Outcome
@@ -300,6 +327,10 @@ class BackgroundManager:
         )
         self._jobs.pop(handle.id, None)
         self._scheduler.remover(handle)
+        self._notificar_termino(
+            handle,
+            Termino(outcome=outcome, falha_reportada=handle.falha_reportada),
+        )
         self._notificar(self._listeners_terminado, handle)
         if handle.politica is Politica.SERIALIZE:
             proximo = self._scheduler.retirar_proximo(handle.grupo)
@@ -316,9 +347,19 @@ class BackgroundManager:
                 and not thread.is_alive()
                 and handle.fila.empty()
             ):
+                logger.warning(
+                    "Job %s do grupo %s sem término; encerrado (ABORTADO).",
+                    handle.id,
+                    handle.grupo,
+                )
                 self._finalizar(handle, Outcome.ABORTADO)
                 continue
             if agora - handle.ultima_atividade > self._limite_inatividade_s:
+                logger.warning(
+                    "Job %s do grupo %s encerrado por inatividade (timeout).",
+                    handle.id,
+                    handle.grupo,
+                )
                 handle.token.request()
                 self._finalizar(handle, Outcome.ABORTADO)
 

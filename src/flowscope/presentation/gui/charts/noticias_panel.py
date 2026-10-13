@@ -408,7 +408,9 @@ class NoticiasPanel(DocumentFlowMixin):
         thread de trabalho.
         """
         resultado = extrair_arquivo_com_orcamento(
-            arquivo.caminho, SELETOR_CONTEUDO_DETALHE
+            arquivo.caminho,
+            SELETOR_CONTEUDO_DETALHE,
+            timeout=self.timeout_extracao(),
         )
         if getattr(arquivo, "secao", "") != SECAO_GERAL:
             return resultado

@@ -22,7 +22,7 @@ Ao término normal do lote, o sistema DEVE identificar, entre os itens processad
 
 ### Requirement: Confirmação de reprocessamento e finalização
 
-Quando houver itens de extração não conclusiva ao término normal do lote, o sistema DEVE informar a quantidade e perguntar ao usuário se deseja tentar reprocessá-los; se o usuário recusar, DEVE perguntar se deseja marcá-los como definitivos; se também recusar, DEVE encerrar sem alterar os itens. A confirmação NÃO DEVE ser exibida quando o lote for cancelado, interrompido por erro, abortado por cota da LLM, ou quando o escopo apresentado (ticker de documentos ou período de notícias) tiver mudado.
+Quando houver itens de extração não conclusiva ao término do lote, o sistema DEVE informar a quantidade e perguntar ao usuário se deseja tentar reprocessá-los; se o usuário recusar, DEVE perguntar se deseja marcá-los como definitivos; se também recusar, DEVE encerrar sem alterar os itens. A pergunta de finalização DEVE alcançar apenas itens efetivamente processados no lote e classificados como não conclusivos; itens pendentes ainda não processados NÃO DEVEM ser marcados como definitivos. A confirmação NÃO DEVE ser exibida quando o lote for cancelado pelo usuário, interrompido por erro fatal, abortado por cota da LLM, ou quando o escopo apresentado (ticker de documentos ou período de notícias) tiver mudado. Um encerramento por timeout/inatividade DEVE ser registrado no log e DEVE exibir o fluxo de reprocessamento; nesse caso, o retry DEVE reconsiderar o lote interrompido (itens que permanecem pendentes), sem oferecer finalização dos não processados. Ao confirmar o reprocessamento, os timeouts correntes (orçamento de extração e limite de inatividade) DEVEM crescer 30% em memória, sempre relativos ao valor em memória anterior, sem persistir nem marcar itens como definitivos.
 
 #### Scenario: Confirmação ao término com não conclusivos
 - **WHEN** o lote termina normalmente e restam itens de extração não conclusiva
@@ -37,8 +37,20 @@ Quando houver itens de extração não conclusiva ao término normal do lote, o 
 - **THEN** o processamento DEVE encerrar sem alterar os itens
 
 #### Scenario: Sem confirmação em término anormal
-- **WHEN** o lote é cancelado, interrompido por erro, abortado por cota da LLM, ou o escopo apresentado mudou
+- **WHEN** o lote é cancelado pelo usuário, interrompido por erro fatal, abortado por cota da LLM, ou o escopo apresentado mudou
 - **THEN** a confirmação NÃO DEVE ser exibida
+
+#### Scenario: Timeout é registrado e oferece retry
+- **WHEN** o lote é encerrado por timeout/inatividade
+- **THEN** o evento DEVE ser registrado no log e o fluxo de reprocessamento DEVE ser exibido para reconsiderar o lote interrompido
+
+#### Scenario: Retry confirmado escala os timeouts em 30%
+- **WHEN** o usuário confirma reprocessar após um timeout
+- **THEN** os timeouts correntes DEVEM crescer 30% em memória, relativos ao valor anterior, sem persistência
+
+#### Scenario: Itens não processados ficam fora da finalização
+- **WHEN** o lote é interrompido antes de processar alguns itens
+- **THEN** os itens não processados NÃO DEVEM ser oferecidos para marcação como definitivos, embora possam ser reprocessados
 
 ### Requirement: Reprocessamento interativo dos itens não conclusivos
 

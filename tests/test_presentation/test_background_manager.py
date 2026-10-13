@@ -497,6 +497,46 @@ class TestWatchdog:
         liberar.set()
         handle.thread.join(2)
 
+    def test_cancelamento_entrega_termino(self):
+        manager = BackgroundManager()
+        liberar = threading.Event()
+        recebidos: list = []
+
+        handle = manager.submit(
+            lambda ctx: liberar.wait(2),
+            grupo="g",
+            cancelavel=True,
+            ao_termino=recebidos.append,
+        )
+        manager.cancel(handle.id)
+        liberar.set()
+        handle.thread.join(2)
+
+        assert [evento.outcome for evento in recebidos] == [Outcome.CANCELADO]
+
+    def test_inatividade_entrega_termino_e_loga(self, caplog):
+        relogio = _Relogio()
+        manager = BackgroundManager(limite_inatividade_s=120.0, relogio=relogio)
+        liberar = threading.Event()
+        recebidos: list = []
+
+        handle = manager.submit(
+            lambda ctx: liberar.wait(2),
+            grupo="resumos",
+            cancelavel=True,
+            ao_termino=recebidos.append,
+        )
+        relogio.avancar(120.1)
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            manager.drenar()
+
+        liberar.set()
+        handle.thread.join(2)
+
+        assert [evento.outcome for evento in recebidos] == [Outcome.ABORTADO]
+        assert "inatividade" in caplog.text
+
 
 class TestDesfecho:
     def test_termino_default_retrocompativel(self):

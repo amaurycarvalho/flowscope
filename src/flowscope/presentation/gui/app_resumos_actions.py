@@ -8,21 +8,33 @@ controle.
 
 import logging
 import time
+from pathlib import Path
+from tkinter import messagebox
 
+from flowscope.application.finalizacao_extracao import MOTIVOS_FINALIZAVEIS
 from flowscope.domain.llm import LLMRateLimitError
-from flowscope.presentation.gui.background.events import Erro, Progresso, Resultado
+from flowscope.presentation.gui.app_resumos_finalizacao import (
+    ResumosFinalizacaoMixin,
+)
+from flowscope.presentation.gui.background.events import (
+    Erro,
+    Outcome,
+    Progresso,
+    Resultado,
+)
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.progress import ProgressReporter
 from flowscope.presentation.gui.resumos_job import (
     GRUPO,
     POLITICA,
+    ResultadoResumos,
     executar_resumos,
 )
 
 logger = logging.getLogger("flowscope")
 
 
-class ResumosActionsMixin:
+class ResumosActionsMixin(ResumosFinalizacaoMixin):
     """Conduz o resumo em lote dos documentos e das notícias pendentes."""
 
     def _resumos_em_andamento(self: "ResumosActionsMixin") -> bool:
@@ -62,7 +74,9 @@ class ResumosActionsMixin:
         if not pendentes:
             painel.refresh_resumir_button()
             return
-        self._iniciar_lote_resumos(painel, pendentes, None, continuar=True)
+        self._iniciar_lote_resumos(
+            painel, pendentes, self._data_referencia(), continuar=True
+        )
 
     def _iniciar_lote_resumos(
         self: "ResumosActionsMixin",
@@ -70,6 +84,7 @@ class ResumosActionsMixin:
         pendentes: list,
         guarda: object,
         continuar: bool = False,
+        senhas: dict[Path, str] | None = None,
     ) -> None:
         """Submete o lote de resumo e registra os callbacks de eventos."""
         background = getattr(self, "_background", None)
@@ -80,6 +95,7 @@ class ResumosActionsMixin:
         self._resumos_falhas = 0
         self._resumos_resumidos = 0
         self._resumos_total = len(pendentes)
+        self._resumos_pendentes = list(pendentes)
         self._resumos_persistir_worker = self._painel_persiste_no_worker(painel)
         self._resumos_fase = None
         self._resumos_fase_inicio = None
@@ -89,11 +105,11 @@ class ResumosActionsMixin:
             on_update=self._presenter.on_progress
         )
         self._set_status(f"Resumindo {len(pendentes)} item(ns)…")
-        estado = {"sem_texto": 0}
+        estado = {"resultado": ResultadoResumos()}
 
         def trabalho(ctx: object) -> None:
-            estado["sem_texto"] = executar_resumos(
-                ctx, painel, pendentes, continuar
+            estado["resultado"] = executar_resumos(
+                ctx, painel, pendentes, continuar, senhas
             )
 
         background.submit(
@@ -107,7 +123,7 @@ class ResumosActionsMixin:
             ),
             ao_erro=self._interromper_resumos,
             ao_termino=lambda evento: self._finalizar_resumos_job(
-                evento.cancelado, guarda, estado["sem_texto"]
+                evento.outcome, guarda, estado["resultado"]
             ),
         )
 
@@ -145,7 +161,7 @@ class ResumosActionsMixin:
         """Aplica um resumo e a avaliação de guidance, descartando se o escopo mudou."""
         arquivo = evento.dados
         resumo, avaliacao = evento.valor
-        if guarda is not None and guarda != self._ticker_apresentado():
+        if self._escopo_alterado(guarda):
             return
         painel = self._painel_resumos()
         if painel is None:
@@ -203,15 +219,33 @@ class ResumosActionsMixin:
         )
         self._set_status(f"{arquivo.nome}: {mensagem_erro_llm(exc)}", "⚠")
 
+    def _escopo_resumos(self: "ResumosActionsMixin") -> object:
+        """Retorna o escopo apresentado do lote corrente (ticker ou período)."""
+        if getattr(self, "_resumos_continuar", False):
+            return self._data_referencia()
+        return self._ticker_apresentado()
+
+    def _escopo_alterado(self: "ResumosActionsMixin", guarda: object) -> bool:
+        """Indica se o escopo apresentado mudou desde o início do lote."""
+        if guarda is None:
+            return False
+        return guarda != self._escopo_resumos()
+
     def _finalizar_resumos_job(
         self: "ResumosActionsMixin",
-        cancelado: bool,
+        outcome: Outcome,
         guarda: object,
-        sem_texto: int,
+        resultado: ResultadoResumos,
     ) -> None:
-        """Encerra o lote, libera o estado ocupado e exibe o desfecho."""
+        """Encerra o lote, libera o estado ocupado e exibe o desfecho.
+
+        Cancelamento e falha fatal encerram sem confirmação. Um aborto por
+        timeout/inatividade (`ABORTADO`) mantém o fluxo de reprocessamento para
+        os itens já processados. O painel é remontado e o botão reavaliado em
+        todos os desfechos.
+        """
         self.after(0, self._recarregar_painel_resumos)
-        if cancelado:
+        if outcome in (Outcome.CANCELADO, Outcome.FALHA):
             self._resumos_interrompido = True
         painel = self._painel_resumos()
         if painel is not None:
@@ -228,10 +262,23 @@ class ResumosActionsMixin:
             return
         if getattr(self, "_resumos_interrompido", False):
             return
-        if guarda is not None and guarda != self._ticker_apresentado():
+        if self._escopo_alterado(guarda):
+            return
+        if outcome is Outcome.ABORTADO:
+            self._flash_status(
+                "Lote encerrado por inatividade (timeout).", "⚠"
+            )
+            # O worker foi abortado antes de publicar a classificação; o retry
+            # reconsidera o lote interrompido (itens ainda pendentes).
+            self._agendar_confirmacao(
+                resultado,
+                guarda,
+                retry=list(getattr(self, "_resumos_pendentes", [])),
+            )
             return
         total = getattr(self, "_resumos_total", 0)
         resumidos = getattr(self, "_resumos_resumidos", 0)
+        sem_texto = resultado.sem_texto
         if getattr(self, "_resumos_continuar", False):
             falhas = getattr(self, "_resumos_falhas", 0)
             mensagem = (
@@ -247,6 +294,137 @@ class ResumosActionsMixin:
                 f"Resumos gerados: {resumidos} de {total} ({complemento})."
             )
         self._flash_status(mensagem, "✓")
+        self._agendar_confirmacao(resultado, guarda)
+
+    def _agendar_confirmacao(
+        self: "ResumosActionsMixin",
+        resultado: ResultadoResumos,
+        guarda: object,
+        retry: list | None = None,
+    ) -> None:
+        """Encadeia a confirmação de finalização após a remontagem agendada."""
+        definitivos = self._finalizaveis(resultado)
+        if not definitivos and not retry:
+            return
+        self.after(
+            0,
+            lambda: self._confirmar_finalizacao(resultado, guarda, retry),
+        )
+
+    @staticmethod
+    def _finalizaveis(resultado: ResultadoResumos) -> list:
+        """Itens processados e não conclusivos elegíveis a definitivo."""
+        return [
+            item
+            for item in resultado.nao_conclusivos
+            if item.status in MOTIVOS_FINALIZAVEIS
+        ]
+
+    @staticmethod
+    def _pergunta_retry(
+        quantidade: int, nao_conclusiva: bool
+    ) -> tuple[str, str]:
+        """Monta título e texto da pergunta de reprocessamento."""
+        if nao_conclusiva:
+            return (
+                "Extração não conclusiva",
+                (
+                    f"{quantidade} item(ns) de extração não conclusiva. "
+                    "Deseja tentar reprocessá-los novamente?"
+                ),
+            )
+        return (
+            "Lote interrompido",
+            (
+                f"{quantidade} item(ns) do lote interrompido. "
+                "Deseja tentar reprocessá-los novamente?"
+            ),
+        )
+
+    def _confirmar_finalizacao(
+        self: "ResumosActionsMixin",
+        resultado: ResultadoResumos,
+        guarda: object,
+        retry: list | None = None,
+    ) -> None:
+        """Pergunta ao usuário se quer reprocessar ou finalizar os itens.
+
+        Só é exibida com o escopo apresentado inalterado e fora de cancelamento,
+        erro fatal ou cota. ``retry`` define os itens elegíveis ao
+        reprocessamento (no timeout, o lote interrompido); a pergunta de
+        finalização só alcança itens efetivamente processados e não conclusivos
+        — pendentes nunca processados ficam fora. Recusar ambas encerra sem
+        alterar os itens.
+        """
+        if getattr(self, "_resumos_cota", False):
+            return
+        if getattr(self, "_resumos_interrompido", False):
+            return
+        if self._escopo_alterado(guarda):
+            return
+        definitivos = self._finalizaveis(resultado)
+        retry = self._resolver_retry(retry, definitivos)
+        if not retry and not definitivos:
+            return
+        if retry and self._perguntar_reprocessar(retry, bool(definitivos)):
+            self._reprocessar_lista(retry, definitivos, guarda)
+            return
+        if definitivos and self._perguntar_finalizar(len(definitivos)):
+            self._submeter_finalizacao(definitivos, guarda)
+
+    @staticmethod
+    def _resolver_retry(retry: list | None, definitivos: list) -> list:
+        """Resolve a lista de retry: explícita (timeout) ou os não conclusivos."""
+        if retry is not None:
+            return list(retry)
+        return [item.arquivo for item in definitivos]
+
+    def _perguntar_reprocessar(
+        self: "ResumosActionsMixin", retry: list, nao_conclusiva: bool
+    ) -> bool:
+        """Pergunta se o usuário quer reprocessar a lista."""
+        titulo, pergunta = self._pergunta_retry(len(retry), nao_conclusiva)
+        return bool(messagebox.askyesno(titulo, pergunta, parent=self))
+
+    def _perguntar_finalizar(
+        self: "ResumosActionsMixin", quantidade: int
+    ) -> bool:
+        """Pergunta se o usuário quer marcar os itens como definitivos."""
+        return bool(
+            messagebox.askyesno(
+                "Finalizar extração",
+                f"Deseja marcar os {quantidade} item(ns) como definitivos? "
+                "Eles sairão dos pendentes e não serão reprocessados.",
+                parent=self,
+            )
+        )
+
+    def _reprocessar_lista(
+        self: "ResumosActionsMixin",
+        arquivos: list,
+        protegidos: list,
+        guarda: object,
+    ) -> None:
+        """Reprocessa a lista, pré-coletando a senha dos protegidos.
+
+        A pré-coleta ocorre na thread do Tk; o lote recebe um mapa
+        ``{caminho: senha}`` e não solicita senha durante o processamento. Item
+        protegido sem senha informada permanece pendente.
+        """
+        if not arquivos:
+            return
+        painel = self._painel_resumos()
+        if painel is None:
+            return
+        self._escalar_timeout()
+        senhas = self._pre_coletar_senhas(painel, protegidos)
+        self._iniciar_lote_resumos(
+            painel,
+            list(arquivos),
+            guarda,
+            continuar=getattr(self, "_resumos_continuar", False),
+            senhas=senhas,
+        )
 
     def _recarregar_painel_resumos(self: "ResumosActionsMixin") -> None:
         """Remonta o painel de origem do lote a partir do cache atualizado.

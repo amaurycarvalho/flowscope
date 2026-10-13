@@ -75,6 +75,7 @@ from flowscope.presentation.gui.background.events import (
 from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
+from flowscope.presentation.gui.finalizacao_job import executar_finalizacao
 from flowscope.presentation.gui.noticias_actions import NoticiasActionsMixin
 from flowscope.presentation.gui.noticias_job import executar_noticias
 from flowscope.presentation.gui.resumos_job import executar_resumos
@@ -144,15 +145,24 @@ def _pump(root, condicao, timeout=3.0):
     return condicao()
 
 
-def _executar_lote(painel, arquivos, continuar=True, token=None):
-    """Executa o trabalho puro do lote e retorna (sem_texto, eventos)."""
+def _executar_lote(painel, arquivos, continuar=True, token=None, senhas=None):
+    """Executa o trabalho puro do lote e retorna (resultado, eventos)."""
     handle = JobHandle(id=1, grupo="resumos", politica=Politica.LATEST_WINS)
     if token is not None:
         handle.token = token
     eventos = []
     ctx = JobContext(handle, eventos.append)
-    sem_texto = executar_resumos(ctx, painel, arquivos, continuar)
-    return sem_texto, eventos
+    resultado = executar_resumos(ctx, painel, arquivos, continuar, senhas)
+    return resultado, eventos
+
+
+def _executar_finalizacao(painel, itens):
+    """Executa o trabalho puro da finalização e devolve os eventos."""
+    handle = JobHandle(id=2, grupo="resumos", politica=Politica.LATEST_WINS)
+    eventos = []
+    ctx = JobContext(handle, eventos.append)
+    executar_finalizacao(ctx, painel, itens)
+    return eventos
 
 
 def _no_arquivo(painel, nome):
@@ -744,8 +754,9 @@ class TestAutoRecuperacao:
         llm = _LLMFake()
         painel = self._painel_com_llm(tmp_path, store, llm)
         painel._baixar_vinculo = lambda _texto, _senha=None: None
-        sem_texto, eventos = _executar_lote(painel, [arquivo])
-        assert sem_texto == 1
+        resultado, eventos = _executar_lote(painel, [arquivo])
+        assert resultado.sem_texto == 1
+        assert resultado.apontadores == [arquivo]
         assert llm.chamadas == []
         assert not any(isinstance(e, Resultado) for e in eventos)
         chave = chave_documento(arquivo.caminho, tmp_path)
@@ -759,8 +770,9 @@ class TestAutoRecuperacao:
         painel._baixar_vinculo = lambda _texto, _senha=None: ExtracaoTexto(
             "CONTEUDO DO DOCUMENTO", StatusExtracao.OK
         )
-        sem_texto, eventos = _executar_lote(painel, [arquivo])
-        assert sem_texto == 0
+        resultado, eventos = _executar_lote(painel, [arquivo])
+        assert resultado.sem_texto == 0
+        assert resultado.apontadores == []
         assert llm.chamadas
         assert "CONTEUDO DO DOCUMENTO" in llm.chamadas[0][0]["content"]
         assert any(isinstance(e, Resultado) for e in eventos)
@@ -808,7 +820,7 @@ class TestLoteRegeneraResumoTruncado:
         truncado = self._noticia(tmp_path, "truncado", "cortado no meio")
         integro = self._noticia(tmp_path, "integro", "resumo completo.")
 
-        sem_texto, eventos = _executar_lote(
+        _, eventos = _executar_lote(
             painel, [truncado, integro]
         )
 
@@ -819,6 +831,86 @@ class TestLoteRegeneraResumoTruncado:
         assert store.obter(ESCOPO_NOTICIAS, chave_truncado) is not None
         assert store.obter(ESCOPO_NOTICIAS, chave_integro) is None
         assert any(isinstance(e, Resultado) for e in eventos)
+
+
+class TestFinalizacaoDefinitivaNoticias:
+    @staticmethod
+    def _painel(tmp_path, llm, vinculo):
+        arquivo = TestAutoRecuperacao._arquivo_geral(tmp_path)
+        store = JsonDocumentSummaryStore(cache_dir=tmp_path)
+        painel = TestAutoRecuperacao._painel_cache(tmp_path)
+        painel._summary = DocumentSummaryService(
+            store, tmp_path, llm_factory=lambda: llm, llm_available=lambda: True
+        )
+        painel._baixar_vinculo = vinculo
+        return painel, arquivo, store
+
+    @staticmethod
+    def _protegido(_texto, _senha=None):
+        return ExtracaoTexto("", StatusExtracao.PROTEGIDO)
+
+    def test_documento_vinculado_protegido_entra_como_protegido(self, tmp_path):
+        llm = _LLMFake()
+        painel, arquivo, _ = self._painel(tmp_path, llm, self._protegido)
+
+        resultado, _ = _executar_lote(painel, [arquivo])
+
+        assert [i.arquivo.nome for i in resultado.protegidos] == [arquivo.nome]
+        assert resultado.nao_conclusivos[0].status is StatusExtracao.PROTEGIDO
+        assert llm.chamadas == []
+
+    def test_finalizacao_persiste_nota_e_resumo_deterministico(self, tmp_path):
+        llm = _LLMFake()
+        painel, arquivo, store = self._painel(tmp_path, llm, self._protegido)
+        resultado, _ = _executar_lote(painel, [arquivo])
+
+        _executar_finalizacao(painel, resultado.protegidos)
+
+        chave = chave_documento(arquivo.caminho, tmp_path)
+        persistido = painel._text_store.obter(arquivo.ticker, chave)
+        assert "senha" in persistido.lower()
+        assert store.obter(arquivo.ticker, chave) is not None
+        assert llm.chamadas == []
+
+    def test_item_finalizado_nao_e_reextraido(self, tmp_path):
+        llm = _LLMFake()
+        painel, arquivo, _ = self._painel(tmp_path, llm, self._protegido)
+        resultado, _ = _executar_lote(painel, [arquivo])
+        _executar_finalizacao(painel, resultado.protegidos)
+
+        def _explodir(_texto, _senha=None):
+            raise AssertionError("não deveria reconverter")
+
+        painel._baixar_vinculo = _explodir
+        segundo = painel.preparar_texto(arquivo)
+
+        assert "senha" in segundo.texto.lower()
+        assert segundo.status is StatusExtracao.OK
+
+    def test_pre_coleta_de_senha_do_vinculo(self, tmp_path, monkeypatch):
+        llm = _LLMFake()
+        painel, arquivo, _ = self._painel(tmp_path, llm, self._protegido)
+        painel.frame = MagicMock()
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.charts.noticias_panel.simpledialog.askstring",
+            lambda *a, **k: "segredo",
+        )
+        resultado, _ = _executar_lote(painel, [arquivo])
+
+        host = _HostPreColeta(painel)
+        senhas = host._pre_coletar_senhas(painel, resultado.protegidos)
+
+        assert senhas == {arquivo.caminho: "segredo"}
+
+
+class _HostPreColeta(ResumosActionsMixin):
+    """Host mínimo para exercitar a pré-coleta de senha do mixin."""
+
+    def __init__(self, painel):
+        self._resumos_painel = painel
+
+    def _painel_resumos(self):
+        return self._resumos_painel
 
 
 class TestReClickNoticias:
@@ -1042,7 +1134,7 @@ class TestResumos:
             def avaliar_guidance(self, arquivo, texto, resumo=None):
                 return None
 
-        sem_texto, eventos = _executar_lote(_PainelLote(), arquivos)
+        _, eventos = _executar_lote(_PainelLote(), arquivos)
         resultados = [e for e in eventos if isinstance(e, Resultado)]
         erros = [e for e in eventos if isinstance(e, Erro)]
         assert len(resultados) == 2
@@ -1282,7 +1374,12 @@ class _HostResumosNoticias(ResumosActionsMixin):
         self._resumos_job = None
         self.capturado = None
 
-    def _iniciar_lote_resumos(self, painel, pendentes, guarda, continuar=False):
+    def _data_referencia(self):
+        return date(2026, 2, 1)
+
+    def _iniciar_lote_resumos(
+        self, painel, pendentes, guarda, continuar=False, senhas=None
+    ):
         self.capturado = (painel, pendentes, guarda, continuar)
 
 

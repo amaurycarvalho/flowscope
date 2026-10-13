@@ -9,6 +9,9 @@ interrompe o lote, salvo quando ``continuar_em_erro``.
 """
 
 import logging
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
 from typing import Protocol
 
 from flowscope.application.cancellation import OperacaoCancelada
@@ -21,6 +24,7 @@ from flowscope.application.documentos.lote import (
     PainelLote,
     gerar_resumo_do_lote,
 )
+from flowscope.application.finalizacao_extracao import ItemPendente
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
@@ -29,6 +33,50 @@ from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 
 logger = logging.getLogger("flowscope")
+
+__all__ = [
+    "FASE_PREPARAR",
+    "FASE_RESUMIR",
+    "GRUPO",
+    "POLITICA",
+    "ItemPendente",
+    "MotivoExtracao",
+    "ResultadoResumos",
+    "executar_resumos",
+]
+
+
+class MotivoExtracao(Enum):
+    """Motivo da classificação de uma extração do lote."""
+
+    OK = "ok"
+    PARCIAL = "parcial"
+    FALHA = "falha"
+    PROTEGIDO = "protegido"
+    SEM_TEXTO = "sem_texto"
+    APONTADOR = "apontador"
+
+
+@dataclass
+class ResultadoResumos:
+    """Desfecho do lote com os conjuntos de itens por motivo de extração.
+
+    ``sem_texto`` preserva a contagem de itens não resumíveis exibida no
+    desfecho padrão; os demais campos classificam os itens de extração não
+    conclusiva (parciais, falhas e protegidos) que alimentam a confirmação de
+    finalização, além dos apontadores de notícia não resolvidos (excluídos).
+    """
+
+    sem_texto: int = 0
+    parciais: list[ItemPendente] = field(default_factory=list)
+    falhas: list[ItemPendente] = field(default_factory=list)
+    protegidos: list[ItemPendente] = field(default_factory=list)
+    apontadores: list[DocumentoArquivo] = field(default_factory=list)
+
+    @property
+    def nao_conclusivos(self: "ResultadoResumos") -> list[ItemPendente]:
+        """Itens de extração não conclusiva, na ordem de processamento."""
+        return [*self.parciais, *self.falhas, *self.protegidos]
 
 #: Grupo de exclusão e política do resumo em lote.
 GRUPO = "resumos"
@@ -70,22 +118,30 @@ def executar_resumos(
     painel: _PainelDocumentos,
     arquivos: list[DocumentoArquivo],
     continuar_em_erro: bool = False,
-) -> int:
-    """Prepara textos e gera resumos, retornando a contagem sem texto.
+    senhas: dict[Path, str] | None = None,
+) -> ResultadoResumos:
+    """Prepara textos e gera resumos, devolvendo o desfecho classificado.
 
     Quando ``continuar_em_erro`` é verdadeiro, uma falha por item é publicada e
     o lote prossegue com os demais; caso contrário, o lote é interrompido no
-    primeiro erro.
+    primeiro erro. ``senhas`` associa caminho à senha pré-coletada de itens
+    protegidos, mantendo o worker não-interativo.
+
+    A classificação é acumulada durante a preparação: se o lote for cancelado
+    ou abortado por timeout, o desfecho parcial já processado é devolvido para
+    que a interface ofereça reprocessar/finalizar apenas esses itens.
     """
+    resultado = ResultadoResumos()
     try:
-        preparados = _preparar_textos(ctx, painel, arquivos, continuar_em_erro)
-        if preparados is None:
-            return 0
-        _resumir(ctx, painel, preparados, continuar_em_erro)
+        preparacao = _preparar_textos(
+            ctx, painel, arquivos, continuar_em_erro, senhas, resultado
+        )
+        if preparacao is None:
+            return resultado
+        _resumir(ctx, painel, preparacao, continuar_em_erro)
     except OperacaoCancelada:
         logger.debug("Resumo em lote interrompido pelo usuário")
-        return 0
-    return len(arquivos) - len(preparados)
+    return resultado
 
 
 def _preparar_textos(
@@ -93,51 +149,92 @@ def _preparar_textos(
     painel: _PainelDocumentos,
     arquivos: list[DocumentoArquivo],
     continuar_em_erro: bool,
+    senhas: dict[Path, str] | None = None,
+    resultado: ResultadoResumos | None = None,
 ) -> list[tuple[DocumentoArquivo, str]] | None:
-    """Prepara os textos que faltam e retorna os que têm texto completo.
+    """Prepara os textos e classifica cada item pelo motivo da extração.
 
-    Retorna ``None`` quando um erro interrompe a fase.
+    Acumula a classificação em ``resultado`` (criado quando ausente), de modo
+    que itens já processados sobrevivam a uma interrupção. Retorna os itens com
+    texto, ou ``None`` quando um erro interrompe a fase.
     """
     total = len(arquivos)
     _progresso(ctx, 1, 0, total)
-    preparados: list[tuple[DocumentoArquivo, ExtracaoTexto]] = []
+    mapa = senhas or {}
+    if resultado is None:
+        resultado = ResultadoResumos()
+    com_texto: list[tuple[DocumentoArquivo, str]] = []
     for indice, arquivo in enumerate(arquivos, start=1):
         ctx.raise_if_cancelled()
         try:
-            resultado = painel.preparar_texto(arquivo)
+            extracao = painel.preparar_texto(arquivo, mapa.get(arquivo.caminho))
         except Exception as exc:
             ctx.erro(exc, dados=arquivo)
             if not continuar_em_erro:
                 return None
             continue
-        preparados.append((arquivo, resultado))
+        _acumular(painel, arquivo, extracao, com_texto, resultado)
         _progresso(ctx, 1, indice, total)
-    return [
-        (arquivo, resultado.texto)
-        for arquivo, resultado in preparados
-        if _texto_utilizavel(painel, arquivo, resultado)
-    ]
+    resultado.sem_texto = total - len(com_texto)
+    return com_texto
 
 
-def _texto_utilizavel(
+def _acumular(
+    painel: _PainelDocumentos,
+    arquivo: DocumentoArquivo,
+    extracao: ExtracaoTexto,
+    com_texto: list[tuple[DocumentoArquivo, str]],
+    resultado: ResultadoResumos,
+) -> None:
+    """Classifica a extração e a acumula no desfecho do lote."""
+    motivo = _motivo(painel, arquivo, extracao)
+    if motivo is MotivoExtracao.OK:
+        com_texto.append((arquivo, extracao.texto))
+        return
+    if motivo is MotivoExtracao.APONTADOR:
+        resultado.apontadores.append(arquivo)
+        return
+    if motivo is MotivoExtracao.SEM_TEXTO:
+        return
+    item = ItemPendente(
+        arquivo, extracao.status, extracao.texto, extracao.paginas_com_falha
+    )
+    if motivo is MotivoExtracao.PARCIAL:
+        resultado.parciais.append(item)
+    elif motivo is MotivoExtracao.FALHA:
+        resultado.falhas.append(item)
+    else:
+        resultado.protegidos.append(item)
+
+
+def _motivo(
     painel: _PainelDocumentos,
     arquivo: DocumentoArquivo,
     resultado: ExtracaoTexto,
-) -> bool:
-    """Indica se o texto preparado serve para resumir.
+) -> MotivoExtracao:
+    """Classifica a extração pelo motivo observável.
 
-    Apenas resultados completos são resumíveis; parcial, falha e protegido
-    permanecem pendentes. Painéis que distinguem texto resolvido de conteúdo sem
-    valor (por exemplo, notícias "Geral" cujo documento vinculado não foi
-    baixado) expõem ``texto_utilizavel``; na ausência do método, vale o texto
-    extraível genérico.
+    Parcial, falha e protegido permanecem pendentes; ausência definitiva é
+    excluída. Painéis que distinguem texto resolvido de conteúdo sem valor (por
+    exemplo, notícias "Geral" cujo documento vinculado não foi baixado) expõem
+    ``texto_utilizavel``; quando ele recusa um texto completo, o item é um
+    apontador não resolvido. Na ausência do método, vale o texto extraível
+    genérico.
     """
-    if resultado.status is not StatusExtracao.OK:
-        return False
+    if resultado.status is StatusExtracao.PARCIAL:
+        return MotivoExtracao.PARCIAL
+    if resultado.status is StatusExtracao.FALHA:
+        return MotivoExtracao.FALHA
+    if resultado.status is StatusExtracao.PROTEGIDO:
+        return MotivoExtracao.PROTEGIDO
+    if resultado.status is StatusExtracao.SEM_TEXTO:
+        return MotivoExtracao.SEM_TEXTO
+    if not tem_texto(resultado.texto):
+        return MotivoExtracao.SEM_TEXTO
     metodo = getattr(painel, "texto_utilizavel", None)
-    if metodo is not None:
-        return bool(metodo(arquivo, resultado.texto))
-    return tem_texto(resultado.texto)
+    if metodo is not None and not metodo(arquivo, resultado.texto):
+        return MotivoExtracao.APONTADOR
+    return MotivoExtracao.OK
 
 
 def _avaliar_guidance(

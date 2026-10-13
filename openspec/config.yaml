@@ -1,32 +1,25 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+# Project context (shown to AI when creating artifacts).
+context: |
+  As specs do projeto são escritas em português e usam "DEVE" como termo
+  normativo (o warning RFC 2119 do OpenSpec é aceito).
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  Verificação por alteração (convenção de engineering-standards):
+  - Automático em toda change: `make lint`, `make complexity` e os testes
+    relacionados/impactados pela mudança.
+  - A suíte completa (`make test`) e o quality gate completo (`make quality-gate`)
+    rodam apenas quando estritamente necessário (mudanças amplas: refatorações
+    transversais, contratos compartilhados, dependências, CI, cobertura).
+  - Incluir a execução completa como task de uma change exige autorização
+    explícita do usuário.
+  - Execuções motivadas apenas por precaução ("nice to have") entram como task
+    manual do usuário, não como task executada pelo agente.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+# Per-artifact rules (optional).
+rules:
+  tasks:
+    - Não incluir a execução da suíte completa/quality gate como task executada pelo agente sem autorização explícita do usuário.
+    - Verificações completas motivadas apenas por precaução DEVEM figurar como task manual do usuário.
+
+# Per-operation guidance (optional).

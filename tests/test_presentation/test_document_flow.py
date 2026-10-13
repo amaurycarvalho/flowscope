@@ -14,6 +14,7 @@ from flowscope.application.document_preview import (
     ExtracaoTexto,
     StatusExtracao,
 )
+from flowscope.application.extracao_orcada import EXTRACAO_TIMEOUT_S
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.presentation.gui.charts.document_flow_mixin import DocumentFlowMixin
 
@@ -31,8 +32,15 @@ def _arquivo() -> DocumentoArquivo:
 
 
 class _SummaryFake:
+    def __init__(self) -> None:
+        self.persistidos: list[tuple] = []
+
     def chave(self, arquivo: DocumentoArquivo) -> str:
         return f"{arquivo.ticker}/{arquivo.nome}"
+
+    def persistir(self, arquivo, resumo):
+        self.persistidos.append((arquivo, resumo))
+        return arquivo
 
 
 class _StoreFake:
@@ -140,6 +148,69 @@ class TestPrepararTexto:
         assert arquivo.caminho not in host._preview_cache
 
 
+class TestTextoDefinitivo:
+    def test_parcial_grava_texto_com_nota(self):
+        store = _StoreFake()
+        host = _FlowHost(store)
+        arquivo = _arquivo()
+
+        texto = host.persistir_texto_definitivo(
+            arquivo, StatusExtracao.PARCIAL, "corpo parcial", 1
+        )
+
+        assert texto.startswith("corpo parcial")
+        assert store.obter("ALZR11", "ALZR11/10.pdf") == texto
+        assert host._preview_cache[arquivo.caminho] == texto
+
+    def test_falha_grava_apenas_a_nota(self):
+        store = _StoreFake()
+        host = _FlowHost(store)
+        arquivo = _arquivo()
+
+        texto = host.persistir_texto_definitivo(
+            arquivo, StatusExtracao.FALHA, ""
+        )
+
+        assert "erro crítico" in texto.lower()
+        assert store.obter("ALZR11", "ALZR11/10.pdf") == texto
+
+    def test_protegido_grava_apenas_a_nota(self):
+        store = _StoreFake()
+        host = _FlowHost(store)
+        arquivo = _arquivo()
+
+        texto = host.persistir_texto_definitivo(
+            arquivo, StatusExtracao.PROTEGIDO, ""
+        )
+
+        assert "senha" in texto.lower()
+        assert store.obter("ALZR11", "ALZR11/10.pdf") == texto
+
+    def test_persistir_resumo_definitivo_delega_ao_servico(self):
+        store = _StoreFake()
+        host = _FlowHost(store)
+        arquivo = _arquivo()
+        resumo = object()
+
+        host.persistir_resumo_definitivo(arquivo, resumo)
+
+        assert host._summary.persistidos == [(arquivo, resumo)]
+
+
+class TestTimeoutExtracao:
+    def test_padrao_e_o_orcamento_do_modulo(self):
+        host = DocumentFlowMixin()
+
+        assert host.timeout_extracao() == EXTRACAO_TIMEOUT_S
+
+    def test_definir_ajusta_apenas_em_memoria(self):
+        host = DocumentFlowMixin()
+
+        host.definir_timeout_extracao(117.0)
+
+        assert host.timeout_extracao() == 117.0
+
+
 class TestAvisosDeExtracao:
     def test_parcial_registra_warning(self, caplog):
         store = _StoreFake()
@@ -176,15 +247,13 @@ class TestAvisosDeExtracao:
         assert "parcial" not in texto
         assert "sem texto" not in texto
 
-    def test_falha_nao_registra_aviso(self, caplog):
+    def test_falha_registra_warning(self, caplog):
         host = _FlowHost(_StoreFake(), ExtracaoTexto("", StatusExtracao.FALHA))
 
         with caplog.at_level(logging.WARNING, logger="flowscope"):
             host.preparar_texto(_arquivo())
 
-        texto = caplog.text.lower()
-        assert "parcial" not in texto
-        assert "sem texto" not in texto
+        assert "Falha crítica de extração: ALZR11/10.pdf" in caplog.text
 
     def test_protegido_nao_registra_aviso(self, caplog):
         host = _FlowHost(_StoreFake(), ExtracaoTexto("", StatusExtracao.PROTEGIDO))

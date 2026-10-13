@@ -5,12 +5,17 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
+from flowscope.application.document_preview import StatusExtracao
+from flowscope.application.finalizacao_extracao import ItemPendente
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
 from flowscope.domain.llm import LLMRateLimitError
 from flowscope.presentation.gui.app_resumos_actions import ResumosActionsMixin
-from flowscope.presentation.gui.background.events import Erro, Resultado
+from flowscope.presentation.gui.background.events import Erro, Outcome, Resultado
+from flowscope.presentation.gui.resumos_job import ResultadoResumos
 
 _AVALIACAO = AvaliacaoGuidance(
     metodo="ia", data_relatorio=date(2026, 2, 1)
@@ -218,7 +223,7 @@ class TestCotaEsgotadaNoLote:
         host._resumos_total = 100
         host._resumos_resumidos = 7
 
-        host._finalizar_resumos_job(False, None, 0)
+        host._finalizar_resumos_job(Outcome.SUCESSO, None, ResultadoResumos())
 
         host._flash_status.assert_called_once()
         mensagem = host._flash_status.call_args.args[0]
@@ -253,7 +258,313 @@ class TestRecarregarPainelResumos:
 class TestFinalizarAgendaRemontagem:
     def test_agenda_recarga_do_origem(self):
         host = _HostRemontagem(continuar=False)
-        host._finalizar_resumos_job(False, None, 0)
+        host._finalizar_resumos_job(Outcome.SUCESSO, None, ResultadoResumos())
         assert host.agendados
         host.agendados[0]()
         assert host.documentos == ["HGBS11"]
+
+
+def _item(status: StatusExtracao, nome: str = "10.pdf") -> ItemPendente:
+    return ItemPendente(_arquivo(nome), status, "texto parcial", 1)
+
+
+class _BackgroundFake:
+    """Gerenciador fake com limite de inatividade em memória."""
+
+    def __init__(self) -> None:
+        self.limite_inatividade_s = 120.0
+        self.definidos: list = []
+
+    def definir_limite_inatividade(self, segundos):
+        self.limite_inatividade_s = segundos
+        self.definidos.append(segundos)
+
+
+class _HostConfirmacao(ResumosActionsMixin):
+    """Host headless que registra as decisões da confirmação de finalização."""
+
+    def __init__(self, *, continuar: bool = False) -> None:
+        self._resumos_continuar = continuar
+        self._resumos_cota = False
+        self._resumos_interrompido = False
+        self._ticker_selecionado = "HGBS11"
+        self._resumos_painel = MagicMock()
+        self._resumos_painel._solicitar_senha = lambda arquivo: "segredo"
+        self._resumos_painel._max_tentativas = lambda: 3
+        self._timeout_atual = 90.0
+        self.timeouts: list = []
+
+        def _medir():
+            return self._timeout_atual
+
+        def _definir(valor):
+            self._timeout_atual = valor
+            self.timeouts.append(valor)
+
+        self._resumos_painel.timeout_extracao = _medir
+        self._resumos_painel.definir_timeout_extracao = _definir
+        self._background = _BackgroundFake()
+        self.agendados: list = []
+        self.lotes: list = []
+        self.finalizacoes: list = []
+        self._flash_status = MagicMock()
+        self._set_status = MagicMock()
+
+    def after(self, ms, callback):
+        self.agendados.append(callback)
+        return "id"
+
+    def _ticker_apresentado(self):
+        return self._ticker_selecionado
+
+    def _data_referencia(self):
+        return date(2026, 2, 1)
+
+    def _iniciar_lote_resumos(
+        self, painel, pendentes, guarda, continuar=False, senhas=None
+    ):
+        self.lotes.append((painel, pendentes, guarda, continuar, senhas))
+
+    def _submeter_finalizacao(self, itens, guarda):
+        self.finalizacoes.append((itens, guarda))
+
+
+def _resultado(*itens: ItemPendente) -> ResultadoResumos:
+    resultado = ResultadoResumos()
+    for item in itens:
+        if item.status is StatusExtracao.PARCIAL:
+            resultado.parciais.append(item)
+        elif item.status is StatusExtracao.FALHA:
+            resultado.falhas.append(item)
+        else:
+            resultado.protegidos.append(item)
+    return resultado
+
+
+class TestConfirmacaoFinalizacao:
+    def _patch(self, monkeypatch, respostas):
+        respostas = list(respostas)
+
+        def fake(*args, **kwargs):
+            return respostas.pop(0) if respostas else False
+
+        monkeypatch.setattr(
+            "flowscope.presentation.gui.app_resumos_actions.messagebox.askyesno",
+            fake,
+        )
+
+    def test_agendada_apos_termino_normal_com_nao_conclusivos(self):
+        host = _HostConfirmacao()
+        host._resumos_total = 1
+        host._resumos_resumidos = 0
+
+        host._finalizar_resumos_job(
+            Outcome.SUCESSO, "HGBS11", _resultado(_item(StatusExtracao.PARCIAL))
+        )
+
+        assert len(host.agendados) == 2
+
+    def test_termino_abortado_agenda_confirmacao(self):
+        host = _HostConfirmacao()
+        host._resumos_total = 1
+
+        host._finalizar_resumos_job(
+            Outcome.ABORTADO, "HGBS11", _resultado(_item(StatusExtracao.PARCIAL))
+        )
+
+        assert len(host.agendados) == 2
+
+    def test_termino_abortado_agenda_retry_do_lote(self):
+        host = _HostConfirmacao()
+        host._resumos_total = 3
+        host._resumos_pendentes = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+
+        host._finalizar_resumos_job(
+            Outcome.ABORTADO, "HGBS11", ResultadoResumos()
+        )
+
+        assert len(host.agendados) == 2
+
+    def test_retry_do_lote_interrompido_usa_lista_do_lote(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        arquivos = [_arquivo("10.pdf"), _arquivo("20.pdf")]
+
+        host._confirmar_finalizacao(
+            ResultadoResumos(), "HGBS11", retry=arquivos
+        )
+
+        assert [a.nome for a in host.lotes[0][1]] == ["10.pdf", "20.pdf"]
+
+    def test_timeout_nao_oferece_definitivo(self, monkeypatch):
+        self._patch(monkeypatch, [False])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            ResultadoResumos(), "HGBS11", retry=[_arquivo("10.pdf")]
+        )
+
+        assert not host.finalizacoes and not host.lotes
+
+    def test_retry_escala_timeouts_em_30_por_cento(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "HGBS11"
+        )
+
+        assert host.timeouts == [pytest.approx(117.0)]
+        assert host._background.definidos == [pytest.approx(156.0)]
+
+    def test_retry_escala_relativo_ao_timeout_anterior(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        host._timeout_atual = 117.0
+        host._background.limite_inatividade_s = 156.0
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "HGBS11"
+        )
+
+        assert host.timeouts == [pytest.approx(152.1)]
+        assert host._background.definidos == [pytest.approx(202.8)]
+
+    def test_recusa_do_retry_leva_a_finalizacao(self, monkeypatch):
+        self._patch(monkeypatch, [False, True])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "HGBS11"
+        )
+
+        assert host.finalizacoes and not host.lotes
+
+    def test_dupla_recusa_nao_altera(self, monkeypatch):
+        self._patch(monkeypatch, [False, False])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.FALHA)), "HGBS11"
+        )
+
+        assert not host.finalizacoes and not host.lotes
+
+    def test_confirmar_retry_reprocessa_apenas_a_lista(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL, "10.pdf")), "HGBS11"
+        )
+
+        assert len(host.lotes) == 1
+        arquivos = host.lotes[0][1]
+        assert [a.nome for a in arquivos] == ["10.pdf"]
+
+    def test_pre_coleta_de_senha_dos_protegidos(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PROTEGIDO, "20.pdf")), "HGBS11"
+        )
+
+        assert host.lotes[0][4] == {Path("/cache/20.pdf"): "segredo"}
+
+    def test_protegido_sem_senha_nao_e_repassado(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        host._resumos_painel._solicitar_senha = lambda arquivo: None
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PROTEGIDO, "20.pdf")), "HGBS11"
+        )
+
+        assert host.lotes[0][4] == {}
+
+    def test_sem_confirmacao_por_cota(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        host._resumos_cota = True
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "HGBS11"
+        )
+
+        assert not host.lotes and not host.finalizacoes
+
+    def test_sem_confirmacao_por_erro(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        host._resumos_interrompido = True
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "HGBS11"
+        )
+
+        assert not host.lotes and not host.finalizacoes
+
+    def test_sem_confirmacao_por_troca_de_ticker(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), "PETR4"
+        )
+
+        assert not host.lotes and not host.finalizacoes
+
+    def test_sem_confirmacao_por_troca_de_periodo(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao(continuar=True)
+
+        host._confirmar_finalizacao(
+            _resultado(_item(StatusExtracao.PARCIAL)), date(2026, 1, 1)
+        )
+
+        assert not host.lotes and not host.finalizacoes
+
+    def test_itens_nao_finalizaveis_sao_ignorados(self, monkeypatch):
+        self._patch(monkeypatch, [True])
+        host = _HostConfirmacao()
+        resultado = ResultadoResumos(sem_texto=1)
+        resultado.parciais.append(
+            ItemPendente(_arquivo("10.pdf"), StatusExtracao.OK)
+        )
+
+        host._confirmar_finalizacao(resultado, "HGBS11")
+
+        assert not host.lotes and not host.finalizacoes
+
+    def test_termino_cancelado_nao_agenda_confirmacao(self):
+        host = _HostConfirmacao()
+        host._resumos_total = 1
+
+        host._finalizar_resumos_job(
+            Outcome.CANCELADO, "HGBS11", _resultado(_item(StatusExtracao.PARCIAL))
+        )
+
+        assert len(host.agendados) == 1
+
+    def test_termino_com_falha_fatal_nao_agenda_confirmacao(self):
+        host = _HostConfirmacao()
+        host._resumos_total = 1
+
+        host._finalizar_resumos_job(
+            Outcome.FALHA, "HGBS11", _resultado(_item(StatusExtracao.PARCIAL))
+        )
+
+        assert len(host.agendados) == 1
+
+
+class TestFinalizarRefleteNoPainel:
+    def test_finalizar_finalizacao_remonta_e_reavalia_botao(self):
+        host = _HostRemontagem(continuar=False)
+
+        host._finalizar_finalizacao()
+
+        assert host.agendados
+        host.agendados[-1]()
+        assert host.documentos == ["HGBS11"]
+        host._resumos_painel.refresh_resumir_button.assert_called()

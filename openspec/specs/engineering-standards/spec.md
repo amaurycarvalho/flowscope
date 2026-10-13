@@ -4,67 +4,54 @@ Define engineering standards and quality gates that apply to all code changes in
 
 ## Requirements
 
-### Requirement: Quality gate obrigatório em toda alteração
+### Requirement: Verificação mínima automática por alteração
 
-Toda alteração de código DEVE ser finalizada com a execução do quality gate completo definido na RFC-005: (1) lint limpo sem erros nem warnings (ruff + flake8), (2) todos os testes existentes executando com sucesso com cobertura mínima de 85%, (3) complexidade dentro dos thresholds (CC <= 10, MI >= 30), (4) duplicação de código abaixo de 10%, e (5) nenhuma vulnerabilidade de segurança de severidade ERROR detectada pelo semgrep.
+Toda alteração de código DEVE ser finalizada com a execução automática de, no mínimo: (1) o lint limpo sem erros nem warnings (`make lint`), (2) a verificação de complexidade dentro dos thresholds (`make complexity`, CC <= 10 e MI >= 30) e (3) os testes relacionados ou impactados pela mudança. A suíte de testes completa e o quality gate completo NÃO DEVEM ser executados automaticamente em toda alteração.
 
-#### Scenario: Lint falha bloqueia finalização
-- **GIVEN** uma alteração de código com erro de lint (ex: import não utilizado, formato incorreto)
-- **WHEN** a tarefa é finalizada sem corrigir o erro
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** a correção DEVE ser aplicada antes do commit
+#### Scenario: Lint automático em toda alteração
+- **GIVEN** uma alteração de código
+- **WHEN** a implementação é concluída
+- **THEN** `make lint` DEVE ser executado automaticamente
+- **AND** erros de lint DEVEM ser corrigidos antes de finalizar
 
-#### Scenario: Teste falhando bloqueia finalização
-- **GIVEN** uma alteração de código com um teste existente falhando
-- **WHEN** a tarefa é finalizada sem corrigir a falha
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** a correção DEVE ser aplicada antes do commit
+#### Scenario: Complexidade automática em toda alteração
+- **GIVEN** uma alteração de código
+- **WHEN** a implementação é concluída
+- **THEN** `make complexity` DEVE ser executado automaticamente (CC <= 10, MI >= 30)
 
-#### Scenario: Cobertura abaixo de 85% bloqueia finalização
-- **GIVEN** uma alteração de código que reduz a cobertura de testes para abaixo de 85%
-- **WHEN** a tarefa é finalizada
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** testes adicionais DEVEM ser escritos para restaurar a cobertura mínima
+#### Scenario: Testes relacionados ou impactados são automáticos
+- **GIVEN** uma alteração de código
+- **WHEN** a implementação é concluída
+- **THEN** os testes relacionados ou impactados pela mudança DEVEM ser executados automaticamente
+- **AND** falhas nesses testes DEVEM ser corrigidas antes de finalizar
 
-#### Scenario: Complexidade excessiva bloqueia finalização
-- **GIVEN** uma alteração que introduz função com cyclomatic complexity > 10 ou Maintainability Index < 30
-- **WHEN** a tarefa é finalizada
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** o código DEVE ser refatorado para reduzir a complexidade
+#### Scenario: Suíte completa não é executada por padrão
+- **GIVEN** uma alteração localizada
+- **WHEN** a implementação é concluída
+- **THEN** a suíte de testes completa NÃO DEVE ser executada automaticamente
+- **AND** o quality gate completo NÃO DEVE ser executado automaticamente
 
-#### Scenario: Duplicação excessiva bloqueia finalização
-- **GIVEN** uma alteração que introduz duplicação de código acima de 10%
-- **WHEN** a tarefa é finalizada
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** o código duplicado DEVE ser extraído para funções ou módulos compartilhados
+### Requirement: Quality gate completo apenas quando estritamente necessário
 
-#### Scenario: Vulnerabilidade de segurança bloqueia finalização
-- **GIVEN** uma alteração que introduz vulnerabilidade detectada pelo semgrep com severidade ERROR
-- **WHEN** a tarefa é finalizada
-- **THEN** isso DEVE ser considerado uma violação do engineering standard
-- **AND** a vulnerabilidade DEVE ser corrigida antes do commit
+A suíte de testes completa e o quality gate completo (`make test`, `make quality-gate`) DEVEM ser executados apenas quando estritamente necessário — tipicamente mudanças amplas: refatorações transversais, alterações de contrato compartilhado, mudanças de dependências/empacotamento, de infraestrutura de CI ou de cobertura. Incluir essa execução como task de uma change DEVE requerer autorização explícita do usuário. Quando a motivação for apenas precaução ("nice to have"), a execução DEVE figurar como task manual do usuário, e NÃO como task executada pelo agente.
 
-#### Scenario: Quality gate completo permite finalização
-- **GIVEN** uma alteração de código sem erros de lint
-- **AND** todos os testes existentes executam com sucesso com cobertura >= 85%
-- **AND** complexidade dentro dos thresholds (CC <= 10, MI >= 30)
-- **AND** duplicação abaixo de 10%
-- **AND** semgrep reporta zero findings ERROR
-- **WHEN** a tarefa é finalizada
-- **THEN** o quality gate DEVE ser considerado cumprido
+#### Scenario: Mudança ampla exige autorização para entrar nas tasks
+- **GIVEN** uma change que altera contratos compartilhados ou infraestrutura
+- **WHEN** o agente propõe incluir a execução do quality gate completo como task
+- **THEN** a inclusão DEVE depender de autorização explícita do usuário
+- **AND** sem autorização a task NÃO DEVE ser incluída nem executada automaticamente
 
-### Requirement: Comando de verificação
+#### Scenario: Execução por precaução é task manual do usuário
+- **GIVEN** uma mudança localizada em que rodar o gate completo seria apenas precaução ("nice to have")
+- **WHEN** as tasks da change são montadas
+- **THEN** a execução DEVE figurar como task manual do usuário, marcada para execução humana
+- **AND** o agente NÃO DEVE executá-la automaticamente
 
-O comando `make quality-gate` DEVE ser usado como quality gate padrão, executando respectivamente lint (ruff + flake8), verificação de complexidade (radon + xenon + lizard), verificação de duplicação (jscpd), testes com cobertura (pytest --cov-fail-under=85), verificação de mutação (mutmut, threshold 80%), e verificação de segurança (semgrep), conforme definido no Makefile do projeto e na RFC-005.
-
-#### Scenario: Execução do quality gate completo
-- **WHEN** o usuário executa `make quality-gate` no diretório raiz do projeto
-- **THEN** o lint DEVE rodar com ruff e flake8 e retornar sem violações
-- **AND** a complexidade DEVE ser verificada com radon, xenon e lizard
-- **AND** a duplicação DEVE ser verificada com jscpd
-- **AND** os testes DEVEM ser executados com pytest e cobertura >= 85%
-- **AND** a mutação DEVE ser verificada com score >= 80%
-- **AND** a segurança DEVE ser verificada com semgrep sem findings ERROR
+#### Scenario: Quality gate completo executado sob demanda
+- **GIVEN** autorização explícita (ou CI) para a mudança ampla
+- **WHEN** `make quality-gate` é executado no diretório raiz
+- **THEN** lint, complexidade, duplicação, testes com cobertura >= 85%, mutação >= 80% e segurança sem findings ERROR DEVEM ser verificados
+- **AND** os thresholds de bloqueio DEVEM ser respeitados
 
 ### Requirement: Validação OpenSpec em português (não-strict)
 

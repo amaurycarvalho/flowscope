@@ -896,8 +896,10 @@ class TestPrepararTextoHeadless:
         chamadas = []
         monkeypatch.setattr(
             "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo_com_orcamento",
-            lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
-            or ExtracaoTexto("extraído", StatusExtracao.OK),
+            lambda caminho, seletor=None, senha=None, timeout=None: (
+                chamadas.append(caminho)
+                or ExtracaoTexto("extraído", StatusExtracao.OK)
+            ),
         )
 
         assert host.preparar_texto(arquivo).texto == "extraído"
@@ -912,8 +914,10 @@ class TestPrepararTextoHeadless:
         chamadas = []
         monkeypatch.setattr(
             "flowscope.presentation.gui.charts.document_flow_mixin.extrair_arquivo_com_orcamento",
-            lambda caminho, seletor=None, senha=None: chamadas.append(caminho)
-            or ExtracaoTexto("convertido", StatusExtracao.OK),
+            lambda caminho, seletor=None, senha=None, timeout=None: (
+                chamadas.append(caminho)
+                or ExtracaoTexto("convertido", StatusExtracao.OK)
+            ),
         )
 
         assert host.preparar_texto(arquivo).texto == "do cache"

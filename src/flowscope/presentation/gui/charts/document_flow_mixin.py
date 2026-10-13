@@ -24,6 +24,9 @@ from flowscope.domain.fii.guidance import METODO_IA
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
+from flowscope.presentation.gui.charts.document_finalizacao_mixin import (
+    DocumentFinalizacaoMixin,
+)
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
     mensagem_placeholder,
@@ -59,7 +62,7 @@ def _documentos_do_catalogo(
     ]
 
 
-class DocumentFlowMixin:
+class DocumentFlowMixin(DocumentFinalizacaoMixin):
     """Extrai texto, gera resumo e compõe a pré-visualização do documento."""
 
     def documentos_sem_resumo(
@@ -270,7 +273,9 @@ class DocumentFlowMixin:
         separado) para que um documento patologicamente lento não bloqueie a
         pré-visualização nem o lote.
         """
-        return extrair_arquivo_com_orcamento(arquivo.caminho, senha=senha)
+        return extrair_arquivo_com_orcamento(
+            arquivo.caminho, senha=senha, timeout=self.timeout_extracao()
+        )
 
     def preparar_texto(
         self: "DocumentFlowMixin",
@@ -296,6 +301,12 @@ class DocumentFlowMixin:
             logger.warning(
                 "Extração parcial (%d página(s) com falha): %s/%s",
                 resultado.paginas_com_falha,
+                arquivo.ticker,
+                arquivo.nome,
+            )
+        elif resultado.status is StatusExtracao.FALHA:
+            logger.warning(
+                "Falha crítica de extração: %s/%s",
                 arquivo.ticker,
                 arquivo.nome,
             )

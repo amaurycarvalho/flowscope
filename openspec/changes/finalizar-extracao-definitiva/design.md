@@ -54,6 +54,23 @@ A confirmação é exibida em `_finalizar_resumos_job` apenas quando o lote não
 
 A finalização reusa `preparar_texto`/`gerar_e_persistir` e um novo gancho de persistência do texto definitivo (monta a nota). A montagem da nota é uma regra pura (texto a partir de status + páginas com falha), separada para teste headless. As specs de `documento-summary` e `extracao-texto-pdf` não mudam: a nota e o resumo determinístico pertencem à `finalizacao-extracao-definitiva`.
 
+### D8. Timeout/aborto é explícito, logado e escalável
+
+O watchdog de inatividade do `BackgroundManager` passa a invocar o callback de término do job também em cancelamento e aborto — hoje `_finalizar` finaliza o job fora da drenagem e bypassa o callback. O lote de resumos classifica o desfecho pelo `Outcome`:
+
+- `CANCELADO` e `FALHA` (cancelamento do usuário e erro fatal) encerram sem confirmação.
+- `ABORTADO` (timeout/inatividade) remonta o painel, reavalia o botão, registra no log e **exibe o fluxo de retry/finalização** para os itens já processados.
+
+A falha crítica de extração (`FALHA`, típica de estouro do orçamento sem texto) passa a ser logada, como o parcial já era; o timeout/inatividade é logado pelo watchdog com grupo e identificador.
+
+A pergunta de finalização só alcança itens efetivamente processados no lote e classificados como não conclusivos (`PARCIAL`/`FALHA`/`PROTEGIDO`); pendentes nunca processados ficam de fora, mesmo após uma interrupção por timeout. Isso evita que o usuário marque por acidente como definitivos itens que o timeout impediu de processar. Já a pergunta de reprocessamento, no timeout, reconsidera o lote interrompido (itens que permanecem pendentes), que é seguro por não marcar nada como definitivo; no término normal, o retry coincide com a lista não conclusiva.
+
+Ao confirmar o reprocessamento, os timeouts correntes crescem 30% **em memória** — o orçamento de extração do painel e o limite de inatividade do gerenciador, ambos relativos ao valor em memória anterior. O crescimento é session-scoped: nada é persistido nem registrado como definitivo. Assim o retry tem mais tempo sem afrouxar o watchdog abaixo do novo orçamento de extração.
+
+- Alternativa descartada: manter o aborto silencioso (sem log, sem término explícito e sem retry). Perderia a trilha de auditoria e não ofereceria reprocessamento após timeout.
+- Alternativa descartada: exibir a confirmação com todos os pendentes. Arriscaria finalizar itens não processados; a lista é restrita aos processados.
+- Alternativa descartada: persistir o timeout escalado. Vazaria estado de execução para a próxima sessão, contrariando "somente em tempo de execução".
+
 ## Risks / Trade-offs
 
 - [Nota vaza para índice do chat e regex de guidance] → A nota é claramente delimitada e informativa; a extração determinística de guidance é tolerante a texto adicional.
@@ -62,6 +79,8 @@ A finalização reusa `preparar_texto`/`gerar_e_persistir` e um novo gancho de p
 - [Resumo determinístico não ser considerado íntegro] → Garantir pontuação final na mensagem fixa; testar `resumo_completo`.
 - [Mudança do retorno de `executar_resumos` quebra testes] → Ajustar job e testes do lote junto; manter o desfecho textual equivalente.
 - [Protegido sem senha multiplica prompts] → Pré-coleta por item com limite de tentativas; item sem senha permanece pendente e reclama no ciclo seguinte.
+- [Aborto por timeout silencioso e finalização acidental de itens não processados] → Tratado em D8: término explícito e logado, retry oferecido após timeout e lista restrita aos itens efetivamente processados.
+- [Escala indefinida de timeout entre retries] → Crescimento de 30% só ocorre no retry confirmado e apenas em memória; recusar encerra o ciclo.
 
 ## Migration Plan
 
