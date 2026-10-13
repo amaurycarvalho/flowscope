@@ -48,25 +48,28 @@ TAB_CONTENT = {
         "Chat AI — Conversa sobre a watchlist e os caches",
         [
             ("Objetivo: ", "bold"),
-            ("Conversar em linguagem natural com a I.A. sobre os dados já carregados, os documentos e as notícias em cache e o próprio FlowScope.\n\n", ""),
+            ("Conversar em linguagem natural com a I.A., que responde navegando uma árvore de conhecimento montada a partir do estado local — fundamentos, documentos, notícias, guidance e o próprio FlowScope.\n\n", ""),
             ("Responde a pergunta: ", "bold"),
             ("\"O que os dados, os documentos e as notícias dizem sobre este ativo?\"\n\n", "italic"),
             ("Como usar: ", "bold"),
-            (("O campo de envio só é habilitado quando a LLM está configurada em \"Configuração\" e há fundamentos carregados pela análise. "
+            (("O campo de envio só é habilitado quando a LLM está configurada no seletor de modelo (\"Configuração\") e há fundamentos carregados pela análise. "
               "Não há seletor de escopo: o contexto cobre a watchlist completa e a I.A. identifica o ticker referido na pergunta, "
               "pedindo esclarecimento quando ela for ambígua.\n\n"), ""),
             ("Contexto enviado: ", "bold"),
-            (("• Conhecimento do próprio FlowScope (orientações das sub-abas e informações da aba \"Sobre\");\n"
-              "• Fundamentos da watchlist carregada;\n"
-              "• Documentos com resumo ou texto já em cache, lidos em cascata (resumos curtos e longos e, se necessário, o texto integral dos alvos); documentos pendentes de resumo ou de extração são omitidos em silêncio;\n"
-              "• Notícias e informações regulatórias da sub-aba \"Notícias\" que estejam em cache e cujos títulos casem com os termos da pergunta; pendentes são omitidas e, quando o índice filtrado é grande, o FlowScope pede confirmação antes de enviá-lo.\n\n"), ""),
+            (("A I.A. recebe uma árvore de conhecimento navegável, montada somente com o cache local, e a percorre por um protocolo JSON determinístico "
+              "(listar, obter, contar, existe, buscar e buscar_semantico). Os ramos disponíveis são:\n"
+              "• Conhecimento do próprio FlowScope (orientações das sub-abas e informações da aba \"Sobre\") em `/flowscope`;\n"
+              "• Fundamentos da watchlist carregada em `/fundamentos`;\n"
+              "• Documentos em cache do ticker em `/documentos`, com as folhas de resumo (curto e longo) e o texto integral lido sob demanda; documentos pendentes de resumo ou de extração são omitidos;\n"
+              "• Guidance dos Relatórios Gerenciais em `/guidance` e o ramo placeholder `/direitos-obrigacoes`;\n"
+              "• Notícias e informações regulatórias em `/noticias`, com um índice compacto por grupo e o resumo/texto de cada item.\n\n"), ""),
             ("Como interpretar: ", "bold"),
             (("Pressione Enter para enviar (Shift+Enter quebra a linha). Enquanto a I.A. responde, o botão ao lado de \"Enviar\" cancela o envio "
-              "e a conversa guarda o histórico dos turnos anteriores. \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
-              "texto exibido; \"Configuração\" abre o mesmo diálogo de LLM da sub-aba \"Documentos\". O chat é estritamente leitor de cache: nunca "
+              "e a conversa guarda o histórico dos turnos anteriores (até 10 mensagens). \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
+              "texto exibido; o seletor de modelo e a \"Configuração\" abrem o mesmo diálogo de LLM da sub-aba \"Documentos\". O chat é estritamente leitor de cache: nunca "
               "resume documentos ou notícias nem extrai texto sob demanda, de modo que itens ainda não processados ficam de fora da resposta. "
-              "O total de tokens da sessão é exibido na barra de status enquanto a aba \"Chat AI\" está ativa. Se a resposta exigir ler o texto integral de "
-              "vários documentos, o FlowScope pede confirmação antes de prosseguir."), ""),
+              "Cada resposta navega a árvore em até 10 ciclos e o manifesto enviado tem teto de 4.000 tokens; turnos de navegação pesados pedem confirmação de custo. "
+              "O total de tokens da sessão é exibido na barra de status enquanto a aba \"Chat AI\" está ativa."), ""),
         ]
     ),
     ("Análise Geral", "VWAP"): (

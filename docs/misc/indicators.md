@@ -274,47 +274,44 @@ Métricas usadas na tabela de Fundamentos (aba "Análise Geral") e na Evolução
 
 ## Contexto do Chat com I.A.
 
-O chat não calcula indicadores novos: ele reaproveita os indicadores e dados já produzidos pelo FlowScope como contexto para a LLM. A aba "Chat AI" monta esse contexto em três origens, além de um ponto de extensão para fontes adicionais.
+O chat não calcula indicadores novos: ele expõe o estado local já em cache como uma **árvore de conhecimento navegável** que a LLM percorre por operações antes de responder. A árvore é montada estritamente a partir do cache local — não resume, não extrai texto, não baixa e não consulta a B3/CVM — e cada informação é resolvida por um caminho canônico. A aba "Chat AI" mantém a árvore, o manifesto e a sessão em memória e recebe os dados pela `LLMPort`.
 
-### Conhecimento do FlowScope
-- **Origem:** textos de orientação das sub-abas (`TAB_CONTENT`) e informações da aba "Sobre" (apresentação, licença e versão).
-- **Aplicabilidade:** responde perguntas sobre o próprio aplicativo e sobre como interpretar cada painel; enviado como bloco de sistema estável.
+### Ramos da árvore
+- **`/flowscope`** — conhecimento do próprio aplicativo: `meta/<chave>` (apresentação, licença, versão, data de release e repositório), `abas/<aba>` e `abas/<aba>/subabas/<sub>` (os textos de orientação das sub-abas) e `indicadores/<indicador>` (quando curados). Ramos internos sem itens são omitidos.
+- **`/fundamentos`** — `tickers`, `campos` e `valores/<ticker>` (uma linha por ticker da watchlist completa), a partir da tabela da sub-aba "Fundamentos".
+- **`/documentos`** — por ticker, `indice` e, por chave estável, as folhas `curto`, `longo` e `texto`.
+- **`/guidance`** — por ticker, `indice` e as folhas por ano/mês, com o guidance de distribuição dos Relatórios Gerenciais avaliados.
+- **`/direitos-obrigacoes`** — ramos `direitos` e `obrigacoes` como placeholders navegáveis (implementação futura).
+- **`/noticias`** — `grupos` (as quatro categorias), `indice` por grupo e, por chave curta, as folhas `titulo`, `resumo` e `texto`.
 
-### Fundamentos carregados
-- **Origem:** a mesma tabela da sub-aba "Fundamentos" (análise fundamentalista por ticker).
-- **Serialização:** uma linha por ticker com os valores não vazios no formato `[TICKER] Coluna=valor; ...`.
-- **Escopo:** watchlist completa; o ticker referido é inferido pela LLM a partir do texto da pergunta, que pede esclarecimento quando a pergunta for ambígua quanto ao ativo.
+### Operações de navegação
+- **`listar(caminho)`** — filhos imediatos (nome + metadado curto).
+- **`obter(caminho, offset, limite)`** — conteúdo do nó; textos longos são paginados, com o indicador `continua`.
+- **`contar(caminho)`** — número de nós da subárvore (aceita um `*` final como coringa).
+- **`existe(caminho)`** — booleano.
+- **`buscar(caminho, regex, em=[...], max)`** — busca determinística por campos, com timeout de regex e limite de resultados.
+- **`buscar_semantico(caminho, consulta, max)`** — busca por similaridade; sem índice vetorial responde `indice_indisponivel` e o chat segue na busca determinística (evolução futura `llm-chat-rag`).
+- **`resetar_navegacao()`** — descarta a navegação acumulada e o foco.
+
+O ticker referido é inferido pela LLM a partir da pergunta (não há seletor de escopo na interface), que pede esclarecimento quando a pergunta for ambígua quanto ao ativo.
 
 ### Documentos em cache
-- **Resumos:** os `short_summary` (até 280 caracteres) e `long_summary` (até 1.500 caracteres) da sub-aba "Documentos", lidos por `DocumentCatalog`/`JsonDocumentSummaryStore`.
-- **Texto integral:** lido de `document-texts/` (`JsonDocumentTextStore`) apenas para os documentos-alvo pedidos pela LLM, após o gate de confirmação por quantidade.
-- **Preparação sob demanda:** quando o texto ou o resumo não estão em cache, são preparados reutilizando a extração de HTML/PDF e o `ResumirDocumentoUseCase`.
+- **Resumos:** os `short_summary` (até 280 caracteres) e `long_summary` (até 1.500 caracteres) da sub-aba "Documentos", lidos do `JsonDocumentSummaryStore`; o índice traz só uma prévia e o conteúdo completo é obtido pelas folhas `curto`/`longo`.
+- **Texto integral:** lido do cache de textos apenas para os alvos pedidos, em páginas de `obter`.
+- **Preparação sob demanda:** fora da árvore, quando o texto ou o resumo não estão em cache, são preparados reutilizando a extração de HTML/PDF e o `ResumirDocumentoUseCase`.
 
 ### Notícias e informações regulatórias em cache
-- **Categorias de topo:** "Censuras Públicas", "Condições Excepcionais" e "Programas de Aquisição de Ações" (RFC-004) e, por último, "Geral" (notícias do Plantão B3); a "Geral" fica no fim por ser a carga mais pesada.
-- **Janela e filtro da "Geral":** apenas o último ano é lido (**dia a dia**) e somente **casos excepcionais de mercado** são mantidos — eventos fora da curva como suspensão/reabertura/retirada de negociação, negociação não contínua, início/prorrogação/adiamento de negociação, incorporação/fusão/cisão, recuperação judicial, falência, liquidação, ofertas/OPA, modificação de oferta, aquisição/alienação de participação, direito de preferência, mudança de auditor, ato homologatório, transação entre partes relacionadas e esclarecimentos CVM/B3. A correspondência é insensível a caixa e acentos e usa fronteira de palavra. São descartados a rotina (informes, atas, comunicados, relatórios, boletins diários), os anúncios de distribuição, a liberação de negociação das cotas, a subscrição privada e o fato relevante. As três categorias regulatórias são lidas com o **histórico completo** da fonte.
-- **Conteúdo:** itens com URL (Plantão B3) têm o HTML baixado; itens sem URL (censuras, condições e programas) têm o próprio registro como conteúdo.
-- **Resumos:** os `short_summary` e `long_summary` da sub-aba "Notícias", lidos de `document-summaries/NOTICIAS.json` (o escopo `NOTICIAS` reutiliza os stores de texto e resumo dos documentos).
-- **Texto integral:** extraído do HTML em `noticias/<AAAA>/<MM>/<hash>.html` (chave `sha1` da URL ou da identidade do item: seção, data, categoria e título) e persistido em `document-texts/NOTICIAS.json` sob demanda.
-- **Índice e leitura sem rede:** como o caminho do HTML não carrega metadados, a aquisição grava seção, título, data, categoria e URL em `noticias/index.json`, indexados pelo caminho relativo do HTML. O catálogo (sub-aba e chat) monta a árvore e a fonte lendo apenas esse índice e o cache local, sem consultar a B3; a listagem e o download ocorrem somente no botão "Atualizar".
-- **Agrupamento da "Geral" por tipo:** o 3º nível da árvore da "Geral" é o **tipo de notícia** (ano → mês → tipo → item), classificado pelo título a partir da whitelist: "Negociação", "Listagem e Registro", "Ofertas e OPA", "Participações", "Reorganização Societária", "Recuperação e Liquidação", "Eventos de Capital", "Governança e Auditoria" e "Esclarecimentos e Oscilações"; títulos não classificados vão para "Outros". O tipo é materializado como a `categoria` do item na aquisição e persistido no índice.
-- **Carga por categoria e interrupção:** a aquisição percorre as fontes na ordem de exibição, anunciando cada categoria na barra de status antes de listá-la e reportando o progresso por item (fontes regulatórias) ou por dia ("Geral"). Os metadados são indexados à medida do processamento, de modo que interromper a carga preserva e exibe na árvore o que já foi carregado.
-- **Carga incremental da "Geral":** o dia mais recente é sempre recarregado; o índice guarda a data mais antiga já processada e a referência da última carga (`geral_mais_antiga`/`geral_referencia` em `noticias/index.json`). A carga preenche a lacuna desde a referência anterior e segue dia a dia para trás até completar um ano, pulando os dias já baixados com sucesso. Os marcadores são atualizados a cada dia, inclusive vazios; um dia com falha não é marcado e é retomado depois.
-- **Escritas do índice agrupadas:** as fontes regulatórias e a "Geral" acumulam os registros e gravam o `index.json` a cada 25 unidades e ao final, em vez de regravar o arquivo a cada item/dia; em cancelamento, os registros acumulados são preservados (na "Geral", sem marcar o dia).
-- **Expansão da árvore:** ao carregar (inicial ou após "Atualizar"), a árvore de notícias é exibida expandida só até o primeiro nível (raiz aberta, categorias recolhidas); a expansão é manual.
-- **Contexto do chat em duas camadas:** as notícias entram no chat com um **índice compacto** de todos os itens (seção, data, tipo, título e chave curta estável), intercalado por seção e priorizando a recência, para que todas as categorias apareçam sem enviar os corpos; a LLM pede as chaves no campo `documentos` e a segunda chamada entrega o resumo longo/curto e/ou o texto resolvido (tetos de 12.000 caracteres por item e 48.000 globais). A leitura é somente do cache local, e a resolução soma documentos e notícias no mesmo gate de confirmação. Um apontador cujo documento vinculado não foi baixado é sinalizado, em vez de a URL ser apresentada como conteúdo.
-- **Corpo do artigo:** para a categoria "Geral", a pré-visualização e o resumo extraem o corpo do artigo do Plantão B3 (`#conteudoDetalhe`), sem a moldura de busca/navegação e o rodapé da página; itens regulatórios, sem esse elemento, usam o texto integral da página.
-- **Documento vinculado:** quando o corpo da "Geral" é apenas uma URL em texto puro para o documento, o conteúdo é baixado sob demanda (seleção e "Resumir pendentes") e passa a ser o corpo da notícia. São suportados dois hosts: **CVM RAD** (`rad.cvm.gov.br`, ex.: "Esclarecimentos de questionamentos CVM/B3"), cujo PDF vem de um `POST` AJAX (`ExibirPDF`) em base64 resolvido com a sessão do visualizador, e **FNET** (`fnet.bmfbovespa.com.br`, ex.: esclarecimentos e avisos de oferta de FIIs), cujo PDF é servido pelo `iframe` `exibirDocumento` do visualizador (com retry para tolerar a instabilidade do host). Em ambos os casos o PDF é extraído com `pypdf` (HTML também é aceito) e o texto é persistido em `document-texts/NOTICIAS.json`; captcha, falha ou formato inesperado mantêm o corpo original. Um apontador que ficou em cache por falha de download **não é definitivo**: ao obter o texto cacheado, se ele for idêntico ao corpo atual do `#conteudoDetalhe` (ou seja, não resolvido), o cache é invalidado e o download é tentado de novo na próxima seleção ou em "Resumir pendentes" — documentos já resolvidos seguem reutilizados.
-- **Fonte no chat:** registrada como `FonteContexto("Notícias e informações regulatórias da B3", ...)` via `fontes_adicionais`, com um teto próprio de 12.000 caracteres. Não há filtro por ticker na montagem: as quatro categorias são oferecidas e a LLM seleciona as relacionadas ao ticker inferido da pergunta.
-
-### Fontes adicionais
-- **Origem:** ponto de extensão `ContextoChat.fontes_adicionais`, com provedores que recebem a pergunta e devolvem um título e um texto.
-- **Aplicabilidade:** a change `noticias-b3` registra as notícias em cache por esse ponto; evoluções futuras (recuperação vetorial em `llm-chat-rag`) também o utilizam. Cada fonte é renderizada como seção própria, sem alterar a ordem da cascata de documentos. Fonte que falha ou retorna vazio é omitida, sem impedir a resposta.
+- **Categorias de topo:** "Censuras Públicas", "Condições Excepcionais" e "Programas de Aquisição de Ações" (RFC-004) e "Geral" (notícias do Plantão B3).
+- **Recuperabilidade:** apenas itens com resumo ou texto já em cache viram nós da árvore; itens pendentes de extração ou de resumo são omitidos em silêncio, e um apontador da "Geral" cujo documento vinculado (CVM RAD/FNET) não foi baixado não é considerado recuperável.
+- **Índice compacto:** cada grupo expõe uma linha por item com data, tipo, título e uma chave curta estável (`n<sha1[:10]>`), sem o corpo da notícia.
+- **Resumos e texto:** o resumo longo (com fallback para o curto) é exposto por nó e o texto integral, quando disponível, é paginado.
+- **Leitura sem rede:** a fonte lê somente o índice de metadados (`noticias/index.json`) e o cache local, sem consultar a B3 nem extrair conteúdo sob demanda; a listagem e o download ocorrem apenas no botão "Atualizar".
 
 ### Orçamento de contexto
-- **Teto por documento:** 12.000 caracteres (mesmo precedente do resumidor).
-- **Teto global:** 40.000 caracteres.
-- **Excedente:** truncado com aviso registrado no log.
+- **Manifesto:** teto de 4.000 tokens; ao exceder, degrada para "só chaves" e, no limite, trunca.
+- **Histórico:** até 10 mensagens e 8.000 caracteres, descartando os turnos mais antigos.
+- **Loop de navegação:** até 10 ciclos e até 8 operações por turno, com cota acumulada de navegação de 32.000 tokens e teto de 64.000 tokens por turno (acima disso, o FlowScope pede autorização de custo).
+- **Página de conteúdo pesado:** 12.000 caracteres por leitura de `obter`.
 
 ---
 
