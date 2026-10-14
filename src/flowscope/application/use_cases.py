@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
+from flowscope.domain.b3.calendario import is_business_day
 from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.indicators import default_engine
@@ -104,7 +105,7 @@ def _find_replacement_date(
     for delta in range(1, 8):
         for sign in (-1, 1):
             candidate = d + timedelta(days=delta * sign)
-            if candidate > ref_date or candidate in seen or candidate.weekday() >= 5:
+            if candidate > ref_date or candidate in seen or not is_business_day(candidate):
                 continue
             _checar(cancel_token)
             new_trades = repository.fetch_trades(

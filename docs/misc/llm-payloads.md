@@ -12,7 +12,7 @@ Todos os consumidores falam com o provedor pela porta `LLMPort.complete(messages
 
 ## 1. Resumo de documentos e notícias ("Documentos" e "Notícias")
 
-As duas sub-abas reutilizam o mesmo caso de uso: `ResumirDocumentoUseCase.resumir(texto)` (`src/flowscope/application/resumo_documento.py`). Cada documento gera **exatamente uma** completion, com **uma única mensagem de usuário** e **sem** `system_prompt`.
+As duas sub-abas reutilizam o mesmo caso de uso: `ResumirDocumentoUseCase.resumir(texto)` (`src/flowscope/application/resumo_documento.py`). Cada documento gera **exatamente uma** completion, com as instruções estáveis em um prefixo de sistema (`SYSTEM_PROMPT`) e **uma única mensagem de usuário** contendo apenas o texto do documento.
 
 ### 1.1 Payload enviado
 
@@ -21,15 +21,20 @@ As duas sub-abas reutilizam o mesmo caso de uso: `ResumirDocumentoUseCase.resumi
   "model": "<modelo configurado>",
   "messages": [
     {
+      "role": "system",
+      "content": "Resuma o documento a seguir em português do Brasil, aplicando a fórmula XYZ (X: o que o texto diz; Y: por que isso importa; Z: o que se conclui) tanto no resumo curto quanto no longo.\nResponda em uma única mensagem, no formato exato:\nCURTO: <resumo em 1 a 2 frases, de até 400 caracteres>\nLONGO: <resumo em parágrafos, de até 1800 caracteres>\nPlaneje X, Y e Z para caberem no orçamento de cada resumo e nunca omita a conclusão (Z) para caber. Não use markdown, listas, títulos ou comentários. Não escreva nada antes de CURTO: nem depois do resumo longo. Baseie-se exclusivamente no documento fornecido."
+    },
+    {
       "role": "user",
-      "content": "Resuma o documento a seguir em português do Brasil, aplicando a fórmula XYZ (X: o que o texto diz; Y: por que isso importa; Z: o que se conclui) tanto no resumo curto quanto no longo.\nResponda em uma única mensagem, no formato exato:\nCURTO: <resumo em 1 a 2 frases, de até 280 caracteres>\nLONGO: <resumo em parágrafos, de até 1500 caracteres>\n\nDocumento:\n<texto do documento>"
+      "content": "<texto do documento>"
     }
   ]
 }
 ```
 
+- **Prefixo estável:** o `system_prompt` é constante e idêntico entre documentos e entre as sub-abas "Documentos" e "Notícias", permitindo reaproveitar o cache de prompt quando o provedor suportar.
 - **Fórmula XYZ:** `X` = o que o texto diz; `Y` = por que isso importa; `Z` = o que se conclui.
-- **Orçamento de entrada:** o texto do documento é truncado a **12.000 caracteres** (`ORCAMENTO_ENTRADA`) antes de ser anexado ao prompt.
+- **Orçamento de entrada:** o texto do documento é truncado a **12.000 caracteres** (`ORCAMENTO_ENTRADA`) antes de ser enviado como mensagem `user`.
 - **Texto vazio:** `resumir("")` não chama a LLM e devolve resumos vazios.
 
 ### 1.2 Formato de resposta esperado
@@ -46,10 +51,12 @@ O parser é tolerante:
 
 ### 1.3 Tetos e truncamento
 
-| Campo | Limite | Constante |
-| --- | --- | --- |
-| `short_summary` | 280 caracteres | `LIMITE_CURTO` |
-| `long_summary` | 1.500 caracteres | `LIMITE_LONGO` |
+O prompt declara um orçamento de **400 caracteres** para o resumo curto (`ORCAMENTO_CURTO`) e **1.800** para o longo (`ORCAMENTO_LONGO`), dimensionado para acomodar a fórmula XYZ. Os tetos de truncamento ficam logo acima, como salvaguarda:
+
+| Campo | Orçamento no prompt | Teto (salvaguarda) | Constante |
+| --- | --- | --- | --- |
+| `short_summary` | 400 caracteres | 450 caracteres | `LIMITE_CURTO` |
+| `long_summary` | 1.800 caracteres | 2.000 caracteres | `LIMITE_LONGO` |
 
 O truncamento corta no último fim de frase (`.`, `;`, `!`, `?`), depois no último espaço e, só em último caso, no teto.
 
@@ -61,20 +68,25 @@ O truncamento corta no último fim de frase (`.`, `;`, `!`, `?`), depois no últ
 
 ### 1.5 Payload adicional — avaliação de guidance ("Documentos")
 
-Os Relatórios Gerenciais (categoria `Relatorio`) passam por uma avaliação separada, `AvaliarGuidanceUseCase` (`src/flowscope/application/avaliar_guidance.py`), que também usa uma única mensagem de usuário e sem `system_prompt`:
+Os Relatórios Gerenciais (categoria `Relatorio`) passam por uma avaliação separada, `AvaliarGuidanceUseCase` (`src/flowscope/application/avaliar_guidance.py`), que envia as instruções estáveis em um prefixo de sistema (`SYSTEM_PROMPT`) e **uma única mensagem de usuário** contendo apenas o trecho avaliado:
 
 ```
 {
   "model": "<modelo configurado>",
   "messages": [
     {
+      "role": "system",
+      "content": "Você recebe um trecho de um Relatório Gerencial de um fundo imobiliário (FII). Determine se ele contém guidance de distribuição de rendimentos: uma projeção, orientação ou faixa de valor por cota para um período futuro.\nIgnore definições de glossário e referências macroeconômicas (forward guidance).\nResponda no formato exato, em quatro linhas:\nGUIDANCE: SIM ou NAO\nVALOR_MIN: <valor numérico por cota, ou vazio>\nVALOR_MAX: <valor numérico por cota, ou vazio>\nPERIODO: <período de validade, ou vazio>\nCom GUIDANCE: NAO, deixe VALOR_MIN, VALOR_MAX e PERIODO vazios. Um valor único preenche VALOR_MIN e VALOR_MAX com o mesmo número. Use o ponto como separador decimal e não inclua símbolo de moeda. Na dúvida, responda NAO."
+    },
+    {
       "role": "user",
-      "content": "Você recebe um trecho de um Relatório Gerencial de um fundo imobiliário (FII). Determine se ele contém guidance de distribuição de rendimentos: uma projeção, orientação ou faixa de valor por cota para um período futuro.\nIgnore definições de glossário e referências macroeconômicas (forward guidance).\nResponda no formato exato:\nGUIDANCE: SIM ou NAO\nVALOR_MIN: <valor numérico por cota, ou vazio>\nVALOR_MAX: <valor numérico por cota, ou vazio>\nPERIODO: <período de validade, ou vazio>\n\nTrecho:\n<texto>"
+      "content": "<texto>"
     }
   ]
 }
 ```
 
+- **Prefixo estável:** o `system_prompt` é constante e idêntico entre fontes e entre Relatórios Gerenciais, permitindo reaproveitar o cache de prompt quando o provedor suportar.
 - A avaliação percorre em cascata as fontes do RG — resumo curto, resumo longo e texto extraído — e **prefere a IA**; se a IA falha, recorre à extração determinística.
 - Cada RG é avaliado no máximo uma vez por método e o resultado é persistido no ledger de guidance (`/guidance` na árvore do chat e ramo "Guidance" da sub-aba "Documentos").
 

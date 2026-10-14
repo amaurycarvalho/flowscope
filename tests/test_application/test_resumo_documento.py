@@ -5,7 +5,10 @@ import pytest
 from flowscope.application.resumo_documento import (
     LIMITE_CURTO,
     LIMITE_LONGO,
+    ORCAMENTO_CURTO,
     ORCAMENTO_ENTRADA,
+    ORCAMENTO_LONGO,
+    SYSTEM_PROMPT,
     ResumirDocumentoUseCase,
     ResumoDocumento,
     _truncar_em_fronteira,
@@ -28,7 +31,11 @@ class _LLMFake:
         return LLMResposta(texto=self.resposta)
 
 
-def _prompt(llm: _LLMFake) -> str:
+def _system(llm: _LLMFake) -> str:
+    return llm.chamadas[0][1]
+
+
+def _user(llm: _LLMFake) -> str:
     return llm.chamadas[0][0][0]["content"]
 
 
@@ -55,20 +62,49 @@ class TestResumir:
 
 
 class TestPrompt:
-    def test_contem_formula_xyz_e_limites(self):
+    def test_system_prompt_contem_formula_xyz_e_limites(self):
         llm = _LLMFake("CURTO: c\nLONGO: l")
         ResumirDocumentoUseCase(llm).resumir("documento")
-        prompt = _prompt(llm)
-        assert "XYZ" in prompt
-        assert "280" in prompt
-        assert "1500" in prompt
+        system = _system(llm)
+        assert system == SYSTEM_PROMPT
+        assert "XYZ" in system
+        assert str(ORCAMENTO_CURTO) in system
+        assert str(ORCAMENTO_LONGO) in system
 
-    def test_pede_frases_e_paragrafos(self):
+    def test_orcamento_cabe_no_teto(self):
+        assert ORCAMENTO_CURTO < LIMITE_CURTO
+        assert ORCAMENTO_LONGO < LIMITE_LONGO
+
+    def test_system_prompt_orca_o_xyz(self):
         llm = _LLMFake("CURTO: c\nLONGO: l")
         ResumirDocumentoUseCase(llm).resumir("documento")
-        prompt = _prompt(llm)
-        assert "1 a 2 frases" in prompt
-        assert "parágrafos" in prompt
+        system = _system(llm)
+        assert "Planeje X, Y e Z" in system
+        assert "nunca omita a conclusão (Z)" in system
+
+    def test_system_prompt_pede_frases_e_paragrafos(self):
+        llm = _LLMFake("CURTO: c\nLONGO: l")
+        ResumirDocumentoUseCase(llm).resumir("documento")
+        system = _system(llm)
+        assert "1 a 2 frases" in system
+        assert "parágrafos" in system
+
+    def test_system_prompt_restringe_formato(self):
+        llm = _LLMFake("CURTO: c\nLONGO: l")
+        ResumirDocumentoUseCase(llm).resumir("documento")
+        system = _system(llm)
+        assert "markdown" in system
+        assert "listas" in system
+        assert "CURTO:" in system
+        assert "documento fornecido" in system
+
+    def test_user_contem_apenas_o_documento(self):
+        llm = _LLMFake("CURTO: c\nLONGO: l")
+        ResumirDocumentoUseCase(llm).resumir("texto do documento")
+        assert llm.chamadas[0][0] == [
+            {"role": "user", "content": "texto do documento"}
+        ]
+        assert len(llm.chamadas[0][0]) == 1
 
 
 class TestFronteira:
@@ -85,19 +121,23 @@ class TestFronteira:
         assert resumo.long_summary.endswith("palavra")
 
     def test_prefere_fim_de_frase(self):
-        llm = _LLMFake("CURTO: " + "x" * 250 + ". " + "y" * 100)
+        llm = _LLMFake(
+            "CURTO: " + "x" * (LIMITE_CURTO - 20) + ". " + "y" * 100
+        )
         resumo = ResumirDocumentoUseCase(llm).resumir("documento")
         assert resumo.short_summary.endswith(".")
         assert "y" not in resumo.short_summary
 
     def test_trunca_no_ultimo_espaco(self):
-        texto = "palavra " * 60
-        esperado = texto[:LIMITE_CURTO].rstrip()
-        assert _truncar_em_fronteira(texto, LIMITE_CURTO) == esperado
-        assert not _truncar_em_fronteira(texto, LIMITE_CURTO).endswith("palavr")
+        texto = "palavra " * 100
+        cortado = _truncar_em_fronteira(texto, LIMITE_CURTO)
+        assert len(cortado) <= LIMITE_CURTO
+        assert cortado.endswith("palavra")
 
     def test_sem_fronteira_corta_duro(self):
-        assert _truncar_em_fronteira("z" * 400, LIMITE_CURTO) == "z" * LIMITE_CURTO
+        assert _truncar_em_fronteira("z" * (LIMITE_CURTO + 100), LIMITE_CURTO) == (
+            "z" * LIMITE_CURTO
+        )
         assert _truncar_em_fronteira("z" * LIMITE_CURTO, LIMITE_CURTO) == (
             "z" * LIMITE_CURTO
         )
@@ -119,7 +159,8 @@ class TestFronteira:
 class TestLimites:
     def test_trunca_resumo_curto_e_longo(self):
         resposta = (
-            "CURTO: " + "a" * 400 + "\nLONGO: " + "b" * 2000
+            "CURTO: " + "a" * (LIMITE_CURTO + 100) + "\nLONGO: "
+            + "b" * (LIMITE_LONGO + 100)
         )
         llm = _LLMFake(resposta)
         resumo = ResumirDocumentoUseCase(llm).resumir("documento")
@@ -131,9 +172,9 @@ class TestLimites:
         texto = "a" * ORCAMENTO_ENTRADA + excedente
         llm = _LLMFake("CURTO: c\nLONGO: l")
         ResumirDocumentoUseCase(llm).resumir(texto)
-        prompt = _prompt(llm)
-        assert "a" * 100 in prompt
-        assert excedente not in prompt
+        user = _user(llm)
+        assert "a" * 100 in user
+        assert excedente not in user
 
 
 class TestExcecoes:

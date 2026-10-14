@@ -255,6 +255,22 @@ class TestFindReplacementDate:
         result, _ = _find_replacement_date(d, {d}, {"PETR4"}, repo, False, date(2026, 6, 30))
         assert result == date(2026, 6, 29)
 
+    def test_skips_national_holiday_and_continues(self):
+        d = date(2026, 10, 13)
+        repo = MagicMock()
+        consulted: list[date] = []
+
+        def fake(dates, tickers, **kw):
+            consulted.extend(dates)
+            if dates == [date(2026, 10, 14)]:
+                return [_trade_on(date(2026, 10, 14))]
+            return []
+
+        repo.fetch_trades.side_effect = fake
+        result, _ = _find_replacement_date(d, {d}, {"PETR4"}, repo, False, date(2026, 10, 30))
+        assert result == date(2026, 10, 14)
+        assert date(2026, 10, 12) not in consulted
+
     def test_fetch_args(self):
         d = date(2026, 6, 25)
         repo = MagicMock()

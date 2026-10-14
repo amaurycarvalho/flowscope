@@ -31,6 +31,24 @@ ExtratorGuidance = Callable[[str, date, str | None], "Guidance | None"]
 #: Categoria de exibição dos Relatórios Gerenciais na sub-aba "Documentos".
 CATEGORIA_RELATORIO = nome_categoria(7)
 
+#: Instruções estáveis de avaliação, enviadas como prefixo de sistema.
+SYSTEM_PROMPT = (
+    "Você recebe um trecho de um Relatório Gerencial de um fundo "
+    "imobiliário (FII). Determine se ele contém guidance de distribuição "
+    "de rendimentos: uma projeção, orientação ou faixa de valor por cota "
+    "para um período futuro.\n"
+    "Ignore definições de glossário e referências macroeconômicas "
+    "(forward guidance).\n"
+    "Responda no formato exato, em quatro linhas:\n"
+    "GUIDANCE: SIM ou NAO\n"
+    "VALOR_MIN: <valor numérico por cota, ou vazio>\n"
+    "VALOR_MAX: <valor numérico por cota, ou vazio>\n"
+    "PERIODO: <período de validade, ou vazio>\n"
+    "Com GUIDANCE: NAO, deixe VALOR_MIN, VALOR_MAX e PERIODO vazios. Um valor "
+    "único preenche VALOR_MIN e VALOR_MAX com o mesmo número. Use o ponto como "
+    "separador decimal e não inclua símbolo de moeda. Na dúvida, responda NAO."
+)
+
 _GUIDANCE_SIM = re.compile(r"GUIDANCE\s*:\s*(SIM|S[ÍI]M)", re.IGNORECASE)
 _VALOR_MIN = re.compile(r"VALOR_M[ÍI]N\s*:\s*([\d.,]+)", re.IGNORECASE)
 _VALOR_MAX = re.compile(r"VALOR_M[ÁA]X\s*:\s*([\d.,]+)", re.IGNORECASE)
@@ -175,31 +193,14 @@ class AvaliarGuidanceUseCase:
             return False, None
         try:
             resposta = llm.complete(
-                [{"role": "user", "content": self._montar_prompt(texto)}]
+                [{"role": "user", "content": texto}],
+                system_prompt=SYSTEM_PROMPT,
             )
         except LLMError:
             return False, None
         except Exception:  # falha inesperada equivale a LLM não funcional
             return False, None
         return True, self._interpretar(resposta.texto, data_relatorio, caminho_pdf)
-
-    @staticmethod
-    def _montar_prompt(texto: str) -> str:
-        """Monta o prompt que pergunta se o relatório contém guidance."""
-        return (
-            "Você recebe um trecho de um Relatório Gerencial de um fundo "
-            "imobiliário (FII). Determine se ele contém guidance de distribuição "
-            "de rendimentos: uma projeção, orientação ou faixa de valor por cota "
-            "para um período futuro.\n"
-            "Ignore definições de glossário e referências macroeconômicas "
-            "(forward guidance).\n"
-            "Responda no formato exato:\n"
-            "GUIDANCE: SIM ou NAO\n"
-            "VALOR_MIN: <valor numérico por cota, ou vazio>\n"
-            "VALOR_MAX: <valor numérico por cota, ou vazio>\n"
-            "PERIODO: <período de validade, ou vazio>\n\n"
-            f"Trecho:\n{texto}"
-        )
 
     @staticmethod
     def _interpretar(

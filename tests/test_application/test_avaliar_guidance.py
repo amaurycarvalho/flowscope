@@ -3,7 +3,10 @@
 from datetime import date
 from decimal import Decimal
 
-from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
+from flowscope.application.avaliar_guidance import (
+    SYSTEM_PROMPT,
+    AvaliarGuidanceUseCase,
+)
 from flowscope.domain.fii import (
     METODO_DETERMINISTICO,
     METODO_IA,
@@ -58,13 +61,21 @@ class _LLMFake:
     def __init__(self, resposta: str = "", erro: Exception | None = None) -> None:
         self.resposta = resposta
         self.erro = erro
-        self.chamadas: list[str] = []
+        self.chamadas: list[tuple[list[dict], str | None]] = []
 
     def complete(self, messages, system_prompt=None):
-        self.chamadas.append(messages[0]["content"])
+        self.chamadas.append((messages, system_prompt))
         if self.erro is not None:
             raise self.erro
         return LLMResposta(texto=self.resposta)
+
+
+def _user(llm: _LLMFake) -> str:
+    return llm.chamadas[0][0][0]["content"]
+
+
+def _system(llm: _LLMFake) -> str:
+    return llm.chamadas[0][1]
 
 
 class _StoreFake:
@@ -228,12 +239,35 @@ class TestControlePorMetodo:
 
 
 class TestPrompt:
-    def test_prompt_inclui_a_fonte(self):
+    def test_instrucoes_no_system_e_trecho_no_user(self):
         llm = _LLMFake("GUIDANCE: NAO")
         caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
         caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("conteudo unico",))
-        assert "conteudo unico" in llm.chamadas[0]
-        assert "GUIDANCE:" in llm.chamadas[0]
+        assert _system(llm) == SYSTEM_PROMPT
+        assert _user(llm) == "conteudo unico"
+        assert llm.chamadas[0][0] == [
+            {"role": "user", "content": "conteudo unico"}
+        ]
+
+    def test_system_prompt_define_formato_e_regras(self):
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
+        caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("trecho",))
+        system = _system(llm)
+        assert "GUIDANCE: SIM ou NAO" in system
+        assert "VALOR_MIN" in system
+        assert "VALOR_MAX" in system
+        assert "PERIODO" in system
+        assert "mesmo número" in system
+        assert "ponto como separador decimal" in system
+        assert "Na dúvida, responda NAO" in system
+
+    def test_prefixo_identico_entre_fontes(self):
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(_StoreFake(), _ExtratorFake(), llm=llm)
+        caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("fonte um", "fonte dois"))
+        assert len(llm.chamadas) == 2
+        assert _system(llm) == SYSTEM_PROMPT
 
     def test_fontes_vazias_sao_puladas(self):
         llm = _LLMFake("GUIDANCE: NAO")

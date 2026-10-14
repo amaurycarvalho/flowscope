@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from datetime import date, timedelta
 
+from flowscope.domain.b3.calendario import is_business_day as _is_business_day
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.generators import (
     FIBONACCI_OFFSETS,
@@ -12,14 +13,6 @@ from flowscope.infrastructure.b3.generators import (
     _fibonacci_reverse_dates,
     _monte_carlo_dates,
 )
-from flowscope.infrastructure.b3.holidays import (
-    FERIADOS_NACIONAIS as _FERIADOS_NACIONAIS,
-)
-
-
-def _is_business_day(d: date) -> bool:
-    """Retorna True quando a data é um dia útil no calendário da B3."""
-    return d.weekday() < 5 and d not in _FERIADOS_NACIONAIS
 
 
 def _next_business_day(d: date) -> date:

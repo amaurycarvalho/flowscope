@@ -1,6 +1,6 @@
 """Serviço de resumo de documentos apoiado na porta ``LLMPort``.
 
-Produz um resumo curto (até 280 caracteres) e um longo (até 1500 caracteres) a
+Produz um resumo curto (até 450 caracteres) e um longo (até 2000 caracteres) a
 partir do texto integral de um documento. A fórmula XYZ orienta os dois
 resumos, pedidos em uma única chamada de completion. O parsing é tolerante:
 quando o formato delimitado não é identificável, a resposta inteira vira o
@@ -12,11 +12,17 @@ from dataclasses import dataclass
 
 from flowscope.domain.llm import LLMPort
 
-#: Limite de caracteres do resumo curto.
-LIMITE_CURTO = 280
+#: Teto de caracteres do resumo curto, usado como salvaguarda de truncamento.
+LIMITE_CURTO = 450
 
-#: Limite de caracteres do resumo longo.
-LIMITE_LONGO = 1500
+#: Orçamento de caracteres pedido no prompt para o resumo curto (abaixo do teto).
+ORCAMENTO_CURTO = 400
+
+#: Teto de caracteres do resumo longo, usado como salvaguarda de truncamento.
+LIMITE_LONGO = 2000
+
+#: Orçamento de caracteres pedido no prompt para o resumo longo (abaixo do teto).
+ORCAMENTO_LONGO = 1800
 
 #: Orçamento máximo de caracteres do texto enviado à LLM.
 ORCAMENTO_ENTRADA = 12000
@@ -26,6 +32,20 @@ _FRONTEIRAS_FRASE = (". ", "; ", "! ", "? ")
 
 #: Pontuações que encerram um resumo íntegro (não truncado).
 _PONTUACAO_FINAL = (".", "!", "?", ";", ":", "…")
+
+#: Instruções estáveis de resumo, enviadas como prefixo de sistema.
+SYSTEM_PROMPT = (
+    "Resuma o documento a seguir em português do Brasil, aplicando a fórmula "
+    "XYZ (X: o que o texto diz; Y: por que isso importa; Z: o que se conclui) "
+    "tanto no resumo curto quanto no longo.\n"
+    "Responda em uma única mensagem, no formato exato:\n"
+    f"CURTO: <resumo em 1 a 2 frases, de até {ORCAMENTO_CURTO} caracteres>\n"
+    f"LONGO: <resumo em parágrafos, de até {ORCAMENTO_LONGO} caracteres>\n"
+    "Planeje X, Y e Z para caberem no orçamento de cada resumo e nunca omita a "
+    "conclusão (Z) para caber. Não use markdown, listas, títulos ou "
+    "comentários. Não escreva nada antes de CURTO: nem depois do resumo longo. "
+    "Baseie-se exclusivamente no documento fornecido."
+)
 
 #: Delimitador do resumo curto na resposta, até o delimitador longo.
 _MARCADOR_CURTO = re.compile(r"CURTO\s*:\s*(.*?)(?=LONGO\s*:|$)", re.DOTALL | re.IGNORECASE)
@@ -100,25 +120,13 @@ class ResumirDocumentoUseCase:
             return ResumoDocumento()
         entrada = texto[:ORCAMENTO_ENTRADA]
         resposta = self._llm.complete(
-            [{"role": "user", "content": self._montar_prompt(entrada)}]
+            [{"role": "user", "content": entrada}],
+            system_prompt=SYSTEM_PROMPT,
         )
         curto, longo = self._interpretar(resposta.texto)
         return ResumoDocumento(
             short_summary=_truncar_em_fronteira(curto, LIMITE_CURTO),
             long_summary=_truncar_em_fronteira(longo, LIMITE_LONGO),
-        )
-
-    @staticmethod
-    def _montar_prompt(texto: str) -> str:
-        """Monta o prompt com a fórmula XYZ e os limites dos resumos."""
-        return (
-            "Resuma o documento a seguir em português do Brasil, aplicando a "
-            "fórmula XYZ (X: o que o texto diz; Y: por que isso importa; "
-            "Z: o que se conclui) tanto no resumo curto quanto no longo.\n"
-            "Responda em uma única mensagem, no formato exato:\n"
-            "CURTO: <resumo em 1 a 2 frases, de até 280 caracteres>\n"
-            "LONGO: <resumo em parágrafos, de até 1500 caracteres>\n\n"
-            f"Documento:\n{texto}"
         )
 
     @staticmethod

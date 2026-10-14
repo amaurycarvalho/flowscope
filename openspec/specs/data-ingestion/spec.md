@@ -65,7 +65,9 @@ O sistema DEVE remover datas duplicadas do conjunto final, mantendo apenas uma o
 
 ### Requirement: Substituição de datas sem trades (pós-resolução ticker-aware)
 
-Após o download dos trades, cada data de amostragem DEVE ser verificada contra os dados reais dos tickers analisados. Se nenhum ticker analisado tiver negociado em uma data de amostragem, a data DEVE ser substituída pela data mais próxima (d±1..d±7, dias úteis não repetidos) onde pelo menos um ticker tenha negociado.
+Após o download dos trades, cada data de amostragem DEVE ser verificada contra os dados reais dos tickers analisados. Se nenhum ticker analisado tiver negociado em uma data de amostragem, a data DEVE ser substituída pela data mais próxima (d±1..d±7, não repetida) onde pelo menos um ticker tenha negociado.
+
+Somente **dias úteis da B3** são candidatos a substituição — segunda a sexta-feira, excluindo os feriados nacionais definidos no calendário do projeto. Uma data candidata que seja fim de semana OU feriado nacional NÃO DEVE ser consultada nem usada como substituta. Essa definição de dia útil é a mesma usada no ajuste das datas de amostragem, de modo que as duas regras não divirjam.
 
 A substituição DEVE ocorrer antes da execução do motor de indicadores, para que gráficos (ex: Evolução da Dominância) exibam todas as datas de amostragem com indicadores computados.
 
@@ -79,6 +81,12 @@ A substituição DEVE ocorrer antes da execução do motor de indicadores, para 
 - **WHEN** uma data de amostragem d não possui trades de nenhum ticker analisado
 - **AND** nenhuma data em d±1..d±7 possui trades de nenhum ticker analisado
 - **THEN** o sistema DEVE manter d na lista (como fallback, resultando em linha vazia no CSV)
+
+#### Scenario: Candidata em feriado nacional é ignorada
+- **WHEN** uma data de amostragem d não possui trades de nenhum ticker analisado
+- **AND** a data adjacente mais próxima (ex.: d-1) é um feriado nacional da B3
+- **THEN** o sistema NÃO DEVE consultar nem usar essa data como substituta
+- **AND** o sistema DEVE continuar a busca pela próxima data candidata que seja dia útil da B3
 
 ### Requirement: Cache local de CSVs
 O sistema DEVE manter cache local dos arquivos CSV baixados no diretório apropriado da plataforma: `~/.cache/flowscope/` (Linux), `%LOCALAPPDATA%/flowscope/cache/` (Windows), `~/Library/Caches/flowscope/` (macOS). Os arquivos DEVEM ser nomeados como `YYYY-MM-DD.csv`.

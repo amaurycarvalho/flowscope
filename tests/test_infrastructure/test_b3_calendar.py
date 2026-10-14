@@ -112,6 +112,11 @@ class TestFindNearestWithData:
         result = _find_nearest_with_data(ref, lambda d: d == date(2026, 7, 11), set())
         assert result is None
 
+    def test_ignores_national_holiday(self):
+        ref = date(2026, 10, 13)
+        result = _find_nearest_with_data(ref, lambda d: d == date(2026, 10, 12), set())
+        assert result is None
+
 
 class TestResolveWithData:
     def test_default_max_deviation_is_seven(self):

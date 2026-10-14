@@ -296,7 +296,7 @@ O chat não calcula indicadores novos: ele expõe o estado local já em cache co
 O ticker referido é inferido pela LLM a partir da pergunta (não há seletor de escopo na interface), que pede esclarecimento quando a pergunta for ambígua quanto ao ativo.
 
 ### Documentos em cache
-- **Resumos:** os `short_summary` (até 280 caracteres) e `long_summary` (até 1.500 caracteres) da sub-aba "Documentos", lidos do `JsonDocumentSummaryStore`; o índice traz só uma prévia e o conteúdo completo é obtido pelas folhas `curto`/`longo`.
+- **Resumos:** os `short_summary` (até 450 caracteres) e `long_summary` (até 2.000 caracteres) da sub-aba "Documentos", lidos do `JsonDocumentSummaryStore`; o índice traz só uma prévia e o conteúdo completo é obtido pelas folhas `curto`/`longo`.
 - **Texto integral:** lido do cache de textos apenas para os alvos pedidos, em páginas de `obter`.
 - **Preparação sob demanda:** fora da árvore, quando o texto ou o resumo não estão em cache, são preparados reutilizando a extração de HTML/PDF e o `ResumirDocumentoUseCase`.
 

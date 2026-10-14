@@ -11,7 +11,7 @@ from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 #: Texto de apresentação derivado da seção de descrição do README.md.
 APRESENTACAO = (
-    "O FlowScope é uma plataforma open source de análise de ativos da B3 que "
+    "O FlowScopeBR é uma plataforma open source de análise de ativos da B3 que "
     "reúne a leitura do fluxo de ordens dos pregões, a consolidação de "
     "fundamentos de ações e FIIs (com dividendos, short interest e métricas de "
     "FFO), a gestão de documentos corporativos e a curadoria de notícias e "
