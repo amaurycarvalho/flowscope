@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-14
+goal: Expor acoes de atualizacao do FlowScope via CLI para agendamento externo,
+  mantendo o MCP somente-leitura
