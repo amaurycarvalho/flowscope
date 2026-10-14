@@ -42,7 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.0] — 2026-10-14
 
-### [navegacao-mcp](openspec/changes/navegacao-mcp) Núcleo de navegação compartilhado, servidor MCP embutido (`flowscope --mcp`) e subcomandos `flowscope nav ...`
+### [navegacao-mcp](openspec/changes/archive/2026-10-14-navegacao-mcp) Núcleo de navegação compartilhado, servidor MCP embutido (`flowscope --mcp`) e subcomandos `flowscope nav ...`
 
 #### Added
 
