@@ -1,10 +1,12 @@
-"""Protocolo JSON de navegação da árvore de conhecimento.
+"""Adaptador do protocolo JSON de navegação da árvore de conhecimento.
 
 A LLM emite, a cada turno, um objeto ``{"resposta", "solicitacoes": [...]}``. O
 parser é tolerante (bloco cercado, texto cru ou trecho entre chaves) e, sem JSON
-reconhecido, todo o texto é tratado como resposta final. As operações válidas
-são validadas, executadas na ordem da lista e agregadas em um único bloco
-determinístico, sem timestamps.
+reconhecido, todo o texto é tratado como resposta final. As operações canônicas
+são validadas e executadas pelo :class:`NavegacaoCore`; este módulo apenas
+serializa o bloco determinístico do chat (com ``foco``), trata o
+``resetar_navegacao`` como preocupação do loop do chat e impõe o limite de 8
+operações por turno.
 """
 
 from __future__ import annotations
@@ -13,39 +15,17 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
-from flowscope.application.chat.arvore import ArvoreConhecimento, ErroNavegacao
-from flowscope.application.chat.seguranca_regex import (
-    PadraoBloqueado,
-    PadraoInvalido,
-    compilar,
-)
+from flowscope.application.chat.arvore import ArvoreConhecimento
+
+if TYPE_CHECKING:
+    from flowscope.application.navegacao.core import NavegacaoCore, Resultado
 
 logger = logging.getLogger("flowscope")
 
-#: Operações aceitas pelo protocolo.
-OPERACOES = frozenset(
-    {
-        "listar",
-        "obter",
-        "contar",
-        "existe",
-        "buscar",
-        "buscar_semantico",
-        "resetar_navegacao",
-    }
-)
-
-#: Campos obrigatórios por operação.
-CAMPOS_OBRIGATORIOS = {
-    "listar": ("caminho",),
-    "obter": ("caminho",),
-    "contar": ("caminho",),
-    "existe": ("caminho",),
-    "buscar": ("caminho", "regex"),
-    "buscar_semantico": ("caminho", "consulta"),
-    "resetar_navegacao": (),
-}
+#: Operação de descarte do histórico, tratada pelo loop do chat (não no núcleo).
+OPERACAO_RESET = "resetar_navegacao"
 
 #: Máximo de operações por turno.
 MAX_OPERACOES = 8
@@ -128,140 +108,34 @@ def interpretar(texto: str) -> RespostaProtocolo:
     )
 
 
-def _erro_dict(motivo: str, detalhe: str, dica: str = "") -> dict:
-    """Monta o erro estruturado devolvido à LLM, com dica quando houver."""
-    erro = {"motivo": motivo, "detalhe": detalhe}
-    if dica:
-        erro["dica"] = dica
-    return erro
-
-
-def _registrar_erro(
-    solicitacao: Solicitacao, caminho: object, motivo: str, detalhe: str
-) -> None:
-    """Registra em log um erro de navegação devolvido à LLM."""
-    logger.warning(
-        "Erro de navegação do chat: op=%s caminho=%s motivo=%s detalhe=%s",
-        solicitacao.op,
-        caminho,
-        motivo,
-        detalhe or "-",
-    )
-
-
 class ProtocoloNavegacao:
-    """Valida, executa e serializa as operações de navegação."""
+    """Adaptador fino sobre o núcleo: valida, executa e serializa o chat."""
 
     def __init__(
         self: ProtocoloNavegacao,
         arvore: ArvoreConhecimento,
         max_operacoes: int = MAX_OPERACOES,
+        core: NavegacaoCore | None = None,
     ) -> None:
-        """Guarda a árvore e o limite de operações por turno."""
+        """Guarda o núcleo, a árvore e o limite de operações por turno."""
+        if core is None:
+            from flowscope.application.navegacao.core import NavegacaoCore
+
+            core = NavegacaoCore(arvore)
         self._arvore = arvore
+        self._core = core
         self._max_operacoes = max_operacoes
 
+    @property
+    def core(self: ProtocoloNavegacao) -> NavegacaoCore:
+        """Núcleo de navegação reusado pelo adaptador."""
+        return self._core
+
     def validar(self: ProtocoloNavegacao, solicitacao: Solicitacao) -> None:
-        """Valida a operação, levantando ``ErroNavegacao`` se inválida."""
-        if solicitacao.op not in OPERACOES:
-            raise ErroNavegacao(
-                "op_desconhecida",
-                solicitacao.op,
-                "use uma das operações: " + ", ".join(sorted(OPERACOES)),
-            )
-        for campo in CAMPOS_OBRIGATORIOS[solicitacao.op]:
-            if not solicitacao.campos.get(campo):
-                raise ErroNavegacao(
-                    "campo_ausente",
-                    f"{solicitacao.op}:{campo}",
-                    f"inclua o campo '{campo}' na operação {solicitacao.op}",
-                )
-        self._validar_campos(solicitacao)
-
-    def _validar_campos(self: ProtocoloNavegacao, solicitacao: Solicitacao) -> None:
-        """Valida o tipo dos campos e o uso de curinga, com dicas de correção."""
-        caminho = solicitacao.campos.get("caminho")
-        if caminho is not None and not isinstance(caminho, str):
-            raise ErroNavegacao(
-                "tipo_invalido", "caminho", "o campo 'caminho' deve ser texto"
-            )
-        if isinstance(caminho, str) and "*" in caminho:
-            self._validar_curinga(solicitacao.op, caminho)
-        for campo in ("regex", "consulta"):
-            valor = solicitacao.campos.get(campo)
-            if valor is not None and not isinstance(valor, str):
-                raise ErroNavegacao(
-                    "tipo_invalido", campo, f"o campo '{campo}' deve ser texto"
-                )
-        self._validar_em(solicitacao)
-        self._validar_max(solicitacao)
-        self._validar_paginacao(solicitacao)
-
-    @staticmethod
-    def _validar_paginacao(solicitacao: Solicitacao) -> None:
-        """Valida os campos opcionais ``offset``/``limite`` de ``obter``."""
-        if solicitacao.op != "obter":
+        """Valida a operação, delegando ao núcleo (o reset é do chat)."""
+        if solicitacao.op == OPERACAO_RESET:
             return
-        offset = solicitacao.campos.get("offset")
-        if offset is not None and (
-            isinstance(offset, bool) or not isinstance(offset, int) or offset < 0
-        ):
-            raise ErroNavegacao(
-                "tipo_invalido",
-                "offset",
-                "o campo 'offset' deve ser um inteiro maior ou igual a zero",
-            )
-        limite = solicitacao.campos.get("limite")
-        if limite is not None and (
-            isinstance(limite, bool) or not isinstance(limite, int) or limite <= 0
-        ):
-            raise ErroNavegacao(
-                "tipo_invalido",
-                "limite",
-                "o campo 'limite' deve ser um inteiro maior que zero",
-            )
-
-    @staticmethod
-    def _validar_curinga(op: str, caminho: str) -> None:
-        """Valida o uso de curinga: só em ``contar`` e apenas como ``prefixo/*``."""
-        if op != "contar":
-            raise ErroNavegacao(
-                "caminho_com_curinga",
-                caminho,
-                "o curinga '*' só é aceito em contar; use o caminho exato",
-            )
-        if caminho.count("*") != 1 or not caminho.endswith("/*"):
-            raise ErroNavegacao(
-                "curinga_invalido",
-                caminho,
-                "use um único '*' no final do caminho (ex.: /ramo/*)",
-            )
-
-    @staticmethod
-    def _validar_em(solicitacao: Solicitacao) -> None:
-        """Valida o campo opcional ``em`` (lista de nomes de campos)."""
-        em = solicitacao.campos.get("em")
-        if em is None:
-            return
-        if not isinstance(em, list) or not all(isinstance(x, str) for x in em):
-            raise ErroNavegacao(
-                "tipo_invalido",
-                "em",
-                "o campo 'em' deve ser uma lista de nomes de campos",
-            )
-
-    @staticmethod
-    def _validar_max(solicitacao: Solicitacao) -> None:
-        """Valida o campo opcional ``max`` (inteiro maior que zero)."""
-        maximo = solicitacao.campos.get("max")
-        if maximo is None:
-            return
-        if isinstance(maximo, bool) or not isinstance(maximo, int) or maximo <= 0:
-            raise ErroNavegacao(
-                "tipo_invalido",
-                "max",
-                "o campo 'max' deve ser um inteiro maior que zero",
-            )
+        self._core.validar(solicitacao.op, solicitacao.campos)
 
     def executar(
         self: ProtocoloNavegacao, solicitacoes: list[Solicitacao]
@@ -274,7 +148,10 @@ class ProtocoloNavegacao:
             resultados.append(
                 {
                     "op": "limite_operacoes",
-                    "erro": {"motivo": "limite_operacoes", "detalhe": f"{len(excedente)} excedentes"},
+                    "erro": {
+                        "motivo": "limite_operacoes",
+                        "detalhe": f"{len(excedente)} excedentes",
+                    },
                 }
             )
             return resultados
@@ -286,68 +163,20 @@ class ProtocoloNavegacao:
         caminho = solicitacao.campos.get("caminho")
         if caminho:
             base["caminho"] = caminho
-        try:
-            self.validar(solicitacao)
-            base["dados"] = self._despachar(solicitacao)
-        except ErroNavegacao as exc:
-            _registrar_erro(solicitacao, caminho, exc.motivo, exc.detalhe)
-            base["erro"] = _erro_dict(exc.motivo, exc.detalhe, exc.dica)
-        except PadraoBloqueado as exc:
-            _registrar_erro(solicitacao, caminho, "regex_bloqueada", str(exc))
-            base["erro"] = _erro_dict(
-                "regex_bloqueada",
-                str(exc),
-                "simplifique o regex: evite quantificadores aninhados e backreferences",
-            )
-        except PadraoInvalido as exc:
-            _registrar_erro(solicitacao, caminho, "regex_invalida", str(exc))
-            base["erro"] = _erro_dict(
-                "regex_invalida", str(exc), "corrija a sintaxe do regex"
-            )
-        except Exception as exc:
-            logger.error(
-                "Erro inesperado na navegação do chat: op=%s caminho=%s: %s",
-                solicitacao.op,
-                caminho,
-                exc,
-                exc_info=exc,
-            )
-            base["erro"] = _erro_dict(
-                "erro_interno",
-                type(exc).__name__,
-                "a operação falhou; tente outra abordagem",
-            )
+        if solicitacao.op == OPERACAO_RESET:
+            base["dados"] = "navegacao_descartada"
+            return base
+        resultado = self._core.executar(solicitacao.op, solicitacao.campos)
+        self._preencher(base, resultado)
         return base
 
-    def _despachar(self: ProtocoloNavegacao, solicitacao: Solicitacao) -> object:
-        """Resolve a operação na árvore."""
-        campos = solicitacao.campos
-        op = solicitacao.op
-        if op == "listar":
-            return [
-                {"nome": no.nome, "caminho": no.caminho, "metadado": no.metadado}
-                for no in self._arvore.listar(campos["caminho"])
-            ]
-        if op == "obter":
-            return self._arvore.obter(
-                campos["caminho"],
-                offset=campos.get("offset"),
-                limite=campos.get("limite"),
-            )
-        if op == "contar":
-            return self._arvore.contar(campos["caminho"])
-        if op == "existe":
-            return self._arvore.existe(campos["caminho"])
-        if op == "buscar":
-            padrao = compilar(campos["regex"])
-            return self._arvore.buscar(
-                campos["caminho"], padrao, em=campos.get("em"), limite=campos.get("max")
-            )
-        if op == "buscar_semantico":
-            return self._arvore.buscar_semantico(
-                campos["caminho"], campos["consulta"], limite=campos.get("max")
-            )
-        return "navegacao_descartada"
+    @staticmethod
+    def _preencher(base: dict, resultado: Resultado) -> None:
+        """Preenche o bloco do chat com o resultado do núcleo."""
+        if resultado.erro is not None:
+            base["erro"] = resultado.erro
+            return
+        base["dados"] = _para_chat(resultado.dados)
 
     @staticmethod
     def serializar(resultados: list[dict], foco: str | None = None) -> str:
@@ -368,3 +197,18 @@ class ProtocoloNavegacao:
     ) -> str:
         """Executa as operações e devolve o bloco serializado."""
         return self.serializar(self.executar(solicitacoes), foco)
+
+
+def _para_chat(dados: object) -> object:
+    """Adapta o resultado canônico do núcleo ao formato do bloco do chat.
+
+    As listagens devolvem os itens diretamente (o chat não usa cursor) e as
+    buscas descartam o ``nextCursor``, que é uma preocupação das superfícies
+    paginadas (CLI e MCP).
+    """
+    if isinstance(dados, dict):
+        if "itens" in dados:
+            return dados["itens"]
+        if "nextCursor" in dados:
+            return {chave: valor for chave, valor in dados.items() if chave != "nextCursor"}
+    return dados

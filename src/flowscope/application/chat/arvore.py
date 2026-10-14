@@ -80,8 +80,20 @@ class ErroNavegacao(Exception):
 
 
 def normalizar_caminho(caminho: str) -> str:
-    """Normaliza um caminho canônico: absoluto, sem barra final nem duplicada."""
+    """Normaliza um caminho canônico: absoluto, sem barra final nem duplicada.
+
+    Recusa segmentos de traversal (``.`` e ``..``) com erro estruturado de
+    caminho inválido. Os caminhos são lógicos, não de filesystem, mas o
+    confinamento explícito é barato e defensivo.
+    """
     texto = (caminho or "").strip().replace("//", "/")
+    segmentos = [parte for parte in texto.split("/") if parte]
+    if any(parte in (".", "..") for parte in segmentos):
+        raise ErroNavegacao(
+            "caminho_invalido",
+            texto,
+            "caminhos com os segmentos '.' ou '..' não são permitidos",
+        )
     if not texto.startswith("/"):
         texto = "/" + texto
     if len(texto) > 1 and texto.endswith("/"):
@@ -248,24 +260,51 @@ class ArvoreConhecimento:
         limite: int | None = None,
     ) -> dict:
         """Busca nós cujos campos casam com o padrão compilado."""
+        dados, _total = self.buscar_pagina(caminho, padrao, em=em, limite=limite)
+        return dados
+
+    def buscar_pagina(
+        self: ArvoreConhecimento,
+        caminho: str,
+        padrao: object,
+        em: Iterable[str] | None = None,
+        deslocamento: int = 0,
+        limite: int | None = None,
+    ) -> tuple[dict, int]:
+        """Busca paginada: devolve o resultado e o total de nós que casam.
+
+        A coleta é determinística (ordem por caminho canônico) e o ``deslocamento``
+        recorta a página, permitindo a paginação por cursor do núcleo.
+        """
         base = self._exigir(caminho)
-        limite_max = limite or self._max_resultados
         campos = set(em) if em else None
         self._checar_campos(base, campos)
+        todos = self._coletar_resultados(base, padrao, campos)
+        tamanho = self._max_resultados if limite is None else limite
+        fim = deslocamento + tamanho
+        truncado = fim < len(todos)
+        dados = self._montar_busca(
+            todos[deslocamento:fim], truncado, self._pedido_pesado(base, campos)
+        )
+        return dados, len(todos)
+
+    def _coletar_resultados(
+        self: ArvoreConhecimento,
+        base: No,
+        padrao: object,
+        campos: set[str] | None,
+    ) -> list[ItemResultado]:
+        """Coleta todos os nós que casam, em ordem determinística por caminho."""
         resultados: list[ItemResultado] = []
-        truncado = False
-        for no in self._subarvore(base):
+        for no in sorted(self._subarvore(base), key=lambda item: item.caminho):
             alvo = self._campos_alvo(no, campos)
             for campo, texto in alvo.items():
                 if self._casa(padrao, texto):
-                    resultados.append(ItemResultado(no.caminho, campo, texto[:TAMANHO_TRECHO]))
+                    resultados.append(
+                        ItemResultado(no.caminho, campo, texto[:TAMANHO_TRECHO])
+                    )
                     break
-            if len(resultados) >= limite_max:
-                truncado = True
-                break
-        return self._montar_busca(
-            resultados, truncado, self._pedido_pesado(base, campos)
-        )
+        return resultados
 
     def _checar_campos(
         self: ArvoreConhecimento, base: No, campos: set[str] | None

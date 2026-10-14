@@ -64,7 +64,11 @@ class TestInterpretar:
 class TestExecucao:
     def test_listar(self) -> None:
         resultado = _executar("listar", caminho="/fundamentos")
-        assert [item["nome"] for item in resultado["dados"]] == ["tickers", "campos", "valores"]
+        assert [item["nome"] for item in resultado["dados"]] == [
+            "campos",
+            "tickers",
+            "valores",
+        ]
 
     def test_obter(self) -> None:
         assert _executar("obter", caminho="/fundamentos/valores/PETR4")["dados"] == "[PETR4] PL=3.2"
@@ -167,6 +171,18 @@ class TestExecucao:
     def test_resetar_navegacao(self) -> None:
         resultado = _executar("resetar_navegacao")
         assert resultado["dados"] == "navegacao_descartada"
+
+    def test_executa_na_ordem_submetida(self) -> None:
+        protocolo = _protocolo()
+        resultados = protocolo.executar(
+            [
+                Solicitacao("existe", {"caminho": "/fundamentos"}),
+                Solicitacao("contar", {"caminho": "/fundamentos/tickers/*"}),
+            ]
+        )
+        assert [r["op"] for r in resultados] == ["existe", "contar"]
+        assert resultados[0]["dados"] is True
+        assert resultados[1]["dados"] == 2
 
 
 class TestPaginacao:

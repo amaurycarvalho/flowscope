@@ -41,12 +41,7 @@ def main() -> None:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.version:
-        print(f"FlowScope v{__version__}")
-        return
-
-    if args.create_shortcut:
-        _create_shortcut_or_exit()
+    if _tratar_modos_especiais(args):
         return
 
     if args.gui:
@@ -66,6 +61,30 @@ def main() -> None:
         return
 
     _open_gui()
+
+
+def _tratar_modos_especiais(args: argparse.Namespace) -> bool:
+    """Trata versão, MCP, navegação e atalho; devolve ``True`` se consumiu."""
+    if args.version:
+        print(f"FlowScope v{__version__}")
+        return True
+
+    if args.mcp:
+        from flowscope.presentation.cli import iniciar_mcp
+
+        iniciar_mcp()
+        return True
+
+    if getattr(args, "comando", None) == "nav":
+        from flowscope.presentation.cli import executar_nav
+
+        executar_nav(args)
+        return True
+
+    if args.create_shortcut:
+        _create_shortcut_or_exit()
+        return True
+    return False
 
 
 def _create_shortcut_or_exit() -> None:

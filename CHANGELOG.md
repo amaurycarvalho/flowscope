@@ -27,6 +27,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
+### [navegacao-mcp](openspec/changes/navegacao-mcp) Núcleo de navegação compartilhado, servidor MCP embutido (`flowscope --mcp`) e subcomandos `flowscope nav ...`
+
+#### Added
+
+- `NavegacaoCore` em `application/navegacao/`, com operações canônicas, limites centralizados, paginação por cursor opaco, erros estruturados e confinamento de leitura; reusado pelo chat, pela CLI e pelo MCP.
+- Servidor MCP stdio embutido iniciado por `flowscope --mcp`, alvo da revisão `2026-07-28`, com `server/discover`, `tools/list` (sete tools `nav_*`) e `tools/call`, sem dependência nova.
+- Subcomandos `flowscope nav listar|obter|contar|existe|buscar|buscar-semantico|manifesto`, com saída JSON e `--pretty`.
+- Guia [docs/misc/mcp.md](docs/misc/mcp.md) e link no `README.md`.
+
+#### Changed
+
+- `ProtocoloNavegacao` passa a ser um adaptador fino sobre o `NavegacaoCore`, mantendo `[RESULTADO_NAVEGACAO]`, `foco` e o limite de 8 operações por turno; o reset permanece no loop do chat.
+- Listagens passam a ser ordenadas deterministicamente por caminho canônico.
+
 ## [1.3.7] — 2026-10-13
 
 ### [convencao-paths-relativos](openspec/changes/archive/2026-10-13-convencao-paths-relativos) Standard de engenharia exigindo referências a arquivos do projeto por caminhos relativos à raiz, proibindo caminhos absolutos específicos da máquina

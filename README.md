@@ -52,6 +52,8 @@ Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 ./flowscope-linux                        # interface gráfica
 ./flowscope-linux --gui                  # interface gráfica
 ./flowscope-linux --create-shortcut      # criar atalho no desktop (Linux)
+./flowscope-linux --mcp                  # servidor MCP (stdio)
+./flowscope-linux nav listar /noticias/grupos   # navegar a árvore de conhecimento
 ./flowscope-linux --help                 # exibir ajuda com todos os parâmetros
 ./flowscope-linux --version              # exibir versão
 ```
@@ -143,6 +145,8 @@ Por fim, execute novamente os testes de mutação e verifique se eles passam pel
 python3 -m flowscope                     # interface gráfica
 python3 -m flowscope --gui               # interface gráfica
 python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
+python3 -m flowscope --mcp               # servidor MCP (stdio)
+python3 -m flowscope nav listar /noticias/grupos   # navegar a árvore de conhecimento
 python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
 python3 -m flowscope --version           # exibir versão
 ```
@@ -153,6 +157,8 @@ python3 -m flowscope --version           # exibir versão
 dist/flowscope                           # interface gráfica
 dist/flowscope --gui                     # interface gráfica
 dist/flowscope --create-shortcut         # criar atalho no desktop (Linux)
+dist/flowscope --mcp                     # servidor MCP (stdio)
+dist/flowscope nav listar /noticias/grupos   # navegar a árvore de conhecimento
 dist/flowscope --help                    # exibir ajuda com todos os parâmetros
 dist/flowscope --version                 # exibir versão
 ```
@@ -163,4 +169,5 @@ dist/flowscope --version                 # exibir versão
 
 - [Repositório do projeto](https://github.com/amaurycarvalho/flowscope)
 - [Releases com binários pré-compilados](https://github.com/amaurycarvalho/flowscope/releases)
+- [Servidor MCP e subcomandos `nav`](docs/misc/mcp.md)
 - [Hub de dados públicos na B3](https://www.b3.com.br/pt_br/dados/hub-de-dados-publicos/)
