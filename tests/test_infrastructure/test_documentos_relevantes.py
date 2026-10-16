@@ -211,16 +211,18 @@ class TestBaixarPdfDocumento:
         assert client.baixar_pdf_documento("1") is None
 
     def test_usa_timeout_curto_para_nao_travar(self, tmp_path, monkeypatch):
+        import flowscope.infrastructure.b3.funds_client.documentos_relevantes as mod
+
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
         capturado: dict[str, object] = {}
 
-        def _fake(url, timeout=30, **kwargs):
+        def _fake(url, *, timeout=30, **kwargs):
             capturado["timeout"] = timeout
             resposta = MagicMock()
             resposta.content = _PDF
             return resposta
 
-        monkeypatch.setattr(client, "_requisicao_get", _fake)
+        monkeypatch.setattr(mod, "baixar_conteudo", _fake)
         assert client.baixar_pdf_documento("1") == _PDF
         assert capturado["timeout"] == _TIMEOUT_DOCUMENTO
 

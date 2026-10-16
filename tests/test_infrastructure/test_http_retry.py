@@ -9,6 +9,7 @@ import requests
 from flowscope.application.cancellation import OperacaoCancelada
 from flowscope.infrastructure.http_retry import (
     Categoria,
+    ConteudoInvalido,
     classificar,
     executar_com_retry,
 )
@@ -103,6 +104,65 @@ class TestMetodosRepetiveis:
                 fn, metodo="POST", delays=(0, 0), sleep=lambda _: None
             )
         assert tentativas["n"] == 1
+
+
+class TestValidacaoConteudo:
+    def test_conteudo_valido_retorna_na_primeira(self):
+        tentativas = {"n": 0}
+
+        def fn():
+            tentativas["n"] += 1
+            return "valido"
+
+        resultado = executar_com_retry(
+            fn,
+            metodo="GET",
+            delays=(0, 0),
+            sleep=lambda _: None,
+            validar=lambda r: r == "valido",
+        )
+        assert resultado == "valido"
+        assert tentativas["n"] == 1
+
+    def test_conteudo_invalido_consome_tentativa(self):
+        tentativas = {"n": 0}
+
+        def fn():
+            tentativas["n"] += 1
+            return "invalido"
+
+        with pytest.raises(ConteudoInvalido):
+            executar_com_retry(
+                fn,
+                metodo="GET",
+                delays=(0, 0),
+                sleep=lambda _: None,
+                validar=lambda _r: False,
+            )
+        assert tentativas["n"] == 2
+
+    def test_conteudo_valido_apos_tentativa_invalida(self):
+        tentativas = {"n": 0}
+
+        def fn():
+            tentativas["n"] += 1
+            return "invalido" if tentativas["n"] < 2 else "valido"
+
+        resultado = executar_com_retry(
+            fn,
+            metodo="GET",
+            delays=(0, 0),
+            sleep=lambda _: None,
+            validar=lambda r: r == "valido",
+        )
+        assert resultado == "valido"
+        assert tentativas["n"] == 2
+
+    def test_sem_validador_retorna_qualquer_resultado(self):
+        resultado = executar_com_retry(
+            lambda: "x", metodo="GET", delays=(0,), sleep=lambda _: None
+        )
+        assert resultado == "x"
 
 
 class TestEspera:

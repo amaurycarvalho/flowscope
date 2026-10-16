@@ -29,10 +29,12 @@ class _CasoFake:
         self.cancel_token = None
 
     def execute(self, tickers, reference_date, progress_callback=None,
-                force_refresh=False, cancel_token=None):
+                force_refresh=False, cancel_token=None, on_item=None):
         self.force_refresh = force_refresh
         self.cancel_token = cancel_token
         for ticker in tickers:
+            if on_item is not None:
+                on_item(ticker)
             if progress_callback is not None:
                 progress_callback(f"Analisando {ticker}", False)
         return [_Analise(ticker) for ticker in tickers]
@@ -60,6 +62,24 @@ class TestExecutarFundamental:
         assert [p.total for p in progressos] == [2, 2]
         assert len(resultados) == 1
         assert set(resultados[0].valor.keys()) == {"HGBS11", "HGLG11"}
+
+    def test_descreve_o_ticker_corrente_antes_de_processar(self):
+        ctx, _ = _contexto()
+        descricoes: list[str] = []
+
+        class _CasoQueDescreve:
+            def execute(self, tickers, reference_date, progress_callback=None,
+                        force_refresh=False, cancel_token=None, on_item=None):
+                for ticker in tickers:
+                    on_item(ticker)
+                    descricoes.append(ctx.handle.descricao)
+                return [_Analise(ticker) for ticker in tickers]
+
+        executar_fundamental(
+            ctx, _CasoQueDescreve(), ["HGBS11", "HGLG11"], REFERENCIA
+        )
+
+        assert descricoes == ["Fundamentos: HGBS11", "Fundamentos: HGLG11"]
 
     def test_token_e_repassado_ao_caso_de_uso(self):
         ctx, _ = _contexto()

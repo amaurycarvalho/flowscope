@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import date
 from typing import Any
 
+from flowscope.domain.b3.calendario import is_business_day
 from flowscope.infrastructure.b3.parser import parse_index_csv
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.http_retry import executar_com_retry
@@ -86,7 +87,15 @@ class B3Client:
     def fetch_file(self: "B3Client", date_key: date, file_name: str = "TradeInformationConsolidated",
                    progress_callback: Callable[[str, bool], None] | None = None,
                    cache_only: bool = False) -> str | None:
-        """Baixa o arquivo de negociação da data, usando o cache quando disponível."""
+        """Baixa o arquivo de negociação da data, usando o cache quando disponível.
+
+        Um dia não útil (fim de semana ou feriado) não é requisitado: a ausência
+        de pregão é devolvida como ``None``, sem erro.
+        """
+        if not is_business_day(date_key):
+            if progress_callback:
+                progress_callback(f"{date_key} (sem pregão)", False)
+            return None
         cached = self._cache.get(date_key)
         if cached is not None:
             if progress_callback:

@@ -22,6 +22,14 @@ from flowscope.domain.fii.errors import TickerNaoEncontrado
 logger = logging.getLogger("flowscope")
 
 
+def _nome_fonte(provider: FundamentalDataProvider) -> str:
+    """Retorna o nome estável da fonte, preferindo um atributo ``nome``."""
+    nome = getattr(provider, "nome", None)
+    if isinstance(nome, str) and nome.strip():
+        return nome
+    return type(provider).__name__
+
+
 class CompositeFundamentalProvider:
     """Resolve cada campo pela primeira fonte que o fornecer, em ordem."""
 
@@ -83,14 +91,14 @@ class CompositeFundamentalProvider:
         except TickerNaoEncontrado:
             logger.info(
                 "Ticker sem dados na fonte %s: %s",
-                type(provider).__name__,
+                _nome_fonte(provider),
                 ticker,
             )
             return None
         except Exception:  # fonte indisponível: segue para o fallback
             logger.warning(
                 "Fonte fundamentalista %s indisponível para %s",
-                type(provider).__name__,
+                _nome_fonte(provider),
                 ticker,
                 exc_info=True,
             )

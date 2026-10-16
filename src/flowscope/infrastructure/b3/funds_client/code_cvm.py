@@ -1,18 +1,11 @@
-"""Resolução do codeCVM de um ticker na B3."""
+"""Resolução API-only do codeCVM e do nome de negociação de um ticker na B3."""
 
 import logging
 
 import requests
 
-from flowscope.infrastructure.b3.funds_client.constants import (
-    _CADASTRO_EMPRESAS_URL,
-    TTL_CADASTRO_EMPRESAS_DIAS,
-    TTL_CODIGO_CVM_DIAS,
-)
-from flowscope.infrastructure.b3.funds_client.cvm import (
-    _normalizar_code_cvm,
-    montar_indice_code_cvm,
-)
+from flowscope.infrastructure.b3.funds_client.constants import TTL_CODIGO_CVM_DIAS
+from flowscope.infrastructure.b3.funds_client.cvm import _normalizar_code_cvm
 
 logger = logging.getLogger(__name__)
 
@@ -26,17 +19,25 @@ def _raiz_ticker(ticker: str) -> str:
     return raiz or ticker.strip().upper()
 
 
-def _code_cvm_da_raiz(dados: object, raiz: str) -> str | None:
-    """Retorna o codeCVM do registro cujo ``issuingCompany`` é a raiz do ticker."""
+def _registro_da_raiz(dados: object, raiz: str) -> dict | None:
+    """Retorna o registro cujo ``issuingCompany`` é a raiz do ticker."""
     if not isinstance(dados, dict):
         return None
     for item in dados.get("results", []):
         if not isinstance(item, dict):
             continue
         emissor = str(item.get("issuingCompany") or "").strip().upper()
-        codigo = item.get("codeCVM")
-        if emissor == raiz and codigo:
-            return _normalizar_code_cvm(str(codigo))
+        if emissor == raiz:
+            return item
+    return None
+
+
+def _nome_do_registro(item: dict) -> str | None:
+    """Extrai o nome de exibição do registro, preferindo ``tradingName``."""
+    for chave in ("tradingName", "companyName"):
+        valor = item.get(chave)
+        if valor is not None and str(valor).strip():
+            return str(valor).strip()
     return None
 
 
@@ -47,55 +48,78 @@ def _total_paginas(dados: object) -> int:
 
 
 class FundosCodeCvmMixin:
-    """Mixin com resolução de ticker→codeCVM, com fallback no cadastro."""
+    """Mixin com resolução de ticker→codeCVM e nome, exclusivamente via API."""
 
     def resolver_code_cvm(self: "FundosCodeCvmMixin", ticker: str) -> str | None:
-        """Resolve o ticker para o ``codeCVM`` na B3.
+        """Resolve o ticker para o ``codeCVM`` na B3, exclusivamente via API.
 
-        Consulta a API ``listedCompaniesProxy`` e, quando indisponível, baixa o
-        cadastro de empresas listadas como alternativa. Retorna ``None`` para
-        tickers sem código CVM, sem lançar exceção. O resultado, inclusive
-        ``None``, é cacheado por 30 dias.
+        Consulta ``GetInitialCompanies`` pela raiz do ticker e retorna ``None``
+        para tickers sem código CVM. Uma falha de resolução (rede/HTTP após as
+        retentativas) retorna ``None`` sem cachear o resultado, de modo que uma
+        nova tentativa futura volte a consultar a API.
+        """
+        return self._identidade_empresa(ticker).get("codeCVM")
+
+    def obter_nome_negociacao(
+        self: "FundosCodeCvmMixin", ticker: str
+    ) -> str | None:
+        """Retorna o nome de exibição da empresa listada, ou ``None``.
+
+        Reaproveita a mesma consulta ``GetInitialCompanies`` (e o mesmo cache)
+        usada pela resolução de codeCVM, sem nova fonte de dados.
+        """
+        return self._identidade_empresa(ticker).get("nome")
+
+    def _identidade_empresa(
+        self: "FundosCodeCvmMixin", ticker: str
+    ) -> dict[str, object]:
+        """Obtém ``{"codeCVM", "nome"}`` da API, cacheando por 30 dias.
+
+        O resultado só é gravado no cache quando a API respondeu (com ou sem
+        correspondência). Uma falha de rede/HTTP NÃO é cacheada: a exceção é
+        propagada por ``get_or_fetch`` sem gravar nada e tratada aqui.
         """
         key = self._chave_cache("codecvm", ticker.strip().upper())
 
         def _fetch() -> dict[str, object]:
-            try:
-                return {"codeCVM": self._consultar_code_cvm_por_api(ticker)}
-            except requests.RequestException as e:
-                logger.warning(
-                    "API de empresas indisponível para %s, usando cadastro: %s",
-                    ticker,
-                    e,
-                )
-                return {"codeCVM": self._consultar_code_cvm_no_cadastro(ticker)}
+            return self._consultar_empresa_por_api(ticker)
 
         try:
-            payload = self._cache.get_or_fetch(key, ttl_days=TTL_CODIGO_CVM_DIAS, fetch_fn=_fetch)
+            payload = self._cache.get_or_fetch(
+                key, ttl_days=TTL_CODIGO_CVM_DIAS, fetch_fn=_fetch
+            )
         except requests.RequestException:
             logger.warning(
-                "Falha ao resolver codeCVM do ticker %s", ticker, exc_info=True
+                "Falha ao resolver identidade do ticker %s", ticker, exc_info=True
             )
-            return None
-        return payload.get("codeCVM")
+            return {"codeCVM": None, "nome": None}
+        return {
+            "codeCVM": payload.get("codeCVM"),
+            "nome": payload.get("nome"),
+        }
 
-    def _consultar_code_cvm_por_api(self: "FundosCodeCvmMixin", ticker: str) -> str | None:
+    def _consultar_empresa_por_api(
+        self: "FundosCodeCvmMixin", ticker: str
+    ) -> dict[str, object]:
         """Consulta a API de empresas listadas pela raiz de negociação do ticker.
 
-        Usa ``GetInitialCompanies`` (o endpoint exposto pela B3 para o cadastro
-        de empresas) filtrando por ``company`` e casa o registro cujo
-        ``issuingCompany`` é a raiz do ticker, já que o filtro textual pode
+        Usa ``GetInitialCompanies`` filtrando por ``company`` e casa o registro
+        cujo ``issuingCompany`` é a raiz do ticker, já que o filtro textual pode
         trazer outras empresas cujo nome contém a raiz.
         """
         raiz = _raiz_ticker(ticker)
         page_number = 1
         while True:
             dados = self._consultar_empresas(raiz, page_number)
-            codigo = _code_cvm_da_raiz(dados, raiz)
-            if codigo is not None:
-                return codigo
+            item = _registro_da_raiz(dados, raiz)
+            if item is not None:
+                codigo = item.get("codeCVM")
+                return {
+                    "codeCVM": _normalizar_code_cvm(str(codigo)) if codigo else None,
+                    "nome": _nome_do_registro(item),
+                }
             if page_number >= _total_paginas(dados):
-                return None
+                return {"codeCVM": None, "nome": None}
             page_number += 1
 
     def _consultar_empresas(
@@ -111,27 +135,3 @@ class FundosCodeCvmMixin:
                 "company": raiz,
             },
         )
-
-    def _consultar_code_cvm_no_cadastro(self: "FundosCodeCvmMixin", ticker: str) -> str | None:
-        """Busca o codeCVM no cadastro de empresas listadas da B3."""
-        indice = self._carregar_indice_code_cvm()
-        return indice.get(ticker.strip().upper())
-
-    def _carregar_indice_code_cvm(self: "FundosCodeCvmMixin") -> dict[str, str]:
-        """Baixa e cacheia o índice ticker→codeCVM do cadastro de empresas."""
-        key = "cadastro_empresas_code_cvm"
-
-        def _fetch() -> dict[str, object]:
-            texto = self._baixar_cadastro_empresas()
-            return {"indice": montar_indice_code_cvm(texto)}
-
-        payload = self._cache.get_or_fetch(key, ttl_days=TTL_CADASTRO_EMPRESAS_DIAS, fetch_fn=_fetch)
-        indice = payload.get("indice")
-        return indice if isinstance(indice, dict) else {}
-
-    def _baixar_cadastro_empresas(self: "FundosCodeCvmMixin") -> str:
-        """Baixa o CSV do cadastro de empresas listadas da B3."""
-        logger.info("Baixando cadastro de empresas via %s", _CADASTRO_EMPRESAS_URL)
-        resp = self._requisicao_get(_CADASTRO_EMPRESAS_URL, timeout=60)
-        resp.encoding = resp.apparent_encoding or "utf-8"
-        return resp.text

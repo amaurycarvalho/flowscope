@@ -12,6 +12,10 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     _URL_DOCUMENTO_PDF,
     TTL_DOCUMENTOS_RELEVANTES_DIAS,
 )
+from flowscope.infrastructure.download_resiliente import (
+    baixar_conteudo,
+    validar_pdf,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -80,15 +84,26 @@ class FundosDocumentosRelevantesMixin:
     def baixar_pdf_documento(
         self: "FundosDocumentosRelevantesMixin", id_documento: str
     ) -> bytes | None:
-        """Baixa o PDF do documento, rejeitando conteúdo sem assinatura ``%PDF``."""
+        """Baixa o PDF do documento pelo download resiliente compartilhado.
+
+        Valida a assinatura ``%PDF`` (repetindo conteúdo inválido dentro do
+        orçamento do item) e trata o ``403`` intermitente do FNET como
+        repetível. Retorna ``None`` quando o orçamento se esgota, sem criar
+        arquivo e sem interromper os demais documentos.
+        """
         url = f"{_URL_DOCUMENTO_PDF}?id={id_documento}"
         logger.info("Baixando PDF do documento %s via %s", id_documento, url)
-        resposta = self._requisicao_get(url, timeout=_TIMEOUT_DOCUMENTO)
-        conteudo = resposta.content
-        if not conteudo.startswith(b"%PDF"):
+        resposta = baixar_conteudo(
+            url,
+            sessao=self._session,
+            timeout=_TIMEOUT_DOCUMENTO,
+            validar=validar_pdf,
+            transitorios_extra=frozenset({403}),
+        )
+        if resposta is None:
             logger.warning("Conteúdo não-PDF no documento %s", id_documento)
             return None
-        return conteudo
+        return resposta.content
 
     def _coletar_paginas_relevantes(
         self: "FundosDocumentosRelevantesMixin",

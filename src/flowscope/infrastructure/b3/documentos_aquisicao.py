@@ -12,6 +12,7 @@ from collections.abc import Callable
 from datetime import date
 
 from flowscope.application.cancellation import CancellationToken
+from flowscope.application.documentos.aquisicao import ResultadoAquisicao
 from flowscope.domain.structured import (
     CategoriaMaterialFact,
     DocumentoMaterialFact,
@@ -71,18 +72,18 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> int:
+    ) -> ResultadoAquisicao:
         """Adquire os documentos do ticker conforme o tipo, tolerando falhas.
 
         ``progress``, quando informado, recebe ``(atual, total, rótulo)`` a
         cada documento processado. ``cancel_token``, quando informado, é
         observado no topo de cada unidade de trabalho, interrompendo a
-        aquisição pela via de :class:`OperacaoCancelada`. Retorna a contagem de
-        itens persistidos (novos ou já em cache).
+        aquisição pela via de :class:`OperacaoCancelada`. Retorna o desfecho
+        com a contagem de itens novos, reutilizados do cache e falhos.
         """
         chave = (ticker or "").strip().upper()
         if not chave:
-            return 0
+            return ResultadoAquisicao()
         id_fnet = self._client.resolver_ticker(chave)
         if id_fnet:
             return self._adquirir_fii(
@@ -93,7 +94,7 @@ class AquisicaoDocumentos:
             return self._adquirir_acao(
                 chave, code_cvm, reference_date, progress, cancel_token
             )
-        return 0
+        return ResultadoAquisicao()
 
     def _adquirir_fii(
         self: "AquisicaoDocumentos",
@@ -102,7 +103,7 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> int:
+    ) -> ResultadoAquisicao:
         """Adquire documentos relevantes e o informe mensal de um FII."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
         itens = self._listar_documentos_relevantes(
@@ -112,22 +113,22 @@ class AquisicaoDocumentos:
         total = len(itens) + (1 if informe is not None else 0)
         self._reportar(progress, 0, total, ticker)
         atual = 0
-        adquiridos = 0
+        resultado = ResultadoAquisicao()
         for item in itens:
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            if self._persistir_documento_relevante(ticker, id_fnet, item):
-                adquiridos += 1
+            resultado = resultado + self._persistir_documento_relevante(
+                ticker, id_fnet, item
+            )
             atual += 1
             self._reportar(progress, atual, total, ticker)
         if informe is not None:
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            if self._persistir_informe(ticker, informe):
-                adquiridos += 1
+            resultado = resultado + self._persistir_informe(ticker, informe)
             atual += 1
             self._reportar(progress, atual, total, ticker)
-        return adquiridos
+        return resultado
 
     def _listar_documentos_relevantes(
         self: "AquisicaoDocumentos",
@@ -154,17 +155,27 @@ class AquisicaoDocumentos:
         ticker: str,
         id_fnet: str,
         item: dict,
-    ) -> bool:
-        """Baixa e grava um documento relevante, retornando se foi persistido."""
+    ) -> ResultadoAquisicao:
+        """Baixa e grava um documento relevante, contabilizando o desfecho."""
+        url = str(item.get("urlViewerFundosNet") or "")
+        reutilizado = (
+            bool(url)
+            and self._documentos.caminho_registrado(ticker, url) is not None
+        )
         try:
-            return self._documentos.persistir(ticker, id_fnet, item) is not None
+            persistido = self._documentos.persistir(ticker, id_fnet, item) is not None
         except Exception:  # falha isolada por documento
             logger.warning(
                 "Falha ao adquirir documento relevante de %s",
                 ticker,
                 exc_info=True,
             )
-            return False
+            return ResultadoAquisicao(falhas=1)
+        if not persistido:
+            return ResultadoAquisicao(falhas=1)
+        if reutilizado:
+            return ResultadoAquisicao(reutilizados=1)
+        return ResultadoAquisicao(novos=1)
 
     def _selecionar_informe(
         self: "AquisicaoDocumentos",
@@ -194,17 +205,27 @@ class AquisicaoDocumentos:
 
     def _persistir_informe(
         self: "AquisicaoDocumentos", ticker: str, documento: dict
-    ) -> bool:
-        """Grava o informe mensal selecionado, retornando se foi persistido."""
+    ) -> ResultadoAquisicao:
+        """Grava o informe mensal selecionado, contabilizando o desfecho."""
+        url = str(documento.get("urlViewerFundosNet") or "")
+        reutilizado = (
+            bool(url)
+            and self._informes.caminho_registrado(ticker, url) is not None
+        )
         try:
-            return self._informes.persistir(ticker, documento) is not None
+            persistido = self._informes.persistir(ticker, documento) is not None
         except Exception:  # falha isolada de gravação
             logger.warning(
                 "Falha ao persistir informe mensal de %s",
                 ticker,
                 exc_info=True,
             )
-            return False
+            return ResultadoAquisicao(falhas=1)
+        if not persistido:
+            return ResultadoAquisicao(falhas=1)
+        if reutilizado:
+            return ResultadoAquisicao(reutilizados=1)
+        return ResultadoAquisicao(novos=1)
 
     def _adquirir_acao(
         self: "AquisicaoDocumentos",
@@ -213,7 +234,7 @@ class AquisicaoDocumentos:
         reference_date: date,
         progress: Callable[[int, int, str], None] | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> int:
+    ) -> ResultadoAquisicao:
         """Adquire os material facts de uma ação ou BDR."""
         inicio = _subtrair_meses(reference_date, _MESES_DOCUMENTOS)
         documentos: list[tuple[DocumentoMaterialFact, str]] = []
@@ -224,16 +245,15 @@ class AquisicaoDocumentos:
                 documentos.append((documento, slug))
         total = len(documentos)
         self._reportar(progress, 0, total, ticker)
-        adquiridos = 0
+        resultado = ResultadoAquisicao()
         for atual, (documento, slug) in enumerate(documentos, start=1):
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
-            if self._persistir_material_fact(
+            resultado = resultado + self._persistir_material_fact(
                 ticker, documento, slug, reference_date
-            ):
-                adquiridos += 1
+            )
             self._reportar(progress, atual, total, ticker)
-        return adquiridos
+        return resultado
 
     @staticmethod
     def _reportar(
@@ -276,20 +296,20 @@ class AquisicaoDocumentos:
         documento: DocumentoMaterialFact,
         slug: str,
         reference_date: date,
-    ) -> bool:
-        """Baixa e grava o PDF de um material fact, retornando se persistiu."""
+    ) -> ResultadoAquisicao:
+        """Baixa e grava o PDF de um material fact, contabilizando o desfecho."""
         url = documento.url_documento or ""
         protocolo = id_protocolo(url)
         if protocolo is None:
-            return False
+            return ResultadoAquisicao(falhas=1)
         if self._documentos.caminho_registrado(ticker, url) is not None:
-            return True
+            return ResultadoAquisicao(reutilizados=1)
         referencia = _data_documento(documento.data_referencia, reference_date)
         cache = self._documentos.cache
         caminho = cache.caminho(ticker, referencia, slug, protocolo)
         if cache.existe(ticker, referencia, slug, protocolo):
             self._documentos.registrar_url(ticker, url, caminho)
-            return True
+            return ResultadoAquisicao(reutilizados=1)
         try:
             conteudo = self._baixar_cvm(protocolo)
         except Exception:  # falha de rede isolada por documento
@@ -299,11 +319,11 @@ class AquisicaoDocumentos:
                 ticker,
                 exc_info=True,
             )
-            return False
+            return ResultadoAquisicao(falhas=1)
         if not conteudo:
-            return False
+            return ResultadoAquisicao(falhas=1)
         dedup = self._documentos.deduplicacao(ticker)
-        _gravado, canonico = dedup.processar_e_resolver(
+        gravado, canonico = dedup.processar_e_resolver(
             conteudo,
             caminho,
             lambda dados: cache.gravar(
@@ -311,14 +331,16 @@ class AquisicaoDocumentos:
             ),
         )
         if canonico is None:
-            return False
+            return ResultadoAquisicao(falhas=1)
         caminho_canonico = self._documentos.cache_root / canonico
         if not caminho_canonico.is_file():
-            return False
+            return ResultadoAquisicao(falhas=1)
         # Registra a URL mesmo quando o conteúdo foi descartado por duplicidade,
         # apontando para o arquivo canônico já existente.
         self._documentos.registrar_url(ticker, url, caminho_canonico)
-        return True
+        if gravado:
+            return ResultadoAquisicao(novos=1)
+        return ResultadoAquisicao(reutilizados=1)
 
 
 def _data_documento(texto: object, fallback: date) -> date:

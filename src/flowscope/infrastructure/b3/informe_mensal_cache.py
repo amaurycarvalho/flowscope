@@ -159,6 +159,23 @@ class InformeMensalArquivoProvider:
         """Retorna o serviço de deduplicação do ticker."""
         return self._dedup_factory(ticker)
 
+    def caminho_registrado(
+        self: "InformeMensalArquivoProvider", ticker: str, url: str
+    ) -> Path | None:
+        """Retorna um arquivo já em cache para a URL, se existir.
+
+        A data de referência não é conhecida apenas pela URL, então procura o
+        identificador do documento em qualquer mês do ticker.
+        """
+        id_documento = _id_da_url(url)
+        if id_documento is None:
+            return None
+        pasta = self._arquivos.pasta_ticker(ticker)
+        for caminho in pasta.glob(f"*/*/{id_documento}.html"):
+            if caminho.is_file():
+                return caminho
+        return None
+
     def persistir(
         self: "InformeMensalArquivoProvider", ticker: str, documento: dict
     ) -> InformeMensalArquivo | None:

@@ -250,6 +250,18 @@ class TestFundamentalAnalysisUseCase:
         resultado = caso.execute(["PETR4", "HCRI11"], REFERENCIA)
         assert [linha.ticker for linha in resultado] == ["PETR4", "HCRI11"]
 
+    def test_on_item_e_chamado_antes_de_cada_ticker(self):
+        repo = _repo_hgbs11()
+        caso = FundamentalAnalysisUseCase(repo)
+        vistos: list[str] = []
+
+        resultado = caso.execute(
+            ["petr4", "HCRI11"], REFERENCIA, on_item=vistos.append
+        )
+
+        assert vistos == ["PETR4", "HCRI11"]
+        assert [linha.ticker for linha in resultado] == ["PETR4", "HCRI11"]
+
     def test_acao_identidade_sem_dividendos_e_ffo_na(self):
         repo = _repo_hgbs11()
         caso = FundamentalAnalysisUseCase(repo)
@@ -786,6 +798,13 @@ class TestConsolidacaoDividendos:
 
 
 class TestConsolidacaoPapel:
+    def test_nome_de_acao_sem_fonte_primaria_usa_identidade_b3(self):
+        repo = FakeFundamentalRepository(nome_por_ticker={"PETR4": "PETROBRAS"})
+        caso = FundamentalAnalysisUseCase(repo)
+        resultado = caso.execute(["PETR4"], REFERENCIA)[0]
+        assert resultado.nome == "PETROBRAS"
+        assert resultado.erro is None
+
     def test_acao_preenche_dividendos_do_historico_fundamentus(self):
         repo = FakeFundamentalRepository()
         historico = FakeDividendHistory(

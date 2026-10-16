@@ -251,6 +251,15 @@ class _FakeSession:
         return self._resposta
 
 
+class _FakeSessionSSL:
+    def __init__(self) -> None:
+        self.chamadas: list[dict] = []
+
+    def get(self, url: str, **kwargs) -> _FakeResponse:
+        self.chamadas.append({"url": url, **kwargs})
+        raise requests.exceptions.SSLError("hostname mismatch")
+
+
 class TestClient:
     def test_fetch_serializa_requisicoes(self):
         dormidas: list[float] = []
@@ -297,6 +306,31 @@ class TestClient:
         assert "Rendimento" in texto
         assert session.chamadas[0]["url"] == FII_PROVENTOS_URL
         assert session.chamadas[0]["params"] == {"papel": "HGBS11"}
+
+    def test_urls_usam_host_coberto_pelo_certificado(self):
+        from flowscope.infrastructure.fii.fundamentus.client import (
+            BASE_URL,
+            HOST,
+            PROVENTOS_URL,
+            ROBOTS_URL,
+        )
+
+        assert HOST == "https://fundamentus.com.br"
+        assert "www." not in HOST
+        for url in (BASE_URL, PROVENTOS_URL, FII_PROVENTOS_URL, ROBOTS_URL):
+            assert url.startswith(HOST)
+
+    def test_ssl_error_vira_network_error(self):
+        session = _FakeSessionSSL()
+        client = FundamentusClient(session=session, respect_robots=False)
+        with pytest.raises(NetworkError):
+            client.fetch("PETR4")
+
+    def test_ssl_error_nao_e_ticker_nao_encontrado(self):
+        session = _FakeSessionSSL()
+        client = FundamentusClient(session=session, respect_robots=False)
+        with pytest.raises(NetworkError):
+            client.fetch_fii_proventos("HGBS11")
 
 
 class TestProvider:

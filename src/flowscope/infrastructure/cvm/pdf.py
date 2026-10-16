@@ -1,29 +1,35 @@
 """Download de PDF no visualizador de arquivos externos da CVM.
 
-O documento é obtido por POST ``ExibirPDF``, que devolve JSON com o conteúdo
-em base64. O sistema valida que o conteúdo decodificado começa com ``%PDF``.
+O documento é obtido pelo fluxo ``GET página → POST ExibirPDF`` (o GET renova a
+sessão/token do visualizador), que devolve JSON com o conteúdo em base64. O
+sistema valida que o conteúdo decodificado começa com ``%PDF``.
 """
 
 import base64
 import json
 import logging
+from urllib.parse import quote
 
 import requests
 
-from flowscope.infrastructure.http_retry import executar_com_retry
+from flowscope.infrastructure.download_resiliente import (
+    DOWNLOAD_TIMEOUT_S,
+    post_renovando_sessao,
+)
 
 logger = logging.getLogger("flowscope")
 
-#: Endpoint do visualizador de arquivos externos da CVM.
+#: Endpoint do visualizador de arquivos externos da CVM (POST ``ExibirPDF``).
 CVM_PDF_URL = (
     "https://www.rad.cvm.gov.br/ENETWEB/"
     "frmExibirArquivoIPEExterno.aspx/ExibirPDF"
 )
 
+#: Página do visualizador (origem do token/sessão renovados antes do POST).
+CVM_PDF_PAGE_URL = CVM_PDF_URL.removesuffix("/ExibirPDF")
+
 #: Código de instituição usado ao consultar o PDF pelo ``ID`` do documento.
 CODIGO_INSTITUICAO = "2"
-
-_HEADERS_JSON = {"Content-Type": "application/json; charset=utf-8"}
 
 
 def conteudo_e_pdf(dados: bytes) -> bool:
@@ -50,14 +56,25 @@ def decodificar_pdf(payload: object) -> bytes | None:
     return dados
 
 
+def _payload_tem_pdf(resposta: requests.Response) -> bool:
+    """Valida que a resposta JSON contém um PDF em base64."""
+    try:
+        payload = resposta.json()
+    except ValueError:
+        return False
+    return decodificar_pdf(payload) is not None
+
+
 def baixar_pdf_cvm(
     numero_protocolo: str,
     *,
     session: requests.Session | None = None,
     timeout: int = 30,
+    timeout_total: float | None = DOWNLOAD_TIMEOUT_S,
 ) -> bytes | None:
     """Baixa e decodifica o PDF do documento pelo protocolo da CVM.
 
+    Usa o fluxo resiliente com renovação de sessão do visualizador da CVM.
     Retorna ``None`` em falha de rede, payload inválido ou conteúdo que não
     seja PDF, sem propagar a exceção.
     """
@@ -69,21 +86,21 @@ def baixar_pdf_cvm(
             "versaoCaptcha": "",
         }
     )
-
-    def _fazer() -> requests.Response:
-        resposta = (session or requests).post(
-            CVM_PDF_URL,
-            data=corpo,
-            headers=_HEADERS_JSON,
-            timeout=timeout,
-        )
-        resposta.raise_for_status()
-        return resposta
-
+    pagina = f"{CVM_PDF_PAGE_URL}?ID={quote(str(numero_protocolo))}"
+    resposta = post_renovando_sessao(
+        pagina,
+        CVM_PDF_URL,
+        corpo,
+        sessao=session,
+        timeout=timeout,
+        timeout_total=timeout_total,
+        validar=_payload_tem_pdf,
+    )
+    if resposta is None:
+        return None
     try:
-        resposta = executar_com_retry(_fazer, metodo="POST", repetivel=True)
         payload = resposta.json()
-    except (requests.RequestException, ValueError):
-        logger.warning("Falha ao baixar PDF da CVM", exc_info=True)
+    except ValueError:
+        logger.warning("Payload inválido do PDF da CVM", exc_info=True)
         return None
     return decodificar_pdf(payload)

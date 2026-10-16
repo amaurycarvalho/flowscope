@@ -9,15 +9,28 @@ import requests
 
 from .errors import NetworkError, TickerNotFound
 
-BASE_URL = "https://www.fundamentus.com.br/detalhes.php"
-PROVENTOS_URL = "https://www.fundamentus.com.br/proventos.php"
-FII_PROVENTOS_URL = "https://www.fundamentus.com.br/fii_proventos.php"
-ROBOTS_URL = "https://www.fundamentus.com.br/robots.txt"
+#: Host cujo certificado TLS cobre o nome de destino (apex, sem ``www.``).
+HOST = "https://fundamentus.com.br"
+BASE_URL = f"{HOST}/detalhes.php"
+PROVENTOS_URL = f"{HOST}/proventos.php"
+FII_PROVENTOS_URL = f"{HOST}/fii_proventos.php"
+ROBOTS_URL = f"{HOST}/robots.txt"
 USER_AGENT = "FlowScope/1.0"
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_RATE_LIMIT_S = 1.0
 
 _PISTAS_NAO_ENCONTRADO = ("nenhum papel encontrado", "não encontrado")
+
+
+def _erro_de_rede(erro: requests.RequestException) -> NetworkError:
+    """Classifica uma falha de requisição como indisponibilidade da fonte.
+
+    Uma falha de verificação TLS é tratada como indisponibilidade (distinta de
+    ticker ausente), preservando o erro tipado.
+    """
+    if isinstance(erro, requests.exceptions.SSLError):
+        return NetworkError(f"Falha de verificação TLS no Fundamentus: {erro}")
+    return NetworkError(str(erro))
 
 
 class FundamentusClient:
@@ -74,7 +87,7 @@ class FundamentusClient:
             if resposta.status_code != 304:
                 resposta.raise_for_status()
         except requests.RequestException as erro:
-            raise NetworkError(str(erro)) from erro
+            raise _erro_de_rede(erro) from erro
         self._ultima_requisicao = time.monotonic()
         if resposta.status_code != 304:
             texto = resposta.text
@@ -112,7 +125,7 @@ class FundamentusClient:
             )
             resposta.raise_for_status()
         except requests.RequestException as erro:
-            raise NetworkError(str(erro)) from erro
+            raise _erro_de_rede(erro) from erro
         self._ultima_requisicao = time.monotonic()
         return resposta.text
 

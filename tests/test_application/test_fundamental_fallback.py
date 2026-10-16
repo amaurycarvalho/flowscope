@@ -152,3 +152,13 @@ class TestSeveridadeLog:
         assert registros
         assert registros[0].levelno >= logging.WARNING
         assert registros[0].exc_info is not None
+
+    def test_fonte_indisponivel_loga_fonte_e_ticker(self, caplog):
+        primario = _Fonte("FUNDAMENTUS", falhar=True)
+        fallback = _Fonte("B3", {CAMPO_NOME: CampoFundamental("Fundo X", "B3")})
+        composto = CompositeFundamentalProvider([primario, fallback])
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            campos = composto.obter("HGBS11", REFERENCIA)
+        assert campos[CAMPO_NOME].fonte == "B3"
+        assert "FUNDAMENTUS" in caplog.text
+        assert "HGBS11" in caplog.text

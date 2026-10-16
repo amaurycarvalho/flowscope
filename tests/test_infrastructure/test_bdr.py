@@ -378,12 +378,14 @@ class TestBdrClient:
         assert dados is not None
         assert dados.startswith(b"%PDF")
         metodos = [chamada["metodo"] for chamada in sessao.chamadas]
-        assert metodos == ["GET", "POST"]
+        # GET da página ``Detail``, GET da página do visualizador da CVM
+        # (renovação de sessão) e POST ``ExibirPDF``.
+        assert metodos == ["GET", "GET", "POST"]
         get = sessao.chamadas[0]
         assert get["params"]["agencia"] == "18"
         assert get["params"]["idNoticia"] == "3480343"
         assert get["params"]["dataNoticia"] == "2026-09-11"
-        post = sessao.chamadas[1]
+        post = sessao.chamadas[2]
         assert "codigoInstituicao" in post["data"]
         assert "1567325" in post["data"]
 

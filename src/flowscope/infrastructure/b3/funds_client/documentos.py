@@ -13,6 +13,10 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     TTL_DOCUMENTO_HTML_DIAS,
     TTL_DOCUMENTOS_LISTA_DIAS,
 )
+from flowscope.infrastructure.download_resiliente import (
+    baixar_conteudo,
+    validar_html,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +114,17 @@ class FundosDocumentosMixin:
                 f"?id={id_documento}"
             )
             logger.info("Baixando documento %s via %s", id_documento, url)
-            resp = self._requisicao_get(url, timeout=_TIMEOUT_DOCUMENTO)
+            resp = baixar_conteudo(
+                url,
+                sessao=self._session,
+                timeout=_TIMEOUT_DOCUMENTO,
+                validar=validar_html,
+                transitorios_extra=frozenset({403}),
+            )
+            if resp is None:
+                raise requests.RequestException(
+                    f"conteúdo HTML inválido no documento {id_documento}"
+                )
             resp.encoding = resp.apparent_encoding or "utf-8"
             return {"html": resp.text}
 

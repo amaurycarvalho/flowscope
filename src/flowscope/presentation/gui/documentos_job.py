@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import date
 
 from flowscope.application.cancellation import OperacaoCancelada
+from flowscope.application.documentos.aquisicao import ResultadoAquisicao
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.job import Politica
 
@@ -26,23 +27,26 @@ def executar_documentos(
     ticker: str,
     reference_date: date,
     deduplicar: Callable[[str, object], None] | None = None,
-) -> int:
+) -> ResultadoAquisicao:
     """Executa a aquisição e o housekeeping, publicando progresso e término.
 
-    Retorna a contagem de itens adquiridos (zero em cancelamento ou falha).
+    Retorna o desfecho da aquisição (vazio em cancelamento ou falha).
     """
 
     def _progresso(current: int, total: int, label: str) -> None:
         ctx.progress(detalhe=label, atual=current, total=total)
 
-    adquiridos = 0
+    resultado = ResultadoAquisicao()
     try:
-        adquiridos = aquisicao.adquirir(
-            ticker,
-            reference_date,
-            progress=_progresso,
-            cancel_token=ctx.token,
-        ) or 0
+        resultado = (
+            aquisicao.adquirir(
+                ticker,
+                reference_date,
+                progress=_progresso,
+                cancel_token=ctx.token,
+            )
+            or ResultadoAquisicao()
+        )
     except OperacaoCancelada:
         logger.debug(
             "Aquisição de documentos de %s interrompida pelo usuário", ticker
@@ -52,7 +56,7 @@ def executar_documentos(
             "Falha na aquisição de documentos de %s", ticker, exc_info=True
         )
     if deduplicar is None:
-        return adquiridos
+        return resultado
     try:
         deduplicar(ticker, ctx.token)
     except OperacaoCancelada:
@@ -61,4 +65,4 @@ def executar_documentos(
         logger.warning(
             "Falha no housekeeping de documentos de %s", ticker, exc_info=True
         )
-    return adquiridos
+    return resultado

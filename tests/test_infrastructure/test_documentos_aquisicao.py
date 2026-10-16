@@ -481,30 +481,47 @@ class TestCancelamento:
 
 
 class TestContagemAdquiridos:
-    def test_ticker_nao_resolvido_retorna_zero(self, tmp_path):
+    def test_ticker_nao_resolvido_retorna_vazio(self, tmp_path):
         cliente = _ClienteFake()
         aquisicao, _, _ = _aquisicao(tmp_path, cliente, lambda _p: b"%PDF")
 
-        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0
+        assert aquisicao.adquirir("PETR3", _REFERENCIA).adquiridos == 0
 
-    def test_sem_documentos_retorna_zero(self, tmp_path):
+    def test_sem_documentos_retorna_vazio(self, tmp_path):
         cliente = _ClienteFake(code_cvm="9512", fatos={})
         aquisicao, _, _ = _aquisicao(
             tmp_path, cliente, lambda _p: b"%PDF-1.4"
         )
 
-        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0
+        assert aquisicao.adquirir("PETR3", _REFERENCIA).adquiridos == 0
+        assert aquisicao.adquirir("PETR3", _REFERENCIA).falhas == 0
 
-    def test_material_fact_persistido_e_contado(self, tmp_path):
+    def test_material_fact_persistido_conta_como_novo(self, tmp_path):
         cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
         aquisicao, _, _ = _aquisicao(
             tmp_path, cliente, lambda _p: b"%PDF-1.4"
         )
 
-        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 1
+        resultado = aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert resultado.novos == 1
+        assert resultado.reutilizados == 0
+        assert resultado.falhas == 0
 
-    def test_download_falho_nao_e_contado(self, tmp_path):
+    def test_reuso_de_cache_conta_como_reutilizado(self, tmp_path):
+        cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
+        aquisicao, _, _ = _aquisicao(
+            tmp_path, cliente, lambda _p: b"%PDF-1.4"
+        )
+
+        aquisicao.adquirir("PETR3", _REFERENCIA)
+        resultado = aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert resultado.reutilizados == 1
+        assert resultado.novos == 0
+
+    def test_download_falho_conta_como_falha(self, tmp_path):
         cliente = _ClienteFake(code_cvm="9512", fatos={"4": [_fato()]})
         aquisicao, _, _ = _aquisicao(tmp_path, cliente, lambda _p: None)
 
-        assert aquisicao.adquirir("PETR3", _REFERENCIA) == 0
+        resultado = aquisicao.adquirir("PETR3", _REFERENCIA)
+        assert resultado.falhas == 1
+        assert resultado.adquiridos == 0

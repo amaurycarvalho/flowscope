@@ -42,6 +42,7 @@ def executar_fundamental(
             progress_callback=_progresso,
             force_refresh=force_refresh,
             cancel_token=ctx.token,
+            on_item=lambda ticker: ctx.descrever(f"Fundamentos: {ticker}"),
         )
     except OperacaoCancelada:
         logger.debug("Análise fundamentalista interrompida pelo usuário")

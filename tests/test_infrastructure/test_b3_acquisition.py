@@ -359,6 +359,48 @@ class TestB3FundamentalRepository:
         repo = self._repo()
         assert repo.obter_nome("ALZR11") == "Alianza Trust"
 
+    def test_obter_nome_de_acao_pela_identidade_b3(self):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        class _FundosSemFundo:
+            def find_by_ticker(self, ticker):
+                return None
+
+            def obter_nome_negociacao(self, ticker):
+                return "PETROBRAS"
+
+        class _Relatorios:
+            def extrair_proventos(self, *args, **kwargs):
+                return []
+
+        repo = B3FundamentalRepository(
+            fund_repository=_FundosSemFundo(), reports_repository=_Relatorios()
+        )
+        assert repo.obter_nome("PETR4") == "PETROBRAS"
+
+    def test_obter_nome_sem_identidade_retorna_none(self):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        class _FundosSemFundo:
+            def find_by_ticker(self, ticker):
+                return None
+
+            def obter_nome_negociacao(self, ticker):
+                return None
+
+        class _Relatorios:
+            def extrair_proventos(self, *args, **kwargs):
+                return []
+
+        repo = B3FundamentalRepository(
+            fund_repository=_FundosSemFundo(), reports_repository=_Relatorios()
+        )
+        assert repo.obter_nome("XPTO4") is None
+
     def test_obter_proventos(self):
         from flowscope.domain.structured import ISIN, Provento, ValorProvento
 

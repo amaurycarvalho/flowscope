@@ -30,3 +30,13 @@ class B3FundRepository:
             name=str(candidato.get("fundName") or ""),
             trading_name=candidato.get("tradingName"),
         )
+
+    def obter_nome_negociacao(
+        self: "B3FundRepository", ticker: str
+    ) -> str | None:
+        """Retorna o nome de exibição da empresa listada (ação/BDR), ou ``None``.
+
+        Usa a identidade B3 já consultada (``GetInitialCompanies``) sem nova
+        fonte de dados.
+        """
+        return self._client.obter_nome_negociacao(ticker)

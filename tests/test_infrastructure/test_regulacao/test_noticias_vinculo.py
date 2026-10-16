@@ -9,6 +9,7 @@ import responses
 
 from flowscope.application.document_preview import ExtracaoTexto, StatusExtracao
 from flowscope.application.extracao_orcada import EXTRACAO_TIMEOUT_S
+from flowscope.infrastructure import download_resiliente
 from flowscope.infrastructure.b3 import noticias_vinculo
 from flowscope.infrastructure.b3.noticias_vinculo import (
     baixar_conteudo_vinculado,
@@ -189,17 +190,17 @@ class TestBaixarConteudoVinculado:
             assert baixar_conteudo_vinculado(_CORPO) is None
 
     def test_timeout_loga_sem_traceback(self, monkeypatch, caplog):
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
 
         def _estoura(_request):
             raise requests.exceptions.ReadTimeout("simulado")
 
         with caplog.at_level(logging.WARNING, logger="flowscope"):
             with responses.RequestsMock() as rsps:
-                for _ in range(noticias_vinculo.TENTATIVAS):
+                for _ in range(download_resiliente.TENTATIVAS):
                     rsps.add_callback(responses.GET, _VIEWER_URL, _estoura)
                 assert baixar_conteudo_vinculado(_CORPO) is None
-        assert "Falha de comunicação" in caplog.text
+        assert "Falha ao resolver PDF da CVM" in caplog.text
         assert "ReadTimeout" in caplog.text
         assert "Traceback" not in caplog.text
 
@@ -275,7 +276,7 @@ class TestBaixarConteudoFnet:
             assert baixar_conteudo_vinculado(_CORPO_FNET) is None
 
     def test_retry_apos_falha_temporaria(self, monkeypatch):
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
         monkeypatch.setattr(
             noticias_vinculo,
             "extrair_pdf_com_orcamento",
@@ -297,7 +298,7 @@ class TestBaixarConteudoFnet:
         assert resultado.texto == "texto recuperado"
 
     def test_retry_apos_429(self, monkeypatch):
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
         monkeypatch.setattr(
             noticias_vinculo,
             "extrair_pdf_com_orcamento",
@@ -324,9 +325,9 @@ class TestBaixarConteudoFnet:
         assert resultado.texto == "texto apos 429"
 
     def test_falha_de_rede_retorna_none(self, monkeypatch):
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
         with responses.RequestsMock() as rsps:
-            for _ in range(noticias_vinculo.TENTATIVAS):
+            for _ in range(download_resiliente.TENTATIVAS):
                 rsps.add(responses.GET, _FNET_VIEWER_URL, status=500)
             assert baixar_conteudo_vinculado(_CORPO_FNET) is None
 
@@ -356,7 +357,7 @@ class TestOrcamentoTotal:
     def test_orcamento_esgotado_retorna_none_sem_requisicao(
         self, monkeypatch, caplog
     ):
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
         with caplog.at_level(logging.WARNING, logger="flowscope"):
             with responses.RequestsMock() as rsps:
                 resultado = baixar_conteudo_vinculado(
@@ -368,8 +369,8 @@ class TestOrcamentoTotal:
 
     def test_orcamento_esgotado_aborta_segunda_requisicao(self, monkeypatch):
         relogio = _Relogio()
-        monkeypatch.setattr(noticias_vinculo.time, "monotonic", relogio)
-        monkeypatch.setattr(noticias_vinculo, "ESPERA", 0)
+        monkeypatch.setattr(download_resiliente.time, "monotonic", relogio)
+        monkeypatch.setattr(download_resiliente, "ESPERA", 0)
 
         def _get_cb(_request):
             relogio.t += 100.0

@@ -390,16 +390,20 @@ class TestB3FundosClient:
         assert "documento" in html
 
     def test_buscar_html_usa_timeout_curto(self, tmp_path, monkeypatch):
+        import flowscope.infrastructure.b3.funds_client.documentos as mod
+
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
         capturado: dict[str, object] = {}
 
-        def _fake(url, timeout=30, **kwargs):
+        def _fake(url, *, timeout=30, **kwargs):
             capturado["timeout"] = timeout
             resposta = MagicMock()
-            resposta.text = "<html>ok</html>"
+            resposta.text = "<html><body>ok</body></html>"
+            resposta.content = b"<html><body>ok</body></html>"
+            resposta.apparent_encoding = "utf-8"
             return resposta
 
-        monkeypatch.setattr(client, "_requisicao_get", _fake)
+        monkeypatch.setattr(mod, "baixar_conteudo", _fake)
         assert "ok" in client.buscar_html_documento("1")
         assert capturado["timeout"] == _TIMEOUT_DOCUMENTO
 

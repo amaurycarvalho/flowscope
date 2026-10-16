@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from flowscope.application.documentos.aquisicao import ResultadoAquisicao
 from flowscope.application.documentos.catalogo import ConsultarCatalogoUseCase
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.domain.documents import CatalogoTicker
@@ -350,7 +351,18 @@ class TestAquisicaoDocumentosComDedup:
     def test_documentos_adquiridos_informam_atualizacao(self):
         background = BackgroundManager()
         aquisicao = MagicMock()
-        aquisicao.adquirir.return_value = 2
+        aquisicao.adquirir.return_value = ResultadoAquisicao(novos=2)
+        host = self._host(background, aquisicao, None)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        host._flash_status.assert_called_with("Documentos atualizados!")
+
+    def test_reutilizados_informam_atualizacao(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        aquisicao.adquirir.return_value = ResultadoAquisicao(reutilizados=1)
         host = self._host(background, aquisicao, None)
 
         host._adquirir_documentos("ALZR11")
@@ -361,13 +373,26 @@ class TestAquisicaoDocumentosComDedup:
     def test_nada_adquirido_exibe_mensagem_neutra(self):
         background = BackgroundManager()
         aquisicao = MagicMock()
-        aquisicao.adquirir.return_value = 0
+        aquisicao.adquirir.return_value = ResultadoAquisicao()
         host = self._host(background, aquisicao, None)
 
         host._adquirir_documentos("ALZR11")
         _drenar(background)
 
         host._flash_status.assert_called_with("Nenhum documento novo.", "ℹ")
+
+    def test_falha_de_download_e_sinalizada(self):
+        background = BackgroundManager()
+        aquisicao = MagicMock()
+        aquisicao.adquirir.return_value = ResultadoAquisicao(falhas=3)
+        host = self._host(background, aquisicao, None)
+
+        host._adquirir_documentos("ALZR11")
+        _drenar(background)
+
+        host._flash_status.assert_called_with(
+            "3 documento(s) não baixado(s).", "⚠"
+        )
 
 
 class TestLeituraNoticiasBackground:

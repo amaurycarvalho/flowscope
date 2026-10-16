@@ -1,6 +1,6 @@
 ## Purpose
 
-Define a resolução de ticker para o código CVM de empresas listadas via API `listedCompaniesProxy` e cadastro de empresas da B3, com cache de 30 dias e retorno `None` para tickers sem código CVM.
+Define a resolução de ticker para o código CVM de empresas listadas via API `listedCompaniesProxy`, com cache de 30 dias, retorno `None` para tickers sem código CVM e sem cachear falhas de resolução.
 
 ## Requirements
 

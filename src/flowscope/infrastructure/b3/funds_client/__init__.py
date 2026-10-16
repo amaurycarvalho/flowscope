@@ -18,7 +18,6 @@ from flowscope.infrastructure.b3.funds_client.code_cvm import FundosCodeCvmMixin
 from flowscope.infrastructure.b3.funds_client.constants import (
     _AGENCIA_PADRAO,
     _BASE_URL,
-    _CADASTRO_EMPRESAS_URL,
     _CENSURAS_URL,
     _CONDICOES_URL,
     _LISTED_BASE_URL,
@@ -32,7 +31,6 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     _URL_DOCUMENTO_PDF,
     PARSER_VERSION,
     TIPOS_FUNDO,
-    TTL_CADASTRO_EMPRESAS_DIAS,
     TTL_CODIGO_CVM_DIAS,
     TTL_DOCUMENTO_HTML_DIAS,
     TTL_DOCUMENTOS_LISTA_DIAS,
@@ -44,11 +42,7 @@ from flowscope.infrastructure.b3.funds_client.constants import (
     TTL_PAGINA_ESTATICA_DIAS,
     TTL_RESOLUCAO_TICKER_DIAS,
 )
-from flowscope.infrastructure.b3.funds_client.cvm import (
-    _coluna_com,
-    _normalizar_code_cvm,
-    montar_indice_code_cvm,
-)
+from flowscope.infrastructure.b3.funds_client.cvm import _normalizar_code_cvm
 from flowscope.infrastructure.b3.funds_client.documentos import FundosDocumentosMixin
 from flowscope.infrastructure.b3.funds_client.documentos_relevantes import (
     FundosDocumentosRelevantesMixin,
@@ -109,7 +103,6 @@ class B3FundosClient(
 __all__ = [
     "PARSER_VERSION",
     "TIPOS_FUNDO",
-    "TTL_CADASTRO_EMPRESAS_DIAS",
     "TTL_CODIGO_CVM_DIAS",
     "TTL_DOCUMENTOS_LISTA_DIAS",
     "TTL_DOCUMENTOS_RELEVANTES_DIAS",
@@ -122,7 +115,6 @@ __all__ = [
     "TTL_RESOLUCAO_TICKER_DIAS",
     "_AGENCIA_PADRAO",
     "_BASE_URL",
-    "_CADASTRO_EMPRESAS_URL",
     "_CENSURAS_URL",
     "_CONDICOES_URL",
     "_LISTED_BASE_URL",
@@ -140,7 +132,6 @@ __all__ = [
     "_chave_cache",
     "_classe_material_fact",
     "_codigo_categoria",
-    "_coluna_com",
     "_converter_item_material_fact",
     "_converter_item_noticia",
     "_fund_root",
@@ -149,5 +140,4 @@ __all__ = [
     "_normalizar_rotulo",
     "_selecionar_fund",
     "_string_ou_none",
-    "montar_indice_code_cvm",
 ]

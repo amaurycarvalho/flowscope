@@ -7,19 +7,19 @@ oferta de FIIs (visualizador do FNET). Como o corpo é somente um apontador, o
 conteúdo real é baixado sob demanda — ao selecionar a notícia ou ao gerar os
 resumos pendentes.
 
-Cada host usa uma estratégia própria: o visualizador da CVM RAD devolve uma
-página cujo PDF é obtido por um POST AJAX (``ExibirPDF``) em base64; o FNET
-devolve uma página com um ``iframe`` (``exibirDocumento``) que serve o PDF.
-Captcha habilitado, falha de rede ou formato inesperado resultam em ``None``,
-mantendo o corpo original. Um PDF protegido por senha devolve o estado
-``PROTEGIDO`` para que a apresentação possa solicitar a senha.
+A resolução usa o download resiliente compartilhado
+(``download-conteudo-resiliente``): valida o conteúdo (PDF), segue o ``iframe``
+do FNET e, no visualizador da CVM RAD, renova a sessão refazendo o GET antes de
+repetir o POST, tudo sob o orçamento total por item. Captcha habilitado, falha de
+rede ou formato inesperado resultam em ``None``, mantendo o corpo original. Um
+PDF protegido por senha devolve o estado ``PROTEGIDO`` para que a apresentação
+possa solicitar a senha.
 """
 
 import base64
 import json
 import logging
-import time
-from urllib.parse import SplitResult, parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -37,60 +37,23 @@ from flowscope.domain.noticias import (
     extrair_url_vinculada,
     host_suportado,
 )
-from flowscope.infrastructure.http_retry import executar_com_retry
+from flowscope.infrastructure.download_resiliente import (
+    _Prazo,
+    baixar_conteudo,
+    post_renovando_sessao,
+    validar_pdf,
+)
 
 logger = logging.getLogger("flowscope")
 
 #: Timeout das requisições ao documento vinculado.
 TIMEOUT = 30
 
-#: Número de tentativas das requisições (o FNET responde de forma intermitente).
-TENTATIVAS = 3
-
-#: Espera base (em segundos) entre tentativas, multiplicada pela tentativa.
-ESPERA = 0.5
-
-#: Motivo do aborto quando o orçamento total de resolução se esgota.
-_MOTIVO_ORCAMENTO = "orçamento de resolução do documento vinculado esgotado"
-
-#: Trecho do ``iframe`` do FNET que serve o PDF do documento.
-_IFRAME_FNET = "exibirDocumento"
-
-#: Cabeçalho padrão das requisições.
-_USER_AGENT = "Mozilla/5.0"
-
 __all__ = [
     "apontador_pendente",
     "baixar_conteudo_vinculado",
     "extrair_url_vinculada",
 ]
-
-
-class _Prazo:
-    """Orçamento total (deadline) compartilhado pelas etapas da resolução.
-
-    Quando ``timeout_total`` é ``None``, o prazo é ilimitado e cada requisição
-    usa o ``timeout`` próprio, preservando o comportamento anterior. Quando
-    informado, cada etapa consome o restante do orçamento e é abortada ao
-    esgotá-lo.
-    """
-
-    def __init__(self: "_Prazo", timeout_total: float | None) -> None:
-        self._limite = (
-            None
-            if timeout_total is None
-            else time.monotonic() + float(timeout_total)
-        )
-
-    def esgotado(self: "_Prazo") -> bool:
-        """Indica se o orçamento total já se esgotou."""
-        return self._limite is not None and time.monotonic() >= self._limite
-
-    def efetivo(self: "_Prazo", timeout: float) -> float:
-        """Retorna o timeout da etapa limitado ao restante do orçamento."""
-        if self._limite is None:
-            return timeout
-        return max(0.0, min(timeout, self._limite - time.monotonic()))
 
 
 def baixar_conteudo_vinculado(
@@ -145,6 +108,32 @@ def baixar_conteudo_vinculado(
     return resultado
 
 
+def _baixar_fnet(
+    sessao: requests.Session,
+    url: str,
+    timeout: int,
+    senha: str | None,
+    prazo: _Prazo,
+) -> ExtracaoTexto | None:
+    """Resolve o documento do visualizador do FNET pelo helper resiliente.
+
+    Segue o ``iframe`` que aponta para o PDF (``exibirDocumento``) quando o
+    visualizador não serve o documento direto.
+    """
+    resposta = baixar_conteudo(
+        url,
+        sessao=sessao,
+        timeout=timeout,
+        prazo=prazo,
+        validar=validar_pdf,
+        seguir_iframe=True,
+        transitorios_extra=frozenset({403}),
+    )
+    if resposta is None:
+        return None
+    return _texto_do_documento(resposta.content, senha, prazo)
+
+
 def _baixar_cvm_rad(
     sessao: requests.Session,
     url: str,
@@ -152,18 +141,13 @@ def _baixar_cvm_rad(
     senha: str | None,
     prazo: _Prazo,
 ) -> ExtracaoTexto | None:
-    """Resolve o documento do visualizador da CVM RAD."""
+    """Resolve o documento do visualizador da CVM RAD com renovação de sessão."""
     partes = urlparse(url)
     parametros = parse_qs(partes.query)
     protocolo = _primeiro(parametros, "ID", "NumeroProtocoloEntrega")
     if not protocolo:
         return None
     codigo = "2" if parametros.get("ID") else "1"
-    resposta = _obter(sessao, url, timeout, prazo)
-    soup = BeautifulSoup(resposta.text, "html.parser")
-    if _campo(soup, "hdnHabilitaCaptcha") == "S":
-        logger.info("Documento CVM %s exige captcha; download ignorado.", protocolo)
-        return None
     corpo = json.dumps(
         {
             "codigoInstituicao": codigo,
@@ -172,103 +156,45 @@ def _baixar_cvm_rad(
             "versaoCaptcha": "",
         }
     )
-    resp = executar_com_retry(
-        lambda: _post_exibir_pdf(sessao, partes, corpo, timeout, url, prazo),
-        metodo="POST",
-        repetivel=True,
+    url_post = f"{partes.scheme}://{partes.netloc}{partes.path}/ExibirPDF"
+    resp = post_renovando_sessao(
+        url,
+        url_post,
+        corpo,
+        sessao=sessao,
+        timeout=timeout,
+        prazo=prazo,
+        validar=_payload_tem_pdf,
+        inspectar_pagina=_sem_captcha,
     )
+    if resp is None:
+        return None
     return _texto_da_resposta(resp.json(), senha, prazo)
 
 
-def _post_exibir_pdf(
-    sessao: requests.Session,
-    partes: SplitResult,
-    corpo: str,
-    timeout: int,
-    referer: str,
-    prazo: _Prazo,
-) -> requests.Response:
-    """Executa o POST ``ExibirPDF`` e valida a resposta HTTP."""
-    if prazo.esgotado():
-        raise requests.Timeout(_MOTIVO_ORCAMENTO)
-    resp = sessao.post(
-        f"{partes.scheme}://{partes.netloc}{partes.path}/ExibirPDF",
-        data=corpo,
-        timeout=prazo.efetivo(timeout),
-        headers={
-            "Content-Type": "application/json; charset=utf-8",
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": referer,
-            "User-Agent": _USER_AGENT,
-        },
-    )
-    resp.raise_for_status()
-    return resp
-
-
-def _baixar_fnet(
-    sessao: requests.Session,
-    url: str,
-    timeout: int,
-    senha: str | None,
-    prazo: _Prazo,
-) -> ExtracaoTexto | None:
-    """Resolve o documento do visualizador do FNET.
-
-    Se o visualizador já servir o PDF, extrai-o direto; caso contrário, segue o
-    ``iframe`` que aponta para o PDF (``exibirDocumento``).
-    """
-    resposta = _obter(sessao, url, timeout, prazo)
-    if _e_pdf(resposta):
-        return _texto_do_documento(resposta.content, senha, prazo)
-    alvo = _url_do_pdf_fnet(resposta)
-    if alvo is None:
-        return None
-    documento = _obter(sessao, alvo, timeout, prazo, referer=url)
-    return _texto_do_documento(documento.content, senha, prazo)
-
-
-def _url_do_pdf_fnet(resposta: requests.Response) -> str | None:
-    """Extrai a URL absoluta do ``iframe`` que serve o PDF do FNET."""
+def _sem_captcha(resposta: requests.Response) -> bool:
+    """Indica se a página do visualizador da CVM não exige captcha."""
     soup = BeautifulSoup(resposta.text, "html.parser")
-    for iframe in soup.find_all("iframe", src=True):
-        origem = str(iframe.get("src", ""))
-        if _IFRAME_FNET in origem:
-            return urljoin(resposta.url, origem)
-    return None
+    if _campo(soup, "hdnHabilitaCaptcha") == "S":
+        logger.info("Documento CVM exige captcha; download ignorado.")
+        return False
+    return True
 
 
-def _obter(
-    sessao: requests.Session,
-    url: str,
-    timeout: int,
-    prazo: _Prazo,
-    *,
-    referer: str | None = None,
-) -> requests.Response:
-    """Faz o GET com a política central de retry, tolerando host instável."""
-    headers = {"User-Agent": _USER_AGENT}
-    if referer:
-        headers["Referer"] = referer
-    delays = tuple(ESPERA * tentativa for tentativa in range(TENTATIVAS))
-
-    def _fazer() -> requests.Response:
-        if prazo.esgotado():
-            raise requests.Timeout(_MOTIVO_ORCAMENTO)
-        resposta = sessao.get(
-            url, timeout=prazo.efetivo(timeout), headers=headers
-        )
-        resposta.raise_for_status()
-        return resposta
-
-    return executar_com_retry(_fazer, metodo="GET", delays=delays)
-
-
-def _e_pdf(resposta: requests.Response) -> bool:
-    """Indica se a resposta já é o próprio PDF."""
-    if "application/pdf" in resposta.headers.get("Content-Type", "").lower():
-        return True
-    return resposta.content.lstrip()[:4] == b"%PDF"
+def _payload_tem_pdf(resposta: requests.Response) -> bool:
+    """Indica se o payload JSON do WebMethod contém um PDF válido."""
+    try:
+        payload = resposta.json()
+    except ValueError:
+        return False
+    dados = payload.get("d") if isinstance(payload, dict) else None
+    if not isinstance(dados, str) or dados.startswith(":ERRO:") or dados == "V2":
+        return False
+    try:
+        bruto = base64.b64decode(dados)
+    except ValueError:
+        return False
+    return bruto.lstrip()[:4] == b"%PDF"
 
 
 def _primeiro(parametros: dict, *chaves: str) -> str | None:

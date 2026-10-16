@@ -40,11 +40,34 @@ class B3FundamentalRepository:
         ] = {}
 
     def obter_nome(self: "B3FundamentalRepository", ticker: str) -> str | None:
-        """Retorna o nome do fundo a partir da identidade B3."""
+        """Retorna o nome do ativo a partir da identidade B3.
+
+        Para FII, usa o ``fundName`` da listagem de fundos; para ações/BDR, cai
+        para o nome de negociação do cadastro de empresas listadas, sem acionar
+        fonte nova.
+        """
         fundo = self._resolver(ticker)
-        if fundo is None:
+        if fundo is not None:
+            nome = str(fundo.name) or None
+            if nome:
+                return nome
+        return self._nome_negociacao(ticker)
+
+    def _nome_negociacao(
+        self: "B3FundamentalRepository", ticker: str
+    ) -> str | None:
+        """Obtém o nome de exibição (ação/BDR) da identidade B3, tolerando falha."""
+        obter = getattr(self._fundos, "obter_nome_negociacao", None)
+        if not callable(obter):
             return None
-        return str(fundo.name) or None
+        try:
+            nome = obter(ticker.strip().upper())
+        except Exception:  # identidade indisponível: nome permanece ausente
+            logger.warning(
+                "Falha ao obter nome de negociação B3 de %s", ticker, exc_info=True
+            )
+            return None
+        return str(nome) if nome else None
 
     def obter_proventos(
         self: "B3FundamentalRepository", ticker: str, reference_date: date

@@ -59,6 +59,17 @@ class Categoria(enum.Enum):
     GATEWAY = "gateway"
 
 
+class ConteudoInvalido(Exception):
+    """Conteúdo baixado não corresponde ao esperado após as tentativas."""
+
+    def __init__(self: ConteudoInvalido, tentativas: int) -> None:
+        """Registra o número de tentativas consumidas sem conteúdo válido."""
+        super().__init__(
+            f"conteúdo inválido após {tentativas} tentativa(s)"
+        )
+        self.tentativas = tentativas
+
+
 def _sleep_padrao(segundos: float) -> None:
     """Espera padrão entre tentativas, isolada para injeção nos testes."""
     time.sleep(segundos)
@@ -205,6 +216,15 @@ def _registrar(
     )
 
 
+def _registrar_conteudo(indice: int, total: int) -> None:
+    """Registra o esgotamento das tentativas por conteúdo inválido."""
+    logger.warning(
+        "Conteúdo inválido após %d/%d tentativa(s); sem nova repetição",
+        indice + 1,
+        total,
+    )
+
+
 def _espera(
     categoria: Categoria,
     headers: Mapping[str, str] | None,
@@ -251,6 +271,7 @@ def executar_com_retry(
     sleep: Callable[[float], None] | None = None,
     jitter: Callable[[], float] | None = None,
     cancelar: Callable[[], None] | None = None,
+    validar: Callable[[T], bool] | None = None,
 ) -> T:
     """Executa ``fn`` repetindo erros repetíveis conforme a política de status.
 
@@ -260,9 +281,13 @@ def executar_com_retry(
     normalmente permanentes como repetíveis neste ponto de chamada. ``sleep`` e
     ``jitter`` são injetáveis; ``cancelar`` pode levantar para interromper a
     espera entre tentativas.
+
+    ``validar``, quando informado, inspeciona o resultado de ``fn``: um
+    resultado que não passar na validação é tratado como tentativa repetível
+    (categoria transitória) e consome o orçamento de tentativas; esgotado o
+    orçamento sem resultado válido, levanta :class:`ConteudoInvalido`.
     """
-    dormir = sleep if sleep is not None else _sleep_padrao
-    aleatorio = jitter if jitter is not None else random.random
+    dormir, aleatorio, valida = _controles(sleep, jitter, validar)
 
     if not _metodo_repetivel(metodo, repetivel):
         return fn()
@@ -274,7 +299,7 @@ def executar_com_retry(
         if cancelar is not None:
             cancelar()
         try:
-            return fn()
+            resultado = fn()
         except requests.RequestException as exc:
             categoria, status, headers = _classificar_excecao(
                 exc, transitorios_extra
@@ -283,12 +308,46 @@ def executar_com_retry(
                 _registrar(categoria, status, indice, total)
                 raise
             indice += 1
-            espera = _espera(
-                categoria,
-                headers,
+            _aguardar(
+                _espera(
+                    categoria, headers, indice, sequencia, RETRY_DELAYS_GATEWAY, aleatorio
+                ),
+                dormir,
+                cancelar,
+            )
+            continue
+        if valida(resultado):
+            return resultado
+        if indice >= total - 1:
+            _registrar_conteudo(indice, total)
+            raise ConteudoInvalido(total)
+        indice += 1
+        _aguardar(
+            _espera(
+                Categoria.TRANSITORIO,
+                None,
                 indice,
                 sequencia,
                 RETRY_DELAYS_GATEWAY,
                 aleatorio,
-            )
-            _aguardar(espera, dormir, cancelar)
+            ),
+            dormir,
+            cancelar,
+        )
+
+
+def _sempre_valido(_resultado: object) -> bool:
+    """Validador padrão: aceita qualquer resultado."""
+    return True
+
+
+def _controles(
+    sleep: Callable[[float], None] | None,
+    jitter: Callable[[], float] | None,
+    validar: Callable[[T], bool] | None,
+) -> tuple[Callable[[float], None], Callable[[], float], Callable[[T], bool]]:
+    """Resolve os ganchos injetáveis com seus valores padrão."""
+    dormir = sleep if sleep is not None else _sleep_padrao
+    aleatorio = jitter if jitter is not None else random.random
+    valida = validar if validar is not None else _sempre_valido
+    return dormir, aleatorio, valida

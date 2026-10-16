@@ -112,6 +112,25 @@ class TestFetchFileCacheOnly:
         assert b3_client.fetch_file(d, cache_only=True) is None
 
 
+class TestFetchFileDiaNaoUtil:
+    @responses.activate
+    def test_feriado_nao_requisita(self, b3_client: B3Client):
+        assert b3_client.fetch_file(date(2026, 1, 1)) is None
+        assert len(responses.calls) == 0
+
+    @responses.activate
+    def test_fim_de_semana_nao_requisita(self, b3_client: B3Client):
+        assert b3_client.fetch_file(date(2026, 6, 27)) is None
+        assert len(responses.calls) == 0
+
+    @responses.activate
+    def test_callback_sem_pregao_nao_e_erro(self, b3_client: B3Client):
+        d = date(2026, 1, 1)
+        callback = MagicMock()
+        assert b3_client.fetch_file(d, progress_callback=callback) is None
+        callback.assert_called_once_with(f"{d} (sem pregão)", False)
+
+
 class TestFetchFileCallbacks:
     @responses.activate
     def test_callback_after_download(self, b3_client: B3Client):

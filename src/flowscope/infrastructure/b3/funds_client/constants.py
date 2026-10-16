@@ -22,10 +22,6 @@ _PROGRAMAS_URL = (
     "StockProgramCall/GetListedCompany"
 )
 _PROGRAMAS_PAGE_SIZE = 60
-_CADASTRO_EMPRESAS_URL = (
-    "https://www.b3.com.br/pt_br/produtos-e-servicos/negociacao/consultas/"
-    "empresas-listadas/empresas-listadas.csv"
-)
 _TIPO_PROVENTOS = 41
 _PAGE_SIZE = 20
 _AGENCIA_PADRAO = "18"
@@ -50,7 +46,6 @@ PARSER_VERSION = "b3-fii-1"
 TTL_FUNDOS_DIAS = 30
 TTL_RESOLUCAO_TICKER_DIAS = 30
 TTL_CODIGO_CVM_DIAS = 30
-TTL_CADASTRO_EMPRESAS_DIAS = 30
 TTL_DOCUMENTOS_LISTA_DIAS = 1
 TTL_DOCUMENTOS_RELEVANTES_DIAS = 1
 TTL_DOCUMENTO_HTML_DIAS = 30

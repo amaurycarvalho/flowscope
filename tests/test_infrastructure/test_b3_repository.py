@@ -1,14 +1,18 @@
+import logging
 from datetime import date
 from unittest.mock import patch
 
 import pytest
+import responses
 
 from flowscope.application.cancellation import (
     CancellationToken,
     OperacaoCancelada,
 )
 from flowscope.domain.sampling import SamplingConfig
+from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from flowscope.infrastructure.cache import CacheManager
 
 
 @pytest.fixture
@@ -230,3 +234,15 @@ class TestCancelamentoFetchTrades:
                 [date(2026, 6, 25), date(2026, 6, 24)], cancel_token=token
             )
         assert processadas == [date(2026, 6, 25)]
+
+
+class TestDiaNaoUtil:
+    @responses.activate
+    def test_feriado_nao_requisita_nem_loga_erro(self, tmp_path, caplog):
+        cliente = B3Client(cache=CacheManager(cache_dir=tmp_path))
+        repo = B3DataRepository(client=cliente)
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            trades = repo.fetch_trades([date(2026, 1, 1)])
+        assert trades == []
+        assert len(responses.calls) == 0
+        assert "erro ao baixar" not in caplog.text.lower()

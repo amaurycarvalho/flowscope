@@ -153,8 +153,13 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
         progress_callback: Callable[[str, bool], None] | None = None,
         force_refresh: bool = False,
         cancel_token: CancellationToken | None = None,
+        on_item: Callable[[str], None] | None = None,
     ) -> list[AnaliseFundamental]:
-        """Analisa cada ticker de forma isolada e retorna uma linha por ativo."""
+        """Analisa cada ticker de forma isolada e retorna uma linha por ativo.
+
+        ``on_item``, quando informado, é chamado com o ticker normalizado antes
+        de processá-lo, permitindo descrever a atividade corrente no log.
+        """
         referencia = reference_date or datetime.now(timezone.utc).date()
         self.houve_atualizacao = False
         self.houve_falha_recuperavel = False
@@ -164,6 +169,8 @@ class FundamentalAnalysisUseCase(FundamentalDataMixin, FundamentalMetricsMixin):
             if cancel_token is not None:
                 cancel_token.raise_if_cancelled()
             normalizado = normalizar_ticker(ticker)
+            if on_item is not None:
+                on_item(normalizado)
             try:
                 resultado, de_cache = self._analisar_ou_cache(
                     normalizado, referencia, force_refresh
