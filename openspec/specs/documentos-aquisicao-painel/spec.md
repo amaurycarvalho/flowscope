@@ -96,7 +96,7 @@ Uma falha de aquisição DEVE ser tolerada, mantendo a árvore montada a partir 
 
 ### Requirement: Mensagem de conclusão honesta da aquisição
 
-Ao concluir a aquisição acionada pelo botão "Atualizar", o sistema DEVE informar o desfecho de forma honesta: quando ao menos um documento for adquirido, a barra de status DEVE indicar a atualização; quando nenhum documento for adquirido, o sistema NÃO DEVE afirmar que os documentos foram atualizados, exibindo uma mensagem neutra (por exemplo, ausência de documentos novos). A tolerância a falhas de aquisição permanece: nenhum desses casos DEVE ser tratado como erro fatal.
+Ao concluir a aquisição acionada pelo botão "Atualizar", o sistema DEVE informar o desfecho de forma honesta e distinguindo **falha** de **ausência de novidades**: quando ao menos um documento for adquirido, a barra de status DEVE indicar a atualização; quando nenhum documento for adquirido, o sistema NÃO DEVE afirmar que os documentos foram atualizados, exibindo uma mensagem neutra (por exemplo, ausência de documentos novos); quando um ou mais documentos falharem em ser adquiridos, o sistema DEVE sinalizar a existência de falhas (por exemplo, contagem de documentos não baixados), sem confundi-las com ausência. A tolerância a falhas de aquisição permanece: nenhum desses casos DEVE ser tratado como erro fatal.
 
 #### Scenario: Documentos adquiridos informam atualização
 
@@ -105,8 +105,13 @@ Ao concluir a aquisição acionada pelo botão "Atualizar", o sistema DEVE infor
 
 #### Scenario: Nada adquirido não afirma atualização
 
-- **WHEN** a aquisição conclui sem adquirir nenhum documento, seja por ausência de documentos ou por indisponibilidade tolerada
-- **THEN** a barra de status NÃO DEVE afirmar "Documentos atualizados!", exibindo mensagem neutra
+- **WHEN** a aquisição conclui sem adquirir nenhum documento, por ausência de documentos no período
+- **THEN** a barra de status NÃO DEVE afirmar "Documentos atualizados!", exibindo mensagem neutra de ausência de novidades
+
+#### Scenario: Falha de download é distinguida de ausência
+
+- **WHEN** a aquisição conclui com um ou mais documentos que não puderam ser baixados
+- **THEN** a barra de status DEVE sinalizar a falha (por exemplo, contagem de documentos não baixados), sem apresentá-la como ausência de novidades nem como "Documentos atualizados!"
 
 #### Scenario: Falha tolerada não é erro fatal
 

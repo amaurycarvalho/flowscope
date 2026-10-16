@@ -30,7 +30,7 @@ class TestBlocoConhecimento:
         assert APRESENTACAO in bloco
         assert LICENCA in bloco
         assert f"v{__version__}" in bloco
-        assert "Sobre o FlowScope" in bloco
+        assert "Sobre o FlowScopeBR" in bloco
 
     def test_contem_textos_de_orientacao_das_subabas(self, bloco):
         assert "Orientação das sub-abas" in bloco

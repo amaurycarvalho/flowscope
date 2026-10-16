@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from flowscope.application.chat.arvore import No, ramo_flowscope
 
 #: Cabeçalho da seção institucional do bloco de conhecimento.
-_CABECALHO_SOBRE = "Sobre o FlowScope"
+_CABECALHO_SOBRE = "Sobre o FlowScopeBR"
 
 #: Cabeçalho da seção de orientação das sub-abas.
 _CABECALHO_ORIENTACAO = "Orientação das sub-abas"

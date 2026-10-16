@@ -32,6 +32,7 @@ DEFAULT_CONFIG = {
     "sash_positions": None,
     "last_ticker_dir": None,
     "last_tickers": None,
+    "last_ticker_file": None,
     "fundamental_column_widths": None,
 }
 
@@ -49,6 +50,27 @@ def _ler_preferencias_salvas() -> dict:
     return {chave: data[chave] for chave in DEFAULT_CONFIG if chave in data}
 
 
+def _normalizar_texto(valor: object) -> str | None:
+    """Devolve o texto informado ou ``None`` quando vazio ou de tipo inválido."""
+    if not isinstance(valor, str) or not valor.strip():
+        return None
+    return valor
+
+
+def _normalizar_tickers(valor: object) -> list[str] | None:
+    """Devolve a lista de tickers válidos ou ``None`` quando inválida."""
+    if not isinstance(valor, list):
+        return None
+    return [t for t in valor if isinstance(t, str) and t.strip()]
+
+
+def _normalizar_largura(valor: object) -> int | None:
+    """Devolve a largura como inteiro positivo ou ``None`` quando inválida."""
+    if isinstance(valor, bool) or not isinstance(valor, (int, float)) or valor <= 0:
+        return None
+    return int(valor)
+
+
 def load_preferences() -> dict:
     """Carrega as preferências salvas no arquivo de configuração.
 
@@ -58,22 +80,11 @@ def load_preferences() -> dict:
     """
     prefs = dict(DEFAULT_CONFIG)
     prefs.update(_ler_preferencias_salvas())
-    last_tickers = prefs.get("last_tickers")
-    if not isinstance(last_tickers, list):
-        prefs["last_tickers"] = None
-    else:
-        prefs["last_tickers"] = [t for t in last_tickers if isinstance(t, str) and t.strip()]
+    prefs["last_tickers"] = _normalizar_tickers(prefs.get("last_tickers"))
+    prefs["last_ticker_file"] = _normalizar_texto(prefs.get("last_ticker_file"))
+    prefs["sash_positions"] = _normalizar_largura(prefs.get("sash_positions"))
     if not isinstance(prefs.get("fundamental_column_widths"), dict):
         prefs["fundamental_column_widths"] = None
-    largura_direita = prefs.get("sash_positions")
-    if (
-        isinstance(largura_direita, bool)
-        or not isinstance(largura_direita, (int, float))
-        or largura_direita <= 0
-    ):
-        prefs["sash_positions"] = None
-    else:
-        prefs["sash_positions"] = int(largura_direita)
     return prefs
 
 
@@ -107,8 +118,14 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
     def __init__(self: "FlowScopeGUI") -> None:
         """Inicializa a janela principal e seus componentes."""
         super().__init__()
-        self.title(TITLE_PREFIX)
         self._prefs = load_preferences()
+        arquivo_salvo = self._prefs.get("last_ticker_file")
+        self._watchlist_file: Path | None = (
+            Path(arquivo_salvo) if arquivo_salvo else None
+        )
+        self._watchlist_dirty = False
+        self._index_name: str | None = None
+        self._update_window_title()
 
         if self._prefs.get("window_geometry"):
             self.geometry(self._prefs["window_geometry"])
@@ -196,6 +213,39 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
         self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
         save_preferences(self._prefs)
 
+    def _update_window_title(self: "FlowScopeGUI") -> None:
+        """Compõe o título com o nome do watchlist e o marcador de alteração."""
+        if self._watchlist_file is not None:
+            nome = self._watchlist_file.name
+        elif self._index_name is not None:
+            nome = self._index_name
+        else:
+            nome = "Nova lista.txt"
+        sufixo = "*" if self._watchlist_dirty else ""
+        self.title(f"{TITLE_PREFIX} — {nome}{sufixo}")
+
+    def _on_watchlist_file_changed(self: "FlowScopeGUI", path: Path) -> None:
+        """Atualiza o título e persiste o caminho do arquivo carregado/salvo."""
+        self._watchlist_file = Path(path)
+        self._index_name = None
+        self._watchlist_dirty = False
+        self._prefs["last_ticker_file"] = str(self._watchlist_file)
+        save_preferences(self._prefs)
+        self._update_window_title()
+
+    def _on_watchlist_content_changed(self: "FlowScopeGUI") -> None:
+        """Marca o watchlist como alterado e reflete no título."""
+        self._watchlist_dirty = True
+        self._update_window_title()
+
+    def _on_index_click(self: "FlowScopeGUI", index: str) -> None:
+        """Exibe o nome do índice no título e submete a carga da carteira."""
+        self._watchlist_file = None
+        self._watchlist_dirty = False
+        self._index_name = f"{index}.txt"
+        self._update_window_title()
+        self._controller.on_index_clicked(index)
+
     def _on_create_shortcut(self: "FlowScopeGUI") -> None:
         if platform.system() != "Linux":
             return
@@ -230,6 +280,8 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
         self._prefs["last_tab"] = self._prefs.get("last_tab", "Análise Geral")
         self._prefs["last_subtab"] = self._prefs.get("last_subtab", "Fundamentos")
         self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
+        if self._watchlist_file is not None:
+            self._prefs["last_ticker_file"] = str(self._watchlist_file)
         if hasattr(self, "_fundamental_table"):
             self._prefs["fundamental_column_widths"] = (
                 self._fundamental_table.get_column_widths()

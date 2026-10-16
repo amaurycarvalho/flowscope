@@ -319,10 +319,12 @@ class WiringMixin:
             on_change=self._on_ticker_edit,
             on_load=self._controller.on_load_data,
             on_data_needed=self._controller.on_load_data,
+            on_file_changed=self._on_watchlist_file_changed,
+            on_content_changed=self._on_watchlist_content_changed,
             on_index_click={
-                "IBOV": lambda: self._controller.on_index_clicked("IBOV"),
-                "IDIV": lambda: self._controller.on_index_clicked("IDIV"),
-                "IFIX": lambda: self._controller.on_index_clicked("IFIX"),
+                "IBOV": lambda: self._on_index_click("IBOV"),
+                "IDIV": lambda: self._on_index_click("IDIV"),
+                "IFIX": lambda: self._on_index_click("IFIX"),
             },
         )
         self._fundamental_refresh_btn = self._ticker_list.add_action_button(

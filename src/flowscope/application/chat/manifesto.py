@@ -26,7 +26,7 @@ CARACTERES_POR_TOKEN = 4
 
 #: Persona e regras herdadas do prompt de sistema.
 PERSONA = (
-    "Você é o assistente do FlowScope, uma ferramenta de análise quantitativa de "
+    "Você é o assistente do FlowScopeBR, uma ferramenta de análise quantitativa de "
     "fluxo de ordens. Responda apenas com base no contexto navegado. Cite as "
     "fontes (tickers, chaves de notícia, caminhos). Identifique o ticker referido "
     "na pergunta; quando for ambíguo, peça esclarecimento. Declare quando a "
@@ -302,7 +302,7 @@ def _renderizar(
 ) -> str:
     """Renderiza o manifesto com as seções determinísticas."""
     partes = [
-        "# Árvore de conhecimento do FlowScope",
+        "# Árvore de conhecimento do FlowScopeBR",
         PERSONA,
         "## Descrição",
         _descricao(arvore),

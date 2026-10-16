@@ -106,7 +106,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mcp",
         action="store_true",
-        help="Iniciar o servidor MCP (stdio) do FlowScope",
+        help="Iniciar o servidor MCP (stdio) do FlowScopeBR",
     )
     _adicionar_subcomandos_nav(parser)
     return parser
@@ -199,7 +199,7 @@ def run_cli(args: argparse.Namespace) -> None:
         print("Nenhum dado disponível para o período.")
         return
 
-    print("=== FlowScope - Análise de Indicadores ===")
+    print("=== FlowScopeBR - Análise de Indicadores ===")
     print(f"Data de referência: {ref_date}")
     print()
     for ticker, data in result.items():

@@ -1,6 +1,6 @@
 # Servidor MCP e navegação por CLI
 
-O FlowScope expõe a sua árvore de conhecimento — o mesmo estado local navegável
+O FlowScopeBR expõe a sua árvore de conhecimento — o mesmo estado local navegável
 usado pela aba "Chat AI" — como **tools MCP canônicas** e como **subcomandos
 `nav`** de linha de comando. As duas superfícies reusam o mesmo núcleo de
 navegação (`NavegacaoCore`), então a mesma operação produz o mesmo resultado
@@ -19,7 +19,7 @@ O servidor é iniciado explicitamente e fala **stdio**: o cliente lança o
 processo, as mensagens JSON-RPC 2.0 são delimitadas por newline em `stdin` e
 `stdout`, e o servidor encerra ao receber **EOF**. Nenhuma porta de rede é
 aberta e o comando **não** aceita parâmetros de raiz ou de compactação: a árvore
-é sempre lida do cache local padrão do FlowScope.
+é sempre lida do cache local padrão do FlowScopeBR.
 
 ```bash
 flowscope --mcp

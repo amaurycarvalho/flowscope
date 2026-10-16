@@ -25,7 +25,7 @@ O sistema DEVE adicionar uma aba de nível superior "Sobre" ao notebook principa
 
 ### Requirement: Informações institucionais na aba "Sobre"
 
-O sistema DEVE exibir, na aba "Sobre", nesta ordem: o ícone da aplicação; o nome e a versão no formato `FlowScope vX.Y.Z`; a data de lançamento em formato ISO (`YYYY-MM-DD`); e a licença "Software livre e de código aberto (GNU GPLv3)". A versão DEVE ser obtida de `flowscope.__version__` e a data de `flowscope.__release_date__`.
+O sistema DEVE exibir, na aba "Sobre", nesta ordem: o ícone da aplicação; o nome e a versão no formato `FlowScopeBR vX.Y.Z`; a data de lançamento em formato ISO (`YYYY-MM-DD`); e a licença "Software livre e de código aberto (GNU GPLv3)". A versão DEVE ser obtida de `flowscope.__version__` e a data de `flowscope.__release_date__`.
 
 #### Scenario: Ordem das informações
 
@@ -35,7 +35,7 @@ O sistema DEVE exibir, na aba "Sobre", nesta ordem: o ícone da aplicação; o n
 #### Scenario: Valores de versão e data
 
 - **WHEN** `__version__` é "1.1.0" e `__release_date__` é "2026-09-18"
-- **THEN** a aba DEVE exibir "FlowScope v1.1.0" e "2026-09-18"
+- **THEN** a aba DEVE exibir "FlowScopeBR v1.1.0" e "2026-09-18"
 
 ### Requirement: Texto de apresentação do projeto
 

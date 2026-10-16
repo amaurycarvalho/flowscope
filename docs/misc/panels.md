@@ -1,4 +1,4 @@
-# Painéis do FlowScope — Interface Gráfica
+# Painéis do FlowScopeBR — Interface Gráfica
 
 ## Estrutura Geral
 
@@ -320,16 +320,16 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 ## Aba Principal: "Chat AI"
 
-- **Objetivo:** Responder perguntas em linguagem natural navegando uma árvore de conhecimento montada a partir do estado local (watchlist, documentos, notícias, guidance e o próprio FlowScope), sem sair da interface.
+- **Objetivo:** Responder perguntas em linguagem natural navegando uma árvore de conhecimento montada a partir do estado local (watchlist, documentos, notícias, guidance e o próprio FlowScopeBR), sem sair da interface.
 - **Responde a pergunta:** _O que os dados, os documentos e as notícias dizem sobre este ativo?_
 - **Posição:** aba de topo única e sempre visível, entre "Análise do Ticker" e "Sobre".
 - **ChatPanel:** widget `ChatPanel(tkinter.Frame)` sem seletor de escopo. O contexto cobre sempre a watchlist completa; a LLM identifica o ticker referido navegando a árvore (e pede esclarecimento quando a pergunta for ambígua).
 - **Seletor de modelo:** no cabeçalho, o `SeletorModelo` troca o modelo/provedor de chat e expõe o botão de **"Configuração"** (diálogo da `llm-core`); a troca reavalia o estado do painel.
 - **Árvore de conhecimento:** montada a cada envio estritamente a partir do cache local, com os ramos `/flowscope`, `/fundamentos`, `/documentos`, `/guidance`, `/direitos-obrigacoes` e `/noticias` (detalhe em `indicators.md`, seção "Contexto do Chat com I.A."). A árvore não resume, não extrai texto, não baixa e não consulta a B3/CVM; nós sem dado são omitidos em silêncio.
-- **Loop de navegação:** a LLM responde exclusivamente com um objeto JSON `{"resposta", "solicitacoes": [...]}`. Quando há solicitações, o FlowScope executa as operações na árvore e devolve um bloco `[RESULTADO_NAVEGACAO] {…}` no turno seguinte, por até 10 ciclos. As operações são `listar`, `obter` (com paginação `offset`/`limite`), `contar`, `existe`, `buscar` (regex determinística), `buscar_semantico` e `resetar_navegacao`, com no máximo 8 por turno. Sem índice vetorial, `buscar_semantico` responde `indice_indisponivel` e o chat segue na busca determinística (evolução futura `llm-chat-rag`).
+- **Loop de navegação:** a LLM responde exclusivamente com um objeto JSON `{"resposta", "solicitacoes": [...]}`. Quando há solicitações, o FlowScopeBR executa as operações na árvore e devolve um bloco `[RESULTADO_NAVEGACAO] {…}` no turno seguinte, por até 10 ciclos. As operações são `listar`, `obter` (com paginação `offset`/`limite`), `contar`, `existe`, `buscar` (regex determinística), `buscar_semantico` e `resetar_navegacao`, com no máximo 8 por turno. Sem índice vetorial, `buscar_semantico` responde `indice_indisponivel` e o chat segue na busca determinística (evolução futura `llm-chat-rag`).
 - **Manifesto estável:** o prefixo enviado à LLM (persona + formato de resposta + manifesto da árvore) é determinístico e byte-a-byte estável enquanto a assinatura do estado não muda, aproveitando cache de prompt quando o provedor suporta.
 - **Orçamento de contexto:** manifesto com teto de 4.000 tokens (degrada para "só chaves" e depois trunca); histórico de até 10 mensagens e 8.000 caracteres; cota de navegação acumulada de 32.000 tokens e teto de 64.000 por turno. Ao ultrapassar 80% da janela do modelo, a barra de status avisa que o contexto está próximo do limite.
-- **Confirmação de custo:** quando um turno de navegação excede o teto, o FlowScope pede autorização para enviar os tokens adicionais; sem confirmação, a operação é negada e a LLM recebe um JSON de negativa.
+- **Confirmação de custo:** quando um turno de navegação excede o teto, o FlowScopeBR pede autorização para enviar os tokens adicionais; sem confirmação, a operação é negada e a LLM recebe um JSON de negativa.
 - **Tokens na barra de status:** enquanto a aba está ativa, a barra exibe entrada (descontando tokens servidos por cache), saída, o contexto da completion mais recente (com percentual da janela) e a cota de navegação sobre o teto (`nav: X/32K`).
 - **Sessão não persistente:** a conversa existe apenas em memória e começa limpa; o botão "Limpar" reinicia a sessão, a navegação acumulada e os tokens.
 - **Interação:**
@@ -346,7 +346,7 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 ## Aba Principal: "Sobre"
 
-- **Objetivo:** Apresentar o FlowScope, a versão e a data de release em uso, a licença de software livre e os atalhos para o repositório e o log da aplicação.
+- **Objetivo:** Apresentar o FlowScopeBR, a versão e a data de release em uso, a licença de software livre e os atalhos para o repositório e o log da aplicação.
 - **Posição:** aba de topo, após "Chat AI".
 - **Conteúdo:** apresentação do projeto, versão, data de release, licença (GNU GPLv3), endereço do repositório, botões "Repositório no GitHub" e "Abrir log da aplicação" e, quando houver, o aviso de nova versão disponível com atalho para a release.
 - **Orientação:** com a aba ativa, o quadro de texto orientativo exibe a orientação da aba "Sobre" (objetivo, conteúdo e uso dos atalhos), proveniente de `TAB_CONTENT` — que também integra o ramo `/flowscope` enviado à LLM.

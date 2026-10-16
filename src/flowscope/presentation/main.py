@@ -66,7 +66,7 @@ def main() -> None:
 def _tratar_modos_especiais(args: argparse.Namespace) -> bool:
     """Trata versão, MCP, navegação e atalho; devolve ``True`` se consumiu."""
     if args.version:
-        print(f"FlowScope v{__version__}")
+        print(f"FlowScopeBR v{__version__}")
         return True
 
     if args.mcp:

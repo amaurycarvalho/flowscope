@@ -90,7 +90,7 @@ class AboutPanel:
 
         tk.Label(
             container,
-            text=f"FlowScope v{__version__}",
+            text=f"FlowScopeBR v{__version__}",
             font=("TkDefaultFont", 14, "bold"),
         ).pack(anchor=tk.CENTER, pady=(0, PAD))
 

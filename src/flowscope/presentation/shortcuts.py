@@ -65,7 +65,7 @@ def _create_desktop_shortcut() -> bool:
 
     content = (
         "[Desktop Entry]\n"
-        "Name=FlowScope\n"
+        "Name=FlowScopeBR\n"
         f"Exec={executable} --gui\n"
         "Type=Application\n"
         "Terminal=false\n"

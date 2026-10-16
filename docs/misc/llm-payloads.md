@@ -1,6 +1,6 @@
 # Payloads de interação com o modelo (LLM)
 
-Este documento descreve os formatos de payload trocados com o provedor de LLM nos recursos de I.A. do FlowScope:
+Este documento descreve os formatos de payload trocados com o provedor de LLM nos recursos de I.A. do FlowScopeBR:
 
 - **Resumo de documentos** (sub-aba "Documentos");
 - **Resumo de notícias** (sub-aba "Notícias");
@@ -108,10 +108,10 @@ O `system_prompt` enviado a cada completion é o **prefixo estável**:
 <manifesto da árvore>
 ```
 
-- **Persona e regras** (`SYSTEM_PROMPT`): assistente do FlowScope, responde apenas com base no contexto navegado, cita as fontes, identifica o ticker referido, usa `contar`/`existe` antes de listar ramos grandes, lê o texto integral de alvos por `obter` (paginando com `offset`/`limite`), abre resumos (`/curto`, `/longo`) para listar/resumir vários documentos e nunca responde prometendo navegar.
+- **Persona e regras** (`SYSTEM_PROMPT`): assistente do FlowScopeBR, responde apenas com base no contexto navegado, cita as fontes, identifica o ticker referido, usa `contar`/`existe` antes de listar ramos grandes, lê o texto integral de alvos por `obter` (paginando com `offset`/`limite`), abre resumos (`/curto`, `/longo`) para listar/resumir vários documentos e nunca responde prometendo navegar.
 - **Contrato de resposta** (`INSTRUCAO_FORMATO`): exige um objeto JSON `{"resposta": "<texto ou null>", "solicitacoes": [...]}`, vazio quando a resposta já for conclusiva.
 - **Manifesto** (`montar_manifesto`, `src/flowscope/application/chat/manifesto.py`): renderizado de forma determinística e **byte-a-byte estável** enquanto a assinatura do estado não muda (aproveitando cache de prompt quando o provedor suporta). Contém as seções:
-  - `# Árvore de conhecimento do FlowScope` + persona;
+  - `# Árvore de conhecimento do FlowScopeBR` + persona;
   - `## Descrição` (ramos de topo presentes);
   - `## Mapa da árvore` (caminhos canônicos apenas dos ramos presentes);
   - `### Playbook por intenção` (intenção → ramo);
@@ -207,7 +207,7 @@ Quando um turno excede o teto de tokens e o usuário **não** autoriza o custo, 
 | Alerta de janela | acima de 80% da janela do modelo |
 
 - A contagem de tokens usa o contador real do fornecedor quando disponível; sem ele, estima por `caracteres / 4`.
-- O prefixo estável é reenviado a cada ciclo; quando o provedor suporta cache de prompt, o FlowScope estima o `cache_hit` do prefixo caso o provedor não o reporte.
+- O prefixo estável é reenviado a cada ciclo; quando o provedor suporta cache de prompt, o FlowScopeBR estima o `cache_hit` do prefixo caso o provedor não o reporte.
 - Na barra de status (aba ativa), o contador exibe entrada (descontando cache), saída, o contexto da completion mais recente com percentual da janela e a cota de navegação (`nav: X/32K`).
 
 ### 2.7 Árvore de conhecimento (ramos)

@@ -98,6 +98,34 @@ class TestPreservacaoDeBlocosExternos:
         assert dados["llm"]["chat"]["providers"]["deepseek"]["api_key"] == "sk-1"
 
 
+class TestLastTickerFilePreferences:
+    def test_round_trip_persists_path(self, tmp_path):
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", tmp_path / "config.json"
+        ):
+            save_preferences(
+                {"last_ticker_file": "/home/user/dados/petr4.txt"}
+            )
+            loaded = load_preferences()
+            assert loaded["last_ticker_file"] == "/home/user/dados/petr4.txt"
+
+    def test_missing_key_returns_none(self, tmp_path):
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", tmp_path / "config.json"
+        ):
+            prefs = load_preferences()
+            assert prefs["last_ticker_file"] is None
+
+    def test_non_str_value_falls_back_to_none(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text(json.dumps({"last_ticker_file": 42}), encoding="utf-8")
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", path
+        ):
+            loaded = load_preferences()
+            assert loaded["last_ticker_file"] is None
+
+
 class TestFundamentalColumnWidthsPreferences:
     def test_round_trip_persists_widths(self, tmp_path):
         with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(

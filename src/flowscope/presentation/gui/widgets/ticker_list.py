@@ -44,6 +44,8 @@ class TickerList:
         on_dir_changed: Callable | None = None,
         on_index_click: dict[str, Callable] | None = None,
         on_data_needed: Callable | None = None,
+        on_file_changed: Callable | None = None,
+        on_content_changed: Callable | None = None,
     ) -> None:
         """Inicializa a lista de tickers com seus botões e modos de exibição.
 
@@ -56,6 +58,8 @@ class TickerList:
         self._callbacks["on_load"] = on_load
         self._callbacks["on_dir_changed"] = on_dir_changed
         self._callbacks["on_data_needed"] = on_data_needed
+        self._callbacks["on_file_changed"] = on_file_changed
+        self._callbacks["on_content_changed"] = on_content_changed
         self._callbacks["on_index_click"] = on_index_click or {}
         self._initialdir = initialdir
         self._view_mode = True
@@ -344,6 +348,9 @@ class TickerList:
             on_data_needed = self._callbacks.get("on_data_needed")
             if on_data_needed:
                 on_data_needed()
+            on_content_changed = self._callbacks.get("on_content_changed")
+            if on_content_changed:
+                on_content_changed()
 
     def _get_text_tickers(self: "TickerList") -> list[str]:
         """Devolve a lista de tickers normalizada a partir do campo de texto.
@@ -524,6 +531,9 @@ class TickerList:
         on_dir_changed = self._callbacks.get("on_dir_changed")
         if on_dir_changed:
             on_dir_changed(Path(path).parent)
+        on_file_changed = self._callbacks.get("on_file_changed")
+        if on_file_changed:
+            on_file_changed(Path(path))
 
     def _filter(self: "TickerList") -> None:
         """Notifica o callback de mudança para aplicar o filtro atual."""
@@ -549,6 +559,9 @@ class TickerList:
         on_dir_changed = self._callbacks.get("on_dir_changed")
         if on_dir_changed:
             on_dir_changed(Path(path).parent)
+        on_file_changed = self._callbacks.get("on_file_changed")
+        if on_file_changed:
+            on_file_changed(Path(path))
         on_load = self._callbacks.get("on_load")
         if on_load:
             on_load()

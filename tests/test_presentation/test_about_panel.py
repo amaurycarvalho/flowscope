@@ -49,7 +49,7 @@ class TestConteudo:
     def test_ordem_das_informacoes(self, root):
         panel = AboutPanel(root)
         textos = _textos(panel)
-        assert textos[0] == f"FlowScope v{__version__}"
+        assert textos[0] == f"FlowScopeBR v{__version__}"
         assert textos[1] == __release_date__
         assert textos[2] == LICENCA
         assert textos[3] == APRESENTACAO

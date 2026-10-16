@@ -56,7 +56,7 @@ class _HostAbaSobre(TabActionsMixin):
         self._prefs: dict = {}
         self._tab_content = {
             (ABOUT_TAB, ABOUT_TAB): (
-                "Sobre — Informações do FlowScope",
+                "Sobre — Informações do FlowScopeBR",
                 [("texto", "")],
             )
         }

@@ -1,4 +1,4 @@
-# PRD — FlowScope
+# PRD — FlowScopeBR
 
 ## 1. Problema
 

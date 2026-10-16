@@ -1,4 +1,4 @@
-# Indicadores Calculados pelo FlowScope
+# Indicadores Calculados pelo FlowScopeBR
 
 ## Categoria: Preço
 
@@ -310,7 +310,7 @@ O ticker referido é inferido pela LLM a partir da pergunta (não há seletor de
 ### Orçamento de contexto
 - **Manifesto:** teto de 4.000 tokens; ao exceder, degrada para "só chaves" e, no limite, trunca.
 - **Histórico:** até 10 mensagens e 8.000 caracteres, descartando os turnos mais antigos.
-- **Loop de navegação:** até 10 ciclos e até 8 operações por turno, com cota acumulada de navegação de 32.000 tokens e teto de 64.000 tokens por turno (acima disso, o FlowScope pede autorização de custo).
+- **Loop de navegação:** até 10 ciclos e até 8 operações por turno, com cota acumulada de navegação de 32.000 tokens e teto de 64.000 tokens por turno (acima disso, o FlowScopeBR pede autorização de custo).
 - **Página de conteúdo pesado:** 12.000 caracteres por leitura de `obter`.
 
 ---

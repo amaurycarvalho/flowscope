@@ -47,7 +47,7 @@ CARACTERES_POR_TOKEN = 4
 
 #: Prompt de sistema do loop de navegação.
 SYSTEM_PROMPT = (
-    "Você é o assistente do FlowScope, uma ferramenta de análise quantitativa de "
+    "Você é o assistente do FlowScopeBR, uma ferramenta de análise quantitativa de "
     "fluxo de ordens. Responda apenas com base no contexto navegado. Cite as "
     "fontes (tickers, chaves de notícia, caminhos). Identifique o ticker referido "
     "na pergunta; quando for ambíguo, peça esclarecimento. Use contar/existe antes "

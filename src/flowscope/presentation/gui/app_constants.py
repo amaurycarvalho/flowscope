@@ -2,7 +2,7 @@
 
 from flowscope import __version__
 
-TITLE_PREFIX = f"FlowScope v{__version__}"
+TITLE_PREFIX = f"FlowScopeBR v{__version__}"
 
 PAD_SMALL = 4
 PAD = 8
