@@ -40,55 +40,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
-## [1.4.0] — 2026-10-14
+## [1.4.1] — 2026-10-16
 
-### [navegacao-mcp](openspec/changes/archive/2026-10-14-navegacao-mcp) Núcleo de navegação compartilhado, servidor MCP embutido (`flowscope --mcp`) e subcomandos `flowscope nav ...`
-
-#### Added
-
-- `NavegacaoCore` em `application/navegacao/`, com operações canônicas, limites centralizados, paginação por cursor opaco, erros estruturados e confinamento de leitura; reusado pelo chat, pela CLI e pelo MCP.
-- Servidor MCP stdio embutido iniciado por `flowscope --mcp`, alvo da revisão `2026-07-28`, com `server/discover`, `tools/list` (sete tools `nav_*`) e `tools/call`, sem dependência nova.
-- Subcomandos `flowscope nav listar|obter|contar|existe|buscar|buscar-semantico|manifesto`, com saída JSON e `--pretty`.
-- Guia [docs/misc/mcp.md](docs/misc/mcp.md) e link no `README.md`.
-
-#### Changed
-
-- `ProtocoloNavegacao` passa a ser um adaptador fino sobre o `NavegacaoCore`, mantendo `[RESULTADO_NAVEGACAO]`, `foco` e o limite de 8 operações por turno; o reset permanece no loop do chat.
-- Listagens passam a ser ordenadas deterministicamente por caminho canônico.
-
-### [orientacao-chat-arvore](openspec/changes/archive/2026-10-13-orientacao-chat-arvore) Orientação da aba "Chat AI" atualizada para descrever a árvore de conhecimento navegável, as origens de contexto como ramos, o protocolo de navegação da LLM e a leitura somente de cache
-
-#### Changed
-
-- O texto de orientação da aba "Chat AI" em `TAB_CONTENT` passa a descrever a árvore de conhecimento navegável (ramos de origem do contexto), o protocolo de navegação da LLM, os orçamentos e a leitura somente de cache.
-- Mantida a estrutura do `body` do `TAB_CONTENT` (título e seções Objetivo, Responde a pergunta, Como usar, Contexto enviado, Como interpretar) e o enquadramento dos ramos disponíveis.
-
-### [reposicao-datas-uteis-b3](openspec/changes/archive/2026-10-14-reposicao-datas-uteis-b3) Datas substitutas de amostragem restritas a dias úteis da B3, com o predicado de feriados centralizado no domínio e reusado pelo calendário
+### [fundamentos-e-downloads-resilientes](openspec/changes/archive/2026-10-16-fundamentos-e-downloads-resilientes) Fundamentos no host coberto pelo certificado, identidade/nome da B3 como fallback, resolução CVM API-only e downloads compartilhados com validação de conteúdo e orçamento por item
 
 #### Added
 
-- Predicado de dia útil da B3 centralizado no domínio (`domain/b3/calendario.py`, com a lista de feriados nacionais e `is_business_day`), respeitando `layer-boundaries`.
+- Nome de exibição do ativo obtido da identidade B3 já existente (`GetInitialCompanies`: `companyName`/`tradingName`) como fallback para ações/BDR, mantendo `fundName` para FII.
+- Helper único de download de arquivos (PDF/HTML) com validação de conteúdo (assinatura `%PDF` ou HTML esperado) e orçamento total por item, aplicado a documentos relevantes, informe mensal, proventos/informe e documentos vinculados de notícias.
 
 #### Changed
 
-- `infrastructure/b3/calendar.py` e `infrastructure/b3/holidays.py` passam a consumir/reexportar a definição do domínio, eliminando a duplicação.
-- Testes unitários cobrindo a candidata em feriado pulada, a continuidade da busca e o resolvedor do calendário usando a mesma definição.
+- Modo degradado visível: registrar por ticker a fonte/URL que falhou, em vez de varrer silenciosamente toda a cadeia de fallback.
+- Só cachear `None` quando a API respondeu e não achou; falha de resolução (rede/HTTP) deixa de ser cacheada como ausência.
+- FNET: repetir em resposta `200` não-PDF e tratar o `403` intermitente como repetível; opção de resolver via `visualizarDocumento` → `iframe exibirDocumento`.
+- rad.cvm: renovar token/sessão antes de repetir o POST `ExibirPDF`, com backoff e validação `%PDF`.
+- Ausência de dados de negociação em dia não útil (feriado) tratada como ausência, sem requisição nem erro.
+- `fundamental_job` identificável no log do watchdog com o ticker em processamento.
+- Desfecho da aquisição distingue falha de "nada novo" em Documentos e, de forma consistente, em Notícias e Fundamentos.
 
 #### Fixed
 
-- `_find_replacement_date` passa a usar `is_business_day` em vez de `candidate.weekday() >= 5`, de modo que feriados nacionais nunca sejam consultados como data substituta.
+- Host do Fundamentus corrigido para o apex coberto pelo certificado (`fundamentus.com.br`) nos três endpoints (`detalhes`, `proventos`, `fii_proventos`) e no `robots.txt`.
 
-### [resumo-guidance-system-prompt](openspec/changes/archive/2026-10-14-resumo-guidance-system-prompt) Instruções estáveis de resumo de documentos/notícias e de avaliação de guidance em `system_prompt`, com orçamento de caracteres compatível com a fórmula XYZ
+#### Removed
+
+- Fallback `empresas-listadas.csv` removido, tornando a resolução `ticker → codeCVM` API-only. **BREAKING (interno)**.
+
+### [renomear-flowscopebr](openspec/changes/archive/2026-10-16-renomear-flowscopebr) Nome exibido "FlowScope" renomeado para "FlowScopeBR" em título, aba "Sobre", chat/system prompts, CLI, atalho e documentação, preservando identificadores e caminhos internos
 
 #### Changed
 
-- `ResumirDocumentoUseCase` passa a enviar as instruções em um `system_prompt` constante e o texto do documento como única mensagem `user`, cobrindo as sub-abas "Documentos" e "Notícias".
-- `AvaliarGuidanceUseCase` aplica o mesmo padrão: instruções em `system_prompt` constante e o trecho como mensagem `user`.
-- Ajustes pontuais de prompt incorporam à versão enxuta regras da versão detalhada (sem markdown/listas, nada antes de `CURTO:`/`LONGO:`, fidelidade ao conteúdo, guidance vazio ⇒ saída vazia, valor único ⇒ mínimo = máximo, ponto decimal sem `R$`, dúvida em guidance ⇒ `NAO`).
-- Orçamento de caracteres compatível com o XYZ: tetos de salvaguarda do resumo elevados (curto 280 → 450, longo 1500 → 2000) e orçamento declarado no prompt (400 / 1800), sem cortar a conclusão.
-- `docs/misc/llm-payloads.md` (§1.1 e §1.5) atualizado com o payload separado em `system`/`user`.
+- Renomear "FlowScope" para "FlowScopeBR" em todos os textos visíveis: título da janela, aba "Sobre", textos e *system prompts* do chat de I.A., saída/ajuda da CLI, campo `Name=` do atalho e documentação (`README.md`, `docs/PRD.md`, `docs/misc/*.md`).
+- Formato de nome+versão na aba "Sobre" passa de `FlowScope vX.Y.Z` para `FlowScopeBR vX.Y.Z`.
+- Saída de `--version` da CLI passa a `FlowScopeBR vX.Y.Z`.
+- Preservados deliberadamente `USER_AGENT`, o nó `/flowscope`, nomes de classes/módulos, docstrings internas, `~/.flowscope`, o nome do pacote/binário e os registros históricos `docs/rfcs/`, `docs/adrs/` e `CHANGELOG-ARCHIVE.md`.
 
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.4.0...HEAD
-[1.4.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.4.0
+### [titulo-watchlist-arquivo](openspec/changes/archive/2026-10-16-titulo-watchlist-arquivo) Título da janela com o nome-base do arquivo de watchlist e asterisco de alteração não salva, com persistência do caminho do último arquivo
+
+#### Added
+
+- Persistência em `~/.flowscope/config.json` da nova chave `last_ticker_file` com o caminho completo do último arquivo de watchlist carregado ou salvo.
+
+#### Changed
+
+- Título da janela passa ao formato `FlowScopeBR v{versão} — <arquivo>[*]`, com `<arquivo>` = nome-base do arquivo e `[*]` quando o conteúdo foi editado e ainda não salvo; sem arquivo, exibe `Nova lista.txt`.
+- Carregar um arquivo atualiza o título e guarda o caminho completo; **Salvar** atualiza o nome/caminho e remove o asterisco.
+- Editar o conteúdo do watchlist (adicionar/remover tickers) marca alteração não salva; mudar seleção/filtro não marca.
+- Clicar em IBOV/IDIV/IFIX exibe `<ÍNDICE>.txt` sem asterisco e não persiste o nome.
+- Aposentado o requisito "Título dinâmico da janela" (data + N ativos, nunca implementado) e registrado o novo formato na spec `ui-polish`.
+
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.4.1...HEAD
+[1.4.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.4.1
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.

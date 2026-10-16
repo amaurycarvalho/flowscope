@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## [1.4.0] — 2026-10-14
+
+### [navegacao-mcp](openspec/changes/archive/2026-10-14-navegacao-mcp) Núcleo de navegação compartilhado, servidor MCP embutido (`flowscope --mcp`) e subcomandos `flowscope nav ...`
+
+#### Added
+
+- `NavegacaoCore` em `application/navegacao/`, com operações canônicas, limites centralizados, paginação por cursor opaco, erros estruturados e confinamento de leitura; reusado pelo chat, pela CLI e pelo MCP.
+- Servidor MCP stdio embutido iniciado por `flowscope --mcp`, alvo da revisão `2026-07-28`, com `server/discover`, `tools/list` (sete tools `nav_*`) e `tools/call`, sem dependência nova.
+- Subcomandos `flowscope nav listar|obter|contar|existe|buscar|buscar-semantico|manifesto`, com saída JSON e `--pretty`.
+- Guia [docs/misc/mcp.md](docs/misc/mcp.md) e link no `README.md`.
+
+#### Changed
+
+- `ProtocoloNavegacao` passa a ser um adaptador fino sobre o `NavegacaoCore`, mantendo `[RESULTADO_NAVEGACAO]`, `foco` e o limite de 8 operações por turno; o reset permanece no loop do chat.
+- Listagens passam a ser ordenadas deterministicamente por caminho canônico.
+
+### [orientacao-chat-arvore](openspec/changes/archive/2026-10-13-orientacao-chat-arvore) Orientação da aba "Chat AI" atualizada para descrever a árvore de conhecimento navegável, as origens de contexto como ramos, o protocolo de navegação da LLM e a leitura somente de cache
+
+#### Changed
+
+- O texto de orientação da aba "Chat AI" em `TAB_CONTENT` passa a descrever a árvore de conhecimento navegável (ramos de origem do contexto), o protocolo de navegação da LLM, os orçamentos e a leitura somente de cache.
+- Mantida a estrutura do `body` do `TAB_CONTENT` (título e seções Objetivo, Responde a pergunta, Como usar, Contexto enviado, Como interpretar) e o enquadramento dos ramos disponíveis.
+
+### [reposicao-datas-uteis-b3](openspec/changes/archive/2026-10-14-reposicao-datas-uteis-b3) Datas substitutas de amostragem restritas a dias úteis da B3, com o predicado de feriados centralizado no domínio e reusado pelo calendário
+
+#### Added
+
+- Predicado de dia útil da B3 centralizado no domínio (`domain/b3/calendario.py`, com a lista de feriados nacionais e `is_business_day`), respeitando `layer-boundaries`.
+
+#### Changed
+
+- `infrastructure/b3/calendar.py` e `infrastructure/b3/holidays.py` passam a consumir/reexportar a definição do domínio, eliminando a duplicação.
+- Testes unitários cobrindo a candidata em feriado pulada, a continuidade da busca e o resolvedor do calendário usando a mesma definição.
+
+#### Fixed
+
+- `_find_replacement_date` passa a usar `is_business_day` em vez de `candidate.weekday() >= 5`, de modo que feriados nacionais nunca sejam consultados como data substituta.
+
+### [resumo-guidance-system-prompt](openspec/changes/archive/2026-10-14-resumo-guidance-system-prompt) Instruções estáveis de resumo de documentos/notícias e de avaliação de guidance em `system_prompt`, com orçamento de caracteres compatível com a fórmula XYZ
+
+#### Changed
+
+- `ResumirDocumentoUseCase` passa a enviar as instruções em um `system_prompt` constante e o texto do documento como única mensagem `user`, cobrindo as sub-abas "Documentos" e "Notícias".
+- `AvaliarGuidanceUseCase` aplica o mesmo padrão: instruções em `system_prompt` constante e o trecho como mensagem `user`.
+- Ajustes pontuais de prompt incorporam à versão enxuta regras da versão detalhada (sem markdown/listas, nada antes de `CURTO:`/`LONGO:`, fidelidade ao conteúdo, guidance vazio ⇒ saída vazia, valor único ⇒ mínimo = máximo, ponto decimal sem `R$`, dúvida em guidance ⇒ `NAO`).
+- Orçamento de caracteres compatível com o XYZ: tetos de salvaguarda do resumo elevados (curto 280 → 450, longo 1500 → 2000) e orçamento declarado no prompt (400 / 1800), sem cortar a conclusão.
+- `docs/misc/llm-payloads.md` (§1.1 e §1.5) atualizado com o payload separado em `system`/`user`.
+
 ## [1.3.7] — 2026-10-13
 
 ### [convencao-paths-relativos](openspec/changes/archive/2026-10-13-convencao-paths-relativos) Standard de engenharia exigindo referências a arquivos do projeto por caminhos relativos à raiz, proibindo caminhos absolutos específicos da máquina
@@ -2107,6 +2155,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Subtle toolbar border (GROOVE) around action buttons
 - Consistent use of `ttk` themed widgets where possible
 
+[1.4.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.4.0
 [1.3.7]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.3.7
 [1.3.6]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.3.6
 [1.3.5]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.3.5
