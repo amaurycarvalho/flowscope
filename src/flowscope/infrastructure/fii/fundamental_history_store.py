@@ -100,6 +100,20 @@ class JsonFundamentalHistoryStore:
         ]
         return sorted(datas)
 
+    def obter_em_ou_antes(
+        self: "JsonFundamentalHistoryStore", ticker: str, data: date
+    ) -> AnaliseFundamental | None:
+        """Retorna a observação de ``data`` ou a mais recente anterior ou igual.
+
+        Reusa :meth:`datas` para enumerar as observações retidas e escolhe a
+        maior data ``<= data``; devolve ``None`` quando não há observação nessa
+        janela.
+        """
+        anteriores = [momento for momento in self.datas(ticker) if momento <= data]
+        if not anteriores:
+            return None
+        return self.obter(ticker, anteriores[-1])
+
     def registrar(
         self: "JsonFundamentalHistoryStore",
         ticker: str,

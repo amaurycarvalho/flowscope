@@ -7,6 +7,7 @@ pela LLM a partir da pergunta.
 """
 
 from collections.abc import Iterable, Mapping
+from datetime import date
 
 from flowscope.application.chat.arvore import No, no_folha, ramo_fundamentos
 from flowscope.application.fundamental.formatters import NA
@@ -111,17 +112,19 @@ class FonteFundamentos:
         dados: Mapping[str, object],
         ticker: str | None = None,
         watchlist: Iterable[str] = (),
+        data_referencia: date | None = None,
     ) -> None:
-        """Guarda a tabela e o escopo (ticker foco ou watchlist completa)."""
+        """Guarda a tabela, o escopo (ticker foco ou watchlist) e a data resolvida."""
         self._dados = dados
         self._ticker = ticker
         self._watchlist = list(watchlist)
+        self._data_referencia = data_referencia
 
     def construir(self: "FonteFundamentos") -> No:
         """Constrói o ramo ``/fundamentos``, com orientação se não houver dados."""
         tickers = tickers_do_escopo(self._dados, self._ticker, self._watchlist)
         if not tickers:
-            raiz = ramo_fundamentos()
+            raiz = ramo_fundamentos(data_referencia=self._data_referencia)
             raiz.filho(
                 no_folha(
                     "/fundamentos/orientacao",
@@ -131,5 +134,8 @@ class FonteFundamentos:
             )
             return raiz
         return ramo_fundamentos(
-            tickers, campos_fundamentos(), valores_por_ticker(self._dados, tickers)
+            tickers,
+            campos_fundamentos(),
+            valores_por_ticker(self._dados, tickers),
+            data_referencia=self._data_referencia,
         )

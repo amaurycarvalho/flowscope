@@ -108,9 +108,12 @@ class ResumosActionsMixin(ResumosFinalizacaoMixin):
         estado = {"resultado": ResultadoResumos()}
 
         def trabalho(ctx: object) -> None:
-            estado["resultado"] = executar_resumos(
-                ctx, painel, pendentes, continuar, senhas
-            )
+            from flowscope.presentation.composicao import bloqueio_de_escrita
+
+            with bloqueio_de_escrita():
+                estado["resultado"] = executar_resumos(
+                    ctx, painel, pendentes, continuar, senhas
+                )
 
         background.submit(
             trabalho,

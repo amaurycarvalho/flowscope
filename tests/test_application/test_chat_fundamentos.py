@@ -64,3 +64,26 @@ class TestContexto:
     def test_escopo_vazio_orienta_carregamento(self, dados):
         texto = montar_contexto_fundamentos(dados, "XPTO", ["PETR4"])
         assert texto == ORIENTACAO_SEM_DADOS
+
+
+class TestNoDataReferencia:
+    def _arvore(self, data_referencia=None):
+        from flowscope.application.chat.arvore import ArvoreConhecimento
+        from flowscope.application.chat.fundamentos import FonteFundamentos
+
+        fonte = FonteFundamentos(
+            {"PETR4": None}, watchlist=["PETR4"], data_referencia=data_referencia
+        )
+        return ArvoreConhecimento(fonte.construir())
+
+    def test_no_existe_e_obter_devolve_a_data(self):
+        from datetime import date
+
+        arvore = self._arvore(date(2026, 10, 14))
+        assert arvore.existe("/fundamentos/data-referencia")
+        assert arvore.obter("/fundamentos/data-referencia") == "2026-10-14"
+
+    def test_sem_data_no_existe_com_conteudo_vazio(self):
+        arvore = self._arvore(None)
+        assert arvore.existe("/fundamentos/data-referencia")
+        assert arvore.obter("/fundamentos/data-referencia") == ""

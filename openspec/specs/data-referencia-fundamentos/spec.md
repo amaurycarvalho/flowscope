@@ -1,8 +1,10 @@
+# data-referencia-fundamentos Specification
+
 ## Purpose
 
 Registrar e expor, de forma somente-leitura, a data de referência usada na última carga de fundamentos, permitindo que um agendador externo e o Chat AI consultem qual fundamentos estão disponíveis no cache local.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Marcador da última carga de fundamentos
 
@@ -36,6 +38,25 @@ O sistema DEVE resolver a data de referência consultada como o valor de `last_f
 
 - **WHEN** nem `last_fundamentals` nem `last_date` existem
 - **THEN** a consulta DEVE indicar a ausência de data, sem erro
+
+### Requirement: Carga da árvore na data de referência
+
+As superfícies headless (CLI e servidor MCP) DEVEM carregar os fundamentos de cada ticker na data de referência resolvida `R`: a observação exata de `R` quando existir, senão a observação mais recente anterior ou igual a `R`; quando não houver data de referência, DEVEM usar a observação mais recente. `R` pode ser sobreposto pelo parâmetro `--data` do subcomando `mcp`.
+
+#### Scenario: Observação exata
+
+- **WHEN** existe observação do ticker na data de referência resolvida
+- **THEN** a árvore DEVE usar essa observação
+
+#### Scenario: Data sem observação usa a mais recente anterior
+
+- **WHEN** não existe observação do ticker na data exata, mas existe uma anterior
+- **THEN** a árvore DEVE usar a observação mais recente anterior ou igual à data de referência
+
+#### Scenario: Sem data de referência usa a mais recente
+
+- **WHEN** não há marcador `last_fundamentals` nem `last_date`
+- **THEN** a árvore DEVE usar a observação mais recente de cada ticker
 
 ### Requirement: Nó da data de referência na árvore de conhecimento
 

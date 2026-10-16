@@ -6,6 +6,13 @@ from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
+
+
+def _gravar_texto_atomico(path: Path, texto: str) -> None:
+    """Grava texto de forma atômica com temporário único (delegação)."""
+    _atomic_write_bytes(path, texto.encode("utf-8"))
+
 
 class CacheManager:
     """Gerencia arquivos de cache em disco com controle de expiração."""
@@ -52,11 +59,7 @@ class CacheManager:
 
     def put(self: "CacheManager", d: date, content: str) -> None:
         """Grava o conteúdo no cache da data informada, de forma atômica."""
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
-        path = self._path_for(d)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(content, encoding="utf-8")
-        tmp.rename(path)
+        _gravar_texto_atomico(self._path_for(d), content)
 
     def _meta_path_for(self: "CacheManager", key: str) -> Path:
         return self._cache_dir / f"{key}.json"
@@ -74,14 +77,10 @@ class CacheManager:
 
     def write_meta(self: "CacheManager", key: str, payload: dict[str, object]) -> None:
         """Grava o registro de metadados da chave de forma atômica."""
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
-        meta_path = self._meta_path_for(key)
-        tmp = meta_path.with_suffix(".tmp")
-        tmp.write_text(
+        _gravar_texto_atomico(
+            self._meta_path_for(key),
             json.dumps(payload, ensure_ascii=False, default=str),
-            encoding="utf-8",
         )
-        tmp.rename(meta_path)
 
     def invalidate(self: "CacheManager", key: str) -> None:
         """Remove o arquivo de metadados em cache para a chave informada."""
@@ -105,9 +104,8 @@ class CacheManager:
             except (KeyError, ValueError, json.JSONDecodeError):
                 pass
         result = fetch_fn()
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
         payload = {"cached_at": datetime.now(timezone.utc).isoformat(), **result}
-        tmp = meta_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-        tmp.rename(meta_path)
+        _gravar_texto_atomico(
+            meta_path, json.dumps(payload, indent=2, default=str)
+        )
         return payload

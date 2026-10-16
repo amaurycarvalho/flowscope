@@ -37,16 +37,19 @@ def executar_documentos(
         ctx.progress(detalhe=label, atual=current, total=total)
 
     resultado = ResultadoAquisicao()
+    from flowscope.presentation.composicao import bloqueio_de_escrita
+
     try:
-        resultado = (
-            aquisicao.adquirir(
-                ticker,
-                reference_date,
-                progress=_progresso,
-                cancel_token=ctx.token,
+        with bloqueio_de_escrita():
+            resultado = (
+                aquisicao.adquirir(
+                    ticker,
+                    reference_date,
+                    progress=_progresso,
+                    cancel_token=ctx.token,
+                )
+                or ResultadoAquisicao()
             )
-            or ResultadoAquisicao()
-        )
     except OperacaoCancelada:
         logger.debug(
             "Aquisição de documentos de %s interrompida pelo usuário", ticker
@@ -58,7 +61,8 @@ def executar_documentos(
     if deduplicar is None:
         return resultado
     try:
-        deduplicar(ticker, ctx.token)
+        with bloqueio_de_escrita():
+            deduplicar(ticker, ctx.token)
     except OperacaoCancelada:
         logger.debug("Housekeeping de documentos interrompido pelo usuário")
     except Exception:  # housekeeping não deve travar a interface

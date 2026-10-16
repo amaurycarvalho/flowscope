@@ -1,8 +1,10 @@
+# cli-acoes-atualizacao Specification
+
 ## Purpose
 
 Expor as ações de atualização do FlowScope como subcomandos de linha de comando, permitindo que um agendador externo (cron, systemd, CI) mantenha os caches atualizados sem abrir a interface gráfica.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Subcomandos de ação e convenções de saída
 
@@ -34,16 +36,21 @@ O sistema DEVE aceitar `flowscope carregar watchlist <arquivo>`, lendo um ticker
 
 ### Requirement: Atualizar os fundamentos da watchlist carregada
 
-O sistema DEVE aceitar `flowscope atualizar fundamentos --data <AAAA-MM-DD>` e atualizar os fundamentos dos tickers da watchlist carregada (`last_tickers`) para a data de referência. A atualização DEVE executar a análise de mercado da data antes da análise fundamentalista, de modo a preservar Preço Típico e os fallbacks de cotação e extremos. Os resultados DEVEM ser gravados no histórico de fundamentos e o marcador da última carga DEVE ser registrado. Sem `last_tickers`, o comando DEVE falhar com erro estruturado.
+O sistema DEVE aceitar `flowscope atualizar fundamentos --data <AAAA-MM-DD>` e atualizar os fundamentos dos tickers da watchlist carregada (`last_tickers`) para a data de referência. A atualização DEVE executar a análise de mercado da data antes da análise fundamentalista, de modo a preservar Preço Típico e os fallbacks de cotação e extremos. Os resultados DEVEM ser gravados no histórico de fundamentos e o marcador da última carga DEVE ser registrado. Sem `last_tickers`, o comando DEVE falhar com erro estruturado. Quando a data não for um dia útil, a análise de mercado NÃO DEVE requisitar negociação nem tratar a ausência de dados como erro.
 
 #### Scenario: Atualização com watchlist carregada
 
 - **WHEN** existe `last_tickers` e o usuário executa `flowscope atualizar fundamentos --data 2026-10-14`
 - **THEN** a análise de mercado e a análise fundamentalista DEVEM ser executadas para a data, o histórico DEVE ser gravado e o marcador da última carga DEVE registrar `2026-10-14`
 
-### Requirement: Atualizar os documentos de um ticker da watchlist
+#### Scenario: Data em dia não útil
 
-O sistema DEVE aceitar `flowscope atualizar documentos <ticker>` e adquirir os documentos do ticker para a data de referência. O ticker DEVE pertencer a `last_tickers`; um ticker fora da watchlist DEVE ser recusado com erro estruturado. A aquisição DEVE reusar o comportamento da aquisição de documentos por tipo de ativo e o housekeeping de deduplicação.
+- **WHEN** a data informada não é um dia útil (por exemplo, feriado)
+- **THEN** a análise de mercado NÃO DEVE requisitar negociação e a ausência de dados de mercado NÃO DEVE ser tratada como erro
+
+### Requirement: Atualizar os documentos dos tickers da watchlist
+
+O sistema DEVE aceitar `flowscope atualizar documentos [<ticker>]` e adquirir os documentos para a data de referência. Com `<ticker>`, o ticker DEVE pertencer a `last_tickers`; um ticker fora da watchlist DEVE ser recusado com erro estruturado. Sem `<ticker>`, o comando DEVE iterar a watchlist carregada (`last_tickers`) e atualizar os documentos de todos os tickers; sem `last_tickers`, DEVE falhar com erro estruturado. A aquisição DEVE reusar o comportamento da aquisição de documentos por tipo de ativo e o housekeeping de deduplicação, e o resultado DEVE distinguir, por ticker, falha de ausência de novidades.
 
 #### Scenario: Ticker na watchlist
 
@@ -53,6 +60,21 @@ O sistema DEVE aceitar `flowscope atualizar documentos <ticker>` e adquirir os d
 #### Scenario: Ticker fora da watchlist
 
 - **WHEN** o ticker informado não está em `last_tickers`
+- **THEN** o comando DEVE falhar com erro estruturado, sem adquirir documentos
+
+#### Scenario: Sem ticker itera a watchlist
+
+- **WHEN** o usuário executa `flowscope atualizar documentos` sem ticker e `last_tickers` contém vários tickers
+- **THEN** os documentos de cada ticker da watchlist DEVEM ser adquiridos e o resultado DEVEM reportar o desfecho por ticker
+
+#### Scenario: Falha parcial não aborta o lote
+
+- **WHEN** a aquisição falha para um ticker e conclui para os demais
+- **THEN** os documentos dos demais tickers DEVEM ser adquiridos, o resultado DEVE distinguir o ticker com falha dos demais e o processo DEVE encerrar com código 1
+
+#### Scenario: Sem watchlist carregada
+
+- **WHEN** o usuário executa `flowscope atualizar documentos` sem ticker e não há `last_tickers`
 - **THEN** o comando DEVE falhar com erro estruturado, sem adquirir documentos
 
 ### Requirement: Atualizar as notícias

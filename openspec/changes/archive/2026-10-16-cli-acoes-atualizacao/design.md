@@ -7,14 +7,15 @@ As seis ações de atualização existem hoje apenas pela GUI: a carga de fundam
 **Goals:**
 
 - Expor as ações de atualização por uma CLI headless agendável, com paridade de comportamento com a GUI.
-- Manter o MCP somente-leitura, expondo a data de referência como consulta.
-- Tornar segura a escrita concorrente entre CLI e GUI.
+- Manter o MCP somente-leitura (servidor e tools), expondo a data de referência como consulta.
+- Auditar toda execução headless da CLI no log da aplicação.
+- Tornar segura a escrita concorrente entre CLI e GUI, incluindo `config.json`.
 
 **Non-Goals:**
 
-- Tools de ação no servidor MCP (decidido fora de escopo).
+- Tools de ação no servidor MCP: a preparação opcional na inicialização do subcomando `mcp` ocorre **antes** do servidor e reusa os núcleos das ações; nenhuma tool de ação é exposta.
 - Concorrência fina por recurso (por ticker) ou lock não-bloqueante otimista.
-- Alterar o layout dos caches ou o comportamento da árvore de conhecimento além do novo nó.
+- Alterar o layout dos caches ou o comportamento da árvore de conhecimento além do novo nó de data de referência e da carga na data resolvida.
 
 ## Decisions
 
@@ -55,12 +56,39 @@ Alternativas M2 (lock por store) e M5/M6 (estrutural/otimista) foram considerada
 
 `carregar watchlist`, `atualizar fundamentos|documentos|noticias`, `resumir documentos|noticias`, espelhando a família `nav`. Alternativa FORMA 1 (recurso→verbo) foi preterida por criar verbos de topo que são famílias novas.
 
+### Auditoria de chamadas CLI — G
+
+Toda invocação da CLI é registrada no log da aplicação reusando `LOG_FORMAT` e a rotação diária do `logging`. O registro traz o comando, os argumentos permitidos, o início/fim, a duração e o código de saída; segredos (`llm.chat.providers[*].api_key`) são omitidos. O `stdout` do contrato (JSON das ações e JSON-RPC do MCP) é preservado — a auditoria vai para o arquivo e o `stderr`. Um único ponto em `main()` envolve o despacho. Alternativa de instrumentar cada subcomando foi rejeitada por duplicação e pontos de esquecimento.
+
+### Subcomando `mcp` com preparação — H
+
+`flowscope mcp [--watchlist <arquivo>] [--data <AAAA-MM-DD>]`, com alias `--mcp`. Sem parâmetros, apenas monta a árvore a partir do cache (rápido e read-only). Com `--watchlist` e/ou `--data`, executa antes as mesmas etapas de `carregar watchlist` e `atualizar fundamentos --data` e só então inicia o servidor. As etapas reusam os **núcleos** das ações (que retornam resultado estruturado), não os `run_*` que imprimem JSON e chamam `sys.exit`; a saída JSON das ações é suprimida para não corromper o canal JSON-RPC do `stdout`. A ordem é watchlist → fundamentos (os fundamentos leem `last_tickers`). A preparação adquire o lock global e o libera antes de servir. Falha na preparação aborta a inicialização com código 1, para nunca subir um servidor silenciosamente desatualizado; o progresso vai para `stderr`. A data default de `--data` é a resolvida (`last_fundamentals`→`last_date`). Alternativa de tools de ação no MCP foi rejeitada (mantém o servidor somente-leitura).
+
+### Carga da árvore na data de referência — I
+
+A árvore headless (`montar_core_navegacao`) carrega cada ticker na data de referência resolvida `R` (override por `--data`): observação exata de `R`, senão a mais recente `≤ R`; sem `R`, a mais recente. `R` é passado explicitamente para a composição, sem ser re-derivado dentro do loader. Implementado só na composição headless (`cli.py`), preservando o caminho da GUI. A alternativa B (`--data` apenas seleciona o que baixar, árvore sempre "mais recente") foi rejeitada: `nav_data_referencia` e o conteúdo de `/fundamentos` divergiriam quando a data pedida não for a mais nova.
+
+### Consulta por data de referência — I.1
+
+O store de histórico de fundamentos ganha uma consulta "observação em `R` ou a mais recente `≤ R`" (reusando `datas()`), sem alterar o `obter` exato nem o formato persistido.
+
+### Ticker opcional em `atualizar documentos` — J
+
+Sem `<ticker>`, itera `last_tickers` (erro estruturado quando vazio) processando cada ticker sob o mesmo lock; o resultado é um JSON com o desfecho por ticker (atualizado / nada novo / falha) e o processo encerra com código 1 se houver ao menos uma falha (nada novo não é falha). Com `<ticker>`, mantém a validação `∈ last_tickers`. Abortar no primeiro ticker com falha foi rejeitado: contraria o propósito de agendamento. `resumir documentos` permanece com `<ticker>` obrigatório nesta change.
+
+### Gravações de `config.json` atômicas e sob lock — K
+
+As gravações de `config.json` (CLI e GUI) reusam a escrita atômica de temporário único e ocorrem sob o lock global, evitando que um *read-modify-write* concorrente perca chaves (`last_fundamentals`, `last_tickers`, `llm`) ou corrompa o arquivo.
+
 ## Risks / Trade-offs
 
 - **[Lock global serializa ações independentes]** → aceitável para agendamento; granularidade fina fica como evolução.
 - **[GUI esperando uma ação longa da CLI]** → a GUI adquire o lock só nas fases de escrita e a CLI oferece `--esperar` com limite; o usuário pode encerrar.
 - **[Extração do lote mexe em mixins da GUI]** → coberta por testes de apresentação existentes; a lógica pura migra para a aplicação com testes próprios.
 - **[Marcador obsoleto entre cargas]** → escrito nos dois pontos de carga (GUI e CLI) e com fallback; `fetched_at` permite detectar staleness.
+- **[Inicialização do `mcp` lenta com `--data`]** → é opt-in; o progresso vai para `stderr`; sem parâmetros a inicialização permanece rápida e read-only.
+- **[Auditoria vazar segredos]** → apenas argumentos whitelisted vão para o log; o namespace cru nunca é registrado.
+- **[Divergência entre data de referência e conteúdo]** → mitigada pela carga date-aware (decisão I), que alinha tool `nav_data_referencia` e nó `/fundamentos`.
 
 ## Migration Plan
 

@@ -302,3 +302,60 @@ class TestDesktopShortcutGuiButton:
 
         app._flash_status.assert_not_called()
         app._set_status.assert_not_called()
+
+
+class TestAuditoriaCli:
+    def _args(self, **kwargs):
+        import argparse
+
+        base = dict(
+            comando="nav", recurso=None, operacao="obter", caminho="/fundamentos",
+            ticker=None, arquivo=None, data=None, data_inicio=None, data_fim=None,
+            tickers=None, palavra=None, categoria=None, structured_earnings=None,
+            fatos_relevantes=None, output=None, watchlist=None, esperar=0.0,
+            gui=False, mcp=False, version=False, create_shortcut=False, vwap=False,
+            noticias=False, regulacao=False, pretty=False,
+        )
+        base.update(kwargs)
+        return argparse.Namespace(**base)
+
+    def test_registra_invocacao_bem_sucedida(self, tmp_path):
+        from flowscope.presentation import main
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+            main._registrar_auditoria(self._args(), 0.0, 0.5, 0)
+            log_file = tmp_path / ".flowscope" / "logs" / "flowscope.log"
+            content = log_file.read_text()
+        assert "comando=nav" in content
+        assert "'caminho': '/fundamentos'" in content
+        assert "codigo=0" in content
+        assert "duracao=0.500s" in content
+
+    def test_registra_falha(self, tmp_path):
+        from flowscope.presentation import main
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+            main._registrar_auditoria(self._args(), 0.0, 0.1, 1)
+            content = (tmp_path / ".flowscope" / "logs" / "flowscope.log").read_text()
+        assert "codigo=1" in content
+
+    def test_segredos_omitidos(self, tmp_path):
+        from flowscope.presentation import main
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+            args = self._args()
+            args.api_key = "sk-segredo"
+            args.llm = {"chat": {"api_key": "sk-outro"}}
+            main._registrar_auditoria(args, 0.0, 0.1, 0)
+            content = (tmp_path / ".flowscope" / "logs" / "flowscope.log").read_text()
+        assert "sk-segredo" not in content
+        assert "sk-outro" not in content
+
+    def test_auditoria_nao_escreve_no_stdout(self, capsys):
+        from flowscope.presentation import main
+
+        main._registrar_auditoria(self._args(), 0.0, 0.1, 0)
+        assert capsys.readouterr().out == ""

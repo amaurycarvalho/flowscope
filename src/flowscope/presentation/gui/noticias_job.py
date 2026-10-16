@@ -35,12 +35,15 @@ def executar_noticias(
         ctx.progress(detalhe=label, atual=current, total=total)
 
     adquiridos = 0
+    from flowscope.presentation.composicao import bloqueio_de_escrita
+
     try:
-        adquiridos = aquisicao.adquirir(
-            reference_date,
-            progress=_progresso,
-            cancel_token=ctx.token,
-        ) or 0
+        with bloqueio_de_escrita():
+            adquiridos = aquisicao.adquirir(
+                reference_date,
+                progress=_progresso,
+                cancel_token=ctx.token,
+            ) or 0
     except OperacaoCancelada:
         logger.debug("Aquisição de notícias interrompida pelo usuário")
     except Exception:  # falha inesperada não deve travar a interface
@@ -48,7 +51,8 @@ def executar_noticias(
     if deduplicar is None:
         return adquiridos
     try:
-        deduplicar(ctx.token)
+        with bloqueio_de_escrita():
+            deduplicar(ctx.token)
     except OperacaoCancelada:
         logger.debug("Housekeeping de notícias interrompido pelo usuário")
     except Exception:  # housekeeping não deve travar a interface

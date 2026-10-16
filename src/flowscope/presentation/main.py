@@ -6,6 +6,7 @@ import logging
 import multiprocessing
 import platform
 import sys
+import time
 from datetime import date, datetime, timezone
 from logging.handlers import SysLogHandler, TimedRotatingFileHandler
 
@@ -40,7 +41,21 @@ def main() -> None:
     multiprocessing.freeze_support()
     parser = build_parser()
     args = parser.parse_args()
+    _configure_logging()
 
+    inicio = time.monotonic()
+    codigo = 0
+    try:
+        _executar(args)
+    except SystemExit as exc:
+        codigo = exc.code if isinstance(exc.code, int) else 1
+        raise
+    finally:
+        _registrar_auditoria(args, inicio, time.monotonic(), codigo)
+
+
+def _executar(args: argparse.Namespace) -> None:
+    """Despacha a invocação para os modos especiais, a GUI ou a CLI."""
     if _tratar_modos_especiais(args):
         return
 
@@ -75,10 +90,22 @@ def _tratar_modos_especiais(args: argparse.Namespace) -> bool:
         iniciar_mcp()
         return True
 
+    if getattr(args, "comando", None) == "mcp":
+        from flowscope.presentation.cli import iniciar_mcp
+
+        iniciar_mcp(args.watchlist, args.data)
+        return True
+
     if getattr(args, "comando", None) == "nav":
         from flowscope.presentation.cli import executar_nav
 
         executar_nav(args)
+        return True
+
+    if getattr(args, "comando", None) in ("carregar", "atualizar", "resumir"):
+        from flowscope.presentation.cli_acoes import executar_acao
+
+        executar_acao(args)
         return True
 
     if args.create_shortcut:
@@ -131,6 +158,72 @@ def _handle_cli_args(args: argparse.Namespace) -> None:
         return
 
     run_cli(args)
+
+
+#: Argumentos registrados na auditoria da CLI (whitelist; exclui segredos).
+_CHAVES_AUDITORIA = (
+    "comando",
+    "recurso",
+    "operacao",
+    "caminho",
+    "ticker",
+    "arquivo",
+    "data",
+    "data_inicio",
+    "data_fim",
+    "tickers",
+    "palavra",
+    "categoria",
+    "structured_earnings",
+    "fatos_relevantes",
+    "output",
+    "watchlist",
+    "esperar",
+)
+
+
+def _comando_principal(args: argparse.Namespace) -> str:
+    """Deriva o rótulo do comando principal de uma invocação."""
+    if args.gui:
+        return "gui"
+    if getattr(args, "mcp", False):
+        return "mcp"
+    if args.version:
+        return "version"
+    if args.create_shortcut:
+        return "create-shortcut"
+    if args.vwap:
+        return "vwap"
+    return "gui"
+
+
+def _argumentos_auditaveis(args: argparse.Namespace) -> dict:
+    """Extrai apenas os argumentos permitidos do namespace (sem segredos)."""
+    dados: dict = {}
+    for chave in _CHAVES_AUDITORIA:
+        valor = getattr(args, chave, None)
+        if valor is None or valor is False:
+            continue
+        if isinstance(valor, (str, int, float, bool)):
+            dados[chave] = valor
+        else:
+            dados[chave] = str(valor)
+    return dados
+
+
+def _registrar_auditoria(
+    args: argparse.Namespace, inicio: float, fim: float, codigo: int
+) -> None:
+    """Registra no log da aplicação um registro por invocação da CLI."""
+    logging.getLogger("flowscope").info(
+        "CLI | comando=%s | args=%s | inicio=%s | fim=%s | duracao=%.3fs | codigo=%s",
+        args.comando or _comando_principal(args),
+        _argumentos_auditaveis(args),
+        datetime.fromtimestamp(inicio, tz=timezone.utc).isoformat(),
+        datetime.fromtimestamp(fim, tz=timezone.utc).isoformat(),
+        max(fim - inicio, 0.0),
+        codigo,
+    )
 
 
 class _MillisecondFormatter(logging.Formatter):
@@ -240,12 +333,11 @@ def _configure_logging() -> None:
         handler.setFormatter(formatter)
 
     logging.basicConfig(level=logging.WARNING, handlers=handlers, force=True)
+    logging.getLogger("flowscope").setLevel(logging.INFO)
     _silenciar_pypdf()
 
 
 def _open_gui() -> None:
-    _configure_logging()
-
     from flowscope.presentation.gui.app import FlowScopeGUI
 
     app = FlowScopeGUI()

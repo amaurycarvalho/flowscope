@@ -14,6 +14,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Constrói o parser de argumentos da linha de comando."""
     parser = argparse.ArgumentParser(
         prog="flowscope",
+        allow_abbrev=False,
         description=(
             "Plataforma open source de análise de ativos da B3: fluxo de ordens, "
             "fundamentos de ações e FIIs, documentos e notícias regulatórias, com IA opcional"
@@ -108,13 +109,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Iniciar o servidor MCP (stdio) do FlowScopeBR",
     )
-    _adicionar_subcomandos_nav(parser)
+    subcomandos = parser.add_subparsers(dest="comando")
+    _adicionar_subcomandos_nav(subcomandos)
+    _adicionar_subcomando_mcp(subcomandos)
+    from flowscope.presentation.cli_acoes import adicionar_subcomandos_acao
+
+    adicionar_subcomandos_acao(subcomandos)
     return parser
 
 
-def _adicionar_subcomandos_nav(parser: argparse.ArgumentParser) -> None:
+def _adicionar_subcomando_mcp(subcomandos: argparse._SubParsersAction) -> None:
+    """Registra o subcomando ``mcp`` com a preparação opcional na inicialização."""
+    mcp = subcomandos.add_parser(
+        "mcp", help="Iniciar o servidor MCP (stdio), com preparação opcional"
+    )
+    mcp.add_argument(
+        "--watchlist", type=str, metavar="ARQUIVO", help="Watchlist a carregar"
+    )
+    mcp.add_argument(
+        "--data", type=_parse_data, metavar="AAAA-MM-DD", help="Data de referência"
+    )
+
+
+def _adicionar_subcomandos_nav(subcomandos: argparse._SubParsersAction) -> None:
     """Registra o subcomando ``nav`` com as operações de navegação."""
-    subcomandos = parser.add_subparsers(dest="comando")
     nav = subcomandos.add_parser(
         "nav",
         help="Executar operações de navegação da árvore de conhecimento",
@@ -136,6 +154,12 @@ def _adicionar_subcomandos_nav(parser: argparse.ArgumentParser) -> None:
     semantico.add_argument("--consulta", type=str, required=True, help="Texto da consulta")
     semantico.add_argument("--max", type=int, metavar="N", help="Máximo de resultados")
     semantico.add_argument("--cursor", type=str, metavar="TOKEN", help="Continuar a paginação")
+    data_referencia = operacoes.add_parser(
+        "data-referencia", help="Ler a data de referência resolvida"
+    )
+    data_referencia.add_argument(
+        "--pretty", action="store_true", help="Formatar a saída JSON para leitura humana"
+    )
     _subparser_nav(operacoes, "manifesto")
 
 
@@ -368,6 +392,8 @@ def _operacao_nav(operacao: str | None) -> str:
     """Traduz o nome do subcomando para a operação canônica do núcleo."""
     if operacao == "buscar-semantico":
         return "buscar_semantico"
+    if operacao == "data-referencia":
+        return "data_referencia"
     return operacao or ""
 
 
@@ -398,13 +424,15 @@ def _imprimir_nav(dados: object, pretty: bool) -> None:
     )
 
 
-def montar_core_navegacao() -> object:
+def montar_core_navegacao(reference_date: date | None = None) -> object:
     """Ponto de composição headless da navegação sobre o cache local padrão.
 
     Monta a mesma árvore de conhecimento do chat a partir do cache local —
     conhecimento do FlowScope, fundamentos, documentos, notícias, guidance e
     direitos/obrigações — e a embrulha no ``NavegacaoCore`` reusado pela CLI e
-    pelo servidor MCP.
+    pelo servidor MCP. Cada ticker é carregado na data de referência resolvida
+    ``R`` (override por ``reference_date``): observação exata de ``R``, senão a
+    mais recente anterior ou igual; sem ``R``, a mais recente.
     """
     from flowscope import __release_date__, __version__
     from flowscope.application.chat.conhecimento import (
@@ -418,22 +446,22 @@ def montar_core_navegacao() -> object:
     from flowscope.application.chat.montar import MontarArvore
     from flowscope.application.chat.noticias import FonteNoticias
     from flowscope.application.navegacao.core import NavegacaoCore
-    from flowscope.infrastructure.cache import CacheManager
-    from flowscope.presentation.gui.app_tabs import TAB_CONTENT
-    from flowscope.presentation.gui.app_wiring import (
-        montar_adaptadores_documentos,
-        montar_adaptadores_noticias,
+    from flowscope.presentation.composicao import (
+        montar_nucleo,
+        resolver_data_referencia,
     )
+    from flowscope.presentation.gui.app_tabs import TAB_CONTENT
     from flowscope.presentation.gui.widgets.about_panel import (
         APRESENTACAO,
         LICENCA,
         REPOSITORIO_URL,
     )
 
-    base = CacheManager().get_cache_dir()
-    documentos = montar_adaptadores_documentos(base)
-    noticias = montar_adaptadores_noticias(base)
+    nucleo = montar_nucleo()
+    documentos = nucleo.documentos
+    noticias = nucleo.noticias
     watchlist = _watchlist_config()
+    referencia = reference_date or resolver_data_referencia()
     abas, subabas = estrutura_conhecimento(TAB_CONTENT)
     fontes = [
         FonteConhecimento(
@@ -447,7 +475,11 @@ def montar_core_navegacao() -> object:
             abas=abas,
             subabas=subabas,
         ),
-        FonteFundamentos(_carregar_fundamentos(watchlist), watchlist=watchlist),
+        FonteFundamentos(
+            _carregar_fundamentos(watchlist, referencia),
+            watchlist=watchlist,
+            data_referencia=referencia,
+        ),
         FonteDocumentos(
             catalog=documentos.catalogo, rg_chaves=_rg_chaves(documentos)
         ),
@@ -475,8 +507,15 @@ def _watchlist_config() -> list[str]:
     return [t for t in tickers if isinstance(t, str) and t.strip()]
 
 
-def _carregar_fundamentos(watchlist: list[str]) -> dict:
-    """Lê a observação mais recente de cada ticker no histórico de fundamentos."""
+def _carregar_fundamentos(
+    watchlist: list[str], reference_date: date | None = None
+) -> dict:
+    """Lê a observação de cada ticker na data de referência resolvida.
+
+    Com ``reference_date`` informado, usa a observação exata dessa data ou, na
+    ausência, a mais recente anterior ou igual. Sem ``reference_date``, usa a
+    observação mais recente de cada ticker.
+    """
     from flowscope.infrastructure.fii.fundamental_history_store import (
         JsonFundamentalHistoryStore,
     )
@@ -485,12 +524,13 @@ def _carregar_fundamentos(watchlist: list[str]) -> dict:
     dados: dict = {}
     for ticker in watchlist:
         try:
-            datas = store.datas(ticker)
+            if reference_date is not None:
+                analise = store.obter_em_ou_antes(ticker, reference_date)
+            else:
+                datas = store.datas(ticker)
+                analise = store.obter(ticker, datas[-1]) if datas else None
         except Exception:
-            datas = []
-        if not datas:
-            continue
-        analise = store.obter(ticker, datas[-1])
+            analise = None
         if analise is not None:
             dados[ticker.upper()] = analise
     return dados
@@ -529,11 +569,43 @@ def _guidance_paths(documentos: object, watchlist: list[str]) -> list:
         return []
 
 
-def iniciar_mcp() -> None:
-    """Inicia o servidor MCP stdio a partir do cache local padrão."""
+def iniciar_mcp(
+    watchlist: str | None = None, data: date | None = None
+) -> None:
+    """Inicia o servidor MCP stdio a partir do cache local padrão.
+
+    Com ``watchlist`` e/ou ``data``, executa antes as etapas de ``carregar
+    watchlist`` e ``atualizar fundamentos`` sob o lock global (liberado antes de
+    servir). A árvore é montada refletindo a data de referência resolvida.
+    """
     from flowscope.presentation.navegacao import executar_servidor
 
-    executar_servidor(montar_core_navegacao())
+    if watchlist or data:
+        _preparar_mcp(watchlist, data)
+    executar_servidor(montar_core_navegacao(reference_date=data))
+
+
+def _preparar_mcp(watchlist: str | None, data: date | None) -> None:
+    """Executa a preparação opcional do servidor MCP, abortando em falha."""
+    from flowscope.infrastructure.action_lock import ActionLock, OperacaoEmAndamento
+    from flowscope.presentation import cli_acoes
+
+    try:
+        with ActionLock().adquirir(0.0):
+            if watchlist:
+                cli_acoes.carregar_watchlist(watchlist)
+            if data:
+                cli_acoes.atualizar_fundamentos(data)
+    except OperacaoEmAndamento:
+        _abortar_mcp("operacao_em_andamento", "outra operação de escrita em andamento")
+    except cli_acoes.AcaoError as exc:
+        _abortar_mcp(exc.motivo, exc.detalhe)
+
+
+def _abortar_mcp(motivo: str, detalhe: str) -> None:
+    """Aborta a inicialização do MCP com código 1, sem iniciar o servidor."""
+    print(f"Falha na preparação do MCP ({motivo}): {detalhe}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _json_default(valor: object) -> str:

@@ -128,6 +128,15 @@ CATALOGO: tuple[Tool, ...] = (
         },
     ),
     Tool(
+        nome="nav_data_referencia",
+        operacao="data_referencia",
+        titulo="Data de referência",
+        descricao=(
+            "Devolve a data de referência resolvida da última carga de fundamentos."
+        ),
+        schema={"type": "object", "properties": {}, "additionalProperties": False},
+    ),
+    Tool(
         nome="nav_existe",
         operacao="existe",
         titulo="Verificar existência",

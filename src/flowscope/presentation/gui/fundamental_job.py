@@ -36,14 +36,17 @@ def executar_fundamental(
         ctx.progress(detalhe=detalhe, atual=atual, total=total)
 
     try:
-        resultados = caso.execute(
-            tickers,
-            reference_date,
-            progress_callback=_progresso,
-            force_refresh=force_refresh,
-            cancel_token=ctx.token,
-            on_item=lambda ticker: ctx.descrever(f"Fundamentos: {ticker}"),
-        )
+        from flowscope.presentation.composicao import bloqueio_de_escrita
+
+        with bloqueio_de_escrita():
+            resultados = caso.execute(
+                tickers,
+                reference_date,
+                progress_callback=_progresso,
+                force_refresh=force_refresh,
+                cancel_token=ctx.token,
+                on_item=lambda ticker: ctx.descrever(f"Fundamentos: {ticker}"),
+            )
     except OperacaoCancelada:
         logger.debug("Análise fundamentalista interrompida pelo usuário")
         return
@@ -54,4 +57,18 @@ def executar_fundamental(
 
     dados = {resultado.ticker: resultado for resultado in resultados}
     houve_falha = bool(getattr(caso, "houve_falha_recuperavel", False))
+    _registrar_marcador(reference_date)
     ctx.resultado(valor=dados, falhou=houve_falha)
+
+
+def _registrar_marcador(reference_date: date) -> None:
+    """Registra o marcador da última carga de fundamentos, tolerando falhas."""
+    try:
+        from flowscope.presentation.composicao import registrar_carga_fundamentos
+
+        registrar_carga_fundamentos(reference_date)
+    except Exception:  # gravação do marcador não deve derrubar o job
+        logger.warning(
+            "Falha ao registrar o marcador da última carga de fundamentos",
+            exc_info=True,
+        )

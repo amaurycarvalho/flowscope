@@ -15,6 +15,7 @@ from flowscope.application.document_preview import (
     StatusExtracao,
     tem_texto,
 )
+from flowscope.application.documentos.preparacao import PreparacaoTexto
 from flowscope.application.extracao_orcada import extrair_arquivo_com_orcamento
 from flowscope.application.fundamental.linhas import formatar_guidance
 from flowscope.application.resumo_documento import ResumoDocumento
@@ -284,46 +285,18 @@ class DocumentFlowMixin(DocumentFinalizacaoMixin):
     ) -> ExtracaoTexto:
         """Retorna o texto do documento, convertendo e gravando só em *miss*.
 
-        Apenas resultados definitivos (completo ou ausência de texto) são
-        persistidos e memoizados; resultados parciais, de falha ou protegidos
-        permanecem pendentes, permitindo a retentativa automática.
-
-        Não toca em widgets: é seguro para uso na thread do job de lote.
+        Delega à preparação de texto da camada de aplicação; apenas resultados
+        definitivos (completo ou ausência de texto) são persistidos e
+        memoizados. Não toca em widgets: é seguro para uso na thread do job de
+        lote.
         """
-        texto = self._texto_cacheado(arquivo)
-        if texto is not None:
-            status = (
-                StatusExtracao.OK if tem_texto(texto) else StatusExtracao.SEM_TEXTO
-            )
-            return ExtracaoTexto(texto, status)
-        resultado = self._texto_do_arquivo(arquivo, senha)
-        if resultado.status is StatusExtracao.PARCIAL:
-            logger.warning(
-                "Extração parcial (%d página(s) com falha): %s/%s",
-                resultado.paginas_com_falha,
-                arquivo.ticker,
-                arquivo.nome,
-            )
-        elif resultado.status is StatusExtracao.FALHA:
-            logger.warning(
-                "Falha crítica de extração: %s/%s",
-                arquivo.ticker,
-                arquivo.nome,
-            )
-        elif resultado.status is StatusExtracao.SEM_TEXTO:
-            logger.warning(
-                "Documento sem texto extraível: %s/%s",
-                arquivo.ticker,
-                arquivo.nome,
-            )
-        if resultado.status in (StatusExtracao.OK, StatusExtracao.SEM_TEXTO):
-            self._text_store.salvar(
-                arquivo.ticker,
-                self._summary.chave(arquivo),
-                resultado.texto or SEM_TEXTO,
-            )
-            self._preview_cache[arquivo.caminho] = resultado.texto
-        return resultado
+        return PreparacaoTexto(
+            ler_cache=self._texto_cacheado,
+            extrair=self._texto_do_arquivo,
+            chave=self._summary.chave,
+            salvar=self._text_store.salvar,
+            memo=self._preview_cache,
+        ).preparar(arquivo, senha)
 
     def gerar_resumo_estrito(
         self: "DocumentFlowMixin", arquivo: DocumentoArquivo, texto: str

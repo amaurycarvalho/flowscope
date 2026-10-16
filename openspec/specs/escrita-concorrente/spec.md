@@ -1,8 +1,10 @@
+# escrita-concorrente Specification
+
 ## Purpose
 
 Garantir que escritas no cache local sejam seguras quando a CLI e a GUI, ou múltiplas execuções da CLI, acessam os mesmos arquivos ao mesmo tempo, sem corromper arquivos nem perder gravações.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Escrita atômica segura entre processos
 
@@ -55,3 +57,22 @@ A interface gráfica DEVE participar do mesmo lock global de ação durante as f
 
 - **WHEN** a GUI está aberta, mas fora de uma fase de gravação
 - **THEN** o lock NÃO DEVE estar retido e ações da CLI DEVEM poder ser executadas
+
+### Requirement: Escrita concorrente de `config.json`
+
+As gravações de `config.json` DEVEM ser atômicas e DEVEM ocorrer sob o mesmo lock global de ação, tanto pela CLI quanto pela GUI. A gravação DEVE preservar as demais chaves do arquivo no *read-modify-write*, de modo que gravações concorrentes não percam `last_fundamentals`, `last_tickers`, `last_ticker_file` nem blocos de outros módulos, como `llm`.
+
+#### Scenario: CLI e GUI gravam ao mesmo tempo
+
+- **WHEN** a CLI e a GUI gravam `config.json` concorrentemente
+- **THEN** as gravações DEVEM ser serializadas pelo lock global e o arquivo final DEVE conter as chaves de ambas, sem corrupção
+
+#### Scenario: Chaves preservadas no read-modify-write
+
+- **WHEN** uma gravação da CLI atualiza `last_fundamentals`
+- **THEN** as demais chaves existentes (`last_tickers`, `llm`, preferências da GUI) DEVEM permanecer no arquivo
+
+#### Scenario: Escrita atômica do config
+
+- **WHEN** uma gravação de `config.json` é interrompida
+- **THEN** o arquivo DEVE conter a versão anterior ou a nova completa, nunca conteúdo parcial

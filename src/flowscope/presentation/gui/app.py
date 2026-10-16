@@ -92,24 +92,13 @@ def save_preferences(data: dict) -> None:
     """Salva as preferências preservando os demais blocos do arquivo.
 
     A gravação é *read-modify-write*: relê o arquivo e aplica apenas as chaves
-    de preferência, mantendo blocos como ``llm`` gravados por outros módulos.
+    de preferência, mantendo blocos como ``llm`` gravados por outros módulos. A
+    leitura e a gravação ocorrem sob o lock global de ação e a escrita é atômica,
+    de modo que gravações concorrentes (CLI e GUI) não percam chaves.
     """
-    try:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        existente: dict = {}
-        if CONFIG_PATH.exists():
-            try:
-                carregado = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
-                if isinstance(carregado, dict):
-                    existente = carregado
-            except (json.JSONDecodeError, OSError):
-                existente = {}
-        existente.update(data)
-        CONFIG_PATH.write_text(
-            json.dumps(existente, indent=2, default=str), encoding="utf-8"
-        )
-    except OSError:
-        pass
+    from flowscope.presentation.composicao import salvar_preferencias
+
+    salvar_preferencias(CONFIG_DIR, CONFIG_PATH, data)
 
 
 #: Nome exibido no título quando não há arquivo de watchlist associado.

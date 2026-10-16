@@ -8,11 +8,18 @@ de custo do turno de navegação pelo evento ``Confirmacao``.
 
 O contexto cobre sempre a watchlist completa: não há seletor de escopo e a LLM
 infere o ticker referido navegando a árvore.
+
+A árvore de cada envio inclui o nó ``/fundamentos/data-referencia`` com a data
+resolvida da última carga de fundamentos. A resolução é injetada por um
+``reference_date_provider`` (o mesmo usado pela CLI e pelo servidor MCP), de
+modo que o painel não conhece a origem da configuração nem acessa o disco
+diretamente.
 """
 
 import logging
 import tkinter as tk
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -103,6 +110,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         token_counter_provider: Callable[[], Callable[[str], int] | None] | None = None,
         cache_support_provider: Callable[[], bool] | None = None,
         context_window_provider: Callable[[], int] | None = None,
+        reference_date_provider: Callable[[], date | None] | None = None,
         confirmation_timeout: float = 300.0,
     ) -> None:
         """Constrói o painel, a sessão e os controles de envio e cópia."""
@@ -124,6 +132,7 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._token_counter_provider = token_counter_provider
         self._cache_support_provider = cache_support_provider
         self._context_window_provider = context_window_provider
+        self._reference_date_provider = reference_date_provider
         self._confirmation_timeout = confirmation_timeout
         self._fonte_conhecimento = self._montar_fonte_conhecimento()
         self._navegacao: list[ParNavegacao] = []
@@ -310,11 +319,23 @@ class ChatPanel(EnvioMixin, tk.Frame):
             raise LLMUnavailableError("Fábrica de LLM não configurada.")
         return self._llm_factory()
 
+    def _data_referencia(self: "ChatPanel") -> date | None:
+        """Resolve a data de referência para o nó da árvore, se configurada."""
+        provider = getattr(self, "_reference_date_provider", None)
+        if provider is None:
+            return None
+        return provider()
+
     def montar_arvore(self: "ChatPanel", fundamentos: dict, watchlist: list[str]) -> ArvoreConhecimento:
         """Monta a árvore de conhecimento a partir dos snapshots do envio."""
         fontes = [
             self._fonte_conhecimento,
-            FonteFundamentos(fundamentos, watchlist=watchlist),
+            # O ramo de fundamentos expõe o nó /fundamentos/data-referencia.
+            FonteFundamentos(
+                fundamentos,
+                watchlist=watchlist,
+                data_referencia=self._data_referencia(),
+            ),
             FonteDocumentos(catalog=self._catalogo, rg_chaves=self._rg_chaves),
             FonteDireitosObrigacoes(),
         ]

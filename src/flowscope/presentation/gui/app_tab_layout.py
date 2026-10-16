@@ -227,6 +227,7 @@ class TabsLayoutMixin:
             tokens_callback=getattr(self, "_set_tokens", None),
             token_counter_provider=documentos.token_counter_provider,
             cache_support_provider=documentos.cache_support_provider,
+            reference_date_provider=getattr(self, "_reference_date_provider", None),
             context_window_provider=documentos.context_window_provider,
         )
 

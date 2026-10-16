@@ -63,6 +63,7 @@ class TestCatalogo:
                 "existe",
                 "buscar",
                 "buscar_semantico",
+                "data_referencia",
                 "manifesto",
             }
         )
@@ -77,6 +78,7 @@ class TestOperacoes:
         dados = _core().executar("listar", {"caminho": "/fundamentos"}).dados
         assert [item["nome"] for item in dados["itens"]] == [
             "campos",
+            "data-referencia",
             "tickers",
             "valores",
         ]
@@ -278,3 +280,35 @@ class TestValidacao:
         ).dados
         assert dados["texto"] == ""
         assert dados["continua"] is False
+
+
+class TestDataReferencia:
+    def _core(self, data_referencia=None) -> NavegacaoCore:
+        from datetime import date
+
+        raiz = no_interno("/", "raiz")
+        raiz.filho(
+            ramo_fundamentos(
+                tickers=["PETR4"],
+                valores={"PETR4": "[PETR4] PL=3.2"},
+                data_referencia=data_referencia,
+            )
+        )
+        return NavegacaoCore(ArvoreConhecimento(raiz))
+
+    def test_data_referencia_resolvida(self) -> None:
+        from datetime import date
+
+        resultado = self._core(date(2026, 10, 14)).executar("data_referencia", {})
+        assert resultado.erro is None
+        assert resultado.dados == {"data": "2026-10-14"}
+
+    def test_sem_data_nao_e_erro(self) -> None:
+        resultado = self._core(None).executar("data_referencia", {})
+        assert resultado.erro is None
+        assert resultado.dados == {"data": None}
+
+    def test_operacao_desconhecida_e_recusada(self) -> None:
+        resultado = self._core().executar("inexistente", {})
+        assert resultado.erro["motivo"] == "op_desconhecida"
+        assert "data_referencia" in resultado.erro["dica"]

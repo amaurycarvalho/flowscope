@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import PurePosixPath
 
 from flowscope.application.chat.seguranca_regex import TimeoutRegex
@@ -508,12 +509,15 @@ def ramo_fundamentos(
     tickers: Iterable[str] = (),
     campos: Mapping[str, str] | None = None,
     valores: Mapping[str, str] | None = None,
+    data_referencia: date | None = None,
 ) -> No:
     """Monta os ramos ``/fundamentos/*`` a partir da tabela carregada.
 
-    Sub-ramos sem itens são omitidos para não expor nós vazios como folhas.
+    Sub-ramos sem itens são omitidos para não expor nós vazios como folhas. A
+    data de referência resolvida é exposta como o nó ``/fundamentos/data-referencia``.
     """
     raiz = no_interno("/fundamentos", "fundamentos")
+    raiz.filho(_no_data_referencia(data_referencia))
     if tickers:
         tickers_no = no_interno("/fundamentos/tickers", "tickers")
         for ticker in tickers:
@@ -557,3 +561,19 @@ def ramo_fundamentos(
 def nome_de(caminho: str) -> str:
     """Deriva o nome de exibição de um caminho."""
     return PurePosixPath(normalizar_caminho(caminho)).name
+
+
+def _no_data_referencia(data_referencia: date | None) -> No:
+    """Monta o nó ``/fundamentos/data-referencia`` com a data resolvida.
+
+    Sem data de referência, o nó existe com conteúdo vazio, sinalizando a
+    ausência sem erro.
+    """
+    conteudo = data_referencia.isoformat() if data_referencia is not None else ""
+    return no_folha(
+        "/fundamentos/data-referencia",
+        "data-referencia",
+        conteudo=conteudo,
+        metadado=conteudo,
+        campos={"data": conteudo},
+    )

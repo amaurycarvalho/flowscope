@@ -355,3 +355,28 @@ class TestPoliticaParcialidade:
         nova = replace(_analise_completa(), cotacao=Decimal(1))
         store.registrar("HGBS11", REFERENCIA, nova, force=True)
         assert store.obter("HGBS11", REFERENCIA) == nova
+
+
+class TestConsultaPorData:
+    def test_observacao_exata(self, tmp_path):
+        store = _store(tmp_path)
+        analise = _analise_completa()
+        store.registrar("HGBS11", date(2026, 9, 1), analise)
+        assert store.obter_em_ou_antes("HGBS11", date(2026, 9, 1)) == analise
+
+    def test_data_sem_observacao_usa_a_mais_recente_anterior(self, tmp_path):
+        store = _store(tmp_path)
+        antiga = _analise_completa()
+        recente = replace(_analise_completa(), data_referencia=date(2026, 9, 1))
+        store.registrar("HGBS11", date(2026, 8, 1), antiga)
+        store.registrar("HGBS11", date(2026, 9, 1), recente)
+        assert store.obter_em_ou_antes("HGBS11", date(2026, 8, 15)) == antiga
+
+    def test_sem_observacao_anterior(self, tmp_path):
+        store = _store(tmp_path)
+        store.registrar("HGBS11", date(2026, 9, 1), _analise_completa())
+        assert store.obter_em_ou_antes("HGBS11", date(2026, 7, 1)) is None
+
+    def test_ticker_sem_observacoes(self, tmp_path):
+        store = _store(tmp_path)
+        assert store.obter_em_ou_antes("VALE3", date(2026, 9, 1)) is None

@@ -66,6 +66,7 @@ class TestExecucao:
         resultado = _executar("listar", caminho="/fundamentos")
         assert [item["nome"] for item in resultado["dados"]] == [
             "campos",
+            "data-referencia",
             "tickers",
             "valores",
         ]

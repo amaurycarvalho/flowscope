@@ -13,22 +13,33 @@ estruturado, com os mesmos limites, a mesma paginação e os mesmos erros.
 
 ---
 
-## 1. Início do servidor (`flowscope --mcp`)
+## 1. Início do servidor (`flowscope mcp`)
 
-O servidor é iniciado explicitamente e fala **stdio**: o cliente lança o
+O servidor é iniciado explicitamente pelo subcomando `flowscope mcp` (o alias
+legado `flowscope --mcp` continua válido) e fala **stdio**: o cliente lança o
 processo, as mensagens JSON-RPC 2.0 são delimitadas por newline em `stdin` e
 `stdout`, e o servidor encerra ao receber **EOF**. Nenhuma porta de rede é
-aberta e o comando **não** aceita parâmetros de raiz ou de compactação: a árvore
-é sempre lida do cache local padrão do FlowScopeBR.
+aberta. Sem os parâmetros de preparação, a árvore é lida do cache local padrão
+do FlowScopeBR, sem exigir raiz ou compactação.
+
+O subcomando aceita os parâmetros opcionais `--watchlist <arquivo>` e
+`--data <AAAA-MM-DD>`, tratados pela **preparação na inicialização** (seção 7):
+com eles, as mesmas etapas de `flowscope carregar watchlist` e
+`flowscope atualizar fundamentos --data` são executadas **antes** de o servidor
+começar a atender, sob o lock global de ação, com progresso em `stderr` e sem
+escrever em `stdout`. Uma falha na preparação aborta a inicialização com código
+diferente de zero, sem subir o servidor.
 
 ```bash
-flowscope --mcp
+flowscope mcp
+flowscope mcp --watchlist carteira.txt --data 2026-10-14
+flowscope --mcp   # alias legado
 ```
 
 Regras do canal:
 
 - `stdout` recebe **apenas** mensagens JSON-RPC válidas;
-- logs e diagnósticos vão para `stderr`;
+- logs, diagnósticos e o progresso da preparação vão para `stderr`;
 - o servidor suporta `notifications/cancelled` sem corromper o canal.
 
 ### Exemplo de configuração de cliente MCP
@@ -72,7 +83,7 @@ Quando a versão solicitada não é suportada, o servidor responde com
 
 ## 3. Catálogo de tools `nav_*`
 
-`tools/list` devolve as sete tools em **ordem alfabética determinística**, cada
+`tools/list` devolve as oito tools em **ordem alfabética determinística**, cada
 uma com `title`, descrição, `inputSchema` e as anotações `readOnlyHint`,
 `destructiveHint`, `idempotentHint` e `openWorldHint` (todas somente-leitura:
 `true`, `false`, `true`, `false`).
@@ -85,7 +96,13 @@ uma com `title`, descrição, `inputSchema` e as anotações `readOnlyHint`,
 | `nav_existe`           | `existe`            | `caminho`               | —                                  |
 | `nav_buscar`           | `buscar`            | `caminho`, `regex`      | `em`, `max`, `cursor`              |
 | `nav_buscar_semantico` | `buscar_semantico`  | `caminho`, `consulta`   | `max`, `cursor`                    |
+| `nav_data_referencia`  | `data_referencia`   | —                       | —                                  |
 | `nav_manifesto`        | `manifesto`         | —                       | —                                  |
+
+`nav_data_referencia` devolve a data de referência resolvida da última carga de
+fundamentos (marcador `last_fundamentals`, com fallback para `last_date`); sem
+data registrada, devolve `{"data": null}` **sem `isError`**. É somente-leitura:
+não consulta a B3/CVM, não baixa, não extrai e não escreve estado.
 
 Limites dos schemas: `nav_obter.limite` entre 1 e 12.000 (padrão 12.000);
 `nav_buscar.max` entre 1 e 50 (padrão 50); `nav_buscar_semantico.max` entre 1 e
@@ -161,6 +178,7 @@ flowscope nav contar "/documentos/PETR4/*"
 flowscope nav existe /guidance/PETR4
 flowscope nav buscar /documentos/PETR4 --regex "..." --em titulo,texto --max 50
 flowscope nav buscar-semantico /documentos/PETR4 --consulta "..." --max 10
+flowscope nav data-referencia
 flowscope nav manifesto --pretty
 ```
 
@@ -169,5 +187,24 @@ flowscope nav manifesto --pretty
 ## 6. Escopo restrito de leitura
 
 O servidor e a CLI **apenas leem o cache local** por meio do núcleo de navegação.
-Nenhuma tool ou subcomando permite consultar a B3/CVM, baixar, extrair, resumir
-ou escrever estado. Nós sem dado em cache são omitidos em silêncio.
+Nenhuma tool ou subcomando de navegação permite consultar a B3/CVM, baixar,
+extrair, resumir ou escrever estado. Nós sem dado em cache são omitidos em
+silêncio.
+
+As **ações de atualização são exclusivas da CLI** (`flowscope carregar`,
+`atualizar` e `resumir`) e **não** são expostas como tools MCP. A preparação
+opcional na inicialização do `flowscope mcp` (seção 7) ocorre antes do servidor,
+reusa os mesmos núcleos e **não** é acessível pelo protocolo.
+
+---
+
+## 7. Preparação na inicialização do `flowscope mcp`
+
+Com `--watchlist <arquivo>`, o sistema executa antes de servir a mesma etapa de
+`flowscope carregar watchlist <arquivo>`. Com `--data <AAAA-MM-DD>`, executa a
+mesma etapa de `flowscope atualizar fundamentos --data <AAAA-MM-DD>`, usando a
+watchlist resultante; sem `--data`, a árvore usa a data de referência resolvida.
+A preparação reusa os núcleos das ações, ocorre sob o lock global de ação
+(liberado antes de o servidor atender) e monta a árvore refletindo a data de
+referência. Falha na preparação aborta a inicialização com código de saída
+diferente de zero.

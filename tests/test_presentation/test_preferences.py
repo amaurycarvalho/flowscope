@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 from flowscope.presentation.gui.app import load_preferences, save_preferences
@@ -152,3 +153,42 @@ class TestFundamentalColumnWidthsPreferences:
         ):
             loaded = load_preferences()
             assert loaded["fundamental_column_widths"] is None
+
+
+class TestGravacaoConcorrente:
+    def test_gravacoes_concorrentes_preservam_chaves(self, tmp_path):
+        from flowscope.infrastructure.action_lock import ActionLock
+
+        path = tmp_path / "config.json"
+        path.write_text(
+            json.dumps({"llm": {"chat": {"provider": "openai"}}}),
+            encoding="utf-8",
+        )
+        with patch("flowscope.presentation.gui.app.CONFIG_DIR", tmp_path), patch(
+            "flowscope.presentation.gui.app.CONFIG_PATH", path
+        ), patch(
+            "flowscope.presentation.composicao.ActionLock",
+            lambda: ActionLock(tmp_path / "config.lock"),
+        ):
+            chaves = [f"chave_{indice}" for indice in range(20)]
+
+            def gravar(chave: str) -> None:
+                save_preferences({chave: chave})
+
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                list(executor.map(gravar, chaves))
+
+            dados = json.loads(path.read_text(encoding="utf-8"))
+
+        assert all(dados.get(chave) == chave for chave in chaves)
+        assert dados["llm"]["chat"]["provider"] == "openai"
+
+    def test_escrita_de_config_e_atomica(self, tmp_path):
+        from flowscope.infrastructure.conditional_cache_types import (
+            _atomic_write_bytes,
+        )
+
+        path = tmp_path / "config.json"
+        _atomic_write_bytes(path, b'{"last_tab": "X"}')
+        assert json.loads(path.read_text(encoding="utf-8")) == {"last_tab": "X"}
+        assert not list(tmp_path.glob("*.tmp"))

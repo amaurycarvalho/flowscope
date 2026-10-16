@@ -61,14 +61,11 @@ class TestCacheManager:
             cache.put(date(2026, 6, 25), "data")
         mock_mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
-    def test_put_writes_tmp_with_utf8_then_renames(self, cache: CacheManager):
-        path = MagicMock()
-        tmp = path.with_suffix.return_value
-        with patch.object(cache, "_path_for", return_value=path):
-            cache.put(date(2026, 6, 25), "data")
-        path.with_suffix.assert_called_once_with(".tmp")
-        tmp.write_text.assert_called_once_with("data", encoding="utf-8")
-        tmp.rename.assert_called_once_with(path)
+    def test_put_writes_atomically_with_utf8(self, cache: CacheManager):
+        d = date(2026, 6, 25)
+        cache.put(d, "dados ção")
+        assert cache.get(d) == "dados ção"
+        assert not list(cache.get_cache_dir().glob("*.tmp"))
 
 
 class TestGetOrFetch:
@@ -146,23 +143,15 @@ class TestGetOrFetch:
         result = cache.get_or_fetch("mykey", ttl_days=7, fetch_fn=fetch_fn)
         assert result["cached_at"].endswith("+00:00")
 
-    def test_get_or_fetch_writes_tmp_then_renames(self, cache: CacheManager):
+    def test_get_or_fetch_writes_atomically_with_utf8(self, cache: CacheManager):
         import json as json_module
 
         fetch_fn = MagicMock(return_value={"data": "fresh"})
-        meta_path = MagicMock()
-        meta_path.exists.return_value = False
-        with patch.object(cache, "_meta_path_for", return_value=meta_path):
-            with patch(
-                "flowscope.infrastructure.cache.json.dumps",
-                wraps=json_module.dumps,
-            ) as mock_dumps:
-                result = cache.get_or_fetch("mykey", ttl_days=7, fetch_fn=fetch_fn)
-        meta_path.with_suffix.assert_called_once_with(".tmp")
-        tmp = meta_path.with_suffix.return_value
-        tmp.write_text.assert_called_once()
-        assert tmp.write_text.call_args.kwargs["encoding"] == "utf-8"
-        tmp.rename.assert_called_once_with(meta_path)
+        with patch(
+            "flowscope.infrastructure.cache.json.dumps",
+            wraps=json_module.dumps,
+        ) as mock_dumps:
+            result = cache.get_or_fetch("mykey", ttl_days=7, fetch_fn=fetch_fn)
         mock_dumps.assert_called_once()
         dump_args, dump_kwargs = mock_dumps.call_args
         assert dump_args[0]["data"] == "fresh"
@@ -170,6 +159,7 @@ class TestGetOrFetch:
         assert dump_kwargs["indent"] == 2
         assert dump_kwargs["default"] == str
         assert result["data"] == "fresh"
+        assert not list(cache.get_cache_dir().glob("*.tmp"))
 
 
 class TestInvalidate:

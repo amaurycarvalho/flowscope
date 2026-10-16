@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -134,8 +136,20 @@ def _parse_datetime(valor: object) -> datetime | None:
 
 
 def _atomic_write_bytes(path: Path, data: bytes) -> None:
-    """Grava bytes de forma atômica, com arquivo temporário e rename."""
+    """Grava bytes de forma atômica, com temporário único e substituição.
+
+    O temporário recebe um sufixo único por escrita (``os.getpid()`` e um
+    identificador aleatório), de modo que escritas concorrentes do mesmo
+    arquivo não colidam. A promoção usa :func:`os.replace`, que sobrescreve o
+    destino atomicamente em todos os sistemas operacionais suportados.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_bytes(data)
-    tmp.rename(path)
+    tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass

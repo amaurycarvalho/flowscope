@@ -52,7 +52,7 @@ def _arvore_com_pesado() -> ArvoreConhecimento:
 class TestNavegacao:
     def test_listar_retorna_filhos_imediatos(self) -> None:
         nomes = [no.nome for no in _arvore().listar("/fundamentos")]
-        assert nomes == ["tickers", "campos", "valores"]
+        assert nomes == ["data-referencia", "tickers", "campos", "valores"]
 
     def test_obter_folha_devolve_conteudo(self) -> None:
         assert _arvore().obter("/fundamentos/valores/PETR4") == "[PETR4] PL=3.2"

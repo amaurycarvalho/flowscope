@@ -60,6 +60,7 @@ OPERACOES = frozenset(
         "existe",
         "buscar",
         "buscar_semantico",
+        "data_referencia",
         "manifesto",
     }
 )
@@ -72,6 +73,7 @@ CAMPOS_OBRIGATORIOS = {
     "existe": ("caminho",),
     "buscar": ("caminho", "regex"),
     "buscar_semantico": ("caminho", "consulta"),
+    "data_referencia": (),
     "manifesto": (),
 }
 
@@ -326,6 +328,8 @@ class NavegacaoCore:
                 maximo=campos.get("max"),
                 cursor=campos.get("cursor"),
             )
+        if op == "data_referencia":
+            return self.data_referencia()
         return self.manifesto()
 
     # ── Operações ────────────────────────────────────────────────────
@@ -408,6 +412,20 @@ class NavegacaoCore:
     def manifesto(self: NavegacaoCore) -> str:
         """Devolve o manifesto de navegação determinístico da árvore."""
         return montar_manifesto(self._arvore, teto_tokens=self._teto_tokens)
+
+    def data_referencia(self: NavegacaoCore) -> dict:
+        """Devolve a data de referência resolvida, lida do nó da árvore.
+
+        O valor é o conteúdo de ``/fundamentos/data-referencia`` (marcador
+        ``last_fundamentals`` ou fallback ``last_date``). Sem data, devolve
+        ``{"data": null}``, sem erro. Não consulta a rede.
+        """
+        try:
+            valor = self._arvore.obter("/fundamentos/data-referencia")
+        except ErroNavegacao:
+            return {"data": None}
+        data = valor if isinstance(valor, str) and valor else None
+        return {"data": data}
 
 
 def _item(no: No) -> dict:

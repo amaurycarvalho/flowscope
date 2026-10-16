@@ -53,10 +53,31 @@ Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 ./flowscope-linux --gui                  # interface gráfica
 ./flowscope-linux --create-shortcut      # criar atalho no desktop (Linux)
 ./flowscope-linux --mcp                  # servidor MCP (stdio)
+./flowscope-linux mcp                    # servidor MCP (stdio)
+./flowscope-linux mcp --watchlist carteira.txt --data 2026-10-14   # preparar e servir
 ./flowscope-linux nav listar /noticias/grupos   # navegar a árvore de conhecimento
+./flowscope-linux nav data-referencia    # ler a data de referência resolvida
 ./flowscope-linux --help                 # exibir ajuda com todos os parâmetros
 ./flowscope-linux --version              # exibir versão
 ```
+
+Ações de atualização headless, para agendamento externo (cron, systemd, CI). A
+saída é JSON em `stdout` (`--pretty` formata), o progresso vai para `stderr` e
+as escritas ocorrem sob um lock global de ação (`--esperar <s>` aguarda o lock):
+
+```bash
+./flowscope-linux carregar watchlist carteira.txt
+./flowscope-linux atualizar fundamentos --data 2026-10-14
+./flowscope-linux atualizar documentos PETR4
+./flowscope-linux atualizar documentos          # itera a watchlist carregada
+./flowscope-linux atualizar noticias
+./flowscope-linux resumir documentos PETR4
+./flowscope-linux resumir noticias
+```
+
+Toda invocação da CLI é registrada no log da aplicação (comando, argumentos
+permitidos, duração e código de saída), omitindo segredos e preservando o
+`stdout` de cada comando.
 
 ### Recursos de I.A. (opcional)
 

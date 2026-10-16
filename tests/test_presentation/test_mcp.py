@@ -106,12 +106,12 @@ class TestDiscover:
 
 
 class TestToolsList:
-    def test_sete_tools_em_ordem_alfabetica(self) -> None:
+    def test_oito_tools_em_ordem_alfabetica(self) -> None:
         respostas = _executar(_core(), _requisicao("tools/list"))
         nomes = [tool["name"] for tool in respostas[0]["result"]["tools"]]
         assert nomes == sorted(nomes)
         assert nomes == [tool.nome for tool in CATALOGO]
-        assert len(nomes) == 7
+        assert len(nomes) == 8
 
     def test_annotations_e_title(self) -> None:
         respostas = _executar(_core(), _requisicao("tools/list"))
@@ -127,6 +127,41 @@ class TestToolsList:
 
 
 class TestToolsCall:
+    def test_data_referencia_disponivel(self) -> None:
+        from datetime import date
+
+        raiz = no_interno("/", "raiz")
+        raiz.filho(
+            ramo_fundamentos(
+                tickers=["PETR4"],
+                valores={"PETR4": "[PETR4] PL=3.2"},
+                data_referencia=date(2026, 10, 14),
+            )
+        )
+        core = NavegacaoCore(ArvoreConhecimento(raiz))
+        respostas = _executar(
+            core,
+            _requisicao(
+                "tools/call",
+                {"name": "nav_data_referencia", "arguments": {}},
+            ),
+        )
+        resultado = respostas[0]["result"]
+        assert resultado["structuredContent"] == {"data": "2026-10-14"}
+        assert "isError" not in resultado
+
+    def test_data_referencia_ausente_sem_erro(self) -> None:
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {"name": "nav_data_referencia", "arguments": {}},
+            ),
+        )
+        resultado = respostas[0]["result"]
+        assert resultado["structuredContent"] == {"data": None}
+        assert "isError" not in resultado
+
     def test_listar(self) -> None:
         respostas = _executar(
             _core(),
@@ -138,6 +173,7 @@ class TestToolsCall:
         conteudo = respostas[0]["result"]["structuredContent"]
         assert [item["nome"] for item in conteudo["itens"]] == [
             "campos",
+            "data-referencia",
             "tickers",
             "valores",
         ]
