@@ -3,11 +3,9 @@
 import argparse
 import json
 import sys
-from datetime import date, datetime, timezone
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
-
-from flowscope.domain.structured import DocumentoProvento
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,74 +25,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Abrir interface gráfica",
     )
     parser.add_argument(
-        "--tickers",
-        type=str,
-        metavar="ARQUIVO",
-        help="Arquivo texto com lista de tickers (um por linha)",
-    )
-    parser.add_argument(
-        "--vwap",
-        action="store_true",
-        help="Exportar VWAP em CSV",
-    )
-    parser.add_argument(
-        "--structured-earnings",
-        type=str,
-        metavar="TICKER",
-        help="Extrair rendimentos e amortizações estruturados do ticker",
-    )
-    parser.add_argument(
-        "--data-inicio",
-        type=_parse_data,
-        metavar="AAAA-MM-DD",
-        help="Data de início da consulta de proventos",
-    )
-    parser.add_argument(
-        "--data-fim",
-        type=_parse_data,
-        metavar="AAAA-MM-DD",
-        help="Data de fim da consulta de proventos",
-    )
-    parser.add_argument(
-        "--output",
-        type=str,
-        metavar="ARQUIVO",
-        help="Arquivo JSON de saída da extração estruturada",
-    )
-    parser.add_argument(
-        "--fatos-relevantes",
-        type=str,
-        metavar="TICKER",
-        help="Extrair fatos relevantes, assembleias e avisos do ticker via GetMaterialFacts",
-    )
-    parser.add_argument(
-        "--noticias",
-        action="store_true",
-        help="Listar notícias do Plantão B3",
-    )
-    parser.add_argument(
-        "--regulacao",
-        action="store_true",
-        help="Extrair censuras públicas e condições excepcionais da B3",
-    )
-    parser.add_argument(
-        "--categoria",
-        type=str,
-        metavar="CODIGO",
-        help=(
-            "Filtrar categoria de documento para --fatos-relevantes "
-            "(1=Assembleias, 3=Aviso Acionistas, 4=Fatos Relevantes, "
-            "48=Aviso Debenturistas, 107=Relatório Proventos)"
-        ),
-    )
-    parser.add_argument(
-        "--palavra",
-        type=str,
-        metavar="TERMO",
-        help="Filtrar notícias por palavra-chave (usado com --noticias)",
-    )
-
-    parser.add_argument(
         "--version",
         action="store_true",
         help="Exibir versão",
@@ -104,17 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Criar atalho no desktop (Linux)",
     )
-    parser.add_argument(
-        "--mcp",
-        action="store_true",
-        help="Iniciar o servidor MCP (stdio) do FlowScopeBR",
-    )
     subcomandos = parser.add_subparsers(dest="comando")
     _adicionar_subcomandos_nav(subcomandos)
     _adicionar_subcomando_mcp(subcomandos)
     from flowscope.presentation.cli_acoes import adicionar_subcomandos_acao
+    from flowscope.presentation.cli_consultas import adicionar_subcomandos_consulta
 
     adicionar_subcomandos_acao(subcomandos)
+    adicionar_subcomandos_consulta(subcomandos)
     return parser
 
 
@@ -201,167 +128,6 @@ def _load_tickers(path: str) -> list[str]:
         print(f"Erro: arquivo de tickers está vazio: {path}", file=sys.stderr)
         sys.exit(1)
     return tickers
-
-
-def run_cli(args: argparse.Namespace) -> None:
-    """Executa a análise dos tickers informados e exibe os resultados."""
-    from flowscope.application.use_cases import AnalyzeTickersUseCase
-    from flowscope.infrastructure.b3.client import B3Client
-    from flowscope.infrastructure.b3.repository import B3DataRepository
-
-    repo = B3DataRepository(B3Client())
-    ref_date = datetime.now(timezone.utc).date()
-
-    tickers = None
-    if args.tickers:
-        tickers = _load_tickers(args.tickers)
-
-    use_case = AnalyzeTickersUseCase(repo)
-    result = use_case.execute(ref_date, tickers)
-
-    if not result:
-        print("Nenhum dado disponível para o período.")
-        return
-
-    print("=== FlowScopeBR - Análise de Indicadores ===")
-    print(f"Data de referência: {ref_date}")
-    print()
-    for ticker, data in result.items():
-        vwap_info = data.get("vwap")
-        cvd_info = data.get("cvd")
-        if vwap_info:
-            print(f"{ticker}: VWAP={vwap_info['period_vwap']:.4f}")
-        if cvd_info:
-            print(f"{ticker}: CVD={cvd_info['accumulated_cvd']:.2f}")
-
-
-def export_vwap_csv(
-    tickers: list[str],
-    metrics: dict,
-    output_path: str | None = None,
-) -> str:
-    """Gera o conteúdo CSV com o VWAP por ticker e opcionalmente grava em arquivo."""
-    lines = ["Ticker;VWAP_Periodo"]
-    for ticker in tickers:
-        data = metrics.get(ticker, {}).get("vwap")
-        if data:
-            lines.append(f"{ticker};{data['period_vwap']}")
-    content = "\n".join(lines)
-    if output_path:
-        Path(output_path).write_text(content, encoding="utf-8")
-    return content
-
-
-def run_structured_earnings(args: argparse.Namespace) -> list[DocumentoProvento]:
-    """Executa a extração estruturada de proventos do ticker informado."""
-    from flowscope.application.structured_use_cases import ExtrairProventosUseCase
-    from flowscope.infrastructure.b3.funds_client import B3FundosClient
-    from flowscope.infrastructure.b3.structured_repository import FundosRepository
-
-    ticker = args.structured_earnings.upper()
-    repo = FundosRepository(B3FundosClient())
-    use_case = ExtrairProventosUseCase(repo)
-    documentos = use_case.execute(
-        ticker,
-        data_inicio=args.data_inicio,
-        data_fim=args.data_fim,
-        progress_callback=_progresso,
-    )
-
-    if args.output:
-        Path(args.output).write_text(
-            json.dumps(
-                [d.to_dict() for d in documentos],
-                indent=2,
-                ensure_ascii=False,
-                default=_json_default,
-            ),
-            encoding="utf-8",
-        )
-        if documentos:
-            print(f"Extração concluída: {len(documentos)} provento(s) em {args.output}")
-    else:
-        if not documentos:
-            print(f"Nenhum dado disponível para {ticker}")
-        else:
-            print(
-                json.dumps(
-                    [d.to_dict() for d in documentos],
-                    indent=2,
-                    ensure_ascii=False,
-                    default=_json_default,
-                )
-            )
-    return documentos
-
-
-def run_fatos_relevantes(args: argparse.Namespace) -> dict:
-    """Executa a extração de fatos relevantes do ticker via ``GetMaterialFacts``."""
-    from flowscope.application.structured_use_cases import (
-        ExtrairDadosRegulatoriosUseCase,
-    )
-    from flowscope.infrastructure.b3.funds_client import B3FundosClient
-
-    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
-    resultado = use_case.execute(
-        "fatos",
-        ticker=args.fatos_relevantes.upper(),
-        categoria=args.categoria,
-        data_inicio=args.data_inicio,
-        data_fim=args.data_fim,
-    )
-    _imprimir_json(resultado)
-    return resultado
-
-
-def run_noticias(args: argparse.Namespace) -> dict:
-    """Executa a listagem de notícias do Plantão B3."""
-    from flowscope.application.structured_use_cases import (
-        ExtrairDadosRegulatoriosUseCase,
-    )
-    from flowscope.infrastructure.b3.funds_client import B3FundosClient
-
-    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
-    resultado = use_case.execute(
-        "noticias",
-        agencia="18",
-        palavra=args.palavra,
-        data_inicio=args.data_inicio,
-        data_fim=args.data_fim,
-    )
-    _imprimir_json(resultado)
-    return resultado
-
-
-def run_regulacao(args: argparse.Namespace) -> dict:
-    """Executa a extração de censuras públicas e condições excepcionais."""
-    from flowscope.application.structured_use_cases import (
-        ExtrairDadosRegulatoriosUseCase,
-    )
-    from flowscope.infrastructure.b3.funds_client import B3FundosClient
-
-    use_case = ExtrairDadosRegulatoriosUseCase(B3FundosClient())
-    resultado = use_case.execute("regulacao")
-    _imprimir_json(resultado)
-    return resultado
-
-
-def _imprimir_json(dados: dict) -> None:
-    """Exibe um dicionário como JSON formatado no stdout."""
-    print(
-        json.dumps(
-            dados,
-            indent=2,
-            ensure_ascii=False,
-            default=_json_default,
-        )
-    )
-
-
-def _progresso(mensagem: str, erro: bool) -> None:
-    """Exibe o progresso da extração em stderr, sem poluir a saída JSON."""
-    prefixo = "ERRO: " if erro else ""
-    print(f"{prefixo}{mensagem}", file=sys.stderr)
 
 
 def executar_nav(args: argparse.Namespace) -> None:

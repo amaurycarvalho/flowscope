@@ -311,10 +311,9 @@ class TestAuditoriaCli:
         base = dict(
             comando="nav", recurso=None, operacao="obter", caminho="/fundamentos",
             ticker=None, arquivo=None, data=None, data_inicio=None, data_fim=None,
-            tickers=None, palavra=None, categoria=None, structured_earnings=None,
-            fatos_relevantes=None, output=None, watchlist=None, esperar=0.0,
-            gui=False, mcp=False, version=False, create_shortcut=False, vwap=False,
-            noticias=False, regulacao=False, pretty=False,
+            tickers=None, palavra=None, categoria=None, saida=None,
+            watchlist=None, esperar=0.0, gui=False, version=False,
+            create_shortcut=False, pretty=False,
         )
         base.update(kwargs)
         return argparse.Namespace(**base)
@@ -340,6 +339,18 @@ class TestAuditoriaCli:
             main._registrar_auditoria(self._args(), 0.0, 0.1, 1)
             content = (tmp_path / ".flowscope" / "logs" / "flowscope.log").read_text()
         assert "codigo=1" in content
+
+    def test_registra_saida(self, tmp_path):
+        from flowscope.presentation import main
+
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            main._configure_logging()
+            args = self._args(comando="consultar", recurso="regulacao",
+                              saida="regulacao.json")
+            main._registrar_auditoria(args, 0.0, 0.1, 0)
+            content = (tmp_path / ".flowscope" / "logs" / "flowscope.log").read_text()
+        assert "comando=consultar" in content
+        assert "'saida': 'regulacao.json'" in content
 
     def test_segredos_omitidos(self, tmp_path):
         from flowscope.presentation import main

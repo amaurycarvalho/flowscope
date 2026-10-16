@@ -20,7 +20,7 @@ from flowscope.infrastructure.logging.housekeeping import (
 )
 from flowscope.infrastructure.logging.retention import log_retention_days
 from flowscope.log_paths import LOG_DATEFMT, LOG_FORMAT, log_dir, log_file_path
-from flowscope.presentation.cli import build_parser, run_cli
+from flowscope.presentation.cli import build_parser
 from flowscope.presentation.shortcuts import (
     _create_desktop_shortcut,
     _desktop_path,
@@ -55,39 +55,17 @@ def main() -> None:
 
 
 def _executar(args: argparse.Namespace) -> None:
-    """Despacha a invocação para os modos especiais, a GUI ou a CLI."""
+    """Despacha a invocação para os modos especiais ou a GUI."""
     if _tratar_modos_especiais(args):
-        return
-
-    if args.gui:
-        _open_gui()
-        return
-
-    has_cli_args = (
-        args.tickers is not None
-        or args.vwap
-        or args.structured_earnings is not None
-        or args.fatos_relevantes is not None
-        or args.noticias
-        or args.regulacao
-    )
-    if has_cli_args:
-        _handle_cli_args(args)
         return
 
     _open_gui()
 
 
 def _tratar_modos_especiais(args: argparse.Namespace) -> bool:
-    """Trata versão, MCP, navegação e atalho; devolve ``True`` se consumiu."""
+    """Trata versão, MCP, navegação, leitura e atalho; devolve ``True`` se consumiu."""
     if args.version:
         print(f"FlowScopeBR v{__version__}")
-        return True
-
-    if args.mcp:
-        from flowscope.presentation.cli import iniciar_mcp
-
-        iniciar_mcp()
         return True
 
     if getattr(args, "comando", None) == "mcp":
@@ -108,6 +86,18 @@ def _tratar_modos_especiais(args: argparse.Namespace) -> bool:
         executar_acao(args)
         return True
 
+    if getattr(args, "comando", None) == "exportar":
+        from flowscope.presentation.cli_consultas import executar_exportar
+
+        executar_exportar(args)
+        return True
+
+    if getattr(args, "comando", None) == "consultar":
+        from flowscope.presentation.cli_consultas import executar_consultar
+
+        executar_consultar(args)
+        return True
+
     if args.create_shortcut:
         _create_shortcut_or_exit()
         return True
@@ -126,40 +116,6 @@ def _create_shortcut_or_exit() -> None:
     sys.exit(1)
 
 
-def _handle_cli_args(args: argparse.Namespace) -> None:
-    """Delega para o modo CLI, exportando o VWAP ou extraindo proventos quando solicitado."""
-    if args.structured_earnings is not None:
-        from flowscope.presentation.cli import run_structured_earnings
-        run_structured_earnings(args)
-        return
-
-    if args.fatos_relevantes is not None:
-        from flowscope.presentation.cli import run_fatos_relevantes
-        run_fatos_relevantes(args)
-        return
-
-    if args.noticias:
-        from flowscope.presentation.cli import run_noticias
-        run_noticias(args)
-        return
-
-    if args.regulacao:
-        from flowscope.presentation.cli import run_regulacao
-        run_regulacao(args)
-        return
-
-    ticker_filter = None
-    if args.tickers:
-        from flowscope.presentation.cli import _load_tickers
-        ticker_filter = _load_tickers(args.tickers)
-
-    if args.vwap:
-        _export("vwap", ticker_filter)
-        return
-
-    run_cli(args)
-
-
 #: Argumentos registrados na auditoria da CLI (whitelist; exclui segredos).
 _CHAVES_AUDITORIA = (
     "comando",
@@ -174,9 +130,7 @@ _CHAVES_AUDITORIA = (
     "tickers",
     "palavra",
     "categoria",
-    "structured_earnings",
-    "fatos_relevantes",
-    "output",
+    "saida",
     "watchlist",
     "esperar",
 )
@@ -184,16 +138,10 @@ _CHAVES_AUDITORIA = (
 
 def _comando_principal(args: argparse.Namespace) -> str:
     """Deriva o rótulo do comando principal de uma invocação."""
-    if args.gui:
-        return "gui"
-    if getattr(args, "mcp", False):
-        return "mcp"
     if args.version:
         return "version"
     if args.create_shortcut:
         return "create-shortcut"
-    if args.vwap:
-        return "vwap"
     return "gui"
 
 
@@ -342,25 +290,6 @@ def _open_gui() -> None:
 
     app = FlowScopeGUI()
     app.mainloop()
-
-
-def _export(indicator: str, ticker_filter: list[str] | None = None) -> None:
-    from datetime import datetime, timezone
-    from pathlib import Path
-
-    from flowscope.application.use_cases import ExportVWAPUseCase
-    from flowscope.infrastructure.b3.client import B3Client
-    from flowscope.infrastructure.b3.repository import B3DataRepository
-
-    repo = B3DataRepository(B3Client())
-    ref_date = datetime.now(timezone.utc).date()
-
-    use_case = ExportVWAPUseCase(repo)
-    content = use_case.execute(ref_date, ticker_filter=ticker_filter)
-
-    output = f"{indicator}_{ref_date}.csv"
-    Path(output).write_text(content, encoding="utf-8")
-    print(f"Arquivo exportado: {output}")
 
 
 if __name__ == "__main__":

@@ -15,12 +15,11 @@ estruturado, com os mesmos limites, a mesma paginação e os mesmos erros.
 
 ## 1. Início do servidor (`flowscope mcp`)
 
-O servidor é iniciado explicitamente pelo subcomando `flowscope mcp` (o alias
-legado `flowscope --mcp` continua válido) e fala **stdio**: o cliente lança o
-processo, as mensagens JSON-RPC 2.0 são delimitadas por newline em `stdin` e
-`stdout`, e o servidor encerra ao receber **EOF**. Nenhuma porta de rede é
-aberta. Sem os parâmetros de preparação, a árvore é lida do cache local padrão
-do FlowScopeBR, sem exigir raiz ou compactação.
+O servidor é iniciado explicitamente pelo subcomando `flowscope mcp` e fala
+**stdio**: o cliente lança o processo, as mensagens JSON-RPC 2.0 são delimitadas
+por newline em `stdin` e `stdout`, e o servidor encerra ao receber **EOF**.
+Nenhuma porta de rede é aberta. Sem os parâmetros de preparação,
+a árvore é lida do cache local padrão do FlowScopeBR.
 
 O subcomando aceita os parâmetros opcionais `--watchlist <arquivo>` e
 `--data <AAAA-MM-DD>`, tratados pela **preparação na inicialização** (seção 7):
@@ -33,7 +32,6 @@ diferente de zero, sem subir o servidor.
 ```bash
 flowscope mcp
 flowscope mcp --watchlist carteira.txt --data 2026-10-14
-flowscope --mcp   # alias legado
 ```
 
 Regras do canal:
@@ -49,14 +47,14 @@ Regras do canal:
   "mcpServers": {
     "flowscope": {
       "command": "flowscope",
-      "args": ["--mcp"]
+      "args": ["mcp"]
     }
   }
 }
 ```
 
-Ao instalar a partir do código-fonte, use `python3 -m flowscope --mcp` ou o
-caminho do executável gerado (`dist/flowscope --mcp`).
+Ao instalar a partir do código-fonte, use `python3 -m flowscope mcp` ou o
+caminho do executável gerado (`dist/flowscope mcp`).
 
 ---
 
@@ -70,8 +68,8 @@ as versões suportadas, as capacidades e a identidade do servidor:
 ```json
 {
   "protocolVersions": ["2026-07-28"],
-  "capabilities": {"tools": {"listChanged": false}},
-  "serverInfo": {"name": "flowscope", "version": "<versão>"}
+  "capabilities": { "tools": { "listChanged": false } },
+  "serverInfo": { "name": "flowscope", "version": "<versão>" }
 }
 ```
 
@@ -88,16 +86,16 @@ uma com `title`, descrição, `inputSchema` e as anotações `readOnlyHint`,
 `destructiveHint`, `idempotentHint` e `openWorldHint` (todas somente-leitura:
 `true`, `false`, `true`, `false`).
 
-| Tool                   | Operação            | Argumentos obrigatórios | Opcionais                          |
-| ---------------------- | ------------------- | ----------------------- | ---------------------------------- |
-| `nav_listar`           | `listar`            | `caminho`               | `cursor`                           |
-| `nav_obter`            | `obter`             | `caminho`               | `offset`, `limite`                 |
-| `nav_contar`           | `contar`            | `caminho`               | —                                  |
-| `nav_existe`           | `existe`            | `caminho`               | —                                  |
-| `nav_buscar`           | `buscar`            | `caminho`, `regex`      | `em`, `max`, `cursor`              |
-| `nav_buscar_semantico` | `buscar_semantico`  | `caminho`, `consulta`   | `max`, `cursor`                    |
-| `nav_data_referencia`  | `data_referencia`   | —                       | —                                  |
-| `nav_manifesto`        | `manifesto`         | —                       | —                                  |
+| Tool                   | Operação           | Argumentos obrigatórios | Opcionais             |
+| ---------------------- | ------------------ | ----------------------- | --------------------- |
+| `nav_listar`           | `listar`           | `caminho`               | `cursor`              |
+| `nav_obter`            | `obter`            | `caminho`               | `offset`, `limite`    |
+| `nav_contar`           | `contar`           | `caminho`               | —                     |
+| `nav_existe`           | `existe`           | `caminho`               | —                     |
+| `nav_buscar`           | `buscar`           | `caminho`, `regex`      | `em`, `max`, `cursor` |
+| `nav_buscar_semantico` | `buscar_semantico` | `caminho`, `consulta`   | `max`, `cursor`       |
+| `nav_data_referencia`  | `data_referencia`  | —                       | —                     |
+| `nav_manifesto`        | `manifesto`        | —                       | —                     |
 
 `nav_data_referencia` devolve a data de referência resolvida da última carga de
 fundamentos (marcador `last_fundamentals`, com fallback para `last_date`); sem
@@ -137,8 +135,10 @@ nova visão.
 
 ```json
 {
-  "content": [{"type": "text", "text": "{\"itens\": [...], \"nextCursor\": \"...\"}"}],
-  "structuredContent": {"itens": ["..."], "nextCursor": "..."}
+  "content": [
+    { "type": "text", "text": "{\"itens\": [...], \"nextCursor\": \"...\"}" }
+  ],
+  "structuredContent": { "itens": ["..."], "nextCursor": "..." }
 }
 ```
 

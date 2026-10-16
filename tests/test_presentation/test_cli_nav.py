@@ -80,15 +80,13 @@ class TestParser:
         args = cli.build_parser().parse_args(["nav", "manifesto"])
         assert args.operacao == "manifesto"
 
-    def test_mcp_flag(self) -> None:
-        args = cli.build_parser().parse_args(["--mcp"])
-        assert args.mcp is True
-        assert args.comando is None
+    def test_alias_mcp_removido(self) -> None:
+        with pytest.raises(SystemExit):
+            cli.build_parser().parse_args(["--mcp"])
 
-    def test_sem_subcomando_mantem_comportamento(self) -> None:
-        args = cli.build_parser().parse_args(["--vwap"])
-        assert args.vwap is True
-        assert args.comando is None
+    def test_flags_planas_removidas(self) -> None:
+        with pytest.raises(SystemExit):
+            cli.build_parser().parse_args(["--vwap"])
 
 
 class TestCamposNav:
@@ -153,19 +151,22 @@ class TestDispatchMain:
         chamadas: list = []
         monkeypatch.setattr(main, "build_parser", lambda: cli.build_parser())
         monkeypatch.setattr(
-            "flowscope.presentation.cli.iniciar_mcp", lambda: chamadas.append(True)
+            "flowscope.presentation.cli.iniciar_mcp", lambda *a: chamadas.append(True)
         )
-        monkeypatch.setattr("sys.argv", ["flowscope", "--mcp"])
+        monkeypatch.setattr("sys.argv", ["flowscope", "mcp"])
         main.main()
         assert chamadas == [True]
 
-    def test_mcp_nao_colide_com_flags(self, monkeypatch) -> None:
+    def test_main_despacha_exportar(self, monkeypatch) -> None:
         from flowscope.presentation import main
 
         chamadas: list = []
         monkeypatch.setattr(main, "build_parser", lambda: cli.build_parser())
-        monkeypatch.setattr(main, "_export", lambda *a: chamadas.append("vwap"))
-        monkeypatch.setattr("sys.argv", ["flowscope", "--vwap"])
+        monkeypatch.setattr(
+            "flowscope.presentation.cli_consultas.executar_exportar",
+            lambda args: chamadas.append(args.recurso),
+        )
+        monkeypatch.setattr("sys.argv", ["flowscope", "exportar", "vwap"])
         main.main()
         assert chamadas == ["vwap"]
 
@@ -246,10 +247,10 @@ class TestSubcomandoMcp:
         assert args.watchlist == "carteira.txt"
         assert args.data == date(2026, 10, 14)
 
-    def test_alias_mcp(self) -> None:
+    def test_alias_mcp_rejeitado(self) -> None:
         parser = cli.build_parser()
-        args = parser.parse_args(["--mcp"])
-        assert args.mcp is True
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--mcp"])
 
     def test_sem_params_nao_prepara(self, monkeypatch) -> None:
         chamadas: list = []

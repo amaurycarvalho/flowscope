@@ -33,6 +33,7 @@ COMPOSITION_ROOT: frozenset[str] = frozenset(
     {
         "presentation/cli.py",
         "presentation/cli_acoes.py",
+        "presentation/cli_consultas.py",
         "presentation/cli_resumos.py",
         "presentation/main.py",
         "presentation/composicao.py",

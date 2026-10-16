@@ -52,13 +52,25 @@ Substitua `flowscope-linux` pelo nome do arquivo da sua plataforma.
 ./flowscope-linux                        # interface gráfica
 ./flowscope-linux --gui                  # interface gráfica
 ./flowscope-linux --create-shortcut      # criar atalho no desktop (Linux)
-./flowscope-linux --mcp                  # servidor MCP (stdio)
 ./flowscope-linux mcp                    # servidor MCP (stdio)
 ./flowscope-linux mcp --watchlist carteira.txt --data 2026-10-14   # preparar e servir
 ./flowscope-linux nav listar /noticias/grupos   # navegar a árvore de conhecimento
 ./flowscope-linux nav data-referencia    # ler a data de referência resolvida
 ./flowscope-linux --help                 # exibir ajuda com todos os parâmetros
 ./flowscope-linux --version              # exibir versão
+```
+
+Leituras de dados: `exportar` materializa dados calculados localmente e
+`consultar` busca dados remotos da B3 (a saída é JSON em `stdout`; `--saida`
+grava em arquivo):
+
+```bash
+./flowscope-linux exportar vwap                                            # grava vwap_<AAAA-MM-DD>.csv
+./flowscope-linux exportar vwap --tickers carteira.txt --saida relatorio.csv
+./flowscope-linux consultar proventos ALZR11 --data-inicio 2026-01-01 --data-fim 2026-07-29
+./flowscope-linux consultar fatos PETR4 --categoria 4
+./flowscope-linux consultar noticias --palavra PETROBRAS
+./flowscope-linux consultar regulacao --saida regulacao.json
 ```
 
 Ações de atualização headless, para agendamento externo (cron, systemd, CI). A
@@ -166,7 +178,7 @@ Por fim, execute novamente os testes de mutação e verifique se eles passam pel
 python3 -m flowscope                     # interface gráfica
 python3 -m flowscope --gui               # interface gráfica
 python3 -m flowscope --create-shortcut   # criar atalho no desktop (Linux)
-python3 -m flowscope --mcp               # servidor MCP (stdio)
+python3 -m flowscope mcp                 # servidor MCP (stdio)
 python3 -m flowscope nav listar /noticias/grupos   # navegar a árvore de conhecimento
 python3 -m flowscope --help              # exibir ajuda com todos os parâmetros
 python3 -m flowscope --version           # exibir versão
@@ -178,7 +190,7 @@ python3 -m flowscope --version           # exibir versão
 dist/flowscope                           # interface gráfica
 dist/flowscope --gui                     # interface gráfica
 dist/flowscope --create-shortcut         # criar atalho no desktop (Linux)
-dist/flowscope --mcp                     # servidor MCP (stdio)
+dist/flowscope mcp                       # servidor MCP (stdio)
 dist/flowscope nav listar /noticias/grupos   # navegar a árvore de conhecimento
 dist/flowscope --help                    # exibir ajuda com todos os parâmetros
 dist/flowscope --version                 # exibir versão
