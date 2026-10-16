@@ -112,16 +112,83 @@ def save_preferences(data: dict) -> None:
         pass
 
 
-class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, StartupGateMixin, LayoutMixin, ActionsMixin, AboutActionsMixin, NoticiasActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
+#: Nome exibido no título quando não há arquivo de watchlist associado.
+_WATCHLIST_PADRAO = "Nova lista.txt"
+
+
+def arquivo_watchlist_inicial(valor: object) -> Path | None:
+    """Interpreta o caminho guardado do watchlist, ou ``None`` se ausente."""
+    if isinstance(valor, str) and valor:
+        return Path(valor)
+    return None
+
+
+def compor_titulo(
+    watchlist_file: Path | None,
+    index_name: str | None,
+    dirty: bool,
+) -> str:
+    """Compõe o título da janela com o nome do watchlist e o asterisco."""
+    if watchlist_file is not None:
+        nome = watchlist_file.name
+    elif index_name is not None:
+        nome = index_name
+    else:
+        nome = _WATCHLIST_PADRAO
+    sufixo = "*" if dirty else ""
+    return f"{TITLE_PREFIX} — {nome}{sufixo}"
+
+
+class WatchlistTitleMixin:
+    """Estado e título da janela derivados do watchlist aberto."""
+
+    _prefs: dict
+    _watchlist_file: Path | None
+    _watchlist_dirty: bool
+    _index_name: str | None
+
+    def _update_window_title(self: "WatchlistTitleMixin") -> None:
+        """Aplica ao título o nome do watchlist e o marcador de alteração."""
+        self.title(
+            compor_titulo(
+                self._watchlist_file, self._index_name, self._watchlist_dirty
+            )
+        )
+
+    def _on_watchlist_file_changed(
+        self: "WatchlistTitleMixin", path: Path
+    ) -> None:
+        """Atualiza o título e persiste o caminho do arquivo carregado/salvo."""
+        self._watchlist_file = Path(path)
+        self._index_name = None
+        self._watchlist_dirty = False
+        self._prefs["last_ticker_file"] = str(self._watchlist_file)
+        save_preferences(self._prefs)
+        self._update_window_title()
+
+    def _on_watchlist_content_changed(self: "WatchlistTitleMixin") -> None:
+        """Marca o watchlist como alterado e reflete no título."""
+        self._watchlist_dirty = True
+        self._update_window_title()
+
+    def _on_index_click(self: "WatchlistTitleMixin", index: str) -> None:
+        """Exibe o nome do índice no título e submete a carga da carteira."""
+        self._watchlist_file = None
+        self._watchlist_dirty = False
+        self._index_name = f"{index}.txt"
+        self._update_window_title()
+        self._controller.on_index_clicked(index)
+
+
+class FlowScopeGUI(WatchlistTitleMixin, WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, StartupGateMixin, LayoutMixin, ActionsMixin, AboutActionsMixin, NoticiasActionsMixin, ResumosActionsMixin, CsvMixin, tk.Tk):
     """Janela principal da aplicação FlowScope."""
 
     def __init__(self: "FlowScopeGUI") -> None:
         """Inicializa a janela principal e seus componentes."""
         super().__init__()
         self._prefs = load_preferences()
-        arquivo_salvo = self._prefs.get("last_ticker_file")
-        self._watchlist_file: Path | None = (
-            Path(arquivo_salvo) if arquivo_salvo else None
+        self._watchlist_file: Path | None = arquivo_watchlist_inicial(
+            self._prefs.get("last_ticker_file")
         )
         self._watchlist_dirty = False
         self._index_name: str | None = None
@@ -212,39 +279,6 @@ class FlowScopeGUI(WiringMixin, TabActionsMixin, TabsLayoutMixin, StatusMixin, S
         self._prefs["last_ticker_dir"] = str(directory)
         self._prefs["last_tickers"] = self._ticker_list.get_all_listbox_tickers()
         save_preferences(self._prefs)
-
-    def _update_window_title(self: "FlowScopeGUI") -> None:
-        """Compõe o título com o nome do watchlist e o marcador de alteração."""
-        if self._watchlist_file is not None:
-            nome = self._watchlist_file.name
-        elif self._index_name is not None:
-            nome = self._index_name
-        else:
-            nome = "Nova lista.txt"
-        sufixo = "*" if self._watchlist_dirty else ""
-        self.title(f"{TITLE_PREFIX} — {nome}{sufixo}")
-
-    def _on_watchlist_file_changed(self: "FlowScopeGUI", path: Path) -> None:
-        """Atualiza o título e persiste o caminho do arquivo carregado/salvo."""
-        self._watchlist_file = Path(path)
-        self._index_name = None
-        self._watchlist_dirty = False
-        self._prefs["last_ticker_file"] = str(self._watchlist_file)
-        save_preferences(self._prefs)
-        self._update_window_title()
-
-    def _on_watchlist_content_changed(self: "FlowScopeGUI") -> None:
-        """Marca o watchlist como alterado e reflete no título."""
-        self._watchlist_dirty = True
-        self._update_window_title()
-
-    def _on_index_click(self: "FlowScopeGUI", index: str) -> None:
-        """Exibe o nome do índice no título e submete a carga da carteira."""
-        self._watchlist_file = None
-        self._watchlist_dirty = False
-        self._index_name = f"{index}.txt"
-        self._update_window_title()
-        self._controller.on_index_clicked(index)
 
     def _on_create_shortcut(self: "FlowScopeGUI") -> None:
         if platform.system() != "Linux":

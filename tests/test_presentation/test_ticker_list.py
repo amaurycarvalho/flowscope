@@ -16,7 +16,7 @@ needs_display = pytest.mark.skipif(
 
 
 @needs_display
-class TestSetTickersProgramatico:
+class TestCallbacks:
     def test_set_tickers_nao_dispara_on_change(self):
         root = tk.Tk()
         try:
@@ -39,6 +39,84 @@ class TestSetTickersProgramatico:
             ticker_list._on_listbox_select()
 
             on_change.assert_called_once()
+        finally:
+            root.destroy()
+
+    def test_load_dispara_com_caminho_completo(self, monkeypatch, tmp_path):
+        arquivo = tmp_path / "petr4.txt"
+        arquivo.write_text("PETR4\nVALE3", encoding="utf-8")
+        monkeypatch.setattr(
+            ticker_list_mod.filedialog, "askopenfilename", lambda **k: str(arquivo)
+        )
+        root = tk.Tk()
+        try:
+            recebidos: list[Path] = []
+            ticker_list = TickerList(root, on_file_changed=recebidos.append)
+
+            ticker_list._load()
+
+            assert recebidos == [arquivo]
+        finally:
+            root.destroy()
+
+    def test_save_dispara_com_caminho_completo(self, monkeypatch, tmp_path):
+        arquivo = tmp_path / "carteira.txt"
+        monkeypatch.setattr(
+            ticker_list_mod.filedialog, "asksaveasfilename", lambda **k: str(arquivo)
+        )
+        root = tk.Tk()
+        try:
+            recebidos: list[Path] = []
+            ticker_list = TickerList(root, on_file_changed=recebidos.append)
+            ticker_list.set_tickers(["PETR4"])
+
+            ticker_list._save()
+
+            assert recebidos == [arquivo]
+            assert arquivo.read_text(encoding="utf-8") == "PETR4"
+        finally:
+            root.destroy()
+
+    def test_editar_conteudo_dispara(self):
+        root = tk.Tk()
+        try:
+            on_content_changed = MagicMock()
+            ticker_list = TickerList(root, on_content_changed=on_content_changed)
+            ticker_list.set_tickers(["PETR4"])
+
+            ticker_list._save_snapshot()
+            ticker_list._text.delete("1.0", tk.END)
+            ticker_list._text.insert("1.0", "PETR4\nVALE3")
+            ticker_list._restore_from_snapshot_edit()
+
+            on_content_changed.assert_called_once()
+        finally:
+            root.destroy()
+
+    def test_selecao_nao_dispara(self):
+        root = tk.Tk()
+        try:
+            on_content_changed = MagicMock()
+            ticker_list = TickerList(root, on_content_changed=on_content_changed)
+            ticker_list.set_tickers(["PETR4", "VALE3"])
+
+            ticker_list._on_listbox_select()
+
+            on_content_changed.assert_not_called()
+        finally:
+            root.destroy()
+
+    def test_conteudo_inalterado_nao_dispara(self):
+        root = tk.Tk()
+        try:
+            on_content_changed = MagicMock()
+            ticker_list = TickerList(root, on_content_changed=on_content_changed)
+            ticker_list.set_tickers(["PETR4", "VALE3"])
+
+            ticker_list._save_snapshot()
+            ticker_list._restore_from_snapshot_edit()
+
+            on_content_changed.assert_not_called()
         finally:
             root.destroy()
 
@@ -141,89 +219,5 @@ class TestActionButton:
             por_texto = {btn.cget("text"): btn for btn in ticker_list._index_buttons}
             for label in ("IBOV", "IDIV", "IFIX"):
                 assert por_texto[label].bind("<Enter>")
-        finally:
-            root.destroy()
-
-
-@needs_display
-class TestOnFileChanged:
-    def test_load_dispara_com_caminho_completo(self, monkeypatch, tmp_path):
-        arquivo = tmp_path / "petr4.txt"
-        arquivo.write_text("PETR4\nVALE3", encoding="utf-8")
-        monkeypatch.setattr(
-            ticker_list_mod.filedialog, "askopenfilename", lambda **k: str(arquivo)
-        )
-        root = tk.Tk()
-        try:
-            recebidos: list[Path] = []
-            ticker_list = TickerList(root, on_file_changed=recebidos.append)
-
-            ticker_list._load()
-
-            assert recebidos == [arquivo]
-        finally:
-            root.destroy()
-
-    def test_save_dispara_com_caminho_completo(self, monkeypatch, tmp_path):
-        arquivo = tmp_path / "carteira.txt"
-        monkeypatch.setattr(
-            ticker_list_mod.filedialog, "asksaveasfilename", lambda **k: str(arquivo)
-        )
-        root = tk.Tk()
-        try:
-            recebidos: list[Path] = []
-            ticker_list = TickerList(root, on_file_changed=recebidos.append)
-            ticker_list.set_tickers(["PETR4"])
-
-            ticker_list._save()
-
-            assert recebidos == [arquivo]
-            assert arquivo.read_text(encoding="utf-8") == "PETR4"
-        finally:
-            root.destroy()
-
-
-@needs_display
-class TestOnContentChanged:
-    def test_editar_conteudo_dispara(self):
-        root = tk.Tk()
-        try:
-            on_content_changed = MagicMock()
-            ticker_list = TickerList(root, on_content_changed=on_content_changed)
-            ticker_list.set_tickers(["PETR4"])
-
-            ticker_list._save_snapshot()
-            ticker_list._text.delete("1.0", tk.END)
-            ticker_list._text.insert("1.0", "PETR4\nVALE3")
-            ticker_list._restore_from_snapshot_edit()
-
-            on_content_changed.assert_called_once()
-        finally:
-            root.destroy()
-
-    def test_selecao_nao_dispara(self):
-        root = tk.Tk()
-        try:
-            on_content_changed = MagicMock()
-            ticker_list = TickerList(root, on_content_changed=on_content_changed)
-            ticker_list.set_tickers(["PETR4", "VALE3"])
-
-            ticker_list._on_listbox_select()
-
-            on_content_changed.assert_not_called()
-        finally:
-            root.destroy()
-
-    def test_conteudo_inalterado_nao_dispara(self):
-        root = tk.Tk()
-        try:
-            on_content_changed = MagicMock()
-            ticker_list = TickerList(root, on_content_changed=on_content_changed)
-            ticker_list.set_tickers(["PETR4", "VALE3"])
-
-            ticker_list._save_snapshot()
-            ticker_list._restore_from_snapshot_edit()
-
-            on_content_changed.assert_not_called()
         finally:
             root.destroy()
