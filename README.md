@@ -75,21 +75,43 @@ grava em arquivo):
 
 Ações de atualização headless, para agendamento externo (cron, systemd, CI). A
 saída é JSON em `stdout` (`--pretty` formata), o progresso vai para `stderr` e
-as escritas ocorrem sob um lock global de ação (`--esperar <s>` aguarda o lock):
+as escritas ocorrem sob um lock global de ação (`--esperar <s>` aguarda o lock).
+As ações `atualizar ...` sem `--data` usam a data de hoje; `--data` tem
+precedência:
 
 ```bash
 ./flowscope-linux carregar watchlist carteira.txt
+./flowscope-linux atualizar fundamentos          # usa a data de hoje
 ./flowscope-linux atualizar fundamentos --data 2026-10-14
 ./flowscope-linux atualizar documentos PETR4
 ./flowscope-linux atualizar documentos          # itera a watchlist carregada
 ./flowscope-linux atualizar noticias
 ./flowscope-linux resumir documentos PETR4
+./flowscope-linux resumir documentos            # processa toda a watchlist
 ./flowscope-linux resumir noticias
 ```
 
 Toda invocação da CLI é registrada no log da aplicação (comando, argumentos
 permitidos, duração e código de saída), omitindo segredos e preservando o
 `stdout` de cada comando.
+
+### Servidor MCP
+
+O FlowScopeBR expõe a sua árvore de conhecimento local — fundamentos, documentos,
+guidance e notícias em cache — como um servidor **MCP via stdio**, para chats e
+modelos externos, sem abrir portas de rede. O servidor é somente-leitura e
+opcional: o chat interno não depende dele.
+
+```bash
+./flowscope-linux mcp
+./flowscope-linux mcp --watchlist carteira.txt --data 2026-10-14
+```
+
+O catálogo de tools `nav_*`, os subcomandos `flowscope nav ...`, a configuração
+de clientes e o uso do servidor em um container Docker estão em
+[Servidor MCP e subcomandos `nav`](docs/misc/mcp.md). No container, a
+inicialização pode executar opcionalmente as etapas de atualização antes de
+servir (seção 8 daquele documento).
 
 ### Recursos de I.A. (opcional)
 
@@ -198,8 +220,15 @@ dist/flowscope --version                 # exibir versão
 
 ---
 
+## Fontes de Dados
+
+O FlowScopeBR consome dados públicos da B3, da CVM e do Fundamentus, além de APIs opcionais de LLM e da consulta de releases no GitHub. Para cada fonte, o documento [Fontes de Dados](docs/misc/datasources.md) detalha as URLs, os parâmetros/payloads, os formatos de entrada e saída, o cache local e as regras de fallback.
+
+---
+
 ## Saiba Mais
 
+- [Fontes de dados: URLs, payloads e formatos](docs/misc/datasources.md)
 - [Repositório do projeto](https://github.com/amaurycarvalho/flowscope)
 - [Releases com binários pré-compilados](https://github.com/amaurycarvalho/flowscope/releases)
 - [Servidor MCP e subcomandos `nav`](docs/misc/mcp.md)

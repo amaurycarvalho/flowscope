@@ -207,4 +207,337 @@ watchlist resultante; sem `--data`, a árvore usa a data de referência resolvid
 A preparação reusa os núcleos das ações, ocorre sob o lock global de ação
 (liberado antes de o servidor atender) e monta a árvore refletindo a data de
 referência. Falha na preparação aborta a inicialização com código de saída
-diferente de zero.
+diferente de zero. O default de **data de hoje** vale para os subcomandos
+`atualizar`; `flowscope mcp` sem `--data` continua **sem atualizar** e apenas
+serve a árvore a partir do cache.
+
+Em um dia não útil, uma atualização sem `--data` grava a data de hoje no
+marcador de última carga; a navegação recua para a observação mais recente
+disponível. Use `--data` (ou `FLOWSCOPE_REFERENCE_DATE`) quando precisar de uma
+data específica.
+
+---
+
+## 8. Servidor MCP em container Docker
+
+Esta seção mostra como empacotar o servidor MCP em uma imagem Docker para
+executá-lo sem instalar Python, dependências ou a interface gráfica na máquina
+cliente. O container fala **stdio**: o cliente MCP inicia `docker run -i` e
+conversa com o processo pelo `stdin`/`stdout`, sem publicar portas.
+
+O exemplo abaixo inclui uma preparação **opcional** na inicialização. Por
+padrão (`FLOWSCOPE_INIT_UPDATES=none`) o container apenas carrega a watchlist,
+se o arquivo existir, e sobe o servidor MCP. Quando habilitada, a preparação
+executa, antes de servir, as ações de atualização da CLI — sempre com a **data
+de hoje** no fuso do container, salvo se `FLOWSCOPE_REFERENCE_DATE` for
+informado como override opcional:
+
+| Etapa                | Comando executado                                  |
+| -------------------- | -------------------------------------------------- |
+| `fundamentos`        | `flowscope atualizar fundamentos [--data <data>]`  |
+| `documentos`         | `flowscope atualizar documentos [--data <data>]`   |
+| `noticias`           | `flowscope atualizar noticias [--data <data>]`     |
+| `resumir-documentos` | `flowscope resumir documentos`                     |
+| `resumir-noticias`   | `flowscope resumir noticias`                       |
+
+Use `FLOWSCOPE_INIT_UPDATES=all` para todas as etapas ou uma lista separada por
+vírgulas para escolher etapas individuais, por exemplo
+`FLOWSCOPE_INIT_UPDATES=fundamentos,noticias`. Como `all` inclui as etapas
+`resumir-*`, ele exige a LLM configurada e pode atrasar o handshake do MCP
+enquanto resume toda a watchlist. As mesmas ações também podem ser executadas
+isoladamente, sem iniciar o servidor (veja a seção 8.5).
+
+A imagem pode ser montada de duas formas: a partir do **código-fonte** (seção
+8.1) ou usando o **binário `flowscope-linux` já compilado pelo PyInstaller** e
+baixado da página de releases (seção 8.2). As duas variantes reutilizam o mesmo
+`entrypoint.sh` e compartilham a configuração das seções seguintes.
+
+### 8.1. Arquivos de exemplo (a partir do código-fonte)
+
+Na **raiz do repositório**, crie o `Dockerfile` e o `entrypoint.sh` com o
+conteúdo abaixo (o build usa `pyproject.toml` e `src/` como contexto):
+
+```dockerfile
+# Dockerfile
+# A variante completa (não -slim) inclui o módulo _tkinter usado pela
+# composição da árvore de conhecimento do FlowScope.
+FROM python:3.12
+
+ENV PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TZ=America/Sao_Paulo
+
+WORKDIR /app
+
+COPY pyproject.toml ./
+COPY src ./src
+RUN pip install ".[llm]"
+
+COPY entrypoint.sh /usr/local/bin/flowscope-entrypoint
+RUN chmod +x /usr/local/bin/flowscope-entrypoint \
+    && useradd --create-home --uid 1000 flowscope \
+    && mkdir -p /home/flowscope/.cache/flowscope /home/flowscope/.flowscope \
+    && chown -R flowscope:flowscope /home/flowscope
+
+USER flowscope
+WORKDIR /home/flowscope
+
+VOLUME ["/home/flowscope/.cache/flowscope", "/home/flowscope/.flowscope"]
+
+ENTRYPOINT ["flowscope-entrypoint"]
+CMD ["mcp"]
+```
+
+```sh
+#!/bin/sh
+# entrypoint.sh
+set -eu
+
+: "${FLOWSCOPE_WATCHLIST:=/data/watchlist.txt}"
+: "${FLOWSCOPE_INIT_UPDATES:=none}"
+: "${FLOWSCOPE_LOCK_WAIT:=60}"
+: "${FLOWSCOPE_REFERENCE_DATE:=}"
+
+if [ "$#" -eq 0 ]; then
+  set -- mcp
+fi
+
+# Atualiza com a data de hoje, ou com FLOWSCOPE_REFERENCE_DATE quando definida.
+atualizar() {
+  if [ -n "$FLOWSCOPE_REFERENCE_DATE" ]; then
+    flowscope "$@" --data "$FLOWSCOPE_REFERENCE_DATE" --esperar "$FLOWSCOPE_LOCK_WAIT" >/dev/null
+  else
+    flowscope "$@" --esperar "$FLOWSCOPE_LOCK_WAIT" >/dev/null
+  fi
+}
+
+if [ -f "$FLOWSCOPE_WATCHLIST" ]; then
+  flowscope carregar watchlist "$FLOWSCOPE_WATCHLIST" >/dev/null
+fi
+
+if [ "$1" = "mcp" ] && [ "$FLOWSCOPE_INIT_UPDATES" != "none" ]; then
+  etapas=$(printf '%s' "$FLOWSCOPE_INIT_UPDATES" | tr -d '[:space:]')
+  if [ "$etapas" = "all" ]; then
+    etapas="fundamentos,documentos,noticias,resumir-documentos,resumir-noticias"
+  fi
+
+  old_ifs=$IFS
+  IFS=,
+  for etapa in $etapas; do
+    case "$etapa" in
+      fundamentos)
+        atualizar atualizar fundamentos
+        ;;
+      documentos)
+        atualizar atualizar documentos
+        ;;
+      noticias)
+        atualizar atualizar noticias
+        ;;
+      resumir-documentos)
+        flowscope resumir documentos --esperar "$FLOWSCOPE_LOCK_WAIT" >/dev/null
+        ;;
+      resumir-noticias)
+        flowscope resumir noticias --esperar "$FLOWSCOPE_LOCK_WAIT" >/dev/null
+        ;;
+      *)
+        echo "Etapa desconhecida em FLOWSCOPE_INIT_UPDATES: $etapa" >&2
+        exit 1
+        ;;
+    esac
+  done
+  IFS=$old_ifs
+fi
+
+exec flowscope "$@"
+```
+
+Os resultados JSON das ações de preparação são descartados (`>/dev/null`), pois
+o `stdout` do container precisa conter apenas mensagens JSON-RPC do MCP. O
+progresso e os erros continuam em `stderr`. Qualquer falha em uma etapa aborta a
+inicialização, como na preparação nativa de `flowscope mcp`.
+
+### 8.2. Variante com binário do PyInstaller
+
+Se você já baixou o binário `flowscope-linux` da
+[página de releases](https://github.com/amaurycarvalho/flowscope/releases) e o
+colocou na **mesma pasta do Dockerfile**, use esta variante. Ela não instala
+Python nem as dependências do projeto: copia o executável e apenas as
+bibliotecas de sistema necessárias para HTTPS, fuso horário e Tk.
+
+> O binário publicado é gerado no runner `ubuntu-latest`, então a imagem usa
+> `ubuntu:24.04` para manter a compatibilidade da glibc. O binário é `x86_64`;
+> em outra arquitetura, compile a partir do código-fonte ou gere um binário
+> compatível.
+
+```dockerfile
+# Dockerfile.binario
+FROM ubuntu:24.04
+
+ENV PYTHONUNBUFFERED=1 \
+    TZ=America/Sao_Paulo
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates tzdata tk passwd \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY flowscope-linux /usr/local/bin/flowscope
+COPY entrypoint.sh /usr/local/bin/flowscope-entrypoint
+RUN chmod +x /usr/local/bin/flowscope /usr/local/bin/flowscope-entrypoint \
+    && useradd --create-home --uid 1000 flowscope \
+    && mkdir -p /home/flowscope/.cache/flowscope /home/flowscope/.flowscope \
+    && chown -R flowscope:flowscope /home/flowscope
+
+USER flowscope
+WORKDIR /home/flowscope
+
+VOLUME ["/home/flowscope/.cache/flowscope", "/home/flowscope/.flowscope"]
+
+ENTRYPOINT ["flowscope-entrypoint"]
+CMD ["mcp"]
+```
+
+Com o `Dockerfile.binario`, o `entrypoint.sh` da seção 8.1 e o
+`flowscope-linux` baixado na mesma pasta, execute:
+
+```bash
+docker build -f Dockerfile.binario -t flowscope-mcp:bin .
+```
+
+O `entrypoint.sh` é exatamente o mesmo da seção 8.1; as variáveis e os comandos
+de atualização não mudam. A diferença é que o binário de release já inclui o
+Python, as dependências do projeto e o liteLLM, o que dispensa `pip install` no
+build e reduz o tempo de criação da imagem.
+
+### 8.3. Build e execução
+
+Para a imagem a partir do código-fonte, a partir da raiz do repositório, com os
+dois arquivos criados, execute:
+
+```bash
+docker build -t flowscope-mcp .
+```
+
+Recomenda-se um `.dockerignore` com `.git`, `.venv`, `build`, `dist`, `mutants`,
+`tests`, `docs` e `openspec` para reduzir o contexto de build. Para a variante
+com o binário, use o comando da seção 8.2.
+
+Execução manual, com a watchlist montada e os dados persistidos em volumes:
+
+```bash
+docker run --init -i --rm \
+  -e TZ=America/Sao_Paulo \
+  -e FLOWSCOPE_INIT_UPDATES=all \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  -v "$PWD/carteira.txt:/data/watchlist.txt:ro" \
+  flowscope-mcp:latest
+```
+
+O comando acima sobe o servidor MCP e fica aguardando mensagens em `stdin`.
+Normalmente ele é iniciado pelo cliente MCP, não manualmente.
+
+### 8.4. Configuração de cliente MCP
+
+Para um cliente que aceita servidores MCP via `command`/`args` (por exemplo,
+`opencode`), use o Docker como comando e mantenha `-i` para o transporte stdio:
+
+```json
+{
+  "mcpServers": {
+    "flowscope": {
+      "command": "docker",
+      "args": [
+        "run", "--init", "-i", "--rm",
+        "-e", "TZ=America/Sao_Paulo",
+        "-e", "FLOWSCOPE_INIT_UPDATES=all",
+        "-e", "FLOWSCOPE_WATCHLIST=/data/watchlist.txt",
+        "-v", "flowscope-cache:/home/flowscope/.cache/flowscope",
+        "-v", "flowscope-config:/home/flowscope/.flowscope",
+        "-v", "/caminho/para/carteira.txt:/data/watchlist.txt:ro",
+        "flowscope-mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+Para deixar o container somente-leitura em relação à preparação, use
+`FLOWSCOPE_INIT_UPDATES=none` (padrão) ou omita a variável. Nesse caso o cache
+precisa ter sido populado por execuções anteriores ou por outro comando.
+
+### 8.5. Atualizações individuais
+
+As etapas podem ser executadas isoladamente, sem subir o servidor. O entrypoint
+carrega a watchlist automaticamente quando o arquivo está presente:
+
+```bash
+# Fundamentos com a data de hoje
+docker run --rm \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  -v "$PWD/carteira.txt:/data/watchlist.txt:ro" \
+  flowscope-mcp:latest atualizar fundamentos
+
+# Documentos de toda a watchlist
+docker run --rm \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  -v "$PWD/carteira.txt:/data/watchlist.txt:ro" \
+  flowscope-mcp:latest atualizar documentos
+
+# Notícias e resumos
+docker run --rm \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  -v "$PWD/carteira.txt:/data/watchlist.txt:ro" \
+  flowscope-mcp:latest atualizar noticias
+
+docker run --rm \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  -v "$PWD/carteira.txt:/data/watchlist.txt:ro" \
+  flowscope-mcp:latest resumir documentos
+
+docker run --rm \
+  -v flowscope-cache:/home/flowscope/.cache/flowscope \
+  -v flowscope-config:/home/flowscope/.flowscope \
+  flowscope-mcp:latest resumir noticias
+```
+
+Sem `--data`, as ações `atualizar` usam a **data de hoje** no fuso do container
+(`TZ`). Para usar outra data, acrescente `--data AAAA-MM-DD` (ou defina
+`FLOWSCOPE_REFERENCE_DATE` no container). `resumir documentos` sem ticker
+processa toda a `last_tickers` carregada. Para os
+resumos, a LLM precisa estar configurada no `config.json` persistido no volume
+de configuração (ou montado a partir do host); sem provedor, `resumir` falha com
+erro estruturado. Por isso, ao usar `FLOWSCOPE_INIT_UPDATES`, não inclua etapas
+de resumo (`all` ou `resumir-*`) se a LLM não estiver configurada.
+
+### 8.6. Variáveis de ambiente
+
+| Variável                    | Padrão                | Descrição                                                                 |
+| --------------------------- | --------------------- | ------------------------------------------------------------------------- |
+| `TZ`                        | `America/Sao_Paulo`   | Fuso usado para resolver “hoje” e registrar datas.                        |
+| `FLOWSCOPE_WATCHLIST`       | `/data/watchlist.txt` | Arquivo com um ticker por linha, carregado antes das atualizações.        |
+| `FLOWSCOPE_INIT_UPDATES`    | `none`                | `none`, `all` ou lista separada por vírgulas das etapas da tabela acima.  |
+| `FLOWSCOPE_REFERENCE_DATE`  | não definida           | Override opcional (`AAAA-MM-DD`); sem ela, `atualizar` usa a data de hoje. |
+| `FLOWSCOPE_LOCK_WAIT`       | `60`                  | Segundos de espera pelo lock global antes de uma etapa falhar.            |
+
+### 8.7. Dados persistentes e segurança
+
+- Monte `/home/flowscope/.cache/flowscope` para preservar o cache de
+  fundamentos, documentos e notícias entre execuções.
+- Monte `/home/flowscope/.flowscope` para preservar `config.json` (watchlist,
+  data de referência e configuração de LLM) e os logs.
+- Se preferir compartilhar os dados com a instalação local, use bind mounts em
+  vez de volumes nomeados:
+  `-v "$HOME/.cache/flowscope:/home/flowscope/.cache/flowscope"` e
+  `-v "$HOME/.flowscope:/home/flowscope/.flowscope"`. Nesse caso, garanta que o
+  UID do processo tenha permissão de escrita nos diretórios do host (o exemplo
+  usa UID 1000; ajuste com `--user "$(id -u):$(id -g)"` se necessário).
+- O container não abre portas. A única entrada é o `stdin` do processo; mantenha
+  o transporte stdio e não adicione `-t`, que pode interferir no canal.
+- Chaves de API e demais segredos ficam em `config.json`; não os passe em
+  variáveis de ambiente nem os inclua na imagem.

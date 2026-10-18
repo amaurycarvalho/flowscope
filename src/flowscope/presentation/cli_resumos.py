@@ -55,6 +55,10 @@ def progresso_stderr(mensagem: str) -> None:
 class _ContextoHeadless:
     """Contexto mínimo de progresso/cancelamento para o lote headless."""
 
+    def __init__(self: _ContextoHeadless) -> None:
+        """Acumula os erros publicados durante o lote."""
+        self.erros: list[BaseException] = []
+
     def raise_if_cancelled(self: _ContextoHeadless) -> None:
         """Não há cancelamento interativo no modo headless."""
 
@@ -77,7 +81,8 @@ class _ContextoHeadless:
     def erro(
         self: _ContextoHeadless, excecao: BaseException, dados: object = None
     ) -> None:
-        """Publica a falha do item em ``stderr``."""
+        """Acumula e publica a falha do item em ``stderr``."""
+        self.erros.append(excecao)
         progresso_stderr(f"ERRO: {excecao}")
 
     def resultado(
@@ -255,23 +260,69 @@ def _rgs_pendentes(
     return [a for a in arquivos if a.caminho in caminhos]
 
 
-def resumir_documentos(ticker: str) -> dict:
-    """Processa os documentos pendentes de resumo e de guidance do ticker."""
+def _erro_resumo(excecao: BaseException) -> dict:
+    """Serializa a falha de um ticker no lote de resumos."""
+    return {"erro": {"motivo": "falha_resumo", "detalhe": str(excecao)}}
+
+
+def _processar_ticker(
+    nucleo: object, painel: _PainelHeadless, ticker: str
+) -> tuple[dict, bool]:
+    """Processa os pendentes do ticker e devolve ``(desfecho, falhou)``."""
+    contexto = _ContextoHeadless()
+    progresso_stderr(f"Resumos de {ticker}...")
+    try:
+        pendentes = _pendentes_documentos(nucleo, ticker)
+        resultado = executar_resumos(contexto, painel, pendentes)
+    except Exception as exc:
+        logger.warning("Falha ao resumir documentos de %s", ticker, exc_info=True)
+        return _erro_resumo(exc), True
+    if contexto.erros:
+        return _erro_resumo(contexto.erros[0]), True
+    return _resumo_json(resultado, len(pendentes)), False
+
+
+def _normalizar_tickers(tickers: list[str]) -> list[str]:
+    """Normaliza e deduplica os tickers preservando a ordem."""
+    return list(dict.fromkeys(t.strip().upper() for t in tickers if t.strip()))
+
+
+def resumir_documentos(ticker: str | None = None) -> dict:
+    """Processa os pendentes de um ticker ou de toda a watchlist.
+
+    Com ``ticker``, valida contra ``last_tickers`` e preserva o formato
+    agregado. Sem ``ticker``, percorre a watchlist uma única vez, captura a
+    falha de cada ticker sem abortar o lote e devolve ``resultados`` e
+    ``falha``.
+    """
+    watchlist = last_tickers()
+    if ticker is not None:
+        alvo = ticker.strip().upper()
+        if alvo not in watchlist:
+            raise AcaoError("ticker_fora_watchlist", alvo)
+        alvos = [alvo]
+    else:
+        alvos = _normalizar_tickers(watchlist)
+        if not alvos:
+            raise AcaoError("watchlist_ausente", "last_tickers vazio ou ausente")
     from flowscope.presentation.composicao import montar_nucleo
 
     nucleo = montar_nucleo()
-    alvo = ticker.strip().upper()
-    if alvo not in last_tickers():
-        raise AcaoError("ticker_fora_watchlist", alvo)
     _exigir_llm(nucleo.documentos.llm_available())
-    pendentes = _pendentes_documentos(nucleo, alvo)
     painel = _PainelHeadless(
         nucleo.documentos.summary_service,
         nucleo.documentos.text_store,
         nucleo.documentos.guidance_service,
     )
-    resultado = executar_resumos(_ContextoHeadless(), painel, pendentes)
-    return _resumo_json(resultado, len(pendentes))
+    if ticker is not None:
+        pendentes = _pendentes_documentos(nucleo, alvos[0])
+        resultado = executar_resumos(_ContextoHeadless(), painel, pendentes)
+        return _resumo_json(resultado, len(pendentes))
+    desfechos = {alvo: _processar_ticker(nucleo, painel, alvo) for alvo in alvos}
+    return {
+        "resultados": {alvo: desfecho for alvo, (desfecho, _) in desfechos.items()},
+        "falha": any(falhou for _, falhou in desfechos.values()),
+    }
 
 
 def resumir_noticias() -> dict:

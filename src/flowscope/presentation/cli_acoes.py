@@ -74,11 +74,11 @@ def _montar_caso_fundamental(
 
 
 def atualizar_fundamentos(data: date, nucleo: object | None = None) -> dict:
-    """Atualiza os fundamentos da watchlist para a data de referência.
+    """Atualiza os fundamentos da watchlist para a data informada.
 
-    Roda a análise de mercado antes da análise fundamentalista para preservar
-    Preço Típico e fallbacks, grava o histórico e registra o marcador da última
-    carga.
+    A data é a de hoje quando ``--data`` não for passado. Roda a análise de
+    mercado antes da análise fundamentalista para preservar Preço Típico e
+    fallbacks, grava o histórico e registra o marcador da última carga.
     """
     from flowscope.presentation.composicao import (
         montar_nucleo,
@@ -185,23 +185,38 @@ def adicionar_subcomandos_acao(subcomandos: argparse._SubParsersAction) -> None:
     atualizar = subcomandos.add_parser("atualizar", help="Atualizar caches")
     recursos_atualizar = atualizar.add_subparsers(dest="recurso")
     fundamentos = recursos_atualizar.add_parser("fundamentos", help="Atualizar fundamentos")
-    fundamentos.add_argument("--data", type=_parse_data, metavar="AAAA-MM-DD")
+    _opcao_data(fundamentos)
     _opcoes_saida(fundamentos)
     documentos = recursos_atualizar.add_parser("documentos", help="Atualizar documentos")
     documentos.add_argument("ticker", nargs="?", default=None, help="Ticker opcional")
-    documentos.add_argument("--data", type=_parse_data, metavar="AAAA-MM-DD")
+    _opcao_data(documentos)
     _opcoes_saida(documentos)
     noticias = recursos_atualizar.add_parser("noticias", help="Atualizar notícias")
-    noticias.add_argument("--data", type=_parse_data, metavar="AAAA-MM-DD")
+    _opcao_data(noticias)
     _opcoes_saida(noticias)
 
     resumir = subcomandos.add_parser("resumir", help="Resumir pendentes")
     recursos_resumir = resumir.add_subparsers(dest="recurso")
     resumir_docs = recursos_resumir.add_parser("documentos", help="Resumir documentos")
-    resumir_docs.add_argument("ticker", type=str, help="Ticker da watchlist")
+    resumir_docs.add_argument(
+        "ticker",
+        nargs="?",
+        default=None,
+        help="Ticker da watchlist (omitido processa toda a watchlist)",
+    )
     _opcoes_saida(resumir_docs)
     resumir_not = recursos_resumir.add_parser("noticias", help="Resumir notícias")
     _opcoes_saida(resumir_not)
+
+
+def _opcao_data(parser: argparse.ArgumentParser) -> None:
+    """Adiciona a opção ``--data``, cujo padrão é a data de hoje."""
+    parser.add_argument(
+        "--data",
+        type=_parse_data,
+        metavar="AAAA-MM-DD",
+        help="Data de referência (padrão: hoje)",
+    )
 
 
 def _opcoes_saida(parser: argparse.ArgumentParser) -> None:
@@ -229,12 +244,10 @@ def _parse_data(valor: str) -> date:
 
 
 def _data_efetiva(valor: date | None) -> date:
-    """Resolve a data do subcomando: ``--data``, data de referência ou hoje."""
+    """Resolve a data do subcomando: ``--data`` ou a data local de hoje."""
     if valor is not None:
         return valor
-    from flowscope.presentation.composicao import resolver_data_referencia
-
-    return resolver_data_referencia() or date.today()
+    return date.today()
 
 
 def _despachar_acao(args: argparse.Namespace) -> dict:

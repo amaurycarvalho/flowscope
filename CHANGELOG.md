@@ -27,40 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
-## [1.5.0] — 2026-10-16
+## [1.5.1] - 2026-10-18
 
-### [cli-acoes-atualizacao](openspec/changes/archive/2026-10-16-cli-acoes-atualizacao) Subcomandos CLI de ação para agendamento externo (carregar watchlist, atualizar fundamentos/documentos/notícias e resumir pendentes), marcador de data de referência dos fundamentos e escrita concorrente segura
-
-#### Added
-
-- Novo grupo de subcomandos CLI de ação (`carregar`, `atualizar`, `resumir`) para agendamento externo: `flowscope carregar watchlist`, `flowscope atualizar fundamentos|documentos|noticias` e `flowscope resumir documentos|noticias`.
-- Marcador `last_fundamentals` (`{data, fetched_at}`) em `config.json`, com resolução `marcador → fallback last_date`, escrito pela CLI e pela GUI ao carregar fundamentos.
-- Leitura consultiva da data de referência: nó `/fundamentos/data-referencia` na árvore de conhecimento, operação `data_referencia` no núcleo de navegação, tool MCP `nav_data_referencia` e comando `flowscope nav data-referencia`.
-- Segurança de escrita concorrente: escrita atômica com temporário único, lock global de ação na CLI e participação da GUI no mesmo lock nas fases de escrita.
+### [facilitar-atualizacoes-container](openspec/changes/archive/2026-10-18-facilitar-atualizacoes-container) Atualizações sem `--data` usam a data de hoje e `resumir documentos` sem ticker processa toda a watchlist, simplificando o entrypoint do container MCP
 
 #### Changed
 
-- Núcleo de composição neutro `montar_nucleo()` reusado por GUI e CLI, e extração do núcleo do lote de resumos para a camada de aplicação.
+- `flowscope atualizar fundamentos`, `flowscope atualizar documentos` e `flowscope atualizar noticias` passam a usar a **data de hoje** quando `--data` não for informado, em vez da data de referência resolvida. `--data` continua tendo precedência.
+- `flowscope resumir documentos` passa a aceitar o ticker como argumento **opcional**: sem ticker, processa os pendentes de todos os tickers de `last_tickers` em uma única execução, com checagem única de LLM e sem abortar o lote quando um ticker falha.
+- O resultado de `resumir documentos` sem ticker passa a ser `{"resultados": {<ticker>: <desfecho>}, "falha": <bool>}`, com falha por ticker em `{"erro": {"motivo": "falha_resumo", "detalhe": "..."}}`, `falha` sempre presente e código de saída 1 quando algum ticker falha; com ticker explícito, o formato atual é preservado.
+- O entrypoint de container passa a usar `flowscope resumir documentos` sem ticker, sem percorrer a watchlist em shell; `FLOWSCOPE_REFERENCE_DATE` torna-se override opcional e, quando ausente, as atualizações usam a data de hoje no fuso do container.
+- Documentação de `docs/misc/mcp.md` e `README.md` atualizada para o uso do MCP em container, as atualizações opcionais na inicialização, o novo default de data e o resumo de toda a watchlist.
 
-### [reorganizar-cli-subcomandos](openspec/changes/archive/2026-10-16-reorganizar-cli-subcomandos) Reorganização das flags de leitura da CLI em subcomandos `exportar`/`consultar`, remoção das flags planas e do alias `--mcp`
-
-#### Added
-
-- Subcomandos de leitura `flowscope exportar vwap` e `flowscope consultar proventos|fatos|noticias|regulacao`, com saída em `stdout` ou em arquivo via `--saida`.
-
-#### Changed
-
-- `--output` renomeado para `--saida`, disponível nos subcomandos de leitura; `exportar vwap` mantém o arquivo padrão `vwap_<AAAA-MM-DD>.csv` e aceita sobrescrita do nome.
-- Parâmetros escopados ao subcomando correto (`--categoria` só em `consultar fatos`, `--palavra` só em `consultar noticias`, datas apenas onde aplicáveis).
-- `README.md`, `docs/misc/mcp.md` e specs atualizadas para a nova superfície.
-
-#### Removed
-
-- Flags planas de leitura `--vwap`, `--structured-earnings`, `--fatos-relevantes`, `--noticias`, `--regulacao`, `--data-inicio`, `--data-fim`, `--output`, `--categoria` e `--palavra`, sem aliases de compatibilidade.
-- Caminho standalone `flowscope --tickers ARQUIVO`.
-- Alias legado `flowscope --mcp`.
-
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.5.0...HEAD
-[1.5.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.5.0
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.5.1
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.
