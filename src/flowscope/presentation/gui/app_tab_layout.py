@@ -13,8 +13,10 @@ from flowscope.presentation.gui.app_tabs import (
 from flowscope.presentation.gui.app_wiring import (
     AdaptadoresDocumentos,
     AdaptadoresNoticias,
+    AdaptadoresRendaFixa,
     montar_adaptadores_documentos,
     montar_adaptadores_noticias,
+    montar_adaptadores_renda_fixa,
 )
 from flowscope.presentation.gui.charts.correlation_network_panel import (
     CorrelationNetworkPanel,
@@ -152,12 +154,18 @@ class TabsLayoutMixin:
                 self._fundamental_evolution_panel.frame.pack(fill=tk.BOTH, expand=True)
             elif name == "Documentos":
                 documentos = self._adaptadores_documentos()
+                renda_fixa = self._adaptadores_renda_fixa()
                 self._documents_panel = DocumentTreePanel(
                     frame,
                     catalogo_use_case=documentos.catalogo_use_case,
                     summary_service=documentos.summary_service,
                     text_store=documentos.text_store,
                     guidance_service=documentos.guidance_service,
+                    titulos_use_case=renda_fixa.consulta,
+                    inferencias=renda_fixa.inferencias,
+                    inferencia_pendente_callback=(
+                        renda_fixa.inferencia.precisa_inferencia
+                    ),
                     status_callback=getattr(self, "_set_status", None),
                     acquire_callback=getattr(self, "_adquirir_documentos", None),
                     config_callback=getattr(self, "_abrir_config_llm", None),
@@ -195,6 +203,16 @@ class TabsLayoutMixin:
             self._documentos_adapters = adaptadores
         return adaptadores
 
+    def _adaptadores_renda_fixa(
+        self: "TabsLayoutMixin",
+    ) -> AdaptadoresRendaFixa:
+        """Retorna os adaptadores de renda fixa, montando-os se necessário."""
+        adaptadores = getattr(self, "_renda_fixa_adapters", None)
+        if adaptadores is None:
+            adaptadores = montar_adaptadores_renda_fixa()
+            self._renda_fixa_adapters = adaptadores
+        return adaptadores
+
     def _adaptadores_noticias(
         self: "TabsLayoutMixin",
     ) -> AdaptadoresNoticias:
@@ -210,6 +228,7 @@ class TabsLayoutMixin:
     ) -> ChatPanel:
         """Constrói o painel de chat ligado ao estado da janela principal."""
         documentos = self._adaptadores_documentos()
+        renda_fixa = self._adaptadores_renda_fixa()
         return ChatPanel(
             parent,
             fundamental_data_provider=lambda: getattr(self, "_fundamental_data", {}),
@@ -220,6 +239,9 @@ class TabsLayoutMixin:
             noticias_catalog=self._adaptadores_noticias().catalogo,
             guidance_service=documentos.guidance_service,
             guidance_paths=documentos.guidance_paths,
+            titulos=renda_fixa.consulta,
+            inferencias=renda_fixa.inferencias,
+            titulos_paths=renda_fixa.paths,
             config_callback=getattr(self, "_abrir_config_llm", None),
             config_port=getattr(self, "_llm_config", None),
             model_changed_callback=getattr(self, "_on_provider_changed", None),

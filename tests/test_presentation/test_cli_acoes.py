@@ -588,3 +588,73 @@ class TestResumir:
         with pytest.raises(cli_acoes.AcaoError) as exc:
             cli_acoes.resumir_noticias()
         assert exc.value.motivo == "llm_nao_configurada"
+
+
+class TestInferenciaNoCli:
+    def test_ticker_unico_reporta_desfecho_da_inferencia(self, monkeypatch):
+        from flowscope.application.documentos.lote_execucao import (
+            ResultadoResumos,
+        )
+        from flowscope.application.renda_fixa import ResultadoInferencia
+
+        monkeypatch.setattr(cli_resumos, "last_tickers", lambda: ["PETR4"])
+        inferencia = object()
+        nucleo = argparse.Namespace(
+            documentos=_DocumentosFake(disponivel=True),
+            renda_fixa=argparse.Namespace(inferencia=inferencia),
+        )
+        import flowscope.presentation.composicao as comp
+
+        monkeypatch.setattr(comp, "montar_nucleo", lambda: nucleo)
+        monkeypatch.setattr(cli_resumos, "_pendentes_documentos", lambda n, t: [])
+        monkeypatch.setattr(
+            cli_resumos,
+            "executar_resumos",
+            lambda *a, **k: ResultadoResumos(
+                inferencia=ResultadoInferencia(executada=True, itens=2)
+            ),
+        )
+
+        resultado = cli_acoes.resumir_documentos("PETR4")
+
+        assert resultado["inferencia"] == {
+            "executada": True,
+            "itens": 2,
+            "falhas": 0,
+            "cancelada": False,
+        }
+
+    def test_falha_da_inferencia_marca_ticker_e_encerra_lote(self, monkeypatch):
+        from flowscope.application.documentos.lote_execucao import (
+            ResultadoResumos,
+        )
+        from flowscope.application.renda_fixa import ResultadoInferencia
+
+        nucleo = argparse.Namespace(documentos=_DocumentosFake(disponivel=True))
+        monkeypatch.setattr(cli_resumos, "_pendentes_documentos", lambda n, t: [])
+        monkeypatch.setattr(
+            cli_resumos,
+            "executar_resumos",
+            lambda ctx, painel, pend: ResultadoResumos(
+                inferencia=ResultadoInferencia(
+                    executada=True, itens=0, falhas=1
+                )
+            ),
+        )
+
+        desfecho, falhou = cli_resumos._processar_ticker(nucleo, object(), "PETR4")
+
+        assert falhou is True
+        assert desfecho["inferencia"]["falhas"] == 1
+
+    def test_flag_desligada_nao_exige_chave_de_inferencia(self, monkeypatch):
+        monkeypatch.setattr(cli_resumos, "last_tickers", lambda: ["PETR4"])
+        nucleo = argparse.Namespace(documentos=_DocumentosFake(disponivel=True))
+        import flowscope.presentation.composicao as comp
+
+        monkeypatch.setattr(comp, "montar_nucleo", lambda: nucleo)
+        monkeypatch.setattr(cli_resumos, "_pendentes_documentos", lambda n, t: [])
+
+        resultado = cli_acoes.resumir_documentos("PETR4")
+
+        assert "inferencia" not in resultado

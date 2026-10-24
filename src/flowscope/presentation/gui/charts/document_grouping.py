@@ -67,6 +67,8 @@ class Agrupamento:
     ano: int | None = None
     mes: int | None = None
     categoria: str | None = None
+    chave: str | None = None
+    texto: str | None = None
 
 
 def render_grupo(

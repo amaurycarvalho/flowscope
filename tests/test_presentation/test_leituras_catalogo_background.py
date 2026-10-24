@@ -256,6 +256,7 @@ class TestLeituraDocumentosBackground:
             [],
         )
         host._documents_panel.carregar_ausencia_catalogo.return_value = frozenset()
+        host._documents_panel.carregar_titulos.return_value = None
 
         host._update_documents()
 
@@ -268,6 +269,7 @@ class TestLeituraDocumentosBackground:
             frozenset(),
             [],
             frozenset(),
+            None,
         )
 
     def test_troca_de_ticker_descarta_leitura_obsoleta(self):
@@ -278,6 +280,7 @@ class TestLeituraDocumentosBackground:
             [],
         )
         host._documents_panel.carregar_ausencia_catalogo.return_value = frozenset()
+        host._documents_panel.carregar_titulos.return_value = None
         liberar = threading.Event()
 
         def _carregar(ticker):
@@ -299,6 +302,7 @@ class TestLeituraDocumentosBackground:
             frozenset(),
             [],
             frozenset(),
+            None,
         )
 
     def test_sem_ticker_aplica_estado_vazio(self):

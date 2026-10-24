@@ -226,6 +226,7 @@ def montar_core_navegacao(reference_date: date | None = None) -> object:
     nucleo = montar_nucleo()
     documentos = nucleo.documentos
     noticias = nucleo.noticias
+    renda_fixa = nucleo.renda_fixa
     watchlist = _watchlist_config()
     referencia = reference_date or resolver_data_referencia()
     abas, subabas = estrutura_conhecimento(TAB_CONTENT)
@@ -249,13 +250,19 @@ def montar_core_navegacao(reference_date: date | None = None) -> object:
         FonteDocumentos(
             catalog=documentos.catalogo, rg_chaves=_rg_chaves(documentos)
         ),
-        FonteDireitosObrigacoes(),
+        FonteDireitosObrigacoes(
+            renda_fixa.consulta,
+            watchlist,
+            inferencias=renda_fixa.inferencias,
+        ),
         FonteNoticias(catalog=noticias.catalogo),
         FonteGuidance(watchlist, documentos.guidance_service, documentos.catalogo),
     ]
-    arvore = MontarArvore(fontes).montar(
-        caminhos=_guidance_paths(documentos, watchlist), watchlist=watchlist
-    )
+    caminhos = [
+        *_guidance_paths(documentos, watchlist),
+        *_titulos_paths(renda_fixa, watchlist),
+    ]
+    arvore = MontarArvore(fontes).montar(caminhos=caminhos, watchlist=watchlist)
     return NavegacaoCore(arvore)
 
 
@@ -331,6 +338,17 @@ def _guidance_paths(documentos: object, watchlist: list[str]) -> list:
     """Resolve os caminhos do ledger de guidance para a assinatura de estado."""
     try:
         return list(documentos.guidance_paths(watchlist))
+    except Exception:
+        return []
+
+
+def _titulos_paths(renda_fixa: object, watchlist: list[str]) -> list:
+    """Resolve os caminhos do cache de títulos para a assinatura de estado."""
+    resolver = getattr(renda_fixa, "paths", None)
+    if not callable(resolver):
+        return []
+    try:
+        return list(resolver(watchlist))
     except Exception:
         return []
 

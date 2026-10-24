@@ -281,7 +281,7 @@ O chat não calcula indicadores novos: ele expõe o estado local já em cache co
 - **`/fundamentos`** — `tickers`, `campos` e `valores/<ticker>` (uma linha por ticker da watchlist completa), a partir da tabela da sub-aba "Fundamentos".
 - **`/documentos`** — por ticker, `indice` e, por chave estável, as folhas `curto`, `longo` e `texto`.
 - **`/guidance`** — por ticker, `indice` e as folhas por ano/mês, com o guidance de distribuição dos Relatórios Gerenciais avaliados.
-- **`/direitos-obrigacoes`** — ramos `direitos` e `obrigacoes` como placeholders navegáveis (implementação futura).
+- **`/direitos-obrigacoes`** — `data-referencia`, `obrigacoes` e `direitos` → `titulos/<tipo>/<id>/{geral,adicionais,ltv,documentos}`, `agregado/resumo` e `sem-fonte`, montados exclusivamente do cache por ticker.
 - **`/noticias`** — `grupos` (as quatro categorias), `indice` por grupo e, por chave curta, as folhas `titulo`, `resumo` e `texto`.
 
 ### Operações de navegação

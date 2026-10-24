@@ -1,4 +1,4 @@
-.PHONY: venv install build test lint clean install-quality-tools quality-gate complexity duplication mutation-run mutation-check mutation-results mutation-stats security security-all security-changed
+.PHONY: venv install build test lint clean install-quality-tools update quality-gate complexity duplication mutation-run mutation-check mutation-results mutation-stats security security-all security-changed
 
 VENV = .venv
 
@@ -36,6 +36,9 @@ install-quality-tools: $(ACTIVATE)
 	@$(PIP) install -q -e ".[dev,quality,llm]"
 	@npm install -g jscpd@4.0.1
 	@mkdir -p mutants/
+
+update:
+	@pip-upgrade pyproject.toml
 
 quality-gate: $(ACTIVATE)
 	@echo "Running quality gate..."

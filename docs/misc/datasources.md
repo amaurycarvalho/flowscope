@@ -876,6 +876,98 @@ BDR.
 
 ---
 
+### 5.7 Títulos de renda fixa (FRE, SECURIT e FII)
+
+**Módulos:** `infrastructure/cvm/renda_fixa_*.py`,
+`application/renda_fixa/` e `infrastructure/cvm/renda_fixa_cache.py`
+
+A aquisição é explícita (botão **Atualizar**) e cache-aware. Ela reutiliza os
+ZIPs anuais pelo `CvmDatasetDownloader`, com hash, metadados e revalidação
+condicional de no máximo 6 horas. A falha de um dataset não interrompe os
+demais; o último cache válido por fonte é preservado. FRE, FII trimestral e FII
+mensal compartilham os mesmos diretórios de cache já usados pelos fundamentos
+(`fre`, `FII-INF-TRIMESTRAL` e `inf_mensal`). O SECURIT só é lido quando há
+CRI/CRA no ticker e apenas as linhas ligadas aos códigos/CNPJ de devedor são
+materializadas. As flags `renda_fixa.atualizar_titulos` e
+`renda_fixa.enriquecer_securit` (ambas padrão `true`) permitem desligar,
+respectivamente, a etapa de títulos no "Atualizar" e o enriquecimento SECURIT.
+
+| Dataset | URL | Arquivos usados |
+| --- | --- | --- |
+| FRE | `https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS/fre_cia_aberta_{ANO}.zip` | `fre_cia_aberta_outro_valor_mobiliario_{ANO}.csv` |
+| SECURIT CRI | `https://dados.cvm.gov.br/dados/SECURIT/DOC/INF_MENSAL_CRI/DADOS/inf_mensal_cri_{ANO}.zip` | `geral`, `classe`, `cedente_devedor`, `creditos`, `ativo_passivo`, `carteira` |
+| SECURIT CRA | `https://dados.cvm.gov.br/dados/SECURIT/DOC/INF_MENSAL_CRA/DADOS/inf_mensal_cra_{ANO}.zip` | `geral`, `classe`, `cedente_devedor`, `direitos_creditorios`, `ativo_passivo` |
+| FII trimestral | `https://dados.cvm.gov.br/dados/FII/DOC/INF_TRIMESTRAL/DADOS/inf_trimestral_fii_{ANO}.zip` | `inf_trimestral_fii_ativo_{ANO}.csv` |
+| FII mensal | `https://dados.cvm.gov.br/dados/FII/DOC/INF_MENSAL/DADOS/inf_mensal_fii_{ANO}.zip` | `inf_mensal_fii_ativo_passivo_{ANO}.csv` |
+
+**Obrigações (companhias):** o FRE é filtrado por `CNPJ_Companhia` e pelos
+`Valor_Mobiliario` de renda fixa (Debêntures, Debêntures Conversíveis, Nota
+Comercial, CRI, CRA e Letras Financeiras). Cada série vira um título com
+emissão, vencimento, quantidade, valor, saldo devedor, características e
+proveniência. A versão mais recente do FRE prevalece. CRI/CRA são vinculados
+ao **devedor econômico** (CNPJ da companhia), não ao emissor legal.
+
+**Enriquecimento (SECURIT):** os CSVs são acumulados por código CETIP/ISIN
+(com fallback por `CNPJ_Emissora | Codigo_Identificacao_Certificado`). O join
+com o FRE e com a carteira do FII usa primeiro o código CETIP/ISIN e, como
+fallback, o CNPJ de devedor **válido**. O enriquecimento acrescenta emissor
+legal, devedor, garantias, coobrigação, lastro, sobrecolateralização,
+subordinação, situação, rating, contingências, impacto, desempenho e LTV
+(`Indice_LTV`/`Data_LTV`). CRA e debêntures não recebem LTV inventado; sem
+fonte, o campo é exibido como "não informado".
+
+**Direitos (FII):** o informe trimestral fornece posições individuais de
+CRI/CRA e LCI/LCA do CNPJ do fundo, na maior `Data_Referencia`/`Versao`. O
+informe mensal fornece somente os totais por ticker das colunas `Debentures` e
+`Certificados_Deposito_Valores_Mobiliarios`, que viram nós **agregados** com a
+última data/versão (nunca a soma de meses).
+
+**Cache por ticker:** `<cache>/direitos-obrigacoes/<TICKER>.json`, escrito
+atomicamente, com `ticker`, `cnpj`, `tipo_ativo`, `assinatura`, `parser_version`,
+`adquirido_em`, `data_referencia`, `fontes` e as listas normalizadas. Se a
+assinatura do conteúdo não mudou, o arquivo é reutilizado sem reescrita. Antes
+de reparsear os datasets, a aquisição compara o hash dos arquivos anuais com o
+registrado em `fontes` no cache anterior; quando todos os datasets necessários
+estão inalterados, o resultado normalizado é reutilizado diretamente, sem
+reextrair ou reinterpretar FRE, FII e, principalmente, SECURIT CRI/CRA.
+
+**Inferência a partir de resumos (opcional):** quando a flag
+`renda_fixa.inferir_no_resumo` está ligada (padrão `false`), há LLM configurada
+e a cobertura oficial do ticker está vazia ou parcial, o lote "Resumir
+pendentes" e `flowscope resumir documentos` executam uma fase extra depois dos
+resumos. A entrada são somente os resumos longos já persistidos de Relatórios
+Gerenciais e Informes Mensais de FII; nenhum PDF é reaberto, baixado ou
+reextraído. A resposta da LLM é validada como JSON estrito (`tipo`, `papel`,
+`descricao`, `documento`, `trecho` e `confianca`); tipos desconhecidos e itens
+sem documento ou evidência são descartados.
+
+As inferências ficam em
+`<cache>/direitos-obrigacoes/inferencias/<TICKER>.json`, separadas do cache
+oficial, com `parser_version` (versão do prompt), `adquirido_em` e, por item,
+documento de origem, chave/hash do resumo, trecho, confiança, data de referência
+e `fonte=LLM`. A chave de idempotência é `(chave_documento, hash_resumo,
+parser_version)`; um resumo alterado substitui atomicamente apenas os itens
+daquele documento e preserva os demais.
+
+**Precedência e proveniência:** o dado oficial é sempre autoritativo. Em
+conflito de tipo e identificação, o item oficial prevalece e a duplicata
+inferida é omitida; itens apenas inferidos aparecem rotulados como "inferido
+pela IA", com documento, data e trecho de evidência. A ausência explícita de
+fonte só permanece quando não há dado oficial nem inferência. A árvore do Chat
+AI e o manifesto são cache-only e apenas anunciam os itens já persistidos, sem
+chamadas de rede.
+
+**Cobertura e limitações:**
+
+- CDB, LCI e LCA **sem fonte pública por emissor** no lado Obrigações viram
+  nós `sem-fonte` explícitos; nunca são usados agregados de mercado como se
+  fossem do ticker.
+- A material fact da categoria 48 (Aviso aos Debenturistas) é listada apenas
+  como **link** em "Documentos relacionados", sem baixar PDF.
+- O B3 BDI `InstrumentRegistration` não é usado nesta fase.
+- O Chat AI e a sub-aba Documentos são **cache-only**: abrir ou navegar não
+  baixa, extrai, resume nem consulta CVM/B3.
+
 ## 6. Fundamentus
 
 **Módulos:** `infrastructure/fii/fundamentus/`,
@@ -1041,6 +1133,8 @@ Além dos caches por data, a aplicação mantém:
 | `<cache>/document-texts/...` | Textos extraídos de documentos/notícias |
 | `<cache>/guidance/...` | Guidance de distribuição por FII |
 | `<cache>/cvm/<DATASET>/<ANO>/` | ZIPs/CSVs brutos, hash e metadados da CVM |
+| `<cache>/direitos-obrigacoes/<TICKER>.json` | Títulos de renda fixa normalizados, com assinatura e proveniência |
+| `<cache>/direitos-obrigacoes/inferencias/<TICKER>.json` | Direitos e obrigações inferidos dos resumos, com proveniência e versão do prompt |
 
 O catálogo de notícias e a árvore de conhecimento do Chat AI/MCP leem apenas
 esse cache local; a atualização de novos itens acontece por ação explícita de
@@ -1067,6 +1161,8 @@ disponível para cada campo é usado.
 | Percentuais por indexador | CVM (INF_TRIMESTRAL) | — |
 | Documentos e guidance | B3 (FNET), CVM RAD | — |
 | Notícias e informações regulatórias | B3 (Plantão e páginas regulatórias) | — |
+| Títulos de renda fixa (obrigações) | CVM (FRE + SECURIT CRI/CRA) | — |
+| Títulos de renda fixa (direitos de FII) | CVM (INF_TRIMESTRAL + INF_MENSAL) | SECURIT CRI/CRA para enriquecimento |
 
 ---
 

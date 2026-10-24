@@ -220,7 +220,7 @@ A árvore é montada apenas a partir do cache local e exposta por caminhos canô
 | `/fundamentos` | `tickers`, `campos`, `valores/<ticker>` |
 | `/documentos` | `<ticker>/indice`, `<ticker>/<chave>/curto`, `<ticker>/<chave>/longo`, `<ticker>/<chave>/texto` |
 | `/guidance` | `<ticker>/indice`, `<ticker>/<ano>/<mes>/<guidance>` |
-| `/direitos-obrigacoes` | `direitos`, `obrigacoes` (placeholders) |
+| `/direitos-obrigacoes` | `data-referencia`, `obrigacoes`, `direitos` → `titulos/<tipo>/<id>/{geral,adicionais,ltv,documentos}`, `agregado/resumo`, `sem-fonte` |
 | `/noticias` | `grupos`, `<grupo>/indice`, `<grupo>/<chave>/titulo`, `<grupo>/<chave>/resumo`, `<grupo>/<chave>/texto` |
 
 A árvore **não resume, não extrai, não baixa e não consulta a B3/CVM**; nós sem dado (pendentes de resumo ou extração) são omitidos em silêncio. Os limites de tokens por nó e por operação substituem os antigos tetos em caracteres.

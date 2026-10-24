@@ -253,3 +253,55 @@ class TestAssinatura:
         assert assinatura_estado([tmp_path / "some.txt"], []) == assinatura_estado(
             [tmp_path / "some.txt"], []
         )
+
+
+def _ramo_direitos_com_titulo() -> object:
+    raiz = no_interno("/", "raiz")
+    ramo = no_interno("/direitos-obrigacoes", "direitos e obrigacoes")
+    ramo.filho(
+        no_folha("/direitos-obrigacoes/data-referencia", "data-referencia")
+    )
+    obrigacoes = no_interno("/direitos-obrigacoes/obrigacoes", "obrigacoes")
+    titulos = no_interno("/direitos-obrigacoes/obrigacoes/titulos", "titulos")
+    tipo = no_interno(
+        "/direitos-obrigacoes/obrigacoes/titulos/debentures", "Debêntures"
+    )
+    item = no_interno(
+        "/direitos-obrigacoes/obrigacoes/titulos/debentures/d1", "PETR27"
+    )
+    for sufixo in ("geral", "adicionais", "ltv", "documentos"):
+        item.filho(
+            no_folha(
+                f"/direitos-obrigacoes/obrigacoes/titulos/debentures/d1/{sufixo}",
+                sufixo,
+            )
+        )
+    tipo.filho(item)
+    tipo.filho(
+        no_folha(
+            "/direitos-obrigacoes/obrigacoes/titulos/debentures/agregado/resumo",
+            "agregado",
+        )
+    )
+    titulos.filho(tipo)
+    obrigacoes.filho(titulos)
+    ramo.filho(obrigacoes)
+    raiz.filho(ramo)
+    return raiz
+
+
+class TestManifestoRendaFixa:
+    def test_anuncia_tipos_e_caminhos_presentes(self) -> None:
+        arvore = ArvoreConhecimento(_ramo_direitos_com_titulo())
+        texto = montar_manifesto(arvore)
+        assert "/direitos-obrigacoes/data-referencia" in texto
+        assert "/direitos-obrigacoes/obrigacoes/titulos/debentures/d1/geral" in texto
+        assert "/direitos-obrigacoes/obrigacoes/titulos/debentures/d1/ltv" in texto
+        assert "/direitos-obrigacoes/obrigacoes/titulos/debentures/agregado/resumo" in texto
+        assert "Títulos emitidos/mantidos" in texto
+
+    def test_omite_tipo_ausente(self) -> None:
+        arvore = ArvoreConhecimento(_ramo_direitos_com_titulo())
+        texto = montar_manifesto(arvore)
+        assert "/titulos/cri/" not in texto
+        assert "/titulos/lci/" not in texto

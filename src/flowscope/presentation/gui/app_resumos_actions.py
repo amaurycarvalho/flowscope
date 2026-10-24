@@ -58,10 +58,27 @@ class ResumosActionsMixin(ResumosFinalizacaoMixin):
             painel, "documentos_pendentes_guidance", list
         )()
         pendentes = list(sem_resumo) + list(pendentes_guidance)
-        if not pendentes:
+        if not pendentes and not self._inferencia_pendente(painel):
             painel.refresh_resumir_button()
             return
         self._iniciar_lote_resumos(painel, pendentes, self._ticker_apresentado())
+
+    def _caso_inferencia(self: "ResumosActionsMixin") -> object | None:
+        """Retorna o caso de uso de inferência injetado, quando houver."""
+        adaptadores = getattr(self, "_renda_fixa_adapters", None)
+        return getattr(adaptadores, "inferencia", None)
+
+    def _inferencia_pendente(self: "ResumosActionsMixin", painel: object) -> bool:
+        """Indica se o painel encontrou inferência elegível pendente."""
+        if self._caso_inferencia() is None:
+            return False
+        metodo = getattr(painel, "inferencia_pendente", None)
+        if not callable(metodo):
+            return False
+        try:
+            return bool(metodo())
+        except Exception:
+            return False
 
     def _resumir_noticias_pendentes(self: "ResumosActionsMixin") -> None:
         """Gera em lote os resumos das notícias pendentes do período."""
@@ -106,13 +123,20 @@ class ResumosActionsMixin(ResumosFinalizacaoMixin):
         )
         self._set_status(f"Resumindo {len(pendentes)} item(ns)…")
         estado = {"resultado": ResultadoResumos()}
+        inferencia = None if continuar else self._caso_inferencia()
 
         def trabalho(ctx: object) -> None:
             from flowscope.presentation.composicao import bloqueio_de_escrita
 
             with bloqueio_de_escrita():
                 estado["resultado"] = executar_resumos(
-                    ctx, painel, pendentes, continuar, senhas
+                    ctx,
+                    painel,
+                    pendentes,
+                    continuar,
+                    senhas,
+                    inferencia=inferencia,
+                    ticker=guarda if isinstance(guarda, str) else None,
                 )
 
         background.submit(

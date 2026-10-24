@@ -680,3 +680,28 @@ class TestMontarArvoreGuidance:
         ledger.write_text("{}")
         arvore2 = painel.montar_arvore({}, ["HGBS11"])
         assert arvore2.assinatura != antes
+
+
+class TestAssinaturaTitulos:
+    def _painel(self, caminho):
+        from flowscope.application.chat.conhecimento import FonteConhecimento
+
+        painel = ChatPanel.__new__(ChatPanel)
+        painel._fonte_conhecimento = FonteConhecimento({"versao": "1.0"})
+        painel._catalogo = None
+        painel._noticias_catalog = None
+        painel._guidance_service = None
+        painel._guidance_paths = lambda _tickers: []
+        painel._titulos = None
+        painel._titulos_paths = lambda _tickers: [caminho]
+        return painel
+
+    def test_assinatura_muda_quando_cache_de_titulos_muda(self, tmp_path):
+        caminho = tmp_path / "direitos-obrigacoes" / "PETR4.json"
+        caminho.parent.mkdir(parents=True)
+        caminho.write_text("{}", encoding="utf-8")
+        painel = self._painel(caminho)
+        antes = painel.montar_arvore({}, ["PETR4"]).assinatura
+        caminho.write_text('{"x": 1}', encoding="utf-8")
+        depois = painel.montar_arvore({}, ["PETR4"]).assinatura
+        assert antes != depois

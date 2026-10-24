@@ -1114,6 +1114,11 @@ class TestResumirHabilitado:
         painel = self._host(tmp_path, ativo=lambda: True)
         assert painel.resumir_habilitado() is False
 
+    def test_habilitado_com_inferencia_pendente_sem_documentos(self, tmp_path):
+        painel = self._host(tmp_path, disponivel=True, pendentes=False)
+        painel._inferencia_pendente = True
+        assert painel.resumir_habilitado() is True
+
 
 class TestResumirButtonShell:
     """Binding real do botão "Resumir pendentes" ao estado decidido."""
@@ -1821,6 +1826,8 @@ def _view_headless() -> DocumentTreeView:
     view.itens = {}
     view.grupos = {}
     view.guidances = {}
+    view.titulos = {}
+    view.nos_titulos = {}
     view.por_caminho = {}
     view.nos_por_caminho = {}
     return view
@@ -2063,3 +2070,169 @@ class TestSelecaoPreservadaDocumentos:
         selecao = painel._tree.selection()
         assert len(selecao) == 1
         assert painel._itens[selecao[0]].nome == "10.pdf"
+
+
+class TestArvoreRendaFixaHeadless:
+    """Estrutura e pré-visualização dos nós de títulos sem Tk real."""
+
+    def _carteira(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from flowscope.domain.renda_fixa import (
+            CarteiraTitulos,
+            PapelTitulo,
+            TipoTitulo,
+            TituloAgregado,
+            TituloRendaFixa,
+        )
+
+        return CarteiraTitulos(
+            ticker="PETR4",
+            tipo_ativo="acao",
+            data_referencia=date(2026, 6, 30),
+            obrigacoes=(
+                TituloRendaFixa(
+                    tipo=TipoTitulo.DEBENTURE,
+                    papel=PapelTitulo.OBRIGACAO,
+                    id="d1",
+                    identificacao="PETR27",
+                    fonte="FRE",
+                    valor=Decimal(1000),
+                ),
+                TituloAgregado(
+                    TipoTitulo.CDB,
+                    PapelTitulo.OBRIGACAO,
+                    valor=Decimal(50),
+                    fonte="FRE",
+                ),
+            ),
+        )
+
+    def _arvore(self):
+        from flowscope.domain.renda_fixa import montar_arvore
+
+        return montar_arvore(self._carteira())
+
+    def _painel(self):
+        painel = _PainelArvoreHeadless(_catalogo(Path("/tmp/inexistente")))
+        painel._titulos_uc = _ConsultaTitulosFake(self._carteira())
+        return painel
+
+    def test_estrutura_e_registro_de_titulos(self):
+        view = _view_headless()
+        view._tree = view.tree
+        view.popular(
+            CatalogoTicker("PETR4"), [], self._arvore()
+        )
+        ramo = view.tree.get_children()[0]
+        direitos = _filho_texto(view, ramo, "Direitos e obrigações")
+        obrigacoes = _filho_texto(view, direitos, "Obrigações")
+        titulos = _filho_texto(view, obrigacoes, "Títulos")
+        debentures = _filho_texto(view, titulos, "Debêntures")
+        assert _filho_texto(view, debentures, "PETR27") in view.titulos
+        assert any(
+            grupo.chave == "obrigacoes:cdb:agregado"
+            for grupo in view.grupos.values()
+        )
+
+    def test_sem_fonte_exibida(self):
+        view = _view_headless()
+        view._tree = view.tree
+        view.popular(CatalogoTicker("PETR4"), [], self._arvore())
+        ramo = view.tree.get_children()[0]
+        direitos = _filho_texto(view, ramo, "Direitos e obrigações")
+        obrigacoes = _filho_texto(view, direitos, "Obrigações")
+        titulos = _filho_texto(view, obrigacoes, "Títulos")
+        lci = _filho_texto(view, titulos, "LCI")
+        no = view.tree.get_children(lci)[0]
+        grupo = view.grupos[no]
+        assert grupo.tipo == "titulo_sem_fonte"
+        assert "Não há título" in grupo.texto
+
+    def test_ramo_vazio_preserva_placeholder(self):
+        from flowscope.domain.renda_fixa import (
+            CarteiraTitulos,
+            montar_arvore,
+        )
+
+        view = _view_headless()
+        view._tree = view.tree
+        view.popular(
+            CatalogoTicker("ALZR11"), [], montar_arvore(CarteiraTitulos("ALZR11"))
+        )
+        ramo = view.tree.get_children()[0]
+        direitos = _filho_texto(view, ramo, "Direitos e obrigações")
+        assert _filho_texto(view, direitos, "Direitos")
+        assert _filho_texto(view, direitos, "Obrigações")
+
+    def test_preview_de_titulo_e_botao_desabilitado(self):
+        painel = self._painel()
+        painel.aplicar_catalogo(
+            "PETR4",
+            CatalogoTicker("PETR4"),
+            titulos=painel.carregar_titulos("PETR4"),
+        )
+        ramo = painel._tree.get_children()[0]
+        direitos = _filho_texto(painel, ramo, "Direitos e obrigações")
+        obrigacoes = _filho_texto(painel, direitos, "Obrigações")
+        titulos = _filho_texto(painel, obrigacoes, "Títulos")
+        debentures = _filho_texto(painel, titulos, "Debêntures")
+        no = _filho_texto(painel, debentures, "PETR27")
+        painel._tree.selection_set(no)
+        painel._on_select()
+        assert "Informações gerais" in painel.texto_atual()
+        assert "LTV" in painel.texto_atual()
+        assert painel.abrir_habilitado() is False
+
+    def test_agregado_exibe_valor_e_fonte(self):
+        painel = self._painel()
+        painel.aplicar_catalogo(
+            "PETR4",
+            CatalogoTicker("PETR4"),
+            titulos=painel.carregar_titulos("PETR4"),
+        )
+        ramo = painel._tree.get_children()[0]
+        direitos = _filho_texto(painel, ramo, "Direitos e obrigações")
+        obrigacoes = _filho_texto(painel, direitos, "Obrigações")
+        titulos = _filho_texto(painel, obrigacoes, "Títulos")
+        cdb = _filho_texto(painel, titulos, "CDB")
+        agregado = painel._tree.get_children(cdb)[0]
+        painel._tree.selection_set(agregado)
+        painel._on_select()
+        assert "Valor total" in painel.texto_atual()
+
+    def test_expansao_e_selecao_preservadas(self):
+        painel = self._painel()
+        painel.aplicar_catalogo(
+            "PETR4",
+            CatalogoTicker("PETR4"),
+            titulos=painel.carregar_titulos("PETR4"),
+        )
+        ramo = painel._tree.get_children()[0]
+        direitos = _filho_texto(painel, ramo, "Direitos e obrigações")
+        obrigacoes = _filho_texto(painel, direitos, "Obrigações")
+        titulos = _filho_texto(painel, obrigacoes, "Títulos")
+        debentures = _filho_texto(painel, titulos, "Debêntures")
+        no = _filho_texto(painel, debentures, "PETR27")
+        for item in (direitos, obrigacoes, titulos, debentures):
+            painel._tree.item(item, open=True)
+        painel._tree.selection_set(no)
+        painel.aplicar_catalogo(
+            "PETR4",
+            CatalogoTicker("PETR4"),
+            titulos=painel.carregar_titulos("PETR4"),
+        )
+        selecionado = painel._tree.selection()[0]
+        assert painel._tree.item(selecionado, "text") == "PETR27"
+        ramo2 = painel._tree.get_children()[0]
+        direitos2 = _filho_texto(painel, ramo2, "Direitos e obrigações")
+        assert painel._tree.item(direitos2, "open")
+
+
+class _ConsultaTitulosFake:
+    def __init__(self, carteira):
+        self._carteira = carteira
+
+    def executar(self, ticker):
+        return self._carteira if ticker == "PETR4" else None

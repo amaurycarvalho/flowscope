@@ -8,11 +8,14 @@ Os adaptadores de documentos e notícias são reexportados deste módulo por
 compatibilidade com os imports existentes.
 """
 
+from flowscope.infrastructure.feature_flags import feature_flag
 from flowscope.presentation.composicao import (
     AdaptadoresDocumentos,
     AdaptadoresNoticias,
+    AdaptadoresRendaFixa,
     montar_adaptadores_documentos,
     montar_adaptadores_noticias,
+    montar_adaptadores_renda_fixa,
     montar_nucleo,
     resolvedor_chave_documento,
     resolver_data_referencia_seguro,
@@ -25,9 +28,11 @@ from flowscope.presentation.gui.presenter import FlowScopePresenter
 __all__ = [
     "AdaptadoresDocumentos",
     "AdaptadoresNoticias",
+    "AdaptadoresRendaFixa",
     "WiringMixin",
     "montar_adaptadores_documentos",
     "montar_adaptadores_noticias",
+    "montar_adaptadores_renda_fixa",
     "montar_nucleo",
     "resolvedor_chave_documento",
 ]
@@ -88,7 +93,13 @@ class WiringMixin:
 
         self._documentos_adapters = nucleo.documentos
         self._noticias_adapters = nucleo.noticias
+        self._renda_fixa_adapters = nucleo.renda_fixa
         self._aquisicao_documentos = nucleo.aquisicao_documentos
+        self._aquisicao_titulos = (
+            nucleo.renda_fixa.aquisicao
+            if feature_flag("renda_fixa.atualizar_titulos", True)
+            else None
+        )
         self._aquisicao_noticias = nucleo.aquisicao_noticias
         self._deduplicar_documentos = nucleo.deduplicar_documentos
         self._deduplicar_noticias = nucleo.deduplicar_noticias

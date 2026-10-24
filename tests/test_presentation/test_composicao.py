@@ -30,6 +30,10 @@ _SCRIPT_SEM_TK = textwrap.dedent(
     assert nucleo.noticias is not None
     assert nucleo.aquisicao_documentos is not None
     assert nucleo.aquisicao_noticias is not None
+    assert nucleo.renda_fixa.aquisicao is not None
+    assert nucleo.renda_fixa.consulta is not None
+    assert nucleo.renda_fixa.inferencias is not None
+    assert nucleo.renda_fixa.inferencia is not None
     assert nucleo.history_store is not None
     assert nucleo.guidance_store is not None
     assert "tkinter" not in sys.modules
@@ -45,6 +49,9 @@ class TestMontarNucleo:
         assert nucleo.base == tmp_path
         assert nucleo.documentos.catalogo is not None
         assert nucleo.noticias.catalogo is not None
+        assert nucleo.renda_fixa.consulta is not None
+        assert nucleo.renda_fixa.inferencia is not None
+        assert callable(nucleo.renda_fixa.paths)
         assert callable(nucleo.llm_factory)
         assert callable(nucleo.deduplicar_documentos)
         assert callable(nucleo.resolver_fiagro)

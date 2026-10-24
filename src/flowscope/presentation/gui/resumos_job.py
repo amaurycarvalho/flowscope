@@ -8,8 +8,10 @@ mínima de progresso/cancelamento da orquestração.
 """
 
 from flowscope.application.documentos.lote_execucao import (
+    FASE_INFERIR,
     FASE_PREPARAR,
     FASE_RESUMIR,
+    InferenciaLote,
     MotivoExtracao,
     PainelDocumentos,
     ResultadoResumos,
@@ -22,10 +24,12 @@ from flowscope.application.finalizacao_extracao import ItemPendente
 from flowscope.presentation.gui.background.job import Politica
 
 __all__ = [
+    "FASE_INFERIR",
     "FASE_PREPARAR",
     "FASE_RESUMIR",
     "GRUPO",
     "POLITICA",
+    "InferenciaLote",
     "ItemPendente",
     "MotivoExtracao",
     "PainelDocumentos",

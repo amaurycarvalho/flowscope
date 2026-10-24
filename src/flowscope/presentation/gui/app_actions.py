@@ -4,30 +4,20 @@ import tkinter as tk
 from datetime import date, datetime, timezone
 
 from flowscope.application.clipboard_port import ClipboardError, ImageClipboardPort
-from flowscope.application.documentos.aquisicao import ResultadoAquisicao
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui import evolucao_job
+from flowscope.presentation.gui.app_documentos_actions import DocumentosAquisicaoMixin
 from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
-from flowscope.presentation.gui.background.events import Outcome
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
-from flowscope.presentation.gui.documentos_job import (
-    GRUPO,
-    POLITICA,
-    executar_documentos,
-)
-
-#: Grupo e política da leitura do catálogo de documentos (fora da aquisição).
-GRUPO_LEITURA_DOCUMENTOS = "documentos-leitura"
-POLITICA_LEITURA = Politica.LATEST_WINS
 
 #: Grupo e política da transferência assíncrona de gráficos ao clipboard.
 GRUPO_CLIPBOARD = "clipboard"
 POLITICA_CLIPBOARD = Politica.LATEST_WINS
 
 
-class ActionsMixin:
+class ActionsMixin(DocumentosAquisicaoMixin):
     """Lida com eventos de seleção de período, amostragem e atualização dos gráficos."""
 
     #: Porta de cópia de gráficos; injetada pelo composition root.
@@ -231,115 +221,6 @@ class ActionsMixin:
         if chave != (ticker, config.period_days, config.method):
             return
         painel.update(series, ticker=ticker)
-
-    def _update_documents(self: "ActionsMixin") -> None:
-        """Submete a leitura do catálogo de documentos do ticker apresentado.
-
-        O ticker é o mesmo apresentado na sub-aba "Evolução dos Fundamentos",
-        mantendo as duas sub-abas sincronizadas. A exibição é somente-leitura;
-        a aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
-        """
-        self._submeter_leitura_documentos(self._ticker_apresentado())
-
-    def _submeter_leitura_documentos(
-        self: "ActionsMixin", ticker: str | None
-    ) -> None:
-        """Lê o catálogo do ticker fora da thread do Tk e remonta por evento."""
-        painel = getattr(self, "_documents_panel", None)
-        if painel is None:
-            return
-        if not ticker:
-            painel.aplicar_catalogo(None, None)
-            return
-        background = getattr(self, "_background", None)
-        if background is None:
-            painel.update(ticker)
-            return
-        painel.mostrar_carregando(ticker)
-
-        def trabalho(ctx: object) -> None:
-            catalogo = painel.carregar_catalogo(ticker)
-            pendentes, guidances = painel.carregar_guidance(ticker, catalogo)
-            sem_texto = painel.carregar_ausencia_catalogo(catalogo)
-            ctx.resultado(
-                valor=(catalogo, pendentes, guidances, sem_texto)
-            )
-
-        background.submit(
-            trabalho,
-            grupo=GRUPO_LEITURA_DOCUMENTOS,
-            politica=POLITICA_LEITURA,
-            chave=ticker,
-            ao_resultado=lambda evento: self._aplicar_catalogo_documentos(
-                ticker, evento.valor
-            ),
-        )
-
-    def _aplicar_catalogo_documentos(
-        self: "ActionsMixin", ticker: str | None, valor: object
-    ) -> None:
-        """Aplica o catálogo, os RGs pendentes e o guidance se o ticker não mudou."""
-        painel = getattr(self, "_documents_panel", None)
-        if painel is None or ticker != self._ticker_apresentado():
-            return
-        catalogo, pendentes, guidances, sem_texto = valor
-        painel.aplicar_catalogo(
-            ticker, catalogo, pendentes, guidances, sem_texto
-        )
-
-    def _adquirir_documentos(self: "ActionsMixin", ticker: str) -> None:
-        """Adquire os documentos do ticker em background e remonta a árvore."""
-        painel = getattr(self, "_documents_panel", None)
-        aquisicao = getattr(self, "_aquisicao_documentos", None)
-        if painel is None:
-            return
-        if aquisicao is None or not ticker:
-            self._submeter_leitura_documentos(ticker)
-            return
-        background = getattr(self, "_background", None)
-        if background is None or background.tem_ativo(GRUPO):
-            return
-        painel.mostrar_carregando(ticker)
-        deduplicar = getattr(self, "_deduplicar_documentos", None)
-        estado = {"resultado": ResultadoAquisicao()}
-
-        def trabalho(ctx: object) -> None:
-            estado["resultado"] = executar_documentos(
-                ctx, aquisicao, ticker, self._data_referencia(), deduplicar
-            )
-
-        background.submit(
-            trabalho,
-            grupo=GRUPO,
-            politica=POLITICA,
-            cancelavel=True,
-            ao_progresso=lambda evento: self._presenter.on_progress(
-                evento.atual, evento.total, evento.detalhe
-            ),
-            ao_termino=lambda evento: self._finalizar_documentos(
-                ticker, evento, estado["resultado"]
-            ),
-        )
-
-    def _finalizar_documentos(
-        self: "ActionsMixin",
-        ticker: str,
-        evento: object,
-        resultado: ResultadoAquisicao,
-    ) -> None:
-        """Relê o catálogo e informa o desfecho honesto da aquisição."""
-        if ticker == self._ticker_apresentado():
-            self._submeter_leitura_documentos(ticker)
-        if evento.outcome is not Outcome.SUCESSO:
-            return
-        if resultado.falhas:
-            self._flash_status(
-                f"{resultado.falhas} documento(s) não baixado(s).", "⚠"
-            )
-        elif resultado.adquiridos:
-            self._flash_status("Documentos atualizados!")
-        else:
-            self._flash_status("Nenhum documento novo.", "ℹ")
 
     def _data_referencia(self: "ActionsMixin") -> date:
         """Retorna a data de referência selecionada, ou a data corrente."""

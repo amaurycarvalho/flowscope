@@ -26,6 +26,7 @@ from flowscope.application.document_preview import (
 )
 from flowscope.application.documentos.lote import gerar_resumo_do_lote
 from flowscope.application.finalizacao_extracao import ItemPendente
+from flowscope.application.renda_fixa.resultados import ResultadoInferencia
 from flowscope.application.resumo_documento import ResumoDocumento
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.fii import AvaliacaoGuidance
@@ -33,11 +34,12 @@ from flowscope.domain.llm import LLMRateLimitError
 
 logger = logging.getLogger("flowscope")
 
-#: Rótulos das duas fases do lote.
+#: Rótulos das fases do lote.
 FASE_PREPARAR = "⏳ Preparando textos"
 FASE_RESUMIR = "⏳ Resumindo documentos"
+FASE_INFERIR = "inferência de direitos e obrigações"
 
-_ROTULOS = {1: FASE_PREPARAR, 2: FASE_RESUMIR}
+_ROTULOS = {1: FASE_PREPARAR, 2: FASE_RESUMIR, 3: FASE_INFERIR}
 
 
 class ContextoLote(Protocol):
@@ -96,6 +98,7 @@ class ResultadoResumos:
     falhas: list[ItemPendente] = field(default_factory=list)
     protegidos: list[ItemPendente] = field(default_factory=list)
     apontadores: list[DocumentoArquivo] = field(default_factory=list)
+    inferencia: ResultadoInferencia = field(default_factory=ResultadoInferencia)
 
     @property
     def nao_conclusivos(self: ResultadoResumos) -> list[ItemPendente]:
@@ -138,19 +141,35 @@ class PainelDocumentos(Protocol):
         ...
 
 
+class InferenciaLote(Protocol):
+    """Contrato mínimo da fase de inferência acoplada ao lote."""
+
+    def executar(
+        self: InferenciaLote,
+        ticker: str,
+        progress: object | None = None,
+        cancelar: object | None = None,
+    ) -> ResultadoInferencia:
+        """Executa a inferência do ticker e devolve o desfecho próprio."""
+        ...
+
+
 def executar_resumos(
     ctx: ContextoLote,
     painel: PainelDocumentos,
     arquivos: list[DocumentoArquivo],
     continuar_em_erro: bool = False,
     senhas: dict[Path, str] | None = None,
+    inferencia: InferenciaLote | None = None,
+    ticker: str | None = None,
 ) -> ResultadoResumos:
-    """Prepara textos e gera resumos, devolvendo o desfecho classificado.
+    """Prepara textos, gera resumos e executa a inferência opcional.
 
     Quando ``continuar_em_erro`` é verdadeiro, uma falha por item é publicada e
     o lote prossegue com os demais; caso contrário, o lote é interrompido no
     primeiro erro. ``senhas`` associa caminho à senha pré-coletada de itens
-    protegidos, mantendo o worker não-interativo.
+    protegidos, mantendo o worker não-interativo. ``inferencia`` roda depois dos
+    resumos, com desfecho e progresso próprios, sem alterar as contagens.
     """
     resultado = ResultadoResumos()
     try:
@@ -160,6 +179,7 @@ def executar_resumos(
         if preparacao is None:
             return resultado
         _resumir(ctx, painel, preparacao, continuar_em_erro)
+        _inferir(ctx, inferencia, ticker or _ticker_de(arquivos), resultado)
     except OperacaoCancelada:
         logger.debug("Resumo em lote interrompido pelo usuário")
     return resultado
@@ -300,6 +320,43 @@ def _resumir(
         avaliacao = _avaliar_guidance(painel, arquivo, texto, resumo)
         ctx.resultado(valor=(resumo, avaliacao), dados=arquivo)
         _progresso(ctx, 2, indice, total)
+
+
+def _ticker_de(arquivos: list[DocumentoArquivo]) -> str | None:
+    """Deriva o ticker do primeiro arquivo do lote, quando houver."""
+    return arquivos[0].ticker if arquivos else None
+
+
+def _inferir(
+    ctx: ContextoLote,
+    inferencia: InferenciaLote | None,
+    ticker: str | None,
+    resultado: ResultadoResumos,
+) -> None:
+    """Executa a fase de inferência, preservando os resumos em qualquer falha."""
+    if inferencia is None or not ticker:
+        return
+
+    def progresso(atual: int, total: int, detalhe: str = "") -> None:
+        _progresso(ctx, 3, atual, total)
+
+    try:
+        resultado.inferencia = inferencia.executar(
+            ticker,
+            progress=progresso,
+            cancelar=ctx.raise_if_cancelled,
+        )
+    except OperacaoCancelada:
+        resultado.inferencia = ResultadoInferencia(
+            executada=True, cancelada=True
+        )
+    except Exception:  # falha isolada não invalida os resumos gravados
+        logger.warning(
+            "Falha na inferência de direitos e obrigações de %s",
+            ticker,
+            exc_info=True,
+        )
+        resultado.inferencia = ResultadoInferencia(executada=True, falhas=1)
 
 
 def _progresso(ctx: ContextoLote, fase: int, current: int, total: int) -> None:

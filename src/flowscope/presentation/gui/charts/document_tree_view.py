@@ -14,10 +14,29 @@ from flowscope.application.avaliar_guidance import CATEGORIA_RELATORIO
 from flowscope.application.documentos.document_guidance import (
     EntradaGuidanceArvore,
 )
+from flowscope.application.renda_fixa import (
+    render_adicionais,
+    render_agregado,
+    render_ausencia,
+    render_data_referencia,
+    render_documentos,
+    render_geral,
+    render_inferencia,
+    render_ltv_titulo,
+)
 from flowscope.domain.documents import (
     CatalogoTicker,
     CategoriaDocumentos,
     DocumentoArquivo,
+)
+from flowscope.domain.renda_fixa import (
+    ArvoreTitulos,
+    AusenciaFonte,
+    GalhoTipo,
+    InferenciaTitulo,
+    PapelTitulo,
+    TituloAgregado,
+    TituloRendaFixa,
 )
 from flowscope.presentation.gui.charts.document_grouping import (
     Agrupamento,
@@ -62,16 +81,24 @@ class DocumentTreeView:
         self.itens: dict[str, DocumentoArquivo] = {}
         self.grupos: dict[str, Agrupamento] = {}
         self.guidances: dict[str, EntradaGuidanceArvore] = {}
+        self.titulos: dict[str, object] = {}
+        self.nos_titulos: dict[str, str] = {}
         self.por_caminho: dict[Path, DocumentoArquivo] = {}
         self.nos_por_caminho: dict[Path, str] = {}
 
     def limpar(self: "DocumentTreeView") -> None:
         """Esvazia a árvore e os mapas de nós."""
-        self.itens.clear()
-        self.grupos.clear()
-        self.guidances.clear()
-        self.por_caminho.clear()
-        self.nos_por_caminho.clear()
+        for mapa in (
+            self.itens,
+            self.grupos,
+            self.guidances,
+            getattr(self, "titulos", None),
+            getattr(self, "nos_titulos", None),
+            self.por_caminho,
+            self.nos_por_caminho,
+        ):
+            if mapa is not None:
+                mapa.clear()
         filhos = self.tree.get_children()
         if filhos:
             self.tree.delete(*filhos)
@@ -80,6 +107,7 @@ class DocumentTreeView:
         self: "DocumentTreeView",
         catalogo: CatalogoTicker,
         guidances: Iterable[EntradaGuidanceArvore] = (),
+        titulos: ArvoreTitulos | None = None,
     ) -> None:
         """Insere a raiz do ticker com os ramos Guidance, Documentos e Direitos."""
         raiz = self.tree.insert("", "end", text=catalogo.ticker, open=True)
@@ -89,7 +117,7 @@ class DocumentTreeView:
         no_docs = self.tree.insert(raiz, "end", text=RAMO_DOCUMENTOS, open=False)
         self.grupos[no_docs] = Agrupamento("documentos", RAMO_DOCUMENTOS)
         self.popular_catalogo(no_docs, catalogo, abrir=False)
-        self._popular_direitos(raiz)
+        self._popular_direitos(raiz, titulos)
 
     def _popular_guidance(
         self: "DocumentTreeView",
@@ -117,13 +145,169 @@ class DocumentTreeView:
                     )
                     self.guidances[no_folha] = entrada
 
-    def _popular_direitos(self: "DocumentTreeView", raiz: str) -> None:
-        """Insere o ramo placeholder de Direitos e obrigações."""
+    def _popular_direitos(
+        self: "DocumentTreeView",
+        raiz: str,
+        titulos: ArvoreTitulos | None,
+    ) -> None:
+        """Insere o ramo de Direitos e obrigações, com títulos quando houver."""
         no_ramo = self.tree.insert(raiz, "end", text=RAMO_DIREITOS, open=False)
-        self.grupos[no_ramo] = Agrupamento("direitos_obrigacoes", RAMO_DIREITOS)
-        for tipo, titulo in (("direitos", "Direitos"), ("obrigacoes", "Obrigações")):
-            no_sub = self.tree.insert(no_ramo, "end", text=titulo, open=False)
-            self.grupos[no_sub] = Agrupamento(tipo, titulo)
+        self.grupos[no_ramo] = Agrupamento(
+            "direitos_obrigacoes", RAMO_DIREITOS, texto=_texto_ramo(titulos)
+        )
+        if titulos is None or titulos.vazio:
+            for tipo, titulo in (
+                ("direitos", "Direitos"),
+                ("obrigacoes", "Obrigações"),
+            ):
+                no_sub = self.tree.insert(no_ramo, "end", text=titulo, open=False)
+                self.grupos[no_sub] = Agrupamento(tipo, titulo)
+            return
+        self._inserir_data_referencia(no_ramo, titulos)
+        for galho, tipo in (
+            (titulos.obrigacoes, "obrigacoes"),
+            (titulos.direitos, "direitos"),
+        ):
+            self._inserir_papel(no_ramo, galho.papel, galho.tipos, tipo)
+
+    def _inserir_data_referencia(
+        self: "DocumentTreeView", no_ramo: str, titulos: ArvoreTitulos
+    ) -> None:
+        """Insere o nó de data de referência e proveniência das fontes."""
+        texto = render_data_referencia(
+            titulos.data_referencia, titulos.fontes
+        )
+        no = self.tree.insert(no_ramo, "end", text="data-referencia")
+        self.grupos[no] = Agrupamento(
+            "data_referencia", "data-referencia", texto=texto
+        )
+
+    def _inserir_papel(
+        self: "DocumentTreeView",
+        no_ramo: str,
+        papel: PapelTitulo,
+        tipos: tuple[GalhoTipo, ...],
+        tipo_grupo: str,
+    ) -> None:
+        """Insere o sub-ramo do papel e os seus tipos de título."""
+        no_papel = self.tree.insert(
+            no_ramo, "end", text=papel.rotulo, open=False
+        )
+        self.grupos[no_papel] = Agrupamento(
+            tipo_grupo, papel.rotulo, texto=_resumo_papel(papel, tipos)
+        )
+        if not tipos:
+            self._inserir_placeholder(no_papel, papel)
+            return
+        no_titulos = self.tree.insert(
+            no_papel, "end", text="Títulos", open=False
+        )
+        self.grupos[no_titulos] = Agrupamento(
+            "titulos", "Títulos", texto=_texto_tipos(papel, tipos)
+        )
+        for galho in tipos:
+            self._inserir_tipo(no_titulos, papel, galho)
+
+    def _inserir_placeholder(
+        self: "DocumentTreeView", no_papel: str, papel: PapelTitulo
+    ) -> None:
+        """Insere a indicação de ausência de dados de um papel vazio."""
+        mensagem = f"Sem dados de {papel.rotulo}."
+        no = self.tree.insert(no_papel, "end", text=mensagem)
+        self.grupos[no] = Agrupamento("placeholder", mensagem, texto=mensagem)
+
+    def _inserir_tipo(
+        self: "DocumentTreeView",
+        no_titulos: str,
+        papel: PapelTitulo,
+        galho: GalhoTipo,
+    ) -> None:
+        """Insere um tipo de título com os seus itens."""
+        no_tipo = self.tree.insert(
+            no_titulos, "end", text=galho.tipo.rotulo, open=False
+        )
+        chave = f"{papel.segmento}:{galho.tipo.segmento}"
+        self.grupos[no_tipo] = Agrupamento(
+            "titulo_tipo",
+            galho.tipo.rotulo,
+            chave=chave,
+            texto=_texto_tipo(galho),
+        )
+        for item in galho.itens:
+            self._inserir_item(no_tipo, papel, galho, item)
+
+    def _inserir_item(
+        self: "DocumentTreeView",
+        no_tipo: str,
+        papel: PapelTitulo,
+        galho: GalhoTipo,
+        item: object,
+    ) -> None:
+        """Insere um título individual, agregado ou ausência de fonte."""
+        if isinstance(item, TituloRendaFixa):
+            self._inserir_titulo(no_tipo, papel, galho, item)
+            return
+        if isinstance(item, InferenciaTitulo):
+            self._inserir_inferencia(no_tipo, papel, galho, item)
+            return
+        if isinstance(item, TituloAgregado):
+            no = self.tree.insert(no_tipo, "end", text=item.rotulo)
+            chave = f"{papel.segmento}:{galho.tipo.segmento}:agregado"
+            self.titulos[no] = item
+            self.nos_titulos[chave] = no
+            self.grupos[no] = Agrupamento(
+                "titulo_agregado", item.rotulo, chave=chave,
+                texto=render_agregado(item),
+            )
+            return
+        if isinstance(item, AusenciaFonte):
+            no = self.tree.insert(no_tipo, "end", text=item.rotulo)
+            chave = f"{papel.segmento}:{galho.tipo.segmento}:sem-fonte"
+            self.titulos[no] = item
+            self.nos_titulos[chave] = no
+            self.grupos[no] = Agrupamento(
+                "titulo_sem_fonte", item.rotulo, chave=chave,
+                texto=render_ausencia(item),
+            )
+
+    def _inserir_titulo(
+        self: "DocumentTreeView",
+        no_tipo: str,
+        papel: PapelTitulo,
+        galho: GalhoTipo,
+        item: TituloRendaFixa,
+    ) -> None:
+        """Insere um título individual e registra o nó no mapa de títulos."""
+        no = self.tree.insert(no_tipo, "end", text=item.nome_exibicao)
+        chave = f"{papel.segmento}:{galho.tipo.segmento}:{item.id}"
+        self.titulos[no] = item
+        self.nos_titulos[chave] = no
+        self.grupos[no] = Agrupamento(
+            "titulo_renda_fixa",
+            item.nome_exibicao,
+            chave=chave,
+            texto=_texto_titulo(item),
+        )
+
+    def _inserir_inferencia(
+        self: "DocumentTreeView",
+        no_tipo: str,
+        papel: PapelTitulo,
+        galho: GalhoTipo,
+        item: InferenciaTitulo,
+    ) -> None:
+        """Insere um item inferido com o rótulo explícito de proveniência."""
+        texto = f"{item.nome_exibicao} (inferido pela IA)"
+        no = self.tree.insert(no_tipo, "end", text=texto)
+        chave = f"{papel.segmento}:{galho.tipo.segmento}:{item.id}"
+        self.titulos[no] = item
+        self.nos_titulos[chave] = no
+        self.grupos[no] = Agrupamento(
+            "titulo_inferido",
+            texto,
+            chave=chave,
+            texto=render_inferencia(item),
+        )
 
     def popular_catalogo(
         self: "DocumentTreeView",
@@ -232,7 +416,89 @@ class DocumentTreeView:
             return None
         return self.itens.get(no)
 
+    def chave_selecionada(self: "DocumentTreeView") -> str | None:
+        """Retorna a chave semântica de um nó de título selecionado."""
+        no = self.selecionado()
+        if no is None:
+            return None
+        grupo = self.grupos.get(no)
+        return grupo.chave if grupo is not None else None
+
+    def focar_chave(self: "DocumentTreeView", chave: str) -> bool:
+        """Foca o nó de título com a chave semântica informada."""
+        no = self.nos_titulos.get(chave)
+        if no is None:
+            return False
+        self.expandir_ancestrais(no)
+        self.tree.selection_set(no)
+        self.tree.see(no)
+        return True
+
+
+def _texto_ramo(titulos: ArvoreTitulos | None) -> str:
+    """Resume o ramo de Direitos e obrigações para a pré-visualização."""
+    if titulos is None or titulos.vazio:
+        return "# Direitos e obrigações\n\nSem dados de Direitos e Obrigações."
+    linhas = ["# Direitos e obrigações", ""]
+    for papel, galho in (
+        (PapelTitulo.OBRIGACAO, titulos.obrigacoes),
+        (PapelTitulo.DIREITO, titulos.direitos),
+    ):
+        total = sum(len(tipo.itens) for tipo in galho.tipos)
+        linhas.append(f"- {papel.rotulo}: {total} item(ns)")
+    return "\n".join(linhas)
+
+
+def _texto_tipos(papel: PapelTitulo, tipos: tuple[GalhoTipo, ...]) -> str:
+    """Resume os tipos de um papel para a pré-visualização."""
+    linhas = [f"# {papel.rotulo} — Títulos", ""]
+    for galho in tipos:
+        linhas.append(f"- {galho.tipo.rotulo}: {len(galho.itens)} item(ns)")
+    return "\n".join(linhas)
+
+
+def _texto_tipo(galho: GalhoTipo) -> str:
+    """Lista os itens de um tipo com a data de referência disponível."""
+    linhas = [f"# {galho.tipo.rotulo}", ""]
+    for item in galho.itens:
+        nome = str(getattr(item, "nome_exibicao", getattr(item, "rotulo", "")))
+        data = getattr(item, "data_referencia", None)
+        sufixo = f" — {data.isoformat()}" if data is not None else ""
+        linhas.append(f"- {nome}{sufixo}")
+    return "\n".join(linhas)
+
+
+def _resumo_papel(papel: PapelTitulo, tipos: tuple[GalhoTipo, ...]) -> str | None:
+    """Resume os tipos e a quantidade de itens de um papel."""
+    if not tipos:
+        return None
+    linhas = [f"# {papel.rotulo}", ""]
+    for galho in tipos:
+        linhas.append(
+            f"- {galho.tipo.rotulo}: {len(galho.itens)} item(ns)"
+        )
+    return "\n".join(linhas)
+
+
+def _texto_titulo(item: TituloRendaFixa) -> str:
+    """Monta o Markdown de pré-visualização de um título individual."""
+    return "\n\n".join(
+        (
+            render_geral(item),
+            render_adicionais(item),
+            render_ltv_titulo(item),
+            render_documentos(item),
+        )
+    )
+
 
 def _chave_grupo(grupo: Agrupamento) -> tuple:
     """Deriva a chave semântica estável de um agrupamento."""
-    return (grupo.tipo, grupo.titulo, grupo.ano, grupo.mes, grupo.categoria)
+    return (
+        grupo.tipo,
+        grupo.titulo,
+        grupo.ano,
+        grupo.mes,
+        grupo.categoria,
+        grupo.chave,
+    )

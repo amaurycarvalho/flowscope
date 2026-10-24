@@ -31,6 +31,11 @@ from flowscope.application.fundamental_fallback import (
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.application.operation_guard import OperationGuard
+from flowscope.application.renda_fixa import (
+    AquisicaoTitulos,
+    ConsultarTitulosUseCase,
+    InferirDireitosObrigacoesUseCase,
+)
 from flowscope.application.use_cases import AnalyzeTickersUseCase
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMPort
@@ -40,20 +45,31 @@ from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.emprestimos import B3ShortInterestSource
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
+from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.b3.noticias_carga import AquisicaoNoticias
 from flowscope.infrastructure.b3.noticias_catalogo import NoticiasCatalog
 from flowscope.infrastructure.b3.noticias_vinculo import baixar_conteudo_vinculado
+from flowscope.infrastructure.b3.renda_fixa_documentos import (
+    criar_listador_documentos,
+)
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
 from flowscope.infrastructure.content_hashes import hash_de_caminho
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
+from flowscope.infrastructure.cvm.identity import resolver_identidade
 from flowscope.infrastructure.cvm.patrimonio import CvmMonthlyPatrimonioSource
+from flowscope.infrastructure.cvm.renda_fixa_cache import RepositorioTitulosJson
+from flowscope.infrastructure.cvm.renda_fixa_inferencias_cache import (
+    RepositorioInferenciasJson,
+)
+from flowscope.infrastructure.cvm.renda_fixa_source import CvmTitulosSource
 from flowscope.infrastructure.deduplicacao import (
     executar_housekeeping_documentos,
     executar_housekeeping_noticias,
 )
 from flowscope.infrastructure.document_catalog import DocumentCatalog
+from flowscope.infrastructure.feature_flags import feature_flag
 from flowscope.infrastructure.fii.b3_fundamental_provider import (
     B3FundamentalDataProvider,
 )
@@ -91,9 +107,11 @@ from flowscope.infrastructure.referencia import (
 __all__ = [
     "AdaptadoresDocumentos",
     "AdaptadoresNoticias",
+    "AdaptadoresRendaFixa",
     "Nucleo",
     "montar_adaptadores_documentos",
     "montar_adaptadores_noticias",
+    "montar_adaptadores_renda_fixa",
     "montar_nucleo",
     "registrar_carga_fundamentos",
     "registrar_last_fundamentals",
@@ -131,6 +149,17 @@ class AdaptadoresNoticias:
     baixar_vinculo: Callable[..., ExtracaoTexto | None]
     llm_factory: Callable[[], LLMPort]
     llm_available: Callable[[], bool]
+
+
+@dataclass(frozen=True)
+class AdaptadoresRendaFixa:
+    """Adaptadores, casos de uso e caminhos dos títulos de renda fixa."""
+
+    aquisicao: AquisicaoTitulos
+    consulta: ConsultarTitulosUseCase
+    inferencias: RepositorioInferenciasJson
+    inferencia: InferirDireitosObrigacoesUseCase
+    paths: Callable[[list[str]], list[Path]]
 
 
 def resolvedor_chave_documento(base: Path) -> Callable[[DocumentoArquivo], str]:
@@ -225,6 +254,77 @@ def montar_adaptadores_noticias(
     )
 
 
+def montar_adaptadores_renda_fixa(
+    cache_dir: Path | None = None,
+    *,
+    cache: CacheManager | None = None,
+    fund_repository: B3FundRepository | None = None,
+    acionistas: CvmAcionistasSource | None = None,
+    catalogo: DocumentCatalog | None = None,
+) -> AdaptadoresRendaFixa:
+    """Monta o grafo de aquisição, consulta e inferência dos títulos."""
+    gerenciador = cache or CacheManager(cache_dir=cache_dir)
+    base = Path(cache_dir) if cache_dir is not None else gerenciador.get_cache_dir()
+    repositorio = RepositorioTitulosJson(base)
+    inferencias = RepositorioInferenciasJson(base)
+    consulta = ConsultarTitulosUseCase(repositorio)
+    catalogo = catalogo or DocumentCatalog(cache_dir=base)
+    fonte = CvmTitulosSource(
+        enriquecer_securit=feature_flag(
+            "renda_fixa.enriquecer_securit", True
+        )
+    )
+    acionistas = acionistas or CvmAcionistasSource(cache=gerenciador)
+    fundos = fund_repository or B3FundRepository()
+
+    def resolver(ticker: str, reference_date: date) -> tuple[str, str] | None:
+        """Resolve o CNPJ e o tipo do ativo do ticker."""
+        identidade = resolver_identidade(ticker, fundos)
+        if identidade is not None:
+            return identidade.cnpj_fundo_classe, "fii"
+        cnpj = acionistas.obter_cnpj(ticker, reference_date)
+        return (cnpj, "acao") if cnpj else None
+
+    def paths(tickers: list[str]) -> list[Path]:
+        """Resolve os arquivos de cache para a assinatura do estado."""
+        caminhos = []
+        for ticker in tickers:
+            for resolver_caminho in (
+                repositorio.caminho,
+                inferencias.caminho,
+            ):
+                try:
+                    caminhos.append(resolver_caminho(ticker))
+                except ValueError:
+                    continue
+        return caminhos
+
+    inferencia = InferirDireitosObrigacoesUseCase(
+        catalogo,
+        repositorio,
+        inferencias,
+        llm_factory=lambda: create_llm_provider(load_llm_config()),
+        llm_available=llm_configurada,
+        flag_habilitada=lambda: feature_flag(
+            "renda_fixa.inferir_no_resumo", False
+        ),
+        base_dir=base,
+    )
+
+    return AdaptadoresRendaFixa(
+        aquisicao=AquisicaoTitulos(
+            repositorio,
+            fonte,
+            resolver,
+            criar_listador_documentos(B3FundosClient(cache=gerenciador)),
+        ),
+        consulta=consulta,
+        inferencias=inferencias,
+        inferencia=inferencia,
+        paths=paths,
+    )
+
+
 @dataclass(frozen=True)
 class Nucleo:
     """Grafo de dependências neutro reusado por GUI, CLI e MCP."""
@@ -233,6 +333,7 @@ class Nucleo:
     base: Path
     documentos: AdaptadoresDocumentos
     noticias: AdaptadoresNoticias
+    renda_fixa: AdaptadoresRendaFixa
     aquisicao_documentos: AquisicaoDocumentos
     aquisicao_noticias: AquisicaoNoticias
     deduplicar_documentos: Callable[[str, object], None]
@@ -279,6 +380,13 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         patrimonio_source=CvmMonthlyPatrimonioSource(),
     )
     fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
+    renda_fixa = montar_adaptadores_renda_fixa(
+        base,
+        cache=cache,
+        fund_repository=b3_fund_repository,
+        acionistas=fundamental_acionistas_provider,
+        catalogo=documentos.catalogo,
+    )
     fundamental_provider = CompositeFundamentalProvider(
         [
             FundamentusFundamentalDataProvider(FundamentusProvider(cache=cache)),
@@ -292,6 +400,7 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         base=base,
         documentos=documentos,
         noticias=noticias,
+        renda_fixa=renda_fixa,
         aquisicao_documentos=AquisicaoDocumentos(cache=cache),
         aquisicao_noticias=AquisicaoNoticias(cache=cache),
         deduplicar_documentos=lambda ticker, token: executar_housekeeping_documentos(

@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Callable, Iterable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from flowscope.application.chat.arvore import ArvoreConhecimento, ErroNavegacao
 
@@ -48,6 +48,7 @@ def _mapa_arvore(arvore: ArvoreConhecimento) -> str:
     fundamentos = _caminhos_fundamentos(arvore)
     if fundamentos:
         linhas.append("- " + ", ".join(fundamentos))
+    linhas.extend(_caminhos_direitos(arvore))
     for caminho, descricao in _RAMOS_CANONICOS:
         if arvore.existe(caminho):
             linhas.append(f"- {descricao}")
@@ -75,6 +76,45 @@ def _caminhos_fundamentos(arvore: ArvoreConhecimento) -> list[str]:
     return [texto for caminho, texto in segmentos if arvore.existe(caminho)]
 
 
+def _caminhos_direitos(arvore: ArvoreConhecimento) -> list[str]:
+    """Anuncia apenas os caminhos de direitos e obrigações presentes na árvore."""
+    raiz = "/direitos-obrigacoes"
+    if not arvore.existe(raiz):
+        return []
+    caminhos: list[str] = []
+    if arvore.existe(f"{raiz}/data-referencia"):
+        caminhos.append(f"{raiz}/data-referencia")
+    for papel in ("obrigacoes", "direitos"):
+        caminho_papel = f"{raiz}/{papel}"
+        if arvore.existe(caminho_papel):
+            caminhos.append(caminho_papel)
+        base = f"{caminho_papel}/titulos"
+        for tipo in _segmentos(arvore, base):
+            caminho_tipo = f"{base}/{tipo}"
+            caminhos.extend(_caminhos_tipo(arvore, caminho_tipo))
+    if not caminhos:
+        caminhos.extend((f"{raiz}/direitos", f"{raiz}/obrigacoes"))
+    return ["- " + ", ".join(caminhos)] if caminhos else []
+
+
+def _caminhos_tipo(arvore: ArvoreConhecimento, caminho_tipo: str) -> list[str]:
+    """Lista os formatos de caminho presentes em um tipo de título."""
+    caminhos: list[str] = []
+    if arvore.existe(f"{caminho_tipo}/agregado/resumo"):
+        caminhos.append(f"{caminho_tipo}/agregado/resumo")
+    if arvore.existe(f"{caminho_tipo}/sem-fonte"):
+        caminhos.append(f"{caminho_tipo}/sem-fonte")
+    for item in _segmentos(arvore, caminho_tipo):
+        base = f"{caminho_tipo}/{item}"
+        if arvore.existe(f"{base}/geral"):
+            caminhos.extend(
+                f"{base}/{sufixo}"
+                for sufixo in ("geral", "adicionais", "ltv", "documentos")
+                if arvore.existe(f"{base}/{sufixo}")
+            )
+    return caminhos or [f"{caminho_tipo}/<id>/..."]
+
+
 #: Ramos canônicos e a descrição dos seus formatos de caminho.
 _RAMOS_CANONICOS = (
     (
@@ -88,10 +128,6 @@ _RAMOS_CANONICOS = (
     (
         "/guidance",
         "/guidance/<ticker>/indice, /guidance/<ticker>/<ano>/<mes>/<guidance>",
-    ),
-    (
-        "/direitos-obrigacoes",
-        "/direitos-obrigacoes/direitos, /direitos-obrigacoes/obrigacoes",
     ),
     (
         "/noticias",
@@ -184,6 +220,14 @@ def _nomes(arvore: ArvoreConhecimento, caminho: str) -> list[str]:
     """Lista os nomes dos filhos de um ramo, tolerando ramo ausente ou folha."""
     try:
         return sorted(no.nome for no in arvore.listar(caminho))
+    except ErroNavegacao:
+        return []
+
+
+def _segmentos(arvore: ArvoreConhecimento, caminho: str) -> list[str]:
+    """Lista os segmentos finais dos filhos de um ramo, tolerando ausência."""
+    try:
+        return sorted(PurePosixPath(no.caminho).name for no in arvore.listar(caminho))
     except ErroNavegacao:
         return []
 
@@ -293,6 +337,13 @@ def _playbook(arvore: ArvoreConhecimento) -> str:
         linhas.append(
             "- Objetivo/funcionalidades do aplicativo -> /flowscope/meta e "
             "/flowscope/abas/<aba>/subabas/<sub>"
+        )
+    if arvore.existe("/direitos-obrigacoes"):
+        linhas.append(
+            "- Títulos emitidos/mantidos, LTV, garantias, situação e documentos "
+            "relacionados -> /direitos-obrigacoes/<obrigacoes|direitos>/titulos/"
+            "<tipo>/<id>/{geral,adicionais,ltv,documentos}, "
+            ".../agregado/resumo e .../sem-fonte"
         )
     return "\n".join(linhas) if len(linhas) > 1 else ""
 

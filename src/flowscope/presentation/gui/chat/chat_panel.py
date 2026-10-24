@@ -47,6 +47,7 @@ from flowscope.application.documentos.catalogo import (
 )
 from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.llm_config_port import LLMConfigPort
+from flowscope.application.renda_fixa import ConsultarTitulosUseCase
 from flowscope.domain.chat import ChatMessage, ChatSession
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
@@ -102,6 +103,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         noticias_catalog: object | None = None,
         guidance_service: GuidanceService | None = None,
         guidance_paths: Callable[[list[str]], list[Path]] | None = None,
+        titulos: ConsultarTitulosUseCase | None = None,
+        inferencias: object | None = None,
+        titulos_paths: Callable[[list[str]], list[Path]] | None = None,
         config_callback: Callable[[], None] | None = None,
         config_port: LLMConfigPort | None = None,
         model_changed_callback: Callable[[], None] | None = None,
@@ -124,6 +128,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._noticias_catalog = noticias_catalog
         self._guidance_service = guidance_service
         self._guidance_paths = guidance_paths
+        self._titulos, self._inferencias = titulos, inferencias
+        self._titulos_paths = titulos_paths
         self._config_callback = config_callback
         self._config_port = config_port
         self._model_changed_callback = model_changed_callback
@@ -337,7 +343,10 @@ class ChatPanel(EnvioMixin, tk.Frame):
                 data_referencia=self._data_referencia(),
             ),
             FonteDocumentos(catalog=self._catalogo, rg_chaves=self._rg_chaves),
-            FonteDireitosObrigacoes(),
+            FonteDireitosObrigacoes(
+                getattr(self, "_titulos", None), watchlist,
+                inferencias=getattr(self, "_inferencias", None),
+            ),
         ]
         if self._noticias_catalog is not None:
             fontes.append(FonteNoticias(catalog=self._noticias_catalog))
@@ -347,9 +356,11 @@ class ChatPanel(EnvioMixin, tk.Frame):
                     watchlist, self._guidance_service, self._catalogo
                 )
             )
-        return MontarArvore(fontes).montar(
-            caminhos=self._caminhos_guidance(watchlist), watchlist=watchlist
-        )
+        caminhos = [
+            *self._caminhos_guidance(watchlist),
+            *self._caminhos_titulos(watchlist),
+        ]
+        return MontarArvore(fontes).montar(caminhos=caminhos, watchlist=watchlist)
 
     def _rg_chaves(self: "ChatPanel", ticker: str) -> set[str]:
         """Resolve as chaves dos RGs mensais avaliados (ledger de guidance).
@@ -385,6 +396,20 @@ class ChatPanel(EnvioMixin, tk.Frame):
         except Exception:
             logger.warning(
                 "Falha ao resolver os caminhos do ledger de guidance",
+                exc_info=True,
+            )
+            return []
+
+    def _caminhos_titulos(self: "ChatPanel", watchlist: list[str]) -> list[Path]:
+        """Resolve os caminhos do cache de títulos para a assinatura de estado."""
+        resolver = getattr(self, "_titulos_paths", None)
+        if resolver is None:
+            return []
+        try:
+            return list(resolver(watchlist))
+        except Exception:
+            logger.warning(
+                "Falha ao resolver os caminhos do cache de títulos",
                 exc_info=True,
             )
             return []

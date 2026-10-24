@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
+## [1.5.1] - 2026-10-18
+
+### [facilitar-atualizacoes-container](openspec/changes/archive/2026-10-18-facilitar-atualizacoes-container) Atualizações sem `--data` usam a data de hoje e `resumir documentos` sem ticker processa toda a watchlist, simplificando o entrypoint do container MCP
+
+#### Changed
+
+- `flowscope atualizar fundamentos`, `flowscope atualizar documentos` e `flowscope atualizar noticias` passam a usar a **data de hoje** quando `--data` não for informado, em vez da data de referência resolvida. `--data` continua tendo precedência.
+- `flowscope resumir documentos` passa a aceitar o ticker como argumento **opcional**: sem ticker, processa os pendentes de todos os tickers de `last_tickers` em uma única execução, com checagem única de LLM e sem abortar o lote quando um ticker falha.
+- O resultado de `resumir documentos` sem ticker passa a ser `{"resultados": {<ticker>: <desfecho>}, "falha": <bool>}`, com falha por ticker em `{"erro": {"motivo": "falha_resumo", "detalhe": "..."}}`, `falha` sempre presente e código de saída 1 quando algum ticker falha; com ticker explícito, o formato atual é preservado.
+- O entrypoint de container passa a usar `flowscope resumir documentos` sem ticker, sem percorrer a watchlist em shell; `FLOWSCOPE_REFERENCE_DATE` torna-se override opcional e, quando ausente, as atualizações usam a data de hoje no fuso do container.
+- Documentação de `docs/misc/mcp.md` e `README.md` atualizada para o uso do MCP em container, as atualizações opcionais na inicialização, o novo default de data e o resumo de toda a watchlist.
+
 ## [1.5.0] — 2026-10-16
 
 ### [cli-acoes-atualizacao](openspec/changes/archive/2026-10-16-cli-acoes-atualizacao) Subcomandos CLI de ação para agendamento externo (carregar watchlist, atualizar fundamentos/documentos/notícias e resumir pendentes), marcador de data de referência dos fundamentos e escrita concorrente segura
@@ -2237,6 +2249,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal button padding (`ipadx=8`, `ipady=2`)
 - Subtle toolbar border (GROOVE) around action buttons
 - Consistent use of `ttk` themed widgets where possible
+
+[1.5.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.5.1
 
 [1.5.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.5.0
 [1.4.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.4.1

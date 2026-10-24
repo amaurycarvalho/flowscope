@@ -7,12 +7,13 @@ extração e a geração de resumo ocorrem em thread de trabalho, com descarte d
 resultados obsoletos, e o campo de texto é somente-leitura copiável.
 """
 
+import inspect
 import logging
 import queue
 import tkinter as tk
 from collections.abc import Callable
 from pathlib import Path
-from tkinter import simpledialog, ttk
+from tkinter import simpledialog
 
 from flowscope.application.document_text_port import DocumentTextStore
 from flowscope.application.documentos.catalogo import (
@@ -29,8 +30,13 @@ from flowscope.application.documentos.document_summary_port import (
     DocumentSummaryStore,
 )
 from flowscope.application.llm_config_port import LLMConfigPort
+from flowscope.application.renda_fixa import (
+    ConsultarTitulosUseCase,
+    InferenciasRepository,
+)
 from flowscope.domain.documents import CatalogoTicker, DocumentoArquivo
 from flowscope.domain.llm import LLMPort
+from flowscope.domain.renda_fixa import ArvoreTitulos
 from flowscope.presentation.gui.charts.document_flow_mixin import (
     CARREGANDO,
     GERANDO_RESUMO,
@@ -38,19 +44,27 @@ from flowscope.presentation.gui.charts.document_flow_mixin import (
     DocumentFlowMixin,
 )
 from flowscope.presentation.gui.charts.document_grouping import Agrupamento
-from flowscope.presentation.gui.charts.document_tree_view import DocumentTreeView
+from flowscope.presentation.gui.charts.document_panel_build_mixin import (
+    DocumentPanelBuildMixin,
+)
+from flowscope.presentation.gui.charts.document_panel_support import (
+    resolver_summary,
+    resolver_text_store,
+    resolver_use_case,
+)
+from flowscope.presentation.gui.charts.document_titulos_mixin import (
+    DocumentTitulosMixin,
+)
 from flowscope.presentation.gui.document_actions import abrir_no_aplicativo
-from flowscope.presentation.gui.llm.model_selector import SeletorModelo
-from flowscope.presentation.gui.widgets.mousewheel import vincular_roda
-from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
-from flowscope.presentation.gui.widgets.tooltip import ToolTip
 
 logger = logging.getLogger("flowscope")
 
 __all__ = ["CARREGANDO", "GERANDO_RESUMO", "DocumentTreePanel"]
 
 
-class DocumentTreePanel(DocumentFlowMixin):
+class DocumentTreePanel(
+    DocumentFlowMixin, DocumentTitulosMixin, DocumentPanelBuildMixin
+):
     """Árvore de documentos em cache com pré-visualização e resumo sob demanda."""
 
     def __init__(
@@ -63,6 +77,9 @@ class DocumentTreePanel(DocumentFlowMixin):
         summary_store: DocumentSummaryStore | None = None,
         text_store: DocumentTextStore | None = None,
         guidance_service: GuidanceService | None = None,
+        titulos_use_case: ConsultarTitulosUseCase | None = None,
+        inferencias: InferenciasRepository | None = None,
+        inferencia_pendente_callback: Callable[[str], bool] | None = None,
         llm_factory: Callable[[], LLMPort] | None = None,
         llm_available: Callable[[], bool] | None = None,
         open_callback: Callable[[Path], None] | None = None,
@@ -81,12 +98,18 @@ class DocumentTreePanel(DocumentFlowMixin):
         O caso de uso do catálogo e as portas de resumo/texto chegam por
         injeção; o painel não constrói adaptadores de infraestrutura.
         """
-        self._catalogo_uc = self._resolver_use_case(catalogo_use_case, catalog)
-        self._summary = self._resolver_summary(
+        self._catalogo_uc = resolver_use_case(catalogo_use_case, catalog)
+        self._summary = resolver_summary(
             summary_service, summary_store, catalog, llm_factory, llm_available
         )
-        self._text_store = self._resolver_text_store(text_store, catalog)
+        self._text_store = resolver_text_store(text_store, catalog)
         self._guidance = guidance_service
+        self._titulos_uc = titulos_use_case
+        self._inferencias = inferencias
+        self._inferencia_pendente_callback = inferencia_pendente_callback
+        self._inferencia_pendente = False
+        self._titulos_itens: dict[str, object] = {}
+        self._titulos_arvore: ArvoreTitulos | None = None
         self._open_callback = open_callback or abrir_no_aplicativo
         self._status_callback = status_callback
         self._acquire_callback = acquire_callback
@@ -116,139 +139,10 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._build_container()
         self.reset()
 
-    @staticmethod
-    def _resolver_use_case(
-        catalogo_use_case: ConsultarCatalogoUseCase | None,
-        catalog: CatalogoDocumentos | None,
-    ) -> ConsultarCatalogoUseCase:
-        """Resolve o caso de uso do catálogo, construindo-o do repositório."""
-        if catalogo_use_case is not None:
-            return catalogo_use_case
-        if catalog is None:
-            raise ValueError(
-                "DocumentTreePanel exige 'catalogo_use_case' ou 'catalog'."
-            )
-        return ConsultarCatalogoUseCase(catalog)
-
-    @staticmethod
-    def _resolver_summary(
-        summary_service: DocumentSummaryService | None,
-        summary_store: DocumentSummaryStore | None,
-        catalog: CatalogoDocumentos | None,
-        llm_factory: Callable[[], LLMPort] | None,
-        llm_available: Callable[[], bool] | None,
-    ) -> DocumentSummaryService:
-        """Resolve o serviço de resumo, injetado ou montado do repositório."""
-        if summary_service is not None:
-            return summary_service
-        store = summary_store
-        base = None
-        if catalog is not None:
-            store = store or catalog.summary_store
-            base = catalog.base_dir
-        if store is None or base is None:
-            raise ValueError(
-                "DocumentTreePanel exige 'summary_service' ou "
-                "'summary_store' com a raiz de cache."
-            )
-        return DocumentSummaryService(store, base, llm_factory, llm_available)
-
-    @staticmethod
-    def _resolver_text_store(
-        text_store: DocumentTextStore | None,
-        catalog: CatalogoDocumentos | None,
-    ) -> DocumentTextStore:
-        """Resolve o store de texto, injetado ou obtido do repositório."""
-        if text_store is not None:
-            return text_store
-        if catalog is None:
-            raise ValueError(
-                "DocumentTreePanel exige 'text_store' ou 'catalog'."
-            )
-        return catalog.text_store
-
-    def _build_toolbar(self: "DocumentTreePanel") -> None:
-        """Constrói a barra com os controles de atualizar e abrir."""
-        barra = tk.Frame(self.frame)
-        barra.pack(side=tk.TOP, fill=tk.X, pady=(0, 4))
-        self._refresh_btn = ttk.Button(
-            barra, text="Atualizar", command=self._on_refresh
-        )
-        self._refresh_btn.pack(side=tk.LEFT, padx=2)
-        self._open_btn = ttk.Button(
-            barra, text="Abrir documento", command=self._on_open_selected,
-            state=tk.DISABLED,
-        )
-        self._open_btn.pack(side=tk.LEFT, padx=2)
-        self._model_selector = SeletorModelo(
-            barra,
-            config_port=self._config_port,
-            on_config=self._on_configurar,
-            on_changed=self._on_model_changed,
-        )
-        self._model_selector.pack(side=tk.LEFT, padx=2)
-        self._resumir_btn = ttk.Button(
-            barra, text="Resumir pendentes", command=self._on_resumir,
-            state=tk.DISABLED,
-        )
-        self._resumir_btn.pack(side=tk.LEFT, padx=2)
-
-        ToolTip(self._refresh_btn, "Atualizar a lista de documentos em cache")
-        ToolTip(self._open_btn, "Abrir o documento selecionado no aplicativo padrão")
-        ToolTip(self._resumir_btn, "Resumir os documentos pendentes com a I.A.")
-
-    def _build_container(self: "DocumentTreePanel") -> None:
-        """Constrói a área de conteúdo com a árvore e a pré-visualização."""
-        self._container = tk.Frame(self.frame)
-        self._container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
-
-        self._content = tk.PanedWindow(
-            self._container, orient=tk.HORIZONTAL,
-            sashrelief=tk.RAISED, sashwidth=6,
-        )
-        self._view = DocumentTreeView(self._content)
-        self._tree = self._view.tree
-        self._itens = self._view.itens
-        self._grupos = self._view.grupos
-        self._por_caminho = self._view.por_caminho
-        # O mapa de folhas de guidance é vivo na view: acompanha limpezas e
-        # remontagens sem cópia.
-        self._guidances_folhas = self._view.guidances
-        self._tree.bind("<<TreeviewSelect>>", self._on_select)
-        self._tree.bind("<Button-1>", self._on_click)
-        self._tree.bind("<Double-1>", self._on_double_click)
-        self._tree.bind("<Return>", self._on_double_click)
-        self._content.add(self._view.frame, stretch="always")
-        self._content.add(self._build_preview(), stretch="always")
-        self._content.pack(fill=tk.BOTH, expand=True)
-
-        self._empty_label = tk.Label(
-            self._container, text="", fg="gray", justify=tk.CENTER,
-        )
-
-    def _build_preview(self: "DocumentTreePanel") -> tk.Frame:
-        """Constrói a caixa de texto somente-leitura da pré-visualização."""
-        quadro = tk.Frame(self._content)
-        self._preview = ReadonlyText(
-            quadro, wrap=tk.WORD, padx=8, pady=8,
-        )
-        self._preview_scrollbar = ttk.Scrollbar(
-            quadro, orient=tk.VERTICAL, command=self._preview.yview
-        )
-        self._preview.configure(yscrollcommand=self._preview_scrollbar.set)
-        self._preview_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self._preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        vincular_roda(self._preview, self._preview)
-        return quadro
-
     def carregar_catalogo(
         self: "DocumentTreePanel", ticker: str | None
     ) -> CatalogoTicker | None:
-        """Lê o catálogo do ticker no cache local.
-
-        Não toca em widgets: é seguro executar na thread de trabalho do job de
-        leitura. Retorna ``None`` quando não há ticker apresentado.
-        """
+        """Lê o catálogo do ticker no cache local, sem tocar em widgets."""
         if not ticker:
             return None
         return self._catalogo_uc.executar(ticker)
@@ -260,57 +154,77 @@ class DocumentTreePanel(DocumentFlowMixin):
         pendentes_guidance: frozenset[Path] | None = None,
         guidances: list[EntradaGuidanceArvore] | None = None,
         sem_texto: frozenset[Path] = frozenset(),
+        titulos: ArvoreTitulos | None = None,
     ) -> None:
-        """Aplica o catálogo lido, remontando a árvore na thread do Tk.
-
-        Preserva a expansão e o arquivo selecionado nas exibições seguintes do
-        mesmo ticker; na primeira exibição (e a cada troca) a árvore fica
-        expandida apenas até o primeiro nível. ``sem_texto`` é o conjunto de
-        caminhos com ausência definitiva de texto, resolvido no worker.
-        """
-        # A primeira exibição de um ticker na sessão monta só o primeiro nível;
-        # as seguintes reaproveitam o estado de expansão e a seleção correntes.
+        """Aplica o catálogo lido, remontando a árvore na thread do Tk."""
         primeira = ticker not in self._tickers_expandidos
         abertos = None if primeira else self._view.estado_expansao()
         selecionado = self._caminho_selecionado()
+        chave = getattr(self._view, "chave_selecionada", lambda: None)()
         self._current_ticker = ticker
-        # A limpeza de nós não mexe na pré-visualização: ela só é descartada
-        # quando não há arquivo a reselecionar, para não perder o contexto.
+        self._titulos_arvore = titulos
         self._limpar_nos()
         self._guidance_pendentes = frozenset(pendentes_guidance or ())
         self._guidances = list(guidances or ())
         self._sem_texto = frozenset(sem_texto)
         if ticker:
             self._tickers_expandidos.add(ticker)
-        restaurado = False
-        if not ticker:
-            self._show_empty("Selecione um ticker")
-        elif catalogo is None or catalogo.vazio:
-            self._show_empty(f"Sem documentos em cache para {ticker}")
-        else:
-            # Remonta os três ramos do ticker e reaplica o estado do usuário.
-            self._show_content()
-            self._popular(catalogo)
-            if abertos is not None:
-                self._view.restaurar_expansao(abertos)
-            restaurado = self._restaurar_selecao(selecionado)
+        restaurado = self._montar_ou_vazio(
+            ticker, catalogo, titulos, abertos, selecionado, chave
+        )
         if not restaurado:
             self._limpar_preview()
         self.refresh_resumir_button()
 
+    def _montar_ou_vazio(
+        self: "DocumentTreePanel",
+        ticker: str | None,
+        catalogo: CatalogoTicker | None,
+        titulos: ArvoreTitulos | None,
+        abertos: set[tuple] | None,
+        selecionado: Path | None,
+        chave: str | None,
+    ) -> bool:
+        """Monta a árvore ou exibe o estado vazio aplicável."""
+        if not ticker:
+            self._show_empty("Selecione um ticker")
+            return False
+        if catalogo is None or catalogo.vazio:
+            if titulos is None or titulos.vazio:
+                self._show_empty(f"Sem documentos em cache para {ticker}")
+                return False
+            catalogo = CatalogoTicker(ticker)
+        return self._reconstruir(
+            catalogo, abertos, selecionado, chave
+        )
+
+    def _reconstruir(
+        self: "DocumentTreePanel",
+        catalogo: CatalogoTicker,
+        abertos: set[tuple] | None,
+        selecionado: Path | None,
+        chave: str | None,
+    ) -> bool:
+        """Remonta a árvore e reaplica expansão e seleção preservadas."""
+        self._show_content()
+        self._popular(catalogo)
+        if abertos is not None:
+            self._view.restaurar_expansao(abertos)
+        return self._restaurar_selecao(selecionado, chave)
+
     def update(
         self: "DocumentTreePanel", ticker: str | None
     ) -> None:
-        """Recarrega o catálogo de leitura do ticker e remonta a árvore.
-
-        A exibição é somente-leitura: nenhuma aquisição é acionada aqui. A
-        aquisição de novos documentos ocorre apenas pelo botão "Atualizar".
-        """
+        """Recarrega o catálogo de leitura do ticker e remonta a árvore."""
         catalogo = self.carregar_catalogo(ticker)
         pendentes, guidances = self.carregar_guidance(ticker, catalogo)
         sem_texto = self.carregar_ausencia_catalogo(catalogo)
+        titulos = self.carregar_titulos(ticker)
+        self.definir_inferencia_pendente(
+            self.carregar_inferencia_pendente(ticker)
+        )
         self.aplicar_catalogo(
-            ticker, catalogo, pendentes, guidances, sem_texto
+            ticker, catalogo, pendentes, guidances, sem_texto, titulos
         )
 
     def all_buttons(self: "DocumentTreePanel") -> list[tk.Widget]:
@@ -362,6 +276,7 @@ class DocumentTreePanel(DocumentFlowMixin):
         self._req_id += 1
         self._view.limpar()
         self._catalogo_atual = None
+        self._titulos_itens = {}
         self._guidances = []
         self._guidance_pendentes = frozenset()
 
@@ -376,7 +291,13 @@ class DocumentTreePanel(DocumentFlowMixin):
     ) -> None:
         """Insere a hierarquia do catálogo na árvore."""
         self._catalogo_atual = catalogo
-        self._view.popular(catalogo, self._guidances)
+        self._titulos_itens = getattr(self._view, "titulos", {})
+        if "titulos" in inspect.signature(self._view.popular).parameters:
+            self._view.popular(
+                catalogo, self._guidances, titulos=self._titulos_arvore
+            )
+        else:
+            self._view.popular(catalogo, self._guidances)
 
     def _caminho_selecionado(self: "DocumentTreePanel") -> Path | None:
         """Retorna o caminho do arquivo selecionado, ou ``None``."""
@@ -384,11 +305,16 @@ class DocumentTreePanel(DocumentFlowMixin):
         return arquivo.caminho if arquivo is not None else None
 
     def _restaurar_selecao(
-        self: "DocumentTreePanel", caminho: Path | None
+        self: "DocumentTreePanel",
+        caminho: Path | None,
+        chave: str | None = None,
     ) -> bool:
-        """Reseleciona o arquivo e reagenda a pré-visualização, se ainda existir."""
+        """Reseleciona o arquivo ou título e recompõe a pré-visualização."""
         if caminho is None or not self._view.focar_caminho(caminho):
-            return False
+            if chave is None or not self._view.focar_chave(chave):
+                return False
+            self._on_select()
+            return True
         arquivo = self._arquivo_selecionado()
         if arquivo is not None:
             self._agendar_preview(arquivo)

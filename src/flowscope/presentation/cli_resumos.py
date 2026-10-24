@@ -265,6 +265,12 @@ def _erro_resumo(excecao: BaseException) -> dict:
     return {"erro": {"motivo": "falha_resumo", "detalhe": str(excecao)}}
 
 
+def _inferencia_de(nucleo: object) -> object | None:
+    """Retorna o caso de uso de inferência do núcleo, quando disponível."""
+    renda_fixa = getattr(nucleo, "renda_fixa", None)
+    return getattr(renda_fixa, "inferencia", None)
+
+
 def _processar_ticker(
     nucleo: object, painel: _PainelHeadless, ticker: str
 ) -> tuple[dict, bool]:
@@ -273,13 +279,41 @@ def _processar_ticker(
     progresso_stderr(f"Resumos de {ticker}...")
     try:
         pendentes = _pendentes_documentos(nucleo, ticker)
-        resultado = executar_resumos(contexto, painel, pendentes)
+        resultado = _executar_lote(
+            nucleo, contexto, painel, pendentes, ticker
+        )
     except Exception as exc:
         logger.warning("Falha ao resumir documentos de %s", ticker, exc_info=True)
         return _erro_resumo(exc), True
     if contexto.erros:
         return _erro_resumo(contexto.erros[0]), True
-    return _resumo_json(resultado, len(pendentes)), False
+    return _resumo_json(resultado, len(pendentes)), _inferencia_falhou(resultado)
+
+
+def _executar_lote(
+    nucleo: object,
+    contexto: object,
+    painel: object,
+    pendentes: list,
+    ticker: str,
+) -> object:
+    """Executa o lote com a inferência quando o núcleo a disponibiliza."""
+    inferencia = _inferencia_de(nucleo)
+    if inferencia is None:
+        return executar_resumos(contexto, painel, pendentes)
+    return executar_resumos(
+        contexto,
+        painel,
+        pendentes,
+        inferencia=inferencia,
+        ticker=ticker,
+    )
+
+
+def _inferencia_falhou(resultado: object) -> bool:
+    """Indica se a fase de inferência registrou alguma falha."""
+    inferencia = getattr(resultado, "inferencia", None)
+    return bool(getattr(inferencia, "falhas", 0))
 
 
 def _normalizar_tickers(tickers: list[str]) -> list[str]:
@@ -316,8 +350,13 @@ def resumir_documentos(ticker: str | None = None) -> dict:
     )
     if ticker is not None:
         pendentes = _pendentes_documentos(nucleo, alvos[0])
-        resultado = executar_resumos(_ContextoHeadless(), painel, pendentes)
-        return _resumo_json(resultado, len(pendentes))
+        resultado = _executar_lote(
+            nucleo, _ContextoHeadless(), painel, pendentes, alvos[0]
+        )
+        desfecho = _resumo_json(resultado, len(pendentes))
+        if _inferencia_falhou(resultado):
+            desfecho["falha"] = True
+        return desfecho
     desfechos = {alvo: _processar_ticker(nucleo, painel, alvo) for alvo in alvos}
     return {
         "resultados": {alvo: desfecho for alvo, (desfecho, _) in desfechos.items()},
@@ -370,10 +409,18 @@ def _precisa_noticia(nucleo: object, arquivo: DocumentoArquivo, textos: dict) ->
 
 
 def _resumo_json(resultado: object, total: int) -> dict:
-    """Serializa o desfecho do lote de resumos."""
-    return {
+    """Serializa o desfecho do lote, preservando as chaves existentes."""
+    dados = {
         "pendentes": total,
         "sem_texto": resultado.sem_texto,
         "nao_conclusivos": len(resultado.nao_conclusivos),
         "apontadores": len(resultado.apontadores),
     }
+    inferencia = getattr(resultado, "inferencia", None)
+    if inferencia is not None and (
+        getattr(inferencia, "executada", False)
+        or getattr(inferencia, "falhas", 0)
+        or getattr(inferencia, "cancelada", False)
+    ):
+        dados["inferencia"] = inferencia.para_dict()
+    return dados

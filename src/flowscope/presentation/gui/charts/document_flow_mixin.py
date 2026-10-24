@@ -208,6 +208,7 @@ class DocumentFlowMixin(DocumentFinalizacaoMixin):
             and bool(
                 self.documentos_sem_resumo()
                 or self.documentos_pendentes_guidance()
+                or getattr(self, "_inferencia_pendente", False)
             )
         )
 
@@ -223,6 +224,9 @@ class DocumentFlowMixin(DocumentFinalizacaoMixin):
             self._set_preview_text(
                 render_guidance(getattr(self, "_guidances", []), grupo)
             )
+            return
+        if grupo.texto:
+            self._set_preview_text(grupo.texto)
             return
         if grupo.tipo in ("direitos", "obrigacoes", "direitos_obrigacoes"):
             self._set_preview_text(mensagem_placeholder(grupo.tipo))
