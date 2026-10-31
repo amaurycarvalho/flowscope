@@ -23,6 +23,7 @@ empréstimos da B3 e o download de PDFs do visualizador da CVM.
 | B3 — Programas | Programas de aquisição de ações | `https://sistemaswebb3-listados.b3.com.br/stockProgramProxy/...` | JSON em Base64 | JSON |
 | B3 — Plantão de Notícias | Notícias e avisos aos acionistas | `https://sistemasweb.b3.com.br/PlantaoNoticias/Noticias/...` | query string | JSON / HTML |
 | B3 — Regulatório | Censuras e condições excepcionais | `https://www.b3.com.br/pt_br/regulacao/...` | — | HTML |
+| ANBIMA — Feriados | Calendário anual de dias úteis | `https://www.anbima.com.br/feriados/fer_nacionais/AAAA.asp` | `GET` | HTML |
 | FNET | Documentos de fundos | `https://fnet.bmfbovespa.com.br/fnet/publico/...` | query string | HTML / PDF |
 | CVM — Dados Abertos | Informes, DFIN, FRE e FCA | `https://dados.cvm.gov.br/dados/...` | `GET`/`HEAD` condicional | ZIP / CSV |
 | CVM — RAD | PDFs de documentos regulatórios | `https://www.rad.cvm.gov.br/ENETWEB/...` | `POST` JSON | JSON com PDF em Base64 |
@@ -1135,6 +1136,8 @@ Além dos caches por data, a aplicação mantém:
 | `<cache>/cvm/<DATASET>/<ANO>/` | ZIPs/CSVs brutos, hash e metadados da CVM |
 | `<cache>/direitos-obrigacoes/<TICKER>.json` | Títulos de renda fixa normalizados, com assinatura e proveniência |
 | `<cache>/direitos-obrigacoes/inferencias/<TICKER>.json` | Direitos e obrigações inferidos dos resumos, com proveniência e versão do prompt |
+| `<cache>/calendar/holidays/<ANO>.json` | Feriados anuais normalizados, TTL e metadados de origem |
+| `<cache>/calendar/locks/calendar.lock` | Lock dedicado da gravação do calendário |
 
 O catálogo de notícias e a árvore de conhecimento do Chat AI/MCP leem apenas
 esse cache local; a atualização de novos itens acontece por ação explícita de
@@ -1181,4 +1184,53 @@ disponível para cada campo é usado.
 | Fundamentus | `infrastructure/fii/fundamentus/` |
 | LLM | `infrastructure/llm/` |
 | GitHub Releases | `infrastructure/releases/client.py` |
+| ANBIMA — feriados | `infrastructure/calendar/` |
 | Cache local | `infrastructure/cache.py`, `conditional_cache.py` |
+
+
+---
+
+## 12. ANBIMA — calendário de feriados
+
+**Módulos:** `infrastructure/calendar/source.py`, `source_parser.py`, `cache.py`,
+`storage.py`, `housekeeping.py` e `factory.py`.
+
+```text
+GET https://www.anbima.com.br/feriados/fer_nacionais/{AAAA}.asp
+```
+
+A página é decodificada em `iso-8859-1` e lida por `HTMLParser`. Cada linha da
+tabela deve conter data (`d/m/aa`), dia da semana e nome. O parser:
+
+- normaliza a data para `AAAA-MM-DD`;
+- remove tags, entidades HTML e acentos do nome;
+- valida o dia da semana declarado contra a data calculada;
+- invalida o ano inteiro se qualquer linha for inválida (sem calendário parcial);
+- acrescenta 24/12 e 31/12 como recesso local da B3 quando forem dia de semana
+  e não constarem da página.
+
+**Cache:** um JSON por ano em `<cache>/calendar/holidays/<ANO>.json`, com
+`schema_version`, `year`, `source`, `source_url`, `fetched_at`, `ttl_seconds`,
+`published` e a lista de feriados (`date`, `weekday`, `name`, `source`). Anos
+passados não expiram automaticamente; o ano corrente e anos futuros usam TTL de
+24h; ano futuro ainda não publicado grava marcador negativo de 6h. A escrita é
+atômica e usa o lock dedicado `calendar.lock`; leituras somente de cache não
+alteram arquivos.
+
+**Fallback:** falha da ANBIMA com cache anterior usa o cache e marca o estado
+`defasado`; sem cache, aplica apenas sábado/domingo e expõe
+`calendario_indisponivel`, sem bloquear a carga principal. O housekeeping remove
+anos fora de `[ano_corrente - 3, ano_corrente + 1]`, preservando o ano da
+operação corrente.
+
+**Resolução:** a data de referência retrocede para o dia útil anterior quando
+cai em fim de semana ou feriado; a amostragem de mercado continua ajustando cada
+alvo para o próximo dia útil. A resolução informa `data_solicitada`,
+`data_resolvida`, `ajustada`, `motivo`, `feriado`, `origem` e o estado do
+calendário.
+
+**Superfícies:** `flowscope consultar feriados --ano AAAA`, `flowscope exportar
+feriados --ano AAAA --formato csv|json`, `flowscope atualizar feriados
+[--ano AAAA]...`, as tools MCP `calendario_listar`, `calendario_classificar` e
+`calendario_exportar`, e a aba **Feriados** da GUI. As leituras MCP/CLI são
+somente-cache; a atualização forçada ocorre na CLI, na GUI ou nas cargas.

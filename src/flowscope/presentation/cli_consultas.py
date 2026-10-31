@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import date
 from pathlib import Path
 
 from flowscope.domain.structured import DocumentoProvento
@@ -33,6 +33,18 @@ def adicionar_subcomandos_consulta(subcomandos: argparse._SubParsersAction) -> N
         help="Arquivo texto com lista de tickers (um por linha)",
     )
     _opcao_saida(vwap)
+    feriados = recursos_exportar.add_parser(
+        "feriados", help="Exportar o calendário de feriados em CSV ou JSON"
+    )
+    feriados.add_argument(
+        "--ano", type=int, required=True, metavar="AAAA",
+        help="Ano do calendário",
+    )
+    feriados.add_argument(
+        "--formato", choices=("csv", "json"), required=True,
+        help="Formato de exportação",
+    )
+    _opcao_saida(feriados)
 
     consultar = subcomandos.add_parser(
         "consultar", help="Consultar dados remotos da B3"
@@ -82,6 +94,14 @@ def adicionar_subcomandos_consulta(subcomandos: argparse._SubParsersAction) -> N
         help="Extrair censuras públicas e condições excepcionais da B3",
     )
     _opcao_saida(regulacao)
+    feriados = recursos.add_parser(
+        "feriados", help="Consultar o calendário local de feriados"
+    )
+    feriados.add_argument(
+        "--ano", type=int, required=True, metavar="AAAA",
+        help="Ano do calendário",
+    )
+    _opcao_saida(feriados)
 
 
 def _parser_datas(*, obrigatorias: bool) -> argparse.ArgumentParser:
@@ -118,6 +138,8 @@ def executar_exportar(args: argparse.Namespace) -> None:
     """Executa um subcomando de exportação de dados calculados localmente."""
     if args.recurso == "vwap":
         _exportar_vwap(args)
+    elif args.recurso == "feriados":
+        _exportar_feriados(args)
 
 
 def _exportar_vwap(args: argparse.Namespace) -> None:
@@ -125,15 +147,43 @@ def _exportar_vwap(args: argparse.Namespace) -> None:
     from flowscope.application.use_cases import ExportVWAPUseCase
     from flowscope.infrastructure.b3.client import B3Client
     from flowscope.infrastructure.b3.repository import B3DataRepository
+    from flowscope.infrastructure.calendar import build_calendar_services
 
     ticker_filter = _load_tickers(args.tickers) if args.tickers else None
-    repo = B3DataRepository(B3Client())
-    ref_date = datetime.now(timezone.utc).date()
+    calendar = build_calendar_services()
+    ref_date = date.fromisoformat(
+        calendar.service.resolve_reference(date.today()).data_resolvida
+    )
+    repo = B3DataRepository(
+        B3Client(business_day=calendar.lookup),
+        business_day=calendar.lookup,
+    )
     content = ExportVWAPUseCase(repo).execute(ref_date, ticker_filter=ticker_filter)
 
     saida = args.saida or f"vwap_{ref_date}.csv"
     Path(saida).write_text(content, encoding="utf-8")
     print(f"Arquivo exportado: {saida}")
+
+
+def _exportar_feriados(args: argparse.Namespace) -> None:
+    """Exporta o calendário de feriados sem criar arquivo sem ``--saida``."""
+    from flowscope.infrastructure.calendar import build_calendar_services
+
+    service = build_calendar_services().service
+    conteudo = service.exportar_ano(args.ano, args.formato)
+    if args.saida:
+        Path(args.saida).write_text(conteudo, encoding="utf-8")
+    else:
+        print(conteudo, end="")
+
+
+def consultar_feriados(args: argparse.Namespace) -> dict:
+    """Consulta o calendário local de feriados, sem acessar a rede."""
+    from flowscope.infrastructure.calendar import build_calendar_services
+
+    payload = build_calendar_services().service.listar_ano(args.ano)
+    _emitir_json(payload, args.saida)
+    return payload
 
 
 def executar_consultar(args: argparse.Namespace) -> None:
@@ -144,6 +194,8 @@ def executar_consultar(args: argparse.Namespace) -> None:
         consultar_fatos(args)
     elif args.recurso == "noticias":
         consultar_noticias(args)
+    elif args.recurso == "feriados":
+        consultar_feriados(args)
     else:
         consultar_regulacao(args)
 

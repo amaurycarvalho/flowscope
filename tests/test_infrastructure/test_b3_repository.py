@@ -12,6 +12,7 @@ from flowscope.application.cancellation import (
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.repository import B3DataRepository
+from tests.support_calendar import FakeBusinessDayLookup
 from flowscope.infrastructure.cache import CacheManager
 
 
@@ -239,8 +240,9 @@ class TestCancelamentoFetchTrades:
 class TestDiaNaoUtil:
     @responses.activate
     def test_feriado_nao_requisita_nem_loga_erro(self, tmp_path, caplog):
-        cliente = B3Client(cache=CacheManager(cache_dir=tmp_path))
-        repo = B3DataRepository(client=cliente)
+        lookup = FakeBusinessDayLookup([date(2026, 1, 1)])
+        cliente = B3Client(cache=CacheManager(cache_dir=tmp_path), business_day=lookup)
+        repo = B3DataRepository(client=cliente, business_day=lookup)
         with caplog.at_level(logging.WARNING, logger="flowscope"):
             trades = repo.fetch_trades([date(2026, 1, 1)])
         assert trades == []

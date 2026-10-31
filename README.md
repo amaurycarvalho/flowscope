@@ -25,6 +25,7 @@ Desenvolvido em Python, oferece interface gráfica (GUI) e linha de comando (CLI
   - **Evolução dos Fundamentos:** small multiples (oito mini-gráficos) com a série histórica do cache do ticker — Cotação, VP/Cota, P/VP, Dividend Yield, Último dividendo, Nº de cotistas, Nº de cotas e Shorts% — com datas em dia/mês/ano (`DD/MM/AA`) e tooltip de data e valor ao passar o mouse sobre cada ponto.
   - **Evolução da Dominância**, **Amplitude de Preço** e **Fluxo Financeiro**.
   - **Lista de Documentos:** árvore do ticker com os ramos **Guidance** (entradas de distribuição dos Relatórios Gerenciais), **Documentos** (avisos aos acionistas, informes mensais e documentos relevantes) e **Direitos e obrigações** (títulos de renda fixa emitidos e mantidos, com agregados e ausência explícita de fonte), com pré-visualização textual e abertura no aplicativo padrão. O botão "Atualizar" adquire documentos e títulos no mesmo job, com etapas distinguíveis.
+- **Feriados:** aba de topo com árvore ano → mês → dia dos feriados nacionais obtidos da ANBIMA, texto somente leitura e atualização em segundo plano a partir do cache local.
 - **Resumo de documentos com I.A. (opcional):** ao selecionar um documento, o FlowScopeBR usa uma LLM para gerar um resumo curto (até 280 caracteres) e um longo (até 1.500 caracteres); os resumos são persistidos em cache e reaproveitados, e a lista de documentos exibe o resumo curto de cada item.
 - **Resumo de notícias com I.A. (opcional):** na sub-aba "Notícias", o mesmo serviço de resumo gera resumos curto e longo para cada item, persistidos; "Resumir pendentes" processa o lote em segundo plano tolerando falhas por item.
 - **Chat com I.A. (opcional):** a aba de topo **Chat AI**, única e sempre visível, responde perguntas em linguagem natural navegando uma **árvore de conhecimento** montada a partir do estado local — conhecimento do próprio FlowScopeBR, fundamentos da watchlist, documentos, guidance, direitos/obrigações (títulos individuais, agregados e `sem-fonte`) e notícias/informações regulatórias em cache. A LLM identifica o ticker referido na pergunta e percorre a árvore por um protocolo JSON determinístico (`listar`, `obter`, `contar`, `existe`, `buscar`, `buscar_semantico` e `resetar_navegacao`), com manifesto estável cacheável (teto de 4.000 tokens), histórico de no máximo 10 mensagens/8.000 caracteres e até 10 ciclos de navegação. A leitura é estritamente do cache local (nunca resume, extrai ou baixa durante a conversa), há confirmação do custo de turnos pesados, seletor de modelo no cabeçalho, contador de tokens na barra de status, botão "Copiar chat" e cancelamento do envio em andamento. O "Enviar" só habilita com a LLM configurada e fundamentos carregados. Sem RAG vetorial (a busca semântica responde `indice_indisponivel`; a indexação vetorial é a evolução separada `llm-chat-rag`).
@@ -71,6 +72,9 @@ grava em arquivo):
 ./flowscope-linux consultar fatos PETR4 --categoria 4
 ./flowscope-linux consultar noticias --palavra PETROBRAS
 ./flowscope-linux consultar regulacao --saida regulacao.json
+./flowscope-linux consultar feriados --ano 2026
+./flowscope-linux exportar feriados --ano 2026 --formato csv
+./flowscope-linux exportar feriados --ano 2026 --formato json --saida feriados.json
 ```
 
 Ações de atualização headless, para agendamento externo (cron, systemd, CI). A
@@ -86,6 +90,8 @@ precedência:
 ./flowscope-linux atualizar documentos PETR4
 ./flowscope-linux atualizar documentos          # itera a watchlist carregada
 ./flowscope-linux atualizar noticias
+./flowscope-linux atualizar feriados                 # ano corrente local
+./flowscope-linux atualizar feriados --ano 2026 --ano 2027
 ./flowscope-linux resumir documentos PETR4
 ./flowscope-linux resumir documentos            # processa toda a watchlist
 ./flowscope-linux resumir noticias

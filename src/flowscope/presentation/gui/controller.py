@@ -1,7 +1,8 @@
 """Controlador da interface gráfica do FlowScope."""
 
-from datetime import datetime, timezone
+from datetime import date
 
+from flowscope.application.calendar.service import CalendarService
 from flowscope.application.load_portfolio_use_case import (
     LoadIndexPortfolioUseCase,
 )
@@ -39,6 +40,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         fundamental_short_interest_provider: object | None = None,
         fundamental_mercado_factory: object | None = None,
         background: object | None = None,
+        calendar: CalendarService | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -61,10 +63,18 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         )
         self._fundamental_mercado_factory = fundamental_mercado_factory
         self._background = background
+        self._calendar = calendar
 
     def on_today(self: "FlowScopeController") -> None:
-        """Carrega os dados para a data atual."""
-        self._presenter._gui._date_entry.set_date(datetime.now(timezone.utc).date())
+        """Carrega os dados para a data atual, já resolvida quando possível."""
+        hoje = date.today()
+        if self._calendar is not None:
+            try:
+                resolucao = self._calendar.resolve_business_day(hoje.isoformat())
+                hoje = date.fromisoformat(resolucao.data_resolvida)
+            except Exception:
+                pass
+        self._presenter._gui._date_entry.set_date(hoje)
         self.on_load_data()
 
     def on_ticker_edit(self: "FlowScopeController") -> None:

@@ -697,11 +697,15 @@ class TestAssinaturaTitulos:
         return painel
 
     def test_assinatura_muda_quando_cache_de_titulos_muda(self, tmp_path):
+        import os
+
         caminho = tmp_path / "direitos-obrigacoes" / "PETR4.json"
         caminho.parent.mkdir(parents=True)
         caminho.write_text("{}", encoding="utf-8")
         painel = self._painel(caminho)
         antes = painel.montar_arvore({}, ["PETR4"]).assinatura
         caminho.write_text('{"x": 1}', encoding="utf-8")
+        stat = caminho.stat()
+        os.utime(caminho, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
         depois = painel.montar_arvore({}, ["PETR4"]).assinatura
         assert antes != depois

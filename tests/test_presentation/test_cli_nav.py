@@ -256,7 +256,7 @@ class TestSubcomandoMcp:
         chamadas: list = []
         monkeypatch.setattr(
             "flowscope.presentation.navegacao.executar_servidor",
-            lambda core: chamadas.append(core),
+            lambda core, calendar=None: chamadas.append(core),
         )
         monkeypatch.setattr(cli, "montar_core_navegacao", lambda reference_date=None: "tree")
         cli.iniciar_mcp()
@@ -274,7 +274,7 @@ class TestSubcomandoMcp:
         )
         monkeypatch.setattr(
             "flowscope.presentation.navegacao.executar_servidor",
-            lambda core: eventos.append(("serve", core)),
+            lambda core, calendar=None: eventos.append(("serve", core)),
         )
         monkeypatch.setattr(cli, "montar_core_navegacao", lambda reference_date=None: "tree")
         cli.iniciar_mcp("carteira.txt", date(2026, 10, 14))
@@ -295,7 +295,7 @@ class TestSubcomandoMcp:
         monkeypatch.setattr(cli_acoes, "carregar_watchlist", falha)
         monkeypatch.setattr(
             "flowscope.presentation.navegacao.executar_servidor",
-            lambda core: serviu.append(core),
+            lambda core, calendar=None: serviu.append(core),
         )
         with pytest.raises(SystemExit) as exc:
             cli.iniciar_mcp("nao.txt", None)

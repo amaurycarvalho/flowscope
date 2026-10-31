@@ -11,7 +11,7 @@ import logging
 import queue
 import tkinter as tk
 from collections.abc import Callable
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from tkinter import simpledialog, ttk
 
@@ -65,8 +65,8 @@ __all__ = ["CARREGANDO", "GERANDO_RESUMO", "NoticiasPanel"]
 
 
 def _hoje() -> date:
-    """Retorna a data corrente em UTC, usada como período padrão."""
-    return datetime.now(timezone.utc).date()
+    """Retorna a data corrente no fuso local, usada como período padrão."""
+    return date.today()
 
 
 class NoticiasPanel(DocumentFlowMixin):

@@ -294,3 +294,63 @@ class TestWiringGuidance:
             )
 
         assert caso.call_args.kwargs["guidance_store"] == "GUIDANCE_STORE"
+
+
+class TestOnTodayFusoLocal:
+    def test_on_today_usa_data_local(self):
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        guard = MagicMock()
+        guard.acquire.return_value = _mock_context(False)
+        controller = _make_controller(presenter=presenter, guard=guard)
+        with patch("flowscope.presentation.gui.controller.date") as fake_date:
+            fake_date.today.return_value = date(2026, 10, 31)
+            controller.on_today()
+        view._date_entry.set_date.assert_called_once_with(date(2026, 10, 31))
+
+    def test_on_today_resolve_fim_de_semana_com_cache(self):
+        from types import SimpleNamespace
+
+        class _Calendar:
+            def resolve_business_day(self, value):
+                return SimpleNamespace(data_resolvida="2026-10-30")
+
+        view = MagicMock()
+        presenter = FlowScopePresenter(view)
+        guard = MagicMock()
+        guard.acquire.return_value = _mock_context(False)
+        controller = _make_controller(
+            presenter=presenter, guard=guard, calendar=_Calendar()
+        )
+        with patch("flowscope.presentation.gui.controller.date") as fake_date:
+            fake_date.today.return_value = date(2026, 10, 31)
+            fake_date.fromisoformat = date.fromisoformat
+            controller.on_today()
+        view._date_entry.set_date.assert_called_once_with(date(2026, 10, 30))
+
+
+class TestAtualizarFundamentosFeriado:
+    def test_refresh_resolve_referencia_e_atualiza_dateentry(self):
+        from types import SimpleNamespace
+
+        class _Calendar:
+            def resolve_reference(self, value):
+                return SimpleNamespace(
+                    data_resolvida="2026-10-30",
+                    calendario_estado="ok",
+                    as_dict=lambda: {"data_solicitada": "2026-10-31"},
+                )
+
+        presenter = MagicMock()
+        presenter.get_current_tickers.return_value = ["HGBS11"]
+        presenter.get_reference_date.return_value = date(2026, 10, 31)
+        presenter._gui._current_data = {"HGBS11": {"daily_data": []}}
+        controller = _make_controller(
+            presenter=presenter, fundamental_repo=object(), calendar=_Calendar()
+        )
+
+        with patch.object(controller, "_iniciar_analise_fundamental") as iniciar:
+            controller.on_atualizar_fundamentos()
+
+        assert iniciar.call_args.args[1] == date(2026, 10, 30)
+        presenter._gui._date_entry.set_date.assert_called_with(date(2026, 10, 30))

@@ -81,10 +81,11 @@ Quando a versão solicitada não é suportada, o servidor responde com
 
 ## 3. Catálogo de tools `nav_*`
 
-`tools/list` devolve as oito tools em **ordem alfabética determinística**, cada
-uma com `title`, descrição, `inputSchema` e as anotações `readOnlyHint`,
-`destructiveHint`, `idempotentHint` e `openWorldHint` (todas somente-leitura:
-`true`, `false`, `true`, `false`).
+`tools/list` devolve as oito tools `nav_*` e as três tools `calendario_*` em
+**ordem alfabética determinística**, cada uma com `title`, descrição,
+`inputSchema` e as anotações `readOnlyHint`, `destructiveHint`,
+`idempotentHint` e `openWorldHint` (todas somente-leitura: `true`, `false`,
+`true`, `false`).
 
 | Tool                   | Operação           | Argumentos obrigatórios | Opcionais             |
 | ---------------------- | ------------------ | ----------------------- | --------------------- |
@@ -96,13 +97,21 @@ uma com `title`, descrição, `inputSchema` e as anotações `readOnlyHint`,
 | `nav_buscar_semantico` | `buscar_semantico` | `caminho`, `consulta`   | `max`, `cursor`       |
 | `nav_data_referencia`  | `data_referencia`  | —                       | —                     |
 | `nav_manifesto`        | `manifesto`        | —                       | —                     |
+| `calendario_listar`    | `calendario_listar` | `ano`                  | —                     |
+| `calendario_classificar` | `calendario_classificar` | `data`          | —                     |
+| `calendario_exportar`  | `calendario_exportar` | `ano`, `formato`     | —                     |
 
 `nav_data_referencia` devolve a data de referência resolvida da última carga de
 fundamentos (marcador `last_fundamentals`, com fallback para `last_date`); sem
 data registrada, devolve `{"data": null}` **sem `isError`**. É somente-leitura:
 não consulta a B3/CVM, não baixa, não extrai e não escreve estado.
 
-Limites dos schemas: `nav_obter.limite` entre 1 e 12.000 (padrão 12.000);
+As tools `calendario_*` são somente-cache: não consultam a ANBIMA, não gravam
+arquivos e devolvem `calendario_indisponivel` quando o ano não está no cache.
+`calendario_exportar` devolve o CSV/JSON em `structuredContent.conteudo`.
+
+Limites dos schemas: `calendario_classificar.data` no formato `AAAA-MM-DD`;
+`calendario_exportar.formato` em `csv|json`. `nav_obter.limite` entre 1 e 12.000 (padrão 12.000);
 `nav_buscar.max` entre 1 e 50 (padrão 50); `nav_buscar_semantico.max` entre 1 e
 20 (padrão 10). Argumentos que violem o schema são recusados com erro
 estruturado de validação, sem executar a operação.

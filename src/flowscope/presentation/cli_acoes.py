@@ -73,6 +73,21 @@ def _montar_caso_fundamental(
     )
 
 
+def _resolver_referencia(
+    nucleo: object, data: date
+) -> tuple[date, dict | None]:
+    """Resolve a data de referência pelo calendário, sem bloquear em falha."""
+    calendar = getattr(nucleo, "calendar", None)
+    service = getattr(calendar, "service", None)
+    if service is None:
+        return data, None
+    try:
+        resolucao = service.resolve_reference(data)
+    except Exception:
+        return data, None
+    return date.fromisoformat(resolucao.data_resolvida), resolucao.as_dict()
+
+
 def atualizar_fundamentos(data: date, nucleo: object | None = None) -> dict:
     """Atualiza os fundamentos da watchlist para a data informada.
 
@@ -89,6 +104,7 @@ def atualizar_fundamentos(data: date, nucleo: object | None = None) -> dict:
     watchlist = last_tickers()
     if not watchlist:
         raise AcaoError("watchlist_ausente", "last_tickers vazio ou ausente")
+    data, resolucao = _resolver_referencia(nucleo, data)
     progresso_stderr(f"Análise de mercado para {data.isoformat()}...")
     resultado = nucleo.analyze.execute(data, watchlist, config=SamplingConfig())
     daily = {
@@ -103,9 +119,30 @@ def atualizar_fundamentos(data: date, nucleo: object | None = None) -> dict:
     registrar_carga_fundamentos(data)
     return {
         "data": data.isoformat(),
+        "data_solicitada": (
+            resolucao["data_solicitada"] if resolucao else data.isoformat()
+        ),
+        "resolucao": resolucao,
         "tickers": watchlist,
         "processados": len(analises),
     }
+
+
+def atualizar_feriados(anos: list[int] | None = None) -> dict:
+    """Revalida anos do calendário na ANBIMA e devolve o estado de cada um."""
+    from flowscope.application.calendar.service import ESTADO_INDISPONIVEL
+    from flowscope.infrastructure.calendar import build_calendar_services
+
+    service = build_calendar_services().service
+    alvos = sorted(set(anos or [date.today().year]))
+    resultados: dict[str, object] = {}
+    falha = False
+    for ano in alvos:
+        estado = service.ensure_year(ano, force=True)
+        resultados[str(ano)] = service.listar_ano(ano)
+        if estado == ESTADO_INDISPONIVEL:
+            falha = True
+    return {"anos": resultados, "falha": falha}
 
 
 def _desfecho_documentos(resultado: object) -> str:
@@ -125,8 +162,16 @@ def atualizar_documentos(data: date, ticker: str | None = None) -> dict:
     nucleo = montar_nucleo()
     watchlist = last_tickers()
     alvos = _resolver_alvos(watchlist, ticker)
+    data, resolucao = _resolver_referencia(nucleo, data)
     resultados = _adquirir_por_ticker(nucleo, alvos, data)
-    resposta: dict = {"data": data.isoformat(), "resultados": resultados}
+    resposta: dict = {
+        "data": data.isoformat(),
+        "data_solicitada": (
+            resolucao["data_solicitada"] if resolucao else data.isoformat()
+        ),
+        "resolucao": resolucao,
+        "resultados": resultados,
+    }
     if any(desfecho == "falha" for desfecho in resultados.values()):
         resposta["falha"] = True
     return resposta
@@ -167,11 +212,19 @@ def atualizar_noticias(data: date) -> dict:
     from flowscope.presentation.composicao import montar_nucleo
 
     nucleo = montar_nucleo()
+    data, resolucao = _resolver_referencia(nucleo, data)
     progresso_stderr(f"Notícias para {data.isoformat()}...")
     aquisicao: AquisicaoNoticias = nucleo.aquisicao_noticias
     adquiridos = aquisicao.adquirir(data)
     nucleo.deduplicar_noticias(None)
-    return {"data": data.isoformat(), "adquiridos": adquiridos or 0}
+    return {
+        "data": data.isoformat(),
+        "data_solicitada": (
+            resolucao["data_solicitada"] if resolucao else data.isoformat()
+        ),
+        "resolucao": resolucao,
+        "adquiridos": adquiridos or 0,
+    }
 
 
 def adicionar_subcomandos_acao(subcomandos: argparse._SubParsersAction) -> None:
@@ -194,6 +247,14 @@ def adicionar_subcomandos_acao(subcomandos: argparse._SubParsersAction) -> None:
     noticias = recursos_atualizar.add_parser("noticias", help="Atualizar notícias")
     _opcao_data(noticias)
     _opcoes_saida(noticias)
+    feriados = recursos_atualizar.add_parser(
+        "feriados", help="Atualizar o calendário de feriados"
+    )
+    feriados.add_argument(
+        "--ano", type=int, action="append", metavar="AAAA",
+        help="Ano a revalidar (repetível; padrão: ano corrente local)",
+    )
+    _opcoes_saida(feriados)
 
     resumir = subcomandos.add_parser("resumir", help="Resumir pendentes")
     recursos_resumir = resumir.add_subparsers(dest="recurso")
@@ -265,6 +326,8 @@ def _despachar_atualizar(args: argparse.Namespace) -> dict:
         return atualizar_fundamentos(_data_efetiva(args.data))
     if args.recurso == "documentos":
         return atualizar_documentos(_data_efetiva(args.data), args.ticker)
+    if args.recurso == "feriados":
+        return atualizar_feriados(getattr(args, "ano", None))
     return atualizar_noticias(_data_efetiva(args.data))
 
 

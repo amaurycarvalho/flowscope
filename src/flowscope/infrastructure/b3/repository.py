@@ -4,6 +4,10 @@ import logging
 from collections.abc import Callable, Iterable
 from datetime import date
 
+from flowscope.application.calendar.ports import (
+    BusinessDayLookup,
+    WeekendBusinessDayLookup,
+)
 from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
 from flowscope.domain.entities import TradeDay
@@ -24,9 +28,14 @@ def _checar(cancel_token: CancellationToken | None) -> None:
 class B3DataRepository(DataRepository):
     """Implementa o port DataRepository buscando dados na B3 com cache local."""
 
-    def __init__(self: "B3DataRepository", client: B3Client | None = None) -> None:
-        """Inicializa o repositório com o cliente B3 informado ou um novo padrão."""
-        self._client = client or B3Client()
+    def __init__(
+        self: "B3DataRepository",
+        client: B3Client | None = None,
+        business_day: BusinessDayLookup | None = None,
+    ) -> None:
+        """Inicializa o repositório com o cliente B3 e o lookup de dia útil."""
+        self._business_day = business_day or WeekendBusinessDayLookup()
+        self._client = client or B3Client(business_day=self._business_day)
 
     def get_available_dates(self: "B3DataRepository", ref_date: date,
                             config: SamplingConfig | None = None) -> list[date]:
@@ -37,14 +46,23 @@ class B3DataRepository(DataRepository):
         })
 
         if config is None:
-            return fibonacci_dates(ref_date)
+            return fibonacci_dates(ref_date, business_day=self._business_day)
 
         has_data = self._has_data if config.method in _SAMPLING_METHODS else None
 
         if config.period_days == 30 and config.method == "fibonacci":
-            return fibonacci_dates(ref_date, has_data=has_data)
+            return fibonacci_dates(
+                ref_date,
+                has_data=has_data,
+                business_day=self._business_day,
+            )
 
-        return resolve_dates(ref_date, config, has_data=has_data)
+        return resolve_dates(
+            ref_date,
+            config,
+            has_data=has_data,
+            business_day=self._business_day,
+        )
 
     def _has_data(self: "B3DataRepository", d: date) -> bool:
         content = self._client._cache.get(d)

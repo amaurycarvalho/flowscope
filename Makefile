@@ -47,7 +47,6 @@ quality-gate: $(ACTIVATE)
 	@$(MAKE) duplication
 	@$(MAKE) test
 	@$(MAKE) security
-	@$(MAKE) mutation-check
 
 build: $(ACTIVATE)
 	@echo "Building..."

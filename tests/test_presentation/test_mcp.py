@@ -2,6 +2,7 @@
 
 import io
 import json
+from datetime import date
 
 import pytest
 
@@ -11,7 +12,11 @@ from flowscope.application.chat.arvore import (
     no_interno,
     ramo_fundamentos,
 )
+from flowscope.application.calendar.ports import YearHolidays
+from flowscope.application.calendar.service import CalendarService
 from flowscope.application.navegacao.core import NavegacaoCore
+from flowscope.domain.calendar import Holiday
+from flowscope.infrastructure.calendar.cache import HolidayCache
 from flowscope.presentation.navegacao import (
     CATALOGO,
     REVISAO_PROTOCOLO,
@@ -39,10 +44,14 @@ def _core() -> NavegacaoCore:
     return NavegacaoCore(ArvoreConhecimento(raiz, assinatura="sig"))
 
 
-def _executar(core: NavegacaoCore, *requisicoes: dict) -> list[dict]:
+def _executar(
+    core: NavegacaoCore, *requisicoes: dict, calendar=None
+) -> list[dict]:
     entrada = io.StringIO("\n".join(json.dumps(r) for r in requisicoes) + "\n")
     saida = io.StringIO()
-    ServidorMCP(core, entrada=entrada, saida=saida).servir()
+    ServidorMCP(
+        core, entrada=entrada, saida=saida, calendar=calendar
+    ).servir()
     return [json.loads(linha) for linha in saida.getvalue().splitlines() if linha]
 
 
@@ -111,7 +120,8 @@ class TestToolsList:
         nomes = [tool["name"] for tool in respostas[0]["result"]["tools"]]
         assert nomes == sorted(nomes)
         assert nomes == [tool.nome for tool in CATALOGO]
-        assert len(nomes) == 8
+        assert len(nomes) == 11
+        assert len([nome for nome in nomes if nome.startswith("nav_")]) == 8
 
     def test_annotations_e_title(self) -> None:
         respostas = _executar(_core(), _requisicao("tools/list"))
@@ -285,3 +295,105 @@ class TestNotificacoes:
         )
         assert len(respostas) == 1
         assert respostas[0]["id"] == 2
+
+
+class _CalendarSource:
+    def fetch_year(self, year):
+        return YearHolidays(
+            year=year,
+            holidays=(Holiday(date(year, 1, 1), "Confraternizacao"),),
+            fetched_at="2099-01-01T00:00:00+00:00",
+        )
+
+
+def _calendar_service(tmp_path, *, com_cache=True):
+    cache = HolidayCache(tmp_path)
+    service = CalendarService(_CalendarSource(), cache)
+    if com_cache:
+        service.ensure_year(2026)
+    return service
+
+
+class TestCalendarioTools:
+    def test_listar(self, tmp_path):
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {"name": "calendario_listar", "arguments": {"ano": 2026}},
+            ),
+            calendar=_calendar_service(tmp_path),
+        )
+        conteudo = respostas[0]["result"]["structuredContent"]
+        assert conteudo["feriados"][0]["origem"] == "ANBIMA"
+        assert "isError" not in respostas[0]["result"]
+
+    def test_classificar(self, tmp_path):
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {"name": "calendario_classificar", "arguments": {"data": "2026-01-01"}},
+            ),
+            calendar=_calendar_service(tmp_path),
+        )
+        conteudo = respostas[0]["result"]["structuredContent"]
+        assert conteudo["dia_util"] is False
+        assert conteudo["origem"] == "ANBIMA"
+
+    def test_exportar_sem_gravar_arquivo(self, tmp_path):
+        service = _calendar_service(tmp_path)
+        antes = sorted(path.name for path in tmp_path.rglob("*") if path.is_file())
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {
+                    "name": "calendario_exportar",
+                    "arguments": {"ano": 2026, "formato": "csv"},
+                },
+            ),
+            calendar=service,
+        )
+        depois = sorted(path.name for path in tmp_path.rglob("*") if path.is_file())
+        assert antes == depois
+        assert "2026-01-01;qui;Confraternizacao;ANBIMA" in (
+            respostas[0]["result"]["structuredContent"]["conteudo"]
+        )
+
+    def test_sem_cache_nao_consulta_fonte(self, tmp_path):
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {"name": "calendario_listar", "arguments": {"ano": 2026}},
+            ),
+            calendar=_calendar_service(tmp_path, com_cache=False),
+        )
+        conteudo = respostas[0]["result"]["structuredContent"]
+        assert conteudo["estado"] == "calendario_indisponivel"
+
+    def test_schema_invalido(self):
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {"name": "calendario_listar", "arguments": {"ano": "2026"}},
+            ),
+        )
+        conteudo = respostas[0]["result"]["structuredContent"]
+        assert conteudo["erro"]["motivo"] == "schema_invalido"
+
+    def test_formato_invalido(self):
+        respostas = _executar(
+            _core(),
+            _requisicao(
+                "tools/call",
+                {
+                    "name": "calendario_exportar",
+                    "arguments": {"ano": 2026, "formato": "xml"},
+                },
+            ),
+        )
+        conteudo = respostas[0]["result"]["structuredContent"]
+        assert conteudo["erro"]["motivo"] == "schema_invalido"

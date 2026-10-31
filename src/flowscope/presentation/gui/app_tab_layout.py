@@ -8,6 +8,7 @@ from flowscope.presentation.gui.app_tabs import (
     ABOUT_TAB,
     CHAT_AI_TAB,
     ENABLED_TABS,
+    FERIADOS_TAB,
     TAB_CONFIGS,
 )
 from flowscope.presentation.gui.app_wiring import (
@@ -24,6 +25,7 @@ from flowscope.presentation.gui.charts.correlation_network_panel import (
 from flowscope.presentation.gui.charts.document_tree_panel import DocumentTreePanel
 from flowscope.presentation.gui.charts.dominance_ranking import DominanceRankingChart
 from flowscope.presentation.gui.charts.dominance_timeline import DominanceTimelineChart
+from flowscope.presentation.gui.charts.feriados_panel import FeriadosPanel
 from flowscope.presentation.gui.charts.financial_flow_panel import FinancialFlowPanel
 from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
     FundamentalEvolutionPanel,
@@ -181,6 +183,21 @@ class TabsLayoutMixin:
                     ),
                 )
                 self._documents_panel.frame.pack(fill=tk.BOTH, expand=True)
+
+    def _build_feriados_tab(self: "TabsLayoutMixin") -> None:
+        """Registra a aba de topo ``Feriados``, sem sub-notebook."""
+        frame = ttk.Frame(self._main_notebook)
+        self._main_notebook.add(frame, text=FERIADOS_TAB)
+        obter_nucleo = getattr(self, "_obter_nucleo", None)
+        nucleo = obter_nucleo() if obter_nucleo is not None else None
+        service = getattr(getattr(nucleo, "calendar", None), "service", None)
+        self._feriados_panel = FeriadosPanel(
+            frame,
+            service=service,
+            status_callback=getattr(self, "_set_status", None),
+            icon_loader=getattr(self, "_load_icon", None),
+        )
+        self._feriados_panel.frame.pack(fill=tk.BOTH, expand=True)
 
     def _build_chat_tab(self: "TabsLayoutMixin") -> None:
         """Registra a aba de topo única "Chat AI" após a "Análise do Ticker"."""

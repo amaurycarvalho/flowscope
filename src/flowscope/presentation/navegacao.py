@@ -17,11 +17,18 @@ from __future__ import annotations
 import json
 import logging
 import sys
-from dataclasses import dataclass
 from typing import TextIO
 
 from flowscope import __version__
+from flowscope.application.calendar.service import CalendarService
 from flowscope.application.navegacao.core import NavegacaoCore
+from flowscope.presentation.mcp_calendario import (
+    CATALOGO_CALENDARIO,
+    FerramentasCalendario,
+    executar_calendario,
+)
+from flowscope.presentation.mcp_types import Tool
+from flowscope.presentation.mcp_validation import validar_schema
 
 logger = logging.getLogger("flowscope")
 
@@ -50,22 +57,10 @@ ERRO_PARAMS = -32602
 ERRO_INTERNO = -32603
 
 
-@dataclass(frozen=True)
-class Tool:
-    """Especificação de uma tool MCP de navegação."""
-
-    nome: str
-    operacao: str
-    titulo: str
-    descricao: str
-    schema: dict
-
-
 _CAMINHO = {"type": "string", "description": "Caminho canônico do nó."}
 _CURSOR = {"type": "string", "description": "Cursor opaco de continuação."}
-
 #: Catálogo das tools ``nav_*`` em ordem alfabética determinística.
-CATALOGO: tuple[Tool, ...] = (
+CATALOGO_NAV: tuple[Tool, ...] = (
     Tool(
         nome="nav_buscar",
         operacao="buscar",
@@ -190,75 +185,17 @@ CATALOGO: tuple[Tool, ...] = (
     ),
 )
 
+#: Catálogo completo em ordem alfabética determinística.
+CATALOGO: tuple[Tool, ...] = tuple(
+    sorted(CATALOGO_NAV + CATALOGO_CALENDARIO, key=lambda tool: tool.nome)
+)
+
 #: Índice das tools por nome.
 CATALOGO_POR_NOME = {tool.nome: tool for tool in CATALOGO}
 
 
 class ErroTool(Exception):
     """Erro ao processar uma chamada de tool (tool desconhecida)."""
-
-
-def validar_schema(schema: dict, argumentos: object) -> str | None:
-    """Valida os argumentos contra o schema, devolvendo o erro ou ``None``."""
-    if not isinstance(argumentos, dict):
-        return "os argumentos devem ser um objeto"
-    propriedades = schema.get("properties", {})
-    for nome in schema.get("required", ()):
-        if nome not in argumentos:
-            return f"campo obrigatório ausente: {nome}"
-    for nome, valor in argumentos.items():
-        if nome not in propriedades:
-            return f"campo desconhecido: {nome}"
-        erro = _validar_valor(propriedades[nome], valor, nome)
-        if erro:
-            return erro
-    return None
-
-
-def _validar_valor(spec: dict, valor: object, nome: str) -> str | None:
-    """Valida um valor individual conforme o tipo e as faixas do schema."""
-    tipo = spec.get("type")
-    if tipo == "array":
-        return _validar_array(spec, valor, nome)
-    erro = _validar_escalar(tipo, valor, nome)
-    if erro:
-        return erro
-    return _validar_faixa(spec, valor, nome)
-
-
-def _validar_escalar(tipo: object, valor: object, nome: str) -> str | None:
-    """Valida o tipo de um valor escalar (texto, inteiro ou booleano)."""
-    if tipo == "string" and not isinstance(valor, str):
-        return f"o campo '{nome}' deve ser texto"
-    if tipo == "integer" and (isinstance(valor, bool) or not isinstance(valor, int)):
-        return f"o campo '{nome}' deve ser um inteiro"
-    if tipo == "boolean" and not isinstance(valor, bool):
-        return f"o campo '{nome}' deve ser booleano"
-    return None
-
-
-def _validar_array(spec: dict, valor: object, nome: str) -> str | None:
-    """Valida uma lista e os seus elementos contra o schema do item."""
-    if not isinstance(valor, list):
-        return f"o campo '{nome}' deve ser uma lista"
-    item = spec.get("items")
-    for elemento in valor:
-        if item is not None and (erro := _validar_valor(item, elemento, nome)):
-            return erro
-    return None
-
-
-def _validar_faixa(spec: dict, valor: object, nome: str) -> str | None:
-    """Valida os limites ``minimum``/``maximum`` de um valor numérico."""
-    if isinstance(valor, bool) or not isinstance(valor, int):
-        return None
-    minimo = spec.get("minimum")
-    maximo = spec.get("maximum")
-    if minimo is not None and valor < minimo:
-        return f"o campo '{nome}' deve ser no mínimo {minimo}"
-    if maximo is not None and valor > maximo:
-        return f"o campo '{nome}' deve ser no máximo {maximo}"
-    return None
 
 
 def _erro_jsonrpc(id_: object, codigo: int, mensagem: str, dados: object = None) -> dict:
@@ -282,9 +219,11 @@ class ServidorMCP:
         core: NavegacaoCore,
         entrada: TextIO | None = None,
         saida: TextIO | None = None,
+        calendar: CalendarService | None = None,
     ) -> None:
-        """Guarda o núcleo de navegação e os canais de entrada e saída."""
+        """Guarda o núcleo de navegação, o calendário e os canais."""
         self._core = core
+        self._calendario = FerramentasCalendario(calendar)
         self._entrada = entrada if entrada is not None else sys.stdin
         self._saida = saida if saida is not None else sys.stdout
 
@@ -411,6 +350,8 @@ class ServidorMCP:
                 }
             }
             return _sucesso(id_, self._envelope(estruturado, is_error=False))
+        if tool.nome.startswith("calendario_"):
+            return self._calendar_call(id_, tool, argumentos)
         try:
             resultado = self._core.executar(tool.operacao, argumentos)
         except ErroTool as exc:
@@ -423,6 +364,15 @@ class ServidorMCP:
                 ),
             )
         return _sucesso(id_, self._envelope(conteudo(resultado.dados), is_error=False))
+
+    def _calendar_call(
+        self: ServidorMCP, id_: object, tool: Tool, argumentos: dict
+    ) -> dict:
+        """Execute one calendar tool and wrap it in the MCP envelope."""
+        resultado, erro = executar_calendario(
+            self._calendario, tool.nome, argumentos
+        )
+        return _sucesso(id_, self._envelope(resultado, is_error=erro))
 
     @staticmethod
     def _envelope(conteudo: object, is_error: bool) -> dict:
@@ -450,9 +400,11 @@ def conteudo(dados: object) -> object:
     return {"result": dados}
 
 
-def executar_servidor(core: NavegacaoCore) -> None:
+def executar_servidor(
+    core: NavegacaoCore, calendar: CalendarService | None = None
+) -> None:
     """Inicia o servidor MCP stdio, roteando logs para ``stderr``."""
     logging.basicConfig(
         level=logging.INFO, stream=sys.stderr, force=True
     )
-    ServidorMCP(core).servir()
+    ServidorMCP(core, calendar=calendar).servir()

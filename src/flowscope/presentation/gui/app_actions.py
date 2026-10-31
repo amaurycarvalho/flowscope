@@ -1,13 +1,13 @@
 """Ações de configuração e atualização de gráficos da interface gráfica."""
 
 import tkinter as tk
-from datetime import date, datetime, timezone
+from datetime import date
 
 from flowscope.application.clipboard_port import ClipboardError, ImageClipboardPort
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui import evolucao_job
 from flowscope.presentation.gui.app_documentos_actions import DocumentosAquisicaoMixin
-from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
+from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB, FERIADOS_TAB
 from flowscope.presentation.gui.background.job import Politica
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
@@ -76,8 +76,7 @@ class ActionsMixin(DocumentosAquisicaoMixin):
         )
 
     def _on_today(self: "ActionsMixin") -> None:
-        self._date_entry.set_date(datetime.now(timezone.utc).date())
-        self._controller.on_load_data()
+        self._controller.on_today()
 
     def _on_load_data(self: "ActionsMixin") -> None:
         if getattr(self, "_inicializando", False):
@@ -100,7 +99,7 @@ class ActionsMixin(DocumentosAquisicaoMixin):
     def _resolve_chart(self: "ActionsMixin", main_tab: str, sub_tab: str) -> object | None:
         if main_tab == "Análise Geral":
             return self._GENERAL.get(sub_tab)
-        if main_tab in (ABOUT_TAB, CHAT_AI_TAB):
+        if main_tab in (ABOUT_TAB, CHAT_AI_TAB, FERIADOS_TAB):
             return None
         return self._TICKER.get(sub_tab)
 
@@ -227,7 +226,7 @@ class ActionsMixin(DocumentosAquisicaoMixin):
         entry = getattr(self, "_date_entry", None)
         if entry is not None:
             return entry.get_date()
-        return datetime.now(timezone.utc).date()
+        return date.today()
 
     def agendar(self: "ActionsMixin", ms: int, callback: object) -> object:
         """Agenda a execução de ``callback`` na thread do Tk."""

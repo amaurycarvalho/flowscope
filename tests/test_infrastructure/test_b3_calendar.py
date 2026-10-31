@@ -1,6 +1,7 @@
 from datetime import date
 
 from flowscope.domain.sampling import SamplingConfig
+from tests.support_calendar import FakeBusinessDayLookup
 from flowscope.infrastructure.b3.calendar import (
     _find_nearest_with_data,
     _resolve_with_data,
@@ -114,7 +115,11 @@ class TestFindNearestWithData:
 
     def test_ignores_national_holiday(self):
         ref = date(2026, 10, 13)
-        result = _find_nearest_with_data(ref, lambda d: d == date(2026, 10, 12), set())
+        lookup = FakeBusinessDayLookup([date(2026, 10, 12)])
+        result = _find_nearest_with_data(
+            ref, lambda d: d == date(2026, 10, 12), set(),
+            business_day=lookup,
+        )
         assert result is None
 
 

@@ -353,6 +353,15 @@ O ticker analisado é determinado pelo primeiro item selecionado na TickerList (
 
 ---
 
+## Aba Principal: "Feriados"
+
+- **Componente:** `ttk.Treeview` à esquerda e `ReadonlyText` à direita.
+- **Objetivo:** consultar os feriados nacionais que a B3 não trata como dias úteis, com a origem de cada data.
+- **Árvore:** anos em ordem decrescente; dentro de cada ano, apenas os meses com feriado, em ordem crescente; dentro de cada mês, as folhas `DD (abreviatura)` em ordem crescente (`01 (qui)`, `03 (sex)`, `07 (sáb)`).
+- **Texto:** ao selecionar o ano, lista os feriados agrupados por mês; ao selecionar o mês, lista dia a dia; ao selecionar o dia, mostra data, dia da semana abreviado, nome e origem. O campo é somente leitura.
+- **Atualização:** botão com o ícone `view-refresh` que revalida os anos exibidos (ou o ano corrente, quando a árvore está vazia) na ANBIMA. Durante a carga o ícone vira `content-loading` e o botão fica desabilitado; ao final a árvore é reconstruída preservando a seleção. Falhas mantêm o conteúdo anterior e a barra de status informa a defasagem.
+- **Sem rede na navegação:** a árvore é montada apenas a partir do cache; selecionar anos, meses e dias não inicia requisição de rede.
+
 ## Painel Lateral Direito
 
 ### Filtro de Tickers (TickerList)

@@ -7,10 +7,13 @@ evento, usando um presenter fake e o ``BackgroundManager`` real, sem ``tk.Tk``.
 
 import threading
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from unittest.mock import MagicMock
 
+from flowscope.application.calendar.ports import HolidaySourceError, YearHolidays
+from flowscope.application.calendar.service import CalendarService
 from flowscope.application.operation_guard import OperationGuard
+from flowscope.domain.calendar import Holiday
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.background.context import JobContext
 from flowscope.presentation.gui.background.events import Progresso, Resultado
@@ -18,6 +21,7 @@ from flowscope.presentation.gui.background.job import JobHandle, Politica
 from flowscope.presentation.gui.background.manager import BackgroundManager
 from flowscope.presentation.gui.controller import FlowScopeController
 from flowscope.presentation.gui.controller_data import InstrucaoCarga
+from flowscope.infrastructure.calendar.cache import HolidayCache
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 REFERENCIA = date(2026, 9, 4)
@@ -44,6 +48,7 @@ class _ViewFake:
         self.restaurado = 0
         self.progress: tuple[int, int, str] | None = None
         self.progress_updates = 0
+        self._date_entry = MagicMock()
 
     def set_cancellable(self, value: bool) -> None:
         self.cancellable = value
@@ -503,3 +508,56 @@ class TestCarteiraTickerEdit:
         _concluir(background)
 
         assert view.flash[-1][1] == "⚠"
+
+
+class _CalendarSource:
+    def __init__(self, error=None):
+        self.error = error
+
+    def fetch_year(self, year):
+        if self.error is not None:
+            raise self.error
+        return YearHolidays(
+            year=year,
+            holidays=(Holiday(date(year, 1, 1), "Confraternizacao"),),
+            fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+
+
+def _calendar_service(tmp_path, *, error=None, holidays=()):
+    cache = HolidayCache(tmp_path)
+    if holidays:
+        cache.write(YearHolidays(
+            year=2026,
+            holidays=tuple(holidays),
+            fetched_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        ))
+    return CalendarService(_CalendarSource(error), cache)
+
+
+class TestCalendarioNaCarga:
+    def test_referencia_em_feriado_retrocede(self, tmp_path):
+        service = _calendar_service(
+            tmp_path,
+            holidays=[Holiday(date(2026, 10, 12), "Nossa Senhora Aparecida")],
+        )
+        controller, _, view, background, _, analyze = _montar({"calendar": service})
+        view.ref_date = date(2026, 10, 12)
+
+        controller.on_load_data()
+        _concluir(background)
+
+        assert analyze.execute.call_args.args[0] == date(2026, 10, 9)
+        view._date_entry.set_date.assert_called_with(date(2026, 10, 9))
+
+    def test_falha_do_calendario_nao_bloqueia(self, tmp_path):
+        service = _calendar_service(
+            tmp_path, error=HolidaySourceError("indisponivel"),
+        )
+        controller, _, view, background, _, analyze = _montar({"calendar": service})
+        view.ref_date = date(2026, 10, 13)
+
+        controller.on_load_data()
+        _concluir(background)
+
+        assert analyze.execute.call_args.args[0] == date(2026, 10, 13)

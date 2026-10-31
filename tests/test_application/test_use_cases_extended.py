@@ -16,6 +16,7 @@ from flowscope.application.use_cases import (
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.domain.value_objects import Price, Ticker, Volume
+from tests.support_calendar import FakeBusinessDayLookup
 
 
 def _trade_on(d: date, ticker: str = "PETR4") -> TradeDay:
@@ -267,7 +268,11 @@ class TestFindReplacementDate:
             return []
 
         repo.fetch_trades.side_effect = fake
-        result, _ = _find_replacement_date(d, {d}, {"PETR4"}, repo, False, date(2026, 10, 30))
+        lookup = FakeBusinessDayLookup([date(2026, 10, 12)])
+        result, _ = _find_replacement_date(
+            d, {d}, {"PETR4"}, repo, False, date(2026, 10, 30),
+            business_day=lookup,
+        )
         assert result == date(2026, 10, 14)
         assert date(2026, 10, 12) not in consulted
 

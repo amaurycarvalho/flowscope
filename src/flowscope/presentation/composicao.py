@@ -54,6 +54,10 @@ from flowscope.infrastructure.b3.renda_fixa_documentos import (
 )
 from flowscope.infrastructure.b3.repository import B3DataRepository
 from flowscope.infrastructure.cache import CacheManager
+from flowscope.infrastructure.calendar import (
+    CalendarServices,
+    build_calendar_services,
+)
 from flowscope.infrastructure.conditional_cache_types import _atomic_write_bytes
 from flowscope.infrastructure.content_hashes import hash_de_caminho
 from flowscope.infrastructure.cvm.acionistas import CvmAcionistasSource
@@ -339,6 +343,7 @@ class Nucleo:
     deduplicar_documentos: Callable[[str, object], None]
     deduplicar_noticias: Callable[[object], None]
     repo: B3DataRepository
+    calendar: CalendarServices
     guard: OperationGuard
     load_portfolio: LoadIndexPortfolioUseCase
     analyze: AnalyzeTickersUseCase
@@ -373,7 +378,12 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
     base = cache.get_cache_dir()
     documentos = montar_adaptadores_documentos(base)
     noticias = montar_adaptadores_noticias(base)
-    repo = B3DataRepository(B3Client())
+    calendar = build_calendar_services(cache_dir=base)
+    lookup = calendar.lookup
+    repo = B3DataRepository(
+        B3Client(business_day=lookup),
+        business_day=lookup,
+    )
     b3_fund_repository = B3FundRepository()
     fundamental_repo = B3FundamentalRepository(
         fund_repository=b3_fund_repository,
@@ -408,9 +418,10 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         ),
         deduplicar_noticias=lambda token: executar_housekeeping_noticias(base, token),
         repo=repo,
+        calendar=calendar,
         guard=OperationGuard(),
         load_portfolio=LoadIndexPortfolioUseCase(repo),
-        analyze=AnalyzeTickersUseCase(repo),
+        analyze=AnalyzeTickersUseCase(repo, business_day=lookup),
         b3_fund_repository=b3_fund_repository,
         fundamental_repo=fundamental_repo,
         fundamental_provider=fundamental_provider,

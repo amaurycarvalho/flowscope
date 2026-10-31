@@ -6,6 +6,9 @@ ABOUT_TAB = "Sobre"
 #: Texto da aba de nível superior de chat com I.A.
 CHAT_AI_TAB = "Chat AI"
 
+#: Texto da aba de nível superior do calendário de feriados.
+FERIADOS_TAB = "Feriados"
+
 TAB_CONFIGS = [
     ("Evolução dos Fundamentos", "cotacao", "vp_cota", "p_vp", "dividend_yield",
      "ultimo_dividendo", "cotistas", "cotas", "shorts_pct"),
@@ -28,6 +31,19 @@ ENABLED_TABS = {
 }
 
 TAB_CONTENT = {
+    (FERIADOS_TAB, FERIADOS_TAB): (
+        "Feriados — Calendário de dias úteis",
+        [
+            ("Objetivo: ", "bold"),
+            ("Consultar os feriados nacionais que a B3 não trata como dias úteis, com a origem de cada data.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Quais dias do ano não têm pregão e por quê?\"\n\n", "italic"),
+            ("Como interpretar: ", "bold"),
+            (("A árvore agrupa os anos, os meses e os dias com feriado; selecione um nível para ver os detalhes no painel à direita. "
+              "O botão de atualização revalida os anos exibidos na ANBIMA. O cache é local: navegar pela árvore não acessa a rede. "
+              "Quando a ANBIMA falha, o sistema mantém o cache anterior ou aplica apenas a regra de fim de semana."), ""),
+        ]
+    ),
     (ABOUT_TAB, ABOUT_TAB): (
         "Sobre — Informações do FlowScopeBR",
         [

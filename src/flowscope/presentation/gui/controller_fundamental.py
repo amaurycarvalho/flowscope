@@ -71,7 +71,11 @@ class FundamentalMixin:
         tickers = self._presenter.get_current_tickers()
         if not tickers:
             return
-        ref_date = self._presenter.get_reference_date()
+        ref_date, _, _ = self._resolver_referencia(
+            self._presenter.get_reference_date()
+        )
+        self._ajustar_data_exibida(ref_date)
+        self._presenter._gui.set_date_label(f"Dados: {ref_date}")
         current = getattr(self._presenter._gui, "_current_data", {}) or {}
         self._iniciar_analise_fundamental(tickers, ref_date, current, force=True)
 

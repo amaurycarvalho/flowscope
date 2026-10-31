@@ -7,7 +7,10 @@ from collections.abc import Callable
 from datetime import date
 from typing import Any
 
-from flowscope.domain.b3.calendario import is_business_day
+from flowscope.application.calendar.ports import (
+    BusinessDayLookup,
+    WeekendBusinessDayLookup,
+)
 from flowscope.infrastructure.b3.parser import parse_index_csv
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.http_retry import executar_com_retry
@@ -24,9 +27,14 @@ class B3Client:
         "GetDownloadPortfolioDay/"
     )
 
-    def __init__(self: "B3Client", cache: CacheManager | None = None) -> None:
-        """Inicializa o cliente com o gerenciador de cache informado ou um novo padrão."""
+    def __init__(
+        self: "B3Client",
+        cache: CacheManager | None = None,
+        business_day: BusinessDayLookup | None = None,
+    ) -> None:
+        """Inicializa o cliente com cache e o lookup de dia útil."""
         self._cache = cache or CacheManager()
+        self._business_day = business_day or WeekendBusinessDayLookup()
         self._bust_stale_portfolio_cache()
 
     def _bust_stale_portfolio_cache(self: "B3Client") -> None:
@@ -92,7 +100,7 @@ class B3Client:
         Um dia não útil (fim de semana ou feriado) não é requisitado: a ausência
         de pregão é devolvida como ``None``, sem erro.
         """
-        if not is_business_day(date_key):
+        if not self._business_day.is_business_day(date_key):
             if progress_callback:
                 progress_callback(f"{date_key} (sem pregão)", False)
             return None

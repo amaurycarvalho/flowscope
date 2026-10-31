@@ -8,6 +8,7 @@ import responses
 
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.cache import CacheManager
+from tests.support_calendar import FakeBusinessDayLookup
 
 _BASE = B3Client._BASE_URL
 _PORTFOLIO_BASE = B3Client._BASE_PORTFOLIO_URL
@@ -15,7 +16,8 @@ _PORTFOLIO_BASE = B3Client._BASE_PORTFOLIO_URL
 
 @pytest.fixture
 def b3_client(tmp_path) -> B3Client:
-    return B3Client(cache=CacheManager(cache_dir=tmp_path))
+    lookup = FakeBusinessDayLookup([date(2026, 1, 1)])
+    return B3Client(cache=CacheManager(cache_dir=tmp_path), business_day=lookup)
 
 
 class TestBustStalePortfolioCache:

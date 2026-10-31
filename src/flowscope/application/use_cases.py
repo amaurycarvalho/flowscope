@@ -3,9 +3,12 @@
 from collections.abc import Callable
 from datetime import date, timedelta
 
+from flowscope.application.calendar.ports import (
+    BusinessDayLookup,
+    WeekendBusinessDayLookup,
+)
 from flowscope.application.cancellation import CancellationToken
 from flowscope.application.ports import DataRepository
-from flowscope.domain.b3.calendario import is_business_day
 from flowscope.domain.engine import IndicatorEngine
 from flowscope.domain.entities import TradeDay
 from flowscope.domain.indicators import default_engine
@@ -34,10 +37,12 @@ class AnalyzeTickersUseCase:
         self: "AnalyzeTickersUseCase",
         repository: DataRepository,
         engine: IndicatorEngine | None = None,
+        business_day: BusinessDayLookup | None = None,
     ) -> None:
-        """Inicializa o caso de uso com o repositório e o motor de indicadores."""
+        """Inicializa o caso de uso com repositório, motor e lookups."""
         self._repository = repository
         self._engine = engine if engine is not None else default_engine()
+        self._business_day = business_day or WeekendBusinessDayLookup()
 
     def execute(
         self: "AnalyzeTickersUseCase", ref_date: date, tickers: list[str] | None = None,
@@ -63,7 +68,7 @@ class AnalyzeTickersUseCase:
         filtered = [t for t in trades if t.ticker.value in tickers]
         sampling_dates, filtered = _resolve_sampling_dates(
             dates, filtered, set(tickers), self._repository, cache_only, ref_date,
-            cancel_token,
+            cancel_token, business_day=self._business_day,
         )
         _checar(cancel_token)
         results = self._engine.execute(
@@ -96,16 +101,22 @@ def _find_replacement_date(
     cache_only: bool,
     ref_date: date,
     cancel_token: CancellationToken | None = None,
+    business_day: BusinessDayLookup | None = None,
 ) -> tuple[date | None, list[TradeDay]]:
     """Procura uma data próxima com negociações para substituir uma data sem dados.
 
     A busca nunca ultrapassa a data de referência, evitando que datas
     futuras sejam consultadas na B3.
     """
+    lookup = business_day or WeekendBusinessDayLookup()
     for delta in range(1, 8):
         for sign in (-1, 1):
             candidate = d + timedelta(days=delta * sign)
-            if candidate > ref_date or candidate in seen or not is_business_day(candidate):
+            if (
+                candidate > ref_date
+                or candidate in seen
+                or not lookup.is_business_day(candidate)
+            ):
                 continue
             _checar(cancel_token)
             new_trades = repository.fetch_trades(
@@ -126,6 +137,7 @@ def _resolve_sampling_dates(
     cache_only: bool,
     ref_date: date,
     cancel_token: CancellationToken | None = None,
+    business_day: BusinessDayLookup | None = None,
 ) -> tuple[list[date], list[TradeDay]]:
     """Substitui datas de amostragem sem negociações por datas próximas com dados."""
     dates_with_trades = {t.date for t in filtered}
@@ -137,7 +149,8 @@ def _resolve_sampling_dates(
         if d in dates_with_trades:
             continue
         replacement, new_trades = _find_replacement_date(
-            d, seen, ticker_set, repository, cache_only, ref_date, cancel_token
+            d, seen, ticker_set, repository, cache_only, ref_date, cancel_token,
+            business_day,
         )
         if replacement:
             filtered.extend(new_trades)

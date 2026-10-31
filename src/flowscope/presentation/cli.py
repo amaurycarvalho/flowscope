@@ -362,11 +362,15 @@ def iniciar_mcp(
     watchlist`` e ``atualizar fundamentos`` sob o lock global (liberado antes de
     servir). A árvore é montada refletindo a data de referência resolvida.
     """
+    from flowscope.infrastructure.calendar import build_calendar_services
     from flowscope.presentation.navegacao import executar_servidor
 
     if watchlist or data:
         _preparar_mcp(watchlist, data)
-    executar_servidor(montar_core_navegacao(reference_date=data))
+    executar_servidor(
+        montar_core_navegacao(reference_date=data),
+        calendar=build_calendar_services().service,
+    )
 
 
 def _preparar_mcp(watchlist: str | None, data: date | None) -> None:

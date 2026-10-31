@@ -2,7 +2,7 @@
 
 import platform
 import tkinter as tk
-from datetime import datetime, timezone
+from datetime import date
 from tkinter import ttk
 
 from PIL import Image, ImageTk
@@ -62,7 +62,7 @@ class LayoutMixin:
         self._date_entry = DateEntry(
             top,
             date_pattern="yyyy-MM-dd",
-            maxdate=datetime.now(timezone.utc).date(),
+            maxdate=date.today(),
         )
         self._date_entry.pack(side=tk.LEFT, padx=PAD_SMALL)
         self._today_button = tk.Button(
@@ -153,6 +153,7 @@ class LayoutMixin:
 
         self._build_general_tabs()
         self._build_ticker_tabs()
+        self._build_feriados_tab()
         self._build_chat_tab()
         self._build_about_tab()
 

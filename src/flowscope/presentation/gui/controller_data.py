@@ -63,6 +63,8 @@ class ResultadoCarga:
     tickers: list[str]
     ref_date: date
     portfolio_carregado: bool
+    calendario_estado: str | None = None
+    resolucao: dict | None = None
 
 
 class DataLoadMixin:
@@ -181,11 +183,14 @@ class DataLoadMixin:
                 ))
                 return
 
+            ref_date, estado, resolucao = self._resolver_referencia(
+                instrucao.ref_date
+            )
             reporter.start_phase(
                 "⏳ Baixando dados históricos", total=7, weight=3,
             )
             result = self._analyze.execute(
-                instrucao.ref_date, tickers,
+                ref_date, tickers,
                 progress_callback=progress_cb,
                 config=instrucao.config,
                 cancel_token=ctx.token,
@@ -210,9 +215,37 @@ class DataLoadMixin:
             origem=instrucao.origem,
             result=result,
             tickers=tickers,
-            ref_date=instrucao.ref_date,
+            ref_date=ref_date,
             portfolio_carregado=portfolio_carregado,
+            calendario_estado=estado,
+            resolucao=resolucao,
         ))
+
+    def _ajustar_data_exibida(
+        self: "DataLoadMixin", ref_date: date,
+    ) -> None:
+        """Reflete no DateEntry a data resolvida usada pela carga."""
+        gui = getattr(self._presenter, "_gui", None)
+        entry = getattr(gui, "_date_entry", None)
+        if entry is not None:
+            entry.set_date(ref_date)
+
+    def _resolver_referencia(
+        self: "DataLoadMixin", ref_date: date,
+    ) -> tuple[date, str | None, dict | None]:
+        """Resolve a data de referência sem bloquear a carga em falha de calendário."""
+        calendario = getattr(self, "_calendar", None)
+        if calendario is None:
+            return ref_date, None, None
+        try:
+            resolucao = calendario.resolve_reference(ref_date)
+        except Exception:
+            return ref_date, None, None
+        return (
+            date.fromisoformat(resolucao.data_resolvida),
+            resolucao.calendario_estado,
+            resolucao.as_dict(),
+        )
 
     def _ao_progresso_carga(
         self: "DataLoadMixin", evento: Progresso,
@@ -231,9 +264,17 @@ class DataLoadMixin:
             return
         if resultado.portfolio_carregado:
             self._presenter.on_portfolio_loaded(resultado.tickers)
+        self._ajustar_data_exibida(resultado.ref_date)
         self._presenter.on_result(
             resultado.result, resultado.tickers, resultado.ref_date,
         )
+        if resultado.calendario_estado:
+            self._logger.info(LogEntry(
+                message=f"Calendário da carga: {resultado.calendario_estado}",
+                level="INFO",
+                component="Controller.carga",
+                context=resultado.resolucao,
+            ))
         self._iniciar_analise_fundamental(
             resultado.tickers, resultado.ref_date, resultado.result,
         )

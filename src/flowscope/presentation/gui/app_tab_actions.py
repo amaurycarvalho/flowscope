@@ -9,7 +9,11 @@ from flowscope.presentation.gui.app_indicators import (
     build_indicator_lines,
     insert_indicators,
 )
-from flowscope.presentation.gui.app_tabs import ABOUT_TAB, CHAT_AI_TAB
+from flowscope.presentation.gui.app_tabs import (
+    ABOUT_TAB,
+    CHAT_AI_TAB,
+    FERIADOS_TAB,
+)
 from flowscope.presentation.gui.llm.config_dialog import LLMConfigDialog
 
 
@@ -22,7 +26,7 @@ class TabActionsMixin:
     def _current_tabs(self: "TabActionsMixin") -> tuple[str, str] | None:
         try:
             main_tab = self._main_notebook.tab(self._main_notebook.select(), "text")
-            if main_tab in (ABOUT_TAB, CHAT_AI_TAB):
+            if main_tab in (ABOUT_TAB, CHAT_AI_TAB, FERIADOS_TAB):
                 return main_tab, main_tab
             if main_tab == "Análise Geral":
                 sub_tab = self._general_notebook.tab(self._general_notebook.select(), "text")
@@ -42,6 +46,8 @@ class TabActionsMixin:
             self._aplicar_aba_sobre()
         elif main_tab == CHAT_AI_TAB:
             self._aplicar_aba_chat(main_tab, sub_tab)
+        elif main_tab == FERIADOS_TAB:
+            self._aplicar_aba_feriados(main_tab)
         else:
             self._aplicar_aba_generica(main_tab, sub_tab)
 
@@ -70,6 +76,15 @@ class TabActionsMixin:
         self._sync_fundamental_refresh_visibility(main_tab, sub_tab)
         self._sync_copy_button_for_tab(main_tab, sub_tab)
         self._reavaliar_chat_llm()
+
+    def _aplicar_aba_feriados(self: "TabActionsMixin", main_tab: str) -> None:
+        """Atualiza a orientação da aba de feriados e oculta ações alheias."""
+        self._prefs["last_tab"] = main_tab
+        content = self._tab_content.get((FERIADOS_TAB, FERIADOS_TAB))
+        if content:
+            self._orientation_panel.set_content(*content)
+        self._sync_fundamental_refresh_visibility(main_tab, main_tab)
+        self._sync_copy_button_for_tab(main_tab, main_tab)
 
     def _aplicar_aba_generica(
         self: "TabActionsMixin", main_tab: str, sub_tab: str

@@ -127,6 +127,7 @@ class WiringMixin:
             ),
             fundamental_mercado_factory=nucleo.mercado_factory,
             background=background,
+            calendar=nucleo.calendar.service,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,
