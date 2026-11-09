@@ -10,13 +10,34 @@ são aplicáveis, eliminando a resolução por precedência entre flags conflita
 from __future__ import annotations
 
 import argparse
+import csv
+import io
 import json
+import logging
 import sys
 from datetime import date
 from pathlib import Path
 
 from flowscope.domain.structured import DocumentoProvento
 from flowscope.presentation.cli import _json_default, _load_tickers, _parse_data
+
+logger = logging.getLogger("flowscope")
+
+#: Cabeçalho do CSV de exportação da Performance.
+_COLUNAS_PERFORMANCE = (
+    "ref_date",
+    "period_days",
+    "sampling_method",
+    "return_basis",
+    "index_available",
+    "benchmark",
+    "ticker",
+    "ticker_return",
+    "index_return",
+    "excess_pp",
+    "observations",
+    "suspicious_event",
+)
 
 
 def adicionar_subcomandos_consulta(subcomandos: argparse._SubParsersAction) -> None:
@@ -45,6 +66,19 @@ def adicionar_subcomandos_consulta(subcomandos: argparse._SubParsersAction) -> N
         help="Formato de exportação",
     )
     _opcao_saida(feriados)
+    performance = recursos_exportar.add_parser(
+        "performance",
+        help="Exportar o snapshot mais recente da Performance (csv ou json)",
+    )
+    performance.add_argument(
+        "--formato", choices=("csv", "json"), required=True,
+        help="Formato de exportação",
+    )
+    performance.add_argument(
+        "--benchmark", type=str, metavar="IFIX|IBOV|IDIV",
+        help="Filtrar por um benchmark do snapshot",
+    )
+    _opcao_saida(performance)
 
     consultar = subcomandos.add_parser(
         "consultar", help="Consultar dados remotos da B3"
@@ -140,6 +174,8 @@ def executar_exportar(args: argparse.Namespace) -> None:
         _exportar_vwap(args)
     elif args.recurso == "feriados":
         _exportar_feriados(args)
+    elif args.recurso == "performance":
+        _exportar_performance(args)
 
 
 def _exportar_vwap(args: argparse.Namespace) -> None:
@@ -175,6 +211,129 @@ def _exportar_feriados(args: argparse.Namespace) -> None:
         Path(args.saida).write_text(conteudo, encoding="utf-8")
     else:
         print(conteudo, end="")
+
+
+def _exportar_performance(args: argparse.Namespace) -> None:
+    """Exporta o snapshot mais recente da Performance, sem recalcular nem rede."""
+    from flowscope.infrastructure.performance import JsonPerformanceSnapshotStore
+
+    snapshot = JsonPerformanceSnapshotStore().ler()
+    if snapshot is None:
+        _erro_exportacao(
+            "performance_ausente",
+            "nenhum snapshot local de Performance",
+            "execute 'flowscope atualizar performance' ou inicie o MCP com "
+            "'--data'",
+        )
+        return
+    filtrado = _filtrar_benchmark(snapshot, getattr(args, "benchmark", None))
+    if args.formato == "json":
+        conteudo = json.dumps(
+            filtrado, indent=2, ensure_ascii=False, default=_json_default
+        )
+    else:
+        conteudo = _csv_performance(filtrado)
+    _gravar_exportacao(conteudo, args.saida)
+
+
+def _filtrar_benchmark(snapshot: dict, benchmark: str | None) -> dict:
+    """Filtra o snapshot pelo benchmark informado, ou devolve-o inteiro."""
+    if not benchmark:
+        return snapshot
+    nome = benchmark.strip().upper()
+    resultados = snapshot.get("results", {})
+    disponiveis = list(resultados) if isinstance(resultados, dict) else []
+    if nome not in disponiveis:
+        _erro_exportacao(
+            "benchmark_ausente",
+            f"benchmark {nome} sem resultado no snapshot; "
+            f"disponíveis: {', '.join(disponiveis) or 'nenhum'}",
+            "omita '--benchmark' ou use um dos benchmarks disponíveis",
+        )
+    resultados_filtrados = (
+        {nome: resultados[nome]} if isinstance(resultados, dict) else {}
+    )
+    return {
+        **snapshot,
+        "benchmarks": [nome],
+        "results": resultados_filtrados,
+    }
+
+
+def _csv_performance(snapshot: dict) -> str:
+    """Serializa o snapshot em CSV com ``;`` e uma linha por ticker/benchmark."""
+    saida = io.StringIO()
+    escritor = csv.writer(saida, delimiter=";", lineterminator="\n")
+    escritor.writerow(_COLUNAS_PERFORMANCE)
+    contexto = (
+        snapshot.get("ref_date", ""),
+        snapshot.get("period_days", ""),
+        snapshot.get("sampling_method", ""),
+    )
+    resultados = snapshot.get("results", {})
+    if not isinstance(resultados, dict):
+        return saida.getvalue()
+    for benchmark in snapshot.get("benchmarks", []) or list(resultados):
+        resultado = resultados.get(benchmark)
+        if not isinstance(resultado, dict):
+            continue
+        return_basis = resultado.get("return_basis", "")
+        index_available = _booleano(resultado.get("index_available", True))
+        for item in resultado.get("tickers", []) or []:
+            if not isinstance(item, dict):
+                continue
+            escritor.writerow(
+                (
+                    *contexto,
+                    return_basis,
+                    index_available,
+                    benchmark,
+                    item.get("ticker", ""),
+                    item.get("ticker_return", ""),
+                    item.get("index_return", ""),
+                    item.get("excess_pp", ""),
+                    item.get("observations", ""),
+                    _booleano(item.get("suspicious_event", False)),
+                )
+            )
+    return saida.getvalue()
+
+
+def _booleano(valor: object) -> str:
+    """Serializa um booleano de forma estável no CSV."""
+    return "true" if bool(valor) else "false"
+
+
+def _gravar_exportacao(conteudo: str, saida: str | None) -> None:
+    """Grava o conteúdo em ``--saida`` ou o imprime em ``stdout``."""
+    if not saida:
+        print(conteudo, end="")
+        return
+    try:
+        Path(saida).write_text(conteudo, encoding="utf-8")
+    except OSError as exc:
+        logger.warning(
+            "Performance: falha ao gravar a exportação em %s: %s", saida, exc
+        )
+        _erro_exportacao(
+            "falha_escrita",
+            f"não foi possível gravar {saida}: {exc}",
+            "verifique o caminho e as permissões de escrita",
+        )
+
+
+def _erro_exportacao(motivo: str, detalhe: str, dica: str = "") -> None:
+    """Imprime o erro estruturado da exportação e encerra com código 1."""
+    if motivo == "performance_ausente":
+        logger.warning(
+            "Performance: exportação sem snapshot (%s); dica: %s", detalhe, dica
+        )
+    erro = {"motivo": motivo, "detalhe": detalhe}
+    if dica:
+        erro["dica"] = dica
+    print(json.dumps({"erro": erro}, ensure_ascii=False, indent=2))
+    print(f"Erro ({motivo}): {detalhe}", file=sys.stderr)
+    sys.exit(1)
 
 
 def consultar_feriados(args: argparse.Namespace) -> dict:

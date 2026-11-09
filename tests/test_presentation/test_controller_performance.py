@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import date
 from unittest.mock import MagicMock
@@ -9,6 +10,7 @@ from flowscope.application.performance import (
 )
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.background.events import Resultado
+from flowscope.infrastructure.performance import JsonPerformanceSnapshotStore
 from flowscope.presentation.gui.controller_performance import (
     PerformanceMixin,
     executar_performance,
@@ -170,6 +172,31 @@ class _Controller(PerformanceMixin):
         self._background = background
         self._presenter = _PresenterFake(_GuiFake())
         self._fundamental_resolver_fiagro = None
+
+
+class TestSnapshotGui:
+    def test_grava_latest_json_com_contexto_da_carga(self, tmp_path):
+        store = JsonPerformanceSnapshotStore(cache_dir=tmp_path)
+        executar_performance(
+            FakeCtx(), FakeCase(), FakeCache(), CURRENT, CLASSIFICACAO,
+            list(CLASSIFICACAO), REF, CONFIG, snapshot_store=store,
+        )
+        snapshot = json.loads(store.caminho.read_text(encoding="utf-8"))
+        assert snapshot["source"] == "gui"
+        assert snapshot["ref_date"] == REF.isoformat()
+        assert snapshot["period_days"] == CONFIG.period_days
+        assert snapshot["sampling_method"] == CONFIG.method
+        assert set(snapshot["results"]) == {"IFIX", "IBOV", "IDIV"}
+
+    def test_sem_benchmarks_ainda_grava_contexto(self, tmp_path):
+        store = JsonPerformanceSnapshotStore(cache_dir=tmp_path)
+        executar_performance(
+            FakeCtx(), FakeCase(), FakeCache(), {}, {}, [], REF, CONFIG,
+            snapshot_store=store,
+        )
+        snapshot = json.loads(store.caminho.read_text(encoding="utf-8"))
+        assert snapshot["results"] == {}
+        assert snapshot["ref_date"] == REF.isoformat()
 
 
 class TestPerformanceMixin:

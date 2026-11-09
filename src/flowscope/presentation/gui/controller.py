@@ -44,6 +44,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin, PerformanceMixin):
         calendar: CalendarService | None = None,
         performance_use_case: object | None = None,
         performance_cache: object | None = None,
+        performance_snapshot_store: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -69,6 +70,7 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin, PerformanceMixin):
         self._calendar = calendar
         self._performance_use_case = performance_use_case
         self._performance_cache = performance_cache
+        self._performance_snapshot_store = performance_snapshot_store
 
     def on_today(self: "FlowScopeController") -> None:
         """Carrega os dados para a data atual, já resolvida quando possível."""

@@ -11,18 +11,15 @@ from datetime import date
 
 from flowscope.application.cancellation import OperacaoCancelada
 from flowscope.application.performance import (
-    BASES_RETORNO,
-    SCHEMA_VERSION_PERFORMANCE,
+    SOURCE_GUI,
     AnalyzePerformanceUseCase,
-    PerformanceBenchmark,
     PerformanceCache,
-    PerformanceCacheKey,
-    benchmark_de_dict,
-    benchmark_padrao,
-    benchmark_para_dict,
     benchmarks_disponiveis,
     classificar_elegiveis,
-    tickers_para_benchmark,
+    gravar_cache,
+    ler_cache,
+    montar_payload,
+    montar_snapshot,
 )
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.presentation.gui.background.context import JobContext
@@ -48,6 +45,7 @@ class PerformanceMixin:
         """Dispara o job de performance, se o caso de uso estiver configurado."""
         caso = getattr(self, "_performance_use_case", None)
         cache = getattr(self, "_performance_cache", None)
+        snapshot_store = getattr(self, "_performance_snapshot_store", None)
         if caso is None or cache is None or self._background is None:
             logger.debug(
                 "Performance não iniciada: caso de uso, cache ou background ausente"
@@ -76,7 +74,7 @@ class PerformanceMixin:
         self._background.submit(
             lambda ctx: executar_performance(
                 ctx, caso, cache, current, classificacao, list(tickers),
-                ref_date, config,
+                ref_date, config, snapshot_store=snapshot_store,
             ),
             grupo=GRUPO_PERFORMANCE,
             politica=POLITICA_PERFORMANCE,
@@ -107,6 +105,7 @@ def executar_performance(
     tickers: Sequence[str],
     ref_date: date,
     config: SamplingConfig,
+    snapshot_store: object | None = None,
 ) -> None:
     """Calcula (ou reutiliza do cache) cada benchmark e publica o payload."""
     benchmarks = benchmarks_disponiveis(classificacao)
@@ -117,9 +116,9 @@ def executar_performance(
     )
     if not benchmarks:
         logger.info("Performance: nenhum benchmark elegível para a seleção")
-        ctx.resultado(
-            valor=_montar_payload({}, classificacao, benchmarks, tickers)
-        )
+        payload = montar_payload({}, classificacao, benchmarks, tickers)
+        _gravar_snapshot(payload, ref_date, config, snapshot_store)
+        ctx.resultado(valor=payload)
         return
     try:
         payload = _processar(
@@ -132,6 +131,7 @@ def executar_performance(
         )
         return
     _registrar_resumo(payload)
+    _gravar_snapshot(payload, ref_date, config, snapshot_store)
     logger.info(
         "Performance: processamento concluído (%d benchmarks)",
         len(payload["results"]),
@@ -151,7 +151,10 @@ def _processar(
     benchmarks: Sequence[str],
 ) -> dict:
     """Executa o read-through do cache e calcula os benchmarks faltantes."""
-    resultados = _ler_cache(cache, benchmarks, classificacao, ref_date, config)
+    resultados = ler_cache(
+        cache, benchmarks, classificacao, ref_date,
+        config.period_days, config.method,
+    )
     faltantes = [b for b in benchmarks if b not in resultados]
     logger.info(
         "Performance: cache reutilizado=%s; a calcular=%s",
@@ -163,10 +166,35 @@ def _processar(
         calculados = caso.execute(
             current_data, classificacao, ref_date, benchmarks=faltantes
         )
-        _gravar_resultados(
-            cache, calculados, classificacao, ref_date, config, resultados
+        gravar_cache(
+            cache, calculados, classificacao, ref_date,
+            config.period_days, config.method,
         )
-    return _montar_payload(resultados, classificacao, benchmarks, tickers)
+        resultados.update(calculados)
+    return montar_payload(resultados, classificacao, benchmarks, tickers)
+
+
+def _gravar_snapshot(
+    payload: dict,
+    ref_date: date,
+    config: SamplingConfig,
+    snapshot_store: object | None,
+) -> None:
+    """Grava o snapshot estável, quando houver um store configurado."""
+    if snapshot_store is None:
+        return
+    snapshot = montar_snapshot(
+        payload,
+        ref_date=ref_date,
+        period_days=config.period_days,
+        sampling_method=config.method,
+        source=SOURCE_GUI,
+    )
+    gravado = snapshot_store.gravar(snapshot)  # type: ignore[attr-defined]
+    if gravado is False:
+        logger.warning(
+            "Performance: snapshot não gravado; mantendo o resultado em memória"
+        )
 
 
 def _registrar_resumo(payload: dict) -> None:
@@ -178,80 +206,3 @@ def _registrar_resumo(payload: dict) -> None:
             len(resultado.get("tickers", [])),
             resultado.get("index_available", True),
         )
-
-
-def _chave_cache(
-    benchmark: str,
-    classificacao: Mapping[str, str],
-    ref_date: date,
-    config: SamplingConfig,
-) -> PerformanceCacheKey:
-    """Monta a chave lógica do benchmark com os tickers ordenados."""
-    tickers = tuple(sorted(tickers_para_benchmark(classificacao, benchmark)))
-    return PerformanceCacheKey(
-        schema_version=SCHEMA_VERSION_PERFORMANCE,
-        index=benchmark,
-        ref_date=ref_date,
-        period_days=config.period_days,
-        sampling_method=config.method,
-        tickers=tickers,
-        return_basis=BASES_RETORNO.get(benchmark, "price"),
-    )
-
-
-def _ler_cache(
-    cache: PerformanceCache,
-    benchmarks: Sequence[str],
-    classificacao: Mapping[str, str],
-    ref_date: date,
-    config: SamplingConfig,
-) -> dict[str, PerformanceBenchmark]:
-    """Lê do cache os benchmarks já calculados com a mesma chave."""
-    resultados: dict[str, PerformanceBenchmark] = {}
-    for benchmark in benchmarks:
-        chave = _chave_cache(benchmark, classificacao, ref_date, config)
-        bruto = cache.obter(chave)
-        if bruto is None:
-            continue
-        resultado = benchmark_de_dict(bruto)
-        if resultado is None:
-            logger.warning(
-                "Performance: cache inválido para %s; recalculando", benchmark
-            )
-            continue
-        resultados[benchmark] = resultado
-    return resultados
-
-
-def _gravar_resultados(
-    cache: PerformanceCache,
-    calculados: Mapping[str, PerformanceBenchmark],
-    classificacao: Mapping[str, str],
-    ref_date: date,
-    config: SamplingConfig,
-    resultados: dict[str, PerformanceBenchmark],
-) -> None:
-    """Armazena no cache os benchmarks recém-calculados."""
-    for benchmark, resultado in calculados.items():
-        resultados[benchmark] = resultado
-        chave = _chave_cache(benchmark, classificacao, ref_date, config)
-        cache.registrar(chave, benchmark_para_dict(resultado))
-
-
-def _montar_payload(
-    resultados: Mapping[str, PerformanceBenchmark],
-    classificacao: Mapping[str, str],
-    benchmarks: Sequence[str],
-    tickers: Sequence[str],
-) -> dict:
-    """Monta o payload consumido pelo painel de performance."""
-    return {
-        "benchmarks": list(benchmarks),
-        "default": benchmark_padrao(tickers, classificacao),
-        "ticker_types": dict(classificacao),
-        "results": {
-            benchmark: benchmark_para_dict(resultados[benchmark])
-            for benchmark in benchmarks
-            if benchmark in resultados
-        },
-    }

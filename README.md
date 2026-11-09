@@ -75,7 +75,15 @@ grava em arquivo):
 ./flowscope-linux consultar feriados --ano 2026
 ./flowscope-linux exportar feriados --ano 2026 --formato csv
 ./flowscope-linux exportar feriados --ano 2026 --formato json --saida feriados.json
+./flowscope-linux exportar performance --formato json
+./flowscope-linux exportar performance --formato csv --benchmark IFIX --saida performance.csv
 ```
+
+A exportação de Performance lê somente o snapshot local mais recente, sem
+recalcular nem consultar a rede. O CSV usa `;` e inclui o contexto do cálculo
+(`ref_date`, período, amostragem, base e disponibilidade do índice) e os dados
+por ticker. Sem snapshot, o comando devolve `performance_ausente` com a dica de
+executar `atualizar performance` ou iniciar o MCP com `--data`.
 
 Ações de atualização headless, para agendamento externo (cron, systemd, CI). A
 saída é JSON em `stdout` (`--pretty` formata), o progresso vai para `stderr` e
@@ -90,6 +98,8 @@ precedência:
 ./flowscope-linux atualizar documentos PETR4
 ./flowscope-linux atualizar documentos          # itera a watchlist carregada
 ./flowscope-linux atualizar noticias
+./flowscope-linux atualizar performance         # 30 dias, Fibonacci
+./flowscope-linux atualizar performance --data 2026-11-07
 ./flowscope-linux atualizar feriados                 # ano corrente local
 ./flowscope-linux atualizar feriados --ano 2026 --ano 2027
 ./flowscope-linux resumir documentos PETR4
@@ -104,14 +114,19 @@ permitidos, duração e código de saída), omitindo segredos e preservando o
 ### Servidor MCP
 
 O FlowScopeBR expõe a sua árvore de conhecimento local — fundamentos, documentos,
-guidance e notícias em cache — como um servidor **MCP via stdio**, para chats e
-modelos externos, sem abrir portas de rede. O servidor é somente-leitura e
-opcional: o chat interno não depende dele.
+guidance, notícias e o snapshot de Performance em cache — como um servidor
+**MCP via stdio**, para chats e modelos externos, sem abrir portas de rede. O
+servidor é somente-leitura e opcional: o chat interno não depende dele.
 
 ```bash
 ./flowscope-linux mcp
 ./flowscope-linux mcp --watchlist carteira.txt --data 2026-10-14
 ```
+
+Com `--data`, a preparação executa `atualizar fundamentos` e, logo depois,
+`atualizar performance` com a data resolvida (30 dias, Fibonacci), de modo que
+o ramo `/performance` reflita o cálculo mais recente. Uma falha recuperável da
+Performance não impede o servidor de iniciar.
 
 O catálogo de tools `nav_*`, os subcomandos `flowscope nav ...`, a configuração
 de clientes e o uso do servidor em um container Docker estão em

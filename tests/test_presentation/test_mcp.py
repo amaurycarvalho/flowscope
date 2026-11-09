@@ -397,3 +397,40 @@ class TestCalendarioTools:
         )
         conteudo = respostas[0]["result"]["structuredContent"]
         assert conteudo["erro"]["motivo"] == "schema_invalido"
+
+
+class TestPreparacaoPerformance:
+    def test_preparacao_nao_escreve_em_stdout(self, monkeypatch, capsys):
+        from flowscope.presentation import cli, cli_acoes
+
+        monkeypatch.setattr(cli_acoes, "carregar_watchlist", lambda arquivo: None)
+        monkeypatch.setattr(
+            cli_acoes,
+            "atualizar_fundamentos",
+            lambda d: {"data": d.isoformat()},
+        )
+        monkeypatch.setattr(
+            cli_acoes, "atualizar_performance", lambda d: None
+        )
+        cli._preparar_mcp("carteira.txt", date(2026, 10, 14))
+        capturado = capsys.readouterr()
+        assert capturado.out == ""
+
+    def test_falha_recuperavel_usa_stderr(self, monkeypatch, capsys):
+        from flowscope.presentation import cli, cli_acoes
+
+        monkeypatch.setattr(cli_acoes, "carregar_watchlist", lambda arquivo: None)
+        monkeypatch.setattr(
+            cli_acoes,
+            "atualizar_fundamentos",
+            lambda d: {"data": d.isoformat()},
+        )
+
+        def falha(_d):
+            raise RuntimeError("índice fora")
+
+        monkeypatch.setattr(cli_acoes, "atualizar_performance", falha)
+        cli._preparar_mcp("carteira.txt", date(2026, 10, 14))
+        capturado = capsys.readouterr()
+        assert capturado.out == ""
+        assert "falha recuperável" in capturado.err

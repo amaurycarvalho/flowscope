@@ -191,6 +191,12 @@ flowscope nav data-referencia
 flowscope nav manifesto --pretty
 ```
 
+Quando existe snapshot local de Performance, o mesmo núcleo expõe o ramo
+`/performance` com `configuracao`, `benchmarks/<benchmark>/resumo` e
+`benchmarks/<benchmark>/tickers/<ticker>`. A navegação é somente-leitura e
+devolve o conteúdo do snapshot mais recente, sem recalcular nem consultar a
+rede.
+
 ---
 
 ## 6. Escopo restrito de leitura
@@ -211,14 +217,21 @@ reusa os mesmos núcleos e **não** é acessível pelo protocolo.
 
 Com `--watchlist <arquivo>`, o sistema executa antes de servir a mesma etapa de
 `flowscope carregar watchlist <arquivo>`. Com `--data <AAAA-MM-DD>`, executa a
-mesma etapa de `flowscope atualizar fundamentos --data <AAAA-MM-DD>`, usando a
-watchlist resultante; sem `--data`, a árvore usa a data de referência resolvida.
+mesma etapa de `flowscope atualizar fundamentos --data <AAAA-MM-DD>` e, logo
+depois, a mesma etapa de `flowscope atualizar performance --data <data
+resolvida>`, usando a watchlist resultante. A Performance usa a configuração
+headless padrão (30 dias, Fibonacci) e grava o snapshot lido pelo ramo
+`/performance`. Uma falha recuperável da Performance (por exemplo, série do
+índice indisponível) não aborta a inicialização: o servidor sobe com o ramo
+disponível ou sem ele e registra `WARNING` em `stderr`.
+
 A preparação reusa os núcleos das ações, ocorre sob o lock global de ação
 (liberado antes de o servidor atender) e monta a árvore refletindo a data de
-referência. Falha na preparação aborta a inicialização com código de saída
-diferente de zero. O default de **data de hoje** vale para os subcomandos
-`atualizar`; `flowscope mcp` sem `--data` continua **sem atualizar** e apenas
-serve a árvore a partir do cache.
+referência resolvida. Falha dura na preparação aborta a inicialização com código
+de saída diferente de zero. O default de **data de hoje** vale para os
+subcomandos `atualizar`; `flowscope mcp` sem `--data` continua **sem atualizar**
+e apenas serve a árvore a partir do cache, incluindo o snapshot de Performance
+existente, se houver.
 
 Em um dia não útil, uma atualização sem `--data` grava a data de hoje no
 marcador de última carga; a navegação recua para a observação mais recente
@@ -244,6 +257,7 @@ informado como override opcional:
 | Etapa                | Comando executado                                  |
 | -------------------- | -------------------------------------------------- |
 | `fundamentos`        | `flowscope atualizar fundamentos [--data <data>]`  |
+| `performance`        | `flowscope atualizar performance [--data <data>]`  |
 | `documentos`         | `flowscope atualizar documentos [--data <data>]`   |
 | `noticias`           | `flowscope atualizar noticias [--data <data>]`     |
 | `resumir-documentos` | `flowscope resumir documentos`                     |
@@ -328,7 +342,7 @@ fi
 if [ "$1" = "mcp" ] && [ "$FLOWSCOPE_INIT_UPDATES" != "none" ]; then
   etapas=$(printf '%s' "$FLOWSCOPE_INIT_UPDATES" | tr -d '[:space:]')
   if [ "$etapas" = "all" ]; then
-    etapas="fundamentos,documentos,noticias,resumir-documentos,resumir-noticias"
+    etapas="fundamentos,performance,documentos,noticias,resumir-documentos,resumir-noticias"
   fi
 
   old_ifs=$IFS
@@ -337,6 +351,9 @@ if [ "$1" = "mcp" ] && [ "$FLOWSCOPE_INIT_UPDATES" != "none" ]; then
     case "$etapa" in
       fundamentos)
         atualizar atualizar fundamentos
+        ;;
+      performance)
+        atualizar atualizar performance
         ;;
       documentos)
         atualizar atualizar documentos

@@ -17,6 +17,15 @@ from datetime import date
 from pathlib import Path
 
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
+from flowscope.application.performance import (
+    SOURCE_HEADLESS,
+    benchmarks_disponiveis,
+    classificar_elegiveis,
+    gravar_cache,
+    ler_cache,
+    montar_payload,
+    montar_snapshot,
+)
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.action_lock import ActionLock, OperacaoEmAndamento
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
@@ -126,6 +135,188 @@ def atualizar_fundamentos(data: date, nucleo: object | None = None) -> dict:
         "tickers": watchlist,
         "processados": len(analises),
     }
+
+
+def atualizar_performance(data: date, nucleo: object | None = None) -> dict:
+    """Calcula a Performance da watchlist e grava o cache e o snapshot.
+
+    A configuração headless é a padrão (30 dias, Fibonacci). Falhas de índice,
+    de benchmark ou de gravação do snapshot são recuperáveis: o comando conclui
+    com o que foi possível calcular e registra o desfecho.
+    """
+    from flowscope.presentation.composicao import montar_nucleo
+
+    nucleo = nucleo or montar_nucleo()
+    watchlist = last_tickers()
+    if not watchlist:
+        raise AcaoError("watchlist_ausente", "last_tickers vazio ou ausente")
+    data, resolucao = _resolver_referencia(nucleo, data)
+    config = SamplingConfig()
+    logger.info(
+        "Performance: atualização headless iniciada (data=%s, %d tickers, "
+        "%d dias, %s)",
+        data,
+        len(watchlist),
+        config.period_days,
+        config.method,
+    )
+    progresso_stderr(f"Performance para {data.isoformat()}...")
+    mercado = _analisar_mercado(nucleo, watchlist, data, config)
+    classificacao = _classificar_watchlist(nucleo, watchlist, data)
+    benchmarks = benchmarks_disponiveis(classificacao)
+    resultados = _resultados_performance(
+        nucleo, mercado, classificacao, benchmarks, data, config
+    )
+    payload = montar_payload(resultados, classificacao, benchmarks, watchlist)
+    gravado = _gravar_snapshot_performance(nucleo, payload, data, config)
+    resposta = _resposta_performance(
+        data, resolucao, watchlist, benchmarks, gravado
+    )
+    logger.info(
+        "Performance: atualização headless concluída (benchmarks=%s, "
+        "snapshot=%s)",
+        benchmarks,
+        "gravado" if gravado else "nao_gravado",
+    )
+    return resposta
+
+
+def _analisar_mercado(
+    nucleo: object, watchlist: list[str], data: date, config: SamplingConfig
+) -> dict:
+    """Executa a análise de mercado e devolve o ``daily_data`` de cada ticker."""
+    resultado = nucleo.analyze.execute(data, watchlist, config=config)
+    if not isinstance(resultado, dict):
+        return {}
+    return {
+        ticker: dados.get("daily_data", [])
+        for ticker, dados in resultado.items()
+        if isinstance(dados, dict)
+    }
+
+
+def _classificar_watchlist(
+    nucleo: object, watchlist: list[str], data: date
+) -> dict[str, str]:
+    """Classifica a watchlist usando o histórico fundamentalista e o fallback."""
+    historico = getattr(nucleo, "history_store", None)
+    fundamentos: dict[str, object] = {}
+    if historico is not None:
+        for ticker in watchlist:
+            try:
+                analise = historico.obter_em_ou_antes(ticker, data)
+            except Exception:
+                analise = None
+            if analise is not None:
+                fundamentos[ticker.upper()] = analise
+    return classificar_elegiveis(
+        watchlist,
+        fundamentos,
+        getattr(nucleo, "resolver_fiagro", None),
+    )
+
+
+def _resultados_performance(
+    nucleo: object,
+    mercado: dict,
+    classificacao: dict[str, str],
+    benchmarks: list[str],
+    data: date,
+    config: SamplingConfig,
+) -> dict:
+    """Executa o read-through do cache e calcula os benchmarks faltantes."""
+    cache = getattr(nucleo, "performance_cache", None)
+    resultados = (
+        ler_cache(
+            cache, benchmarks, classificacao, data,
+            config.period_days, config.method,
+        )
+        if cache is not None
+        else {}
+    )
+    faltantes = [benchmark for benchmark in benchmarks if benchmark not in resultados]
+    logger.info(
+        "Performance: cache reutilizado=%s; a calcular=%s",
+        sorted(resultados),
+        faltantes,
+    )
+    if not faltantes:
+        return resultados
+    caso = getattr(nucleo, "performance_use_case", None)
+    if caso is None:
+        logger.warning(
+            "Performance: caso de uso ausente; benchmarks não calculados: %s",
+            faltantes,
+        )
+        return resultados
+    try:
+        calculados = caso.execute(
+            mercado, classificacao, data, benchmarks=faltantes
+        )
+    except Exception:
+        logger.warning(
+            "Performance: falha ao calcular benchmarks; resultado parcial",
+            exc_info=True,
+        )
+        return resultados
+    if cache is not None:
+        gravar_cache(
+            cache, calculados, classificacao, data,
+            config.period_days, config.method,
+        )
+    resultados.update(calculados)
+    return resultados
+
+
+def _gravar_snapshot_performance(
+    nucleo: object, payload: dict, data: date, config: SamplingConfig
+) -> bool:
+    """Grava o snapshot estável, registrando a falha como recuperável."""
+    store = getattr(nucleo, "performance_snapshot_store", None)
+    if store is None:
+        logger.warning(
+            "Performance: store de snapshot ausente; resultado não persistido"
+        )
+        return False
+    snapshot = montar_snapshot(
+        payload,
+        ref_date=data,
+        period_days=config.period_days,
+        sampling_method=config.method,
+        source=SOURCE_HEADLESS,
+    )
+    gravado = store.gravar(snapshot)
+    if not gravado:
+        logger.warning(
+            "Performance: snapshot não gravado; resultado mantido em memória"
+        )
+    return bool(gravado)
+
+
+def _resposta_performance(
+    data: date,
+    resolucao: dict | None,
+    watchlist: list[str],
+    benchmarks: list[str],
+    gravado: bool,
+) -> dict:
+    """Monta o JSON estruturado do subcomando de atualização."""
+    resposta: dict = {
+        "data": data.isoformat(),
+        "data_solicitada": (
+            resolucao["data_solicitada"] if resolucao else data.isoformat()
+        ),
+        "resolucao": resolucao,
+        "tickers": watchlist,
+        "benchmarks": benchmarks,
+        "snapshot": "gravado" if gravado else "nao_gravado",
+    }
+    if not benchmarks:
+        resposta["motivo"] = "nenhum_benchmark_elegivel"
+        logger.info(
+            "Performance: nenhum benchmark elegível para a watchlist"
+        )
+    return resposta
 
 
 def atualizar_feriados(anos: list[int] | None = None) -> dict:
@@ -247,6 +438,12 @@ def adicionar_subcomandos_acao(subcomandos: argparse._SubParsersAction) -> None:
     noticias = recursos_atualizar.add_parser("noticias", help="Atualizar notícias")
     _opcao_data(noticias)
     _opcoes_saida(noticias)
+    performance = recursos_atualizar.add_parser(
+        "performance",
+        help="Atualizar a Performance da watchlist (30 dias, Fibonacci)",
+    )
+    _opcao_data(performance)
+    _opcoes_saida(performance)
     feriados = recursos_atualizar.add_parser(
         "feriados", help="Atualizar o calendário de feriados"
     )
@@ -326,6 +523,8 @@ def _despachar_atualizar(args: argparse.Namespace) -> dict:
         return atualizar_fundamentos(_data_efetiva(args.data))
     if args.recurso == "documentos":
         return atualizar_documentos(_data_efetiva(args.data), args.ticker)
+    if args.recurso == "performance":
+        return atualizar_performance(_data_efetiva(args.data))
     if args.recurso == "feriados":
         return atualizar_feriados(getattr(args, "ano", None))
     return atualizar_noticias(_data_efetiva(args.data))

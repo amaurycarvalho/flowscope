@@ -156,3 +156,69 @@ class TestCoordenacaoProvider:
         host._on_provider_changed()
         assert "_documents_panel" in reabilitados
         assert "_noticias_panel" in reabilitados
+
+
+def _snapshot_performance() -> dict:
+    return {
+        "schema_version": 1,
+        "source": "headless",
+        "ref_date": "2026-11-07",
+        "period_days": 30,
+        "sampling_method": "fibonacci",
+        "cached_at": "2026-11-07T18:30:00+00:00",
+        "benchmarks": ["IFIX"],
+        "default": "IFIX",
+        "ticker_types": {"HGLG11": "FII"},
+        "results": {
+            "IFIX": {
+                "benchmark": "IFIX",
+                "index_available": True,
+                "return_basis": "total",
+                "tickers": [],
+            }
+        },
+    }
+
+
+def _chat_sem_tk(provider) -> object:
+    from flowscope.application.chat.conhecimento import FonteConhecimento
+    from flowscope.presentation.gui.chat.chat_panel import ChatPanel
+
+    painel = ChatPanel.__new__(ChatPanel)
+    painel._fonte_conhecimento = FonteConhecimento({"versao": "1.0"})
+    painel._data_referencia = lambda: None
+    painel._catalogo = None
+    painel._noticias_catalog = None
+    painel._guidance_service = None
+    painel._guidance_paths = None
+    painel._titulos = None
+    painel._inferencias = None
+    painel._titulos_paths = None
+    painel._performance_snapshot_provider = provider
+    return painel
+
+
+class TestArvoreChatPerformance:
+    def test_inclui_ramo_quando_ha_snapshot(self):
+        painel = _chat_sem_tk(lambda: _snapshot_performance())
+        arvore = painel.montar_arvore({}, [])
+        assert arvore.existe("/performance")
+        assert arvore.existe("/performance/benchmarks/IFIX/resumo")
+
+    def test_omite_ramo_sem_snapshot(self):
+        painel = _chat_sem_tk(lambda: None)
+        arvore = painel.montar_arvore({}, [])
+        assert not arvore.existe("/performance")
+
+    def test_ausencia_nao_repete_warning(self, caplog):
+        import logging
+
+        from flowscope.application.chat.performance import (
+            carregar_snapshot_performance,
+        )
+
+        with caplog.at_level(logging.DEBUG, logger="flowscope"):
+            for _ in range(5):
+                assert carregar_snapshot_performance(lambda: None) is None
+        assert caplog.text.count("snapshot ausente") == 5
+        assert "WARNING" not in caplog.text

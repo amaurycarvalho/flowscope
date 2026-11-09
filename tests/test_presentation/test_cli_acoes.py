@@ -8,6 +8,7 @@ from datetime import date
 
 import pytest
 
+from flowscope.application.performance import PerformanceBenchmark, PerformanceTicker
 from flowscope.infrastructure.action_lock import ActionLock
 from flowscope.presentation import cli_acoes, cli_resumos
 
@@ -658,3 +659,170 @@ class TestInferenciaNoCli:
         resultado = cli_acoes.resumir_documentos("PETR4")
 
         assert "inferencia" not in resultado
+
+
+class _FakeHistory:
+    def __init__(self, dados=None):
+        self.dados = dados or {}
+
+    def obter_em_ou_antes(self, ticker, data):
+        return self.dados.get(ticker)
+
+
+class _FakePerformanceCache:
+    def __init__(self):
+        self.store = {}
+
+    def obter(self, chave):
+        return self.store.get(chave.identidade())
+
+    def registrar(self, chave, resultado):
+        self.store[chave.identidade()] = resultado
+
+
+class _FakeSnapshotStore:
+    def __init__(self, ok=True):
+        self.ok = ok
+        self.snapshot = None
+
+    def gravar(self, snapshot):
+        self.snapshot = snapshot
+        return self.ok
+
+
+class _FakeAnalyzePerformance:
+    def __init__(self, disponivel=True):
+        self.disponivel = disponivel
+        self.calls = []
+
+    def execute(self, current, classificacao, ref_date, benchmarks=None):
+        self.calls.append((current, classificacao, ref_date, benchmarks))
+        return {
+            benchmark: PerformanceBenchmark(
+                benchmark,
+                (
+                    PerformanceTicker(
+                        ticker="HGLG11",
+                        ticker_return=0.12,
+                        index_return=0.05,
+                        excess_pp=7.0,
+                        observations=20,
+                    ),
+                ) if self.disponivel else (),
+                self.disponivel,
+                "total",
+            )
+            for benchmark in benchmarks or []
+        }
+
+
+class _FakeNucleoPerformance:
+    def __init__(self, *, disponivel=True, snapshot_ok=True, watchlist_data=None):
+        self.analyze = argparse.Namespace(
+            execute=lambda data, tickers, config=None: {
+                ticker: {"daily_data": [{"date": data, "last_price": 10}]}
+                for ticker in tickers
+            }
+        )
+        self.history_store = _FakeHistory(watchlist_data)
+        self.performance_cache = _FakePerformanceCache()
+        self.performance_snapshot_store = _FakeSnapshotStore(ok=snapshot_ok)
+        self.performance_use_case = _FakeAnalyzePerformance(disponivel=disponivel)
+
+
+class TestAtualizarPerformance:
+    def test_sucesso_grava_cache_e_snapshot(self, monkeypatch):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: ["HGLG11"])
+        nucleo = _FakeNucleoPerformance()
+        resultado = cli_acoes.atualizar_performance(
+            date(2026, 11, 7), nucleo=nucleo
+        )
+        assert resultado["data"] == "2026-11-07"
+        assert resultado["tickers"] == ["HGLG11"]
+        assert resultado["benchmarks"] == ["IFIX"]
+        assert resultado["snapshot"] == "gravado"
+        assert nucleo.performance_cache.store
+        snapshot = nucleo.performance_snapshot_store.snapshot
+        assert snapshot["source"] == "headless"
+        assert snapshot["ref_date"] == "2026-11-07"
+        assert snapshot["period_days"] == 30
+        assert snapshot["sampling_method"] == "fibonacci"
+        assert snapshot["results"]["IFIX"]["tickers"][0]["ticker"] == "HGLG11"
+
+    def test_sem_watchlist_falha_sem_gravar(self, monkeypatch):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: [])
+        nucleo = _FakeNucleoPerformance()
+        with pytest.raises(cli_acoes.AcaoError) as exc:
+            cli_acoes.atualizar_performance(date(2026, 11, 7), nucleo=nucleo)
+        assert exc.value.motivo == "watchlist_ausente"
+        assert nucleo.performance_snapshot_store.snapshot is None
+
+    def test_nenhum_benchmark_elegivel_conclui(self, monkeypatch):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: ["XXXX"])
+        nucleo = _FakeNucleoPerformance()
+        resultado = cli_acoes.atualizar_performance(
+            date(2026, 11, 7), nucleo=nucleo
+        )
+        assert resultado["benchmarks"] == []
+        assert resultado["motivo"] == "nenhum_benchmark_elegivel"
+        assert resultado["snapshot"] == "gravado"
+        assert nucleo.performance_snapshot_store.snapshot["results"] == {}
+
+    def test_indice_indisponivel_e_recuperavel(self, monkeypatch):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: ["HGLG11"])
+        nucleo = _FakeNucleoPerformance(disponivel=False)
+        resultado = cli_acoes.atualizar_performance(
+            date(2026, 11, 7), nucleo=nucleo
+        )
+        assert "falha" not in resultado
+        assert resultado["benchmarks"] == ["IFIX"]
+        snapshot = nucleo.performance_snapshot_store.snapshot
+        assert snapshot["results"]["IFIX"]["index_available"] is False
+
+    def test_falha_de_escrita_do_snapshot_nao_derruba(self, monkeypatch, caplog):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: ["HGLG11"])
+        nucleo = _FakeNucleoPerformance(snapshot_ok=False)
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            resultado = cli_acoes.atualizar_performance(
+                date(2026, 11, 7), nucleo=nucleo
+            )
+        assert resultado["snapshot"] == "nao_gravado"
+        assert "falha ao gravar o snapshot" in caplog.text or (
+            "snapshot não gravado" in caplog.text
+        )
+
+    def test_ciclo_de_vida_em_info(self, monkeypatch, caplog):
+        monkeypatch.setattr(cli_acoes, "last_tickers", lambda: ["HGLG11"])
+        nucleo = _FakeNucleoPerformance()
+        import logging
+
+        with caplog.at_level(logging.INFO, logger="flowscope"):
+            cli_acoes.atualizar_performance(date(2026, 11, 7), nucleo=nucleo)
+        assert "atualização headless iniciada" in caplog.text
+        assert "atualização headless concluída" in caplog.text
+
+
+class TestParserPerformance:
+    def test_registra_subcomando(self):
+        from flowscope.presentation.cli import build_parser
+
+        args = build_parser().parse_args(
+            ["atualizar", "performance", "--data", "2026-11-07"]
+        )
+        assert args.comando == "atualizar"
+        assert args.recurso == "performance"
+        assert args.data == date(2026, 11, 7)
+
+    def test_despacho_repassa_data(self, monkeypatch):
+        chamadas = []
+        monkeypatch.setattr(
+            cli_acoes,
+            "atualizar_performance",
+            lambda d: chamadas.append(d),
+        )
+        cli_acoes._despachar_atualizar(
+            argparse.Namespace(recurso="performance", data=date(2026, 11, 7))
+        )
+        assert chamadas == [date(2026, 11, 7)]

@@ -104,7 +104,10 @@ from flowscope.infrastructure.llm.config import llm_configurada, load_llm_config
 from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
 from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
-from flowscope.infrastructure.performance import JsonPerformanceCache
+from flowscope.infrastructure.performance import (
+    JsonPerformanceCache,
+    JsonPerformanceSnapshotStore,
+)
 from flowscope.infrastructure.referencia import (
     registrar_last_fundamentals,
     resolver_data_referencia,
@@ -360,6 +363,7 @@ class Nucleo:
     fundamental_short_interest_provider: B3ShortInterestSource
     history_store: JsonFundamentalHistoryStore
     performance_cache: JsonPerformanceCache
+    performance_snapshot_store: JsonPerformanceSnapshotStore
     performance_use_case: AnalyzePerformanceUseCase
     guidance_store: JsonGuidanceStore
     llm_factory: Callable[[], LLMPort]
@@ -396,6 +400,7 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
     fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
     fundamental_dividend_provider = FundamentusDividendHistoryProvider(cache=cache)
     performance_cache = JsonPerformanceCache(cache_dir=base)
+    performance_snapshot_store = JsonPerformanceSnapshotStore(cache_dir=base)
     renda_fixa = montar_adaptadores_renda_fixa(
         base,
         cache=cache,
@@ -441,6 +446,7 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         fundamental_short_interest_provider=B3ShortInterestSource(cache=cache),
         history_store=JsonFundamentalHistoryStore(cache_dir=base),
         performance_cache=performance_cache,
+        performance_snapshot_store=performance_snapshot_store,
         performance_use_case=AnalyzePerformanceUseCase(
             repo, dividends=fundamental_dividend_provider, business_day=lookup
         ),

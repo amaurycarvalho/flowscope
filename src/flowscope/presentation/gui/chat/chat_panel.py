@@ -32,6 +32,7 @@ from flowscope.application.chat import (
     ParNavegacao,
     RespostaChat,
 )
+from flowscope.application.chat import performance as performance_chat
 from flowscope.application.chat.conhecimento import (
     FonteConhecimento,
     estrutura_conhecimento,
@@ -356,6 +357,10 @@ class ChatPanel(EnvioMixin, tk.Frame):
                     watchlist, self._guidance_service, self._catalogo
                 )
             )
+        # O snapshot é opcional: ausente, o ramo de Performance não é montado.
+        fontes.append(performance_chat.FontePerformance(
+            performance_chat.carregar_snapshot_performance(
+                getattr(self, "_performance_snapshot_provider", None))))
         caminhos = [
             *self._caminhos_guidance(watchlist),
             *self._caminhos_titulos(watchlist),

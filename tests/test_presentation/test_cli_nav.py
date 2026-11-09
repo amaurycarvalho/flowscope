@@ -237,6 +237,62 @@ class TestCargaDataAware:
         assert core.executar("data_referencia", {}).dados == {"data": "2020-01-02"}
 
 
+def _snapshot_performance() -> dict:
+    return {
+        "schema_version": 1,
+        "source": "headless",
+        "ref_date": "2026-11-07",
+        "period_days": 30,
+        "sampling_method": "fibonacci",
+        "cached_at": "2026-11-07T18:30:00+00:00",
+        "benchmarks": ["IFIX"],
+        "default": "IFIX",
+        "ticker_types": {"HGLG11": "FII"},
+        "results": {
+            "IFIX": {
+                "benchmark": "IFIX",
+                "index_available": True,
+                "return_basis": "total",
+                "tickers": [],
+            }
+        },
+    }
+
+
+class TestPerformanceTree:
+    def _store(self, snapshot):
+        class _Store:
+            def __init__(self, cache_dir=None):
+                self.cache_dir = cache_dir
+
+            def ler(self):
+                return snapshot
+
+        return _Store
+
+    def test_inclui_ramo_quando_ha_snapshot(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "flowscope.infrastructure.performance.JsonPerformanceSnapshotStore",
+            self._store(_snapshot_performance()),
+        )
+        core = cli.montar_core_navegacao()
+        assert core.executar("existe", {"caminho": "/performance"}).dados is True
+        assert (
+            core.executar(
+                "existe", {"caminho": "/performance/benchmarks/IFIX/resumo"}
+            ).dados
+            is True
+        )
+
+    def test_omite_ramo_sem_snapshot(self, monkeypatch) -> None:
+        monkeypatch.setattr(
+            "flowscope.infrastructure.performance.JsonPerformanceSnapshotStore",
+            self._store(None),
+        )
+        core = cli.montar_core_navegacao()
+        assert core.executar("existe", {"caminho": "/performance"}).dados is False
+
+
 class TestSubcomandoMcp:
     def test_parser_mcp_com_params(self) -> None:
         parser = cli.build_parser()
@@ -270,20 +326,58 @@ class TestSubcomandoMcp:
             cli_acoes, "carregar_watchlist", lambda arq: eventos.append(("wl", arq))
         )
         monkeypatch.setattr(
-            cli_acoes, "atualizar_fundamentos", lambda d: eventos.append(("fund", d))
+            cli_acoes,
+            "atualizar_fundamentos",
+            lambda d: eventos.append(("fund", d))
+            or {"data": date(2026, 10, 15).isoformat()},
+        )
+        monkeypatch.setattr(
+            cli_acoes,
+            "atualizar_performance",
+            lambda d: eventos.append(("perf", d)),
         )
         monkeypatch.setattr(
             "flowscope.presentation.navegacao.executar_servidor",
             lambda core, calendar=None: eventos.append(("serve", core)),
         )
-        monkeypatch.setattr(cli, "montar_core_navegacao", lambda reference_date=None: "tree")
+        monkeypatch.setattr(
+            cli,
+            "montar_core_navegacao",
+            lambda reference_date=None: eventos.append(("tree", reference_date))
+            or "tree",
+        )
         cli.iniciar_mcp("carteira.txt", date(2026, 10, 14))
         assert eventos == [
             ("wl", "carteira.txt"),
             ("fund", date(2026, 10, 14)),
+            ("perf", date(2026, 10, 15)),
+            ("tree", date(2026, 10, 15)),
             ("serve", "tree"),
         ]
         assert capsys.readouterr().out == ""
+
+    def test_falha_recuperavel_da_performance_nao_aborta(self, monkeypatch) -> None:
+        from flowscope.presentation import cli_acoes
+
+        eventos: list = []
+        monkeypatch.setattr(cli_acoes, "carregar_watchlist", lambda arq: None)
+        monkeypatch.setattr(
+            cli_acoes,
+            "atualizar_fundamentos",
+            lambda d: {"data": d.isoformat()},
+        )
+
+        def falha(_d):
+            raise RuntimeError("índice fora")
+
+        monkeypatch.setattr(cli_acoes, "atualizar_performance", falha)
+        monkeypatch.setattr(
+            "flowscope.presentation.navegacao.executar_servidor",
+            lambda core, calendar=None: eventos.append("serve"),
+        )
+        monkeypatch.setattr(cli, "montar_core_navegacao", lambda reference_date=None: "tree")
+        cli.iniciar_mcp("carteira.txt", date(2026, 10, 14))
+        assert eventos == ["serve"]
 
     def test_falha_na_preparacao_aborta_sem_servir(self, monkeypatch) -> None:
         from flowscope.presentation import cli_acoes

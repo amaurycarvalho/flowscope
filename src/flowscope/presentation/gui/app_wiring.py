@@ -136,6 +136,7 @@ class WiringMixin:
             calendar=nucleo.calendar.service,
             performance_use_case=nucleo.performance_use_case,
             performance_cache=nucleo.performance_cache,
+            performance_snapshot_store=nucleo.performance_snapshot_store,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

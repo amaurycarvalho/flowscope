@@ -37,6 +37,17 @@ from flowscope.application.performance.modelos import (
     benchmark_para_dict,
 )
 from flowscope.application.performance.ports import PerformanceCache
+from flowscope.application.performance.snapshot import (
+    SCHEMA_VERSION_SNAPSHOT,
+    SOURCE_GUI,
+    SOURCE_HEADLESS,
+    chave_cache,
+    gravar_cache,
+    ler_cache,
+    montar_payload,
+    montar_snapshot,
+    snapshot_de_dict,
+)
 
 __all__ = [
     "BASES_RETORNO",
@@ -48,6 +59,9 @@ __all__ = [
     "BENCHMARK_IFIX",
     "ORDEM_BENCHMARKS",
     "SCHEMA_VERSION_PERFORMANCE",
+    "SCHEMA_VERSION_SNAPSHOT",
+    "SOURCE_GUI",
+    "SOURCE_HEADLESS",
     "TIPO_ACAO",
     "TIPO_FII",
     "AnalyzePerformanceUseCase",
@@ -60,12 +74,18 @@ __all__ = [
     "benchmark_padrao",
     "benchmark_para_dict",
     "benchmarks_disponiveis",
+    "chave_cache",
     "classificar_elegiveis",
     "derivar_data_ex",
     "detectar_evento_societario",
+    "gravar_cache",
+    "ler_cache",
+    "montar_payload",
+    "montar_snapshot",
     "montar_ticker",
     "proventos_por_data_ex",
     "retorno_preco",
     "retorno_total",
+    "snapshot_de_dict",
     "tickers_para_benchmark",
 ]

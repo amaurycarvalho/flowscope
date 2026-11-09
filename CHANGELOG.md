@@ -17,7 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.8.0] - 2026-11-09
 
-### [performance-vs-indice](openspec/changes/performance-vs-indice) Sub-aba "Performance" compara o retorno dos ativos com o seu índice de referência, com ingestão da série diária de IBOV, IDIV e IFIX, cache por resultado e aviso de evento societário suspeito
+### [performance-headless](openspec/changes/archive/2026-11-09-performance-headless) Performance calculada, navegada e exportada sem GUI, com snapshot auto-descritivo compartilhado por CLI, chat, `flowscope nav` e MCP
+
+#### Added
+
+- Novo subcomando `flowscope atualizar performance [--data <AAAA-MM-DD>]`, autossuficiente, sob o lock global de ação. Ele calcula a Performance da watchlist com a configuração headless padrão (30 dias, Fibonacci), grava o cache pré-calculado existente e um snapshot estável e auto-descritivo em `~/.cache/flowscope/performance/latest.json`.
+- Novo ramo navegável `/performance` na árvore de conhecimento, montado exclusivamente a partir do snapshot local, com `configuracao` (`ref_date`, período, amostragem, base), `benchmarks/<benchmark>/resumo` e `benchmarks/<benchmark>/tickers/<ticker>`.
+- Novo subcomando `flowscope exportar performance --formato <csv|json> [--benchmark <IFIX|IBOV|IDIV>] [--saida <ARQUIVO>]`, somente leitura do snapshot, sem recalcular e sem rede.
+
+#### Changed
+
+- A preparação do MCP (`flowscope mcp --watchlist ... --data ...`) passa a executar `atualizar performance` logo após `atualizar fundamentos`, reutilizando a watchlist e a data de referência resolvida. Falha suave da Performance não aborta a inicialização: o servidor sobe e a árvore expõe o estado indisponível.
+- O manifesto anuncia `/performance` apenas quando o ramo existe, com os caminhos canônicos e uma linha no playbook de intenção. O conteúdo pesado não entra no manifesto.
+- Logs `INFO`/`WARNING` cobrem preparação, classificação, cache/snapshot, série do índice, proventos, exportação e edge cases. No modo MCP, nada é escrito em `stdout`.
+- O job de Performance da GUI usa o mesmo escritor de snapshot, de modo que GUI, chat, `flowscope nav` e MCP compartilhem a mesma visão do resultado mais recente.
+
+### [performance-vs-indice](openspec/changes/archive/2026-11-09-performance-vs-indice) Sub-aba "Performance" compara o retorno dos ativos com o seu índice de referência, com ingestão da série diária de IBOV, IDIV e IFIX, cache por resultado e aviso de evento societário suspeito
 
 #### Added
 

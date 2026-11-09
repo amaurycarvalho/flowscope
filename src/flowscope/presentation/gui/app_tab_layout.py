@@ -256,7 +256,7 @@ class TabsLayoutMixin:
         """Constrói o painel de chat ligado ao estado da janela principal."""
         documentos = self._adaptadores_documentos()
         renda_fixa = self._adaptadores_renda_fixa()
-        return ChatPanel(
+        painel = ChatPanel(
             parent,
             fundamental_data_provider=lambda: getattr(self, "_fundamental_data", {}),
             watchlist_provider=self._watchlist_provider,
@@ -279,6 +279,17 @@ class TabsLayoutMixin:
             reference_date_provider=getattr(self, "_reference_date_provider", None),
             context_window_provider=documentos.context_window_provider,
         )
+        painel._performance_snapshot_provider = self._performance_snapshot_provider
+        return painel
+
+    def _performance_snapshot_provider(self: "TabsLayoutMixin") -> dict | None:
+        """Lê o snapshot de Performance do cache local para a árvore do chat."""
+        from flowscope.infrastructure.performance import (
+            JsonPerformanceSnapshotStore,
+        )
+
+        base = getattr(self._adaptadores_documentos().catalogo, "base_dir", None)
+        return JsonPerformanceSnapshotStore(cache_dir=base).ler()
 
     def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:
         """Retorna os tickers exibidos, tolerando hosts sem lista de tickers."""

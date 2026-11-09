@@ -305,3 +305,71 @@ class TestManifestoRendaFixa:
         texto = montar_manifesto(arvore)
         assert "/titulos/cri/" not in texto
         assert "/titulos/lci/" not in texto
+
+
+def _snapshot_performance() -> dict:
+    return {
+        "schema_version": 1,
+        "source": "headless",
+        "ref_date": "2026-11-07",
+        "period_days": 30,
+        "sampling_method": "fibonacci",
+        "cached_at": "2026-11-07T18:30:00+00:00",
+        "benchmarks": ["IFIX"],
+        "default": "IFIX",
+        "ticker_types": {"HGLG11": "FII"},
+        "results": {
+            "IFIX": {
+                "benchmark": "IFIX",
+                "index_available": True,
+                "return_basis": "total",
+                "tickers": [
+                    {
+                        "ticker": "HGLG11",
+                        "ticker_return": 0.123456,
+                        "index_return": 0.05,
+                        "excess_pp": 7.345678,
+                        "observations": 20,
+                        "suspicious_event": False,
+                    }
+                ],
+            }
+        },
+    }
+
+
+def _arvore_com_performance(snapshot: dict) -> ArvoreConhecimento:
+    from flowscope.application.chat.performance import FontePerformance
+
+    raiz = no_interno("/", "raiz")
+    ramo = FontePerformance(snapshot).construir()
+    if ramo is not None:
+        raiz.filho(ramo)
+    return ArvoreConhecimento(raiz, assinatura="sig")
+
+
+class TestManifestoPerformance:
+    def test_ramo_presente_e_anunciado(self) -> None:
+        texto = montar_manifesto(_arvore_com_performance(_snapshot_performance()))
+        assert "/performance" in texto
+        assert "/performance/configuracao" in texto
+        assert "/performance/benchmarks/<benchmark>/resumo" in texto
+        assert "/performance/benchmarks/<benchmark>/tickers/<ticker>" in texto
+        assert "Desempenho relativo ao índice" in texto
+        assert "benchmarks_performance: IFIX" in texto
+
+    def test_ramo_ausente_nao_e_anunciado(self) -> None:
+        texto = montar_manifesto(_arvore_com_performance(None))
+        assert "/performance/configuracao" not in texto
+        assert "Desempenho relativo ao índice" not in texto
+
+    def test_resultados_por_ticker_nao_integram_metadados(self) -> None:
+        texto = montar_manifesto(_arvore_com_performance(_snapshot_performance()))
+        assert "7.345678" not in texto
+        assert "0.123456" not in texto
+
+    def test_teto_de_tokens_respeitado(self) -> None:
+        arvore = _arvore_com_performance(_snapshot_performance())
+        texto = montar_manifesto(arvore)
+        assert estimar_tokens(texto) < TETO_TOKENS
+        assert texto == montar_manifesto(arvore)

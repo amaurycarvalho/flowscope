@@ -137,6 +137,14 @@ _RAMOS_CANONICOS = (
             "/noticias/<grupo>/<chave>/texto"
         ),
     ),
+    (
+        "/performance",
+        (
+            "/performance/configuracao, "
+            "/performance/benchmarks/<benchmark>/resumo, "
+            "/performance/benchmarks/<benchmark>/tickers/<ticker>"
+        ),
+    ),
 )
 
 #: Descrição da árvore e das operações de navegação.
@@ -180,6 +188,7 @@ _RAMOS_CHAVES = {
     "abas": "/flowscope/abas",
     "indicadores": "/flowscope/indicadores",
     "grupos_noticias": "/noticias/grupos",
+    "benchmarks_performance": "/performance/benchmarks",
 }
 
 
@@ -280,6 +289,7 @@ _RAIZES_DESCRICAO = (
     "/guidance",
     "/direitos-obrigacoes",
     "/noticias",
+    "/performance",
 )
 
 
@@ -344,6 +354,12 @@ def _playbook(arvore: ArvoreConhecimento) -> str:
             "relacionados -> /direitos-obrigacoes/<obrigacoes|direitos>/titulos/"
             "<tipo>/<id>/{geral,adicionais,ltv,documentos}, "
             ".../agregado/resumo e .../sem-fonte"
+        )
+    if arvore.existe("/performance"):
+        linhas.append(
+            "- Desempenho relativo ao índice -> navegue "
+            "/performance/benchmarks/<benchmark>/resumo e as folhas "
+            "/performance/benchmarks/<benchmark>/tickers/<ticker>"
         )
     return "\n".join(linhas) if len(linhas) > 1 else ""
 

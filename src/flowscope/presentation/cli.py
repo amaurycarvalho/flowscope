@@ -2,10 +2,13 @@
 
 import argparse
 import json
+import logging
 import sys
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+
+logger = logging.getLogger("flowscope")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -48,13 +51,26 @@ def build_parser() -> argparse.ArgumentParser:
 def _adicionar_subcomando_mcp(subcomandos: argparse._SubParsersAction) -> None:
     """Registra o subcomando ``mcp`` com a preparação opcional na inicialização."""
     mcp = subcomandos.add_parser(
-        "mcp", help="Iniciar o servidor MCP (stdio), com preparação opcional"
+        "mcp",
+        help=(
+            "Iniciar o servidor MCP (stdio); com --data, atualiza fundamentos "
+            "e Performance antes de servir"
+        ),
     )
     mcp.add_argument(
-        "--watchlist", type=str, metavar="ARQUIVO", help="Watchlist a carregar"
+        "--watchlist",
+        type=str,
+        metavar="ARQUIVO",
+        help="Watchlist a carregar antes de servir",
     )
     mcp.add_argument(
-        "--data", type=_parse_data, metavar="AAAA-MM-DD", help="Data de referência"
+        "--data",
+        type=_parse_data,
+        metavar="AAAA-MM-DD",
+        help=(
+            "Data de referência; executa 'atualizar fundamentos' e "
+            "'atualizar performance' antes de servir"
+        ),
     )
 
 
@@ -211,7 +227,9 @@ def montar_core_navegacao(reference_date: date | None = None) -> object:
     from flowscope.application.chat.guidance import FonteGuidance
     from flowscope.application.chat.montar import MontarArvore
     from flowscope.application.chat.noticias import FonteNoticias
+    from flowscope.application.chat.performance import FontePerformance
     from flowscope.application.navegacao.core import NavegacaoCore
+    from flowscope.infrastructure.performance import JsonPerformanceSnapshotStore
     from flowscope.presentation.composicao import (
         montar_nucleo,
         resolver_data_referencia,
@@ -257,6 +275,9 @@ def montar_core_navegacao(reference_date: date | None = None) -> object:
         ),
         FonteNoticias(catalog=noticias.catalogo),
         FonteGuidance(watchlist, documentos.guidance_service, documentos.catalogo),
+        FontePerformance(
+            JsonPerformanceSnapshotStore(cache_dir=nucleo.base).ler()
+        ),
     ]
     caminhos = [
         *_guidance_paths(documentos, watchlist),
@@ -365,29 +386,69 @@ def iniciar_mcp(
     from flowscope.infrastructure.calendar import build_calendar_services
     from flowscope.presentation.navegacao import executar_servidor
 
+    referencia = data
     if watchlist or data:
-        _preparar_mcp(watchlist, data)
+        referencia = _preparar_mcp(watchlist, data) or data
     executar_servidor(
-        montar_core_navegacao(reference_date=data),
+        montar_core_navegacao(reference_date=referencia),
         calendar=build_calendar_services().service,
     )
 
 
-def _preparar_mcp(watchlist: str | None, data: date | None) -> None:
-    """Executa a preparação opcional do servidor MCP, abortando em falha."""
+def _preparar_mcp(watchlist: str | None, data: date | None) -> date | None:
+    """Executa a preparação opcional do servidor MCP, abortando em falha.
+
+    Devolve a data de referência resolvida pelos fundamentos para a montagem da
+    árvore. A Performance roda logo após os fundamentos e uma falha recuperável
+    dela (ou de sua escrita) não impede o servidor de iniciar.
+    """
     from flowscope.infrastructure.action_lock import ActionLock, OperacaoEmAndamento
     from flowscope.presentation import cli_acoes
 
+    referencia = data
     try:
         with ActionLock().adquirir(0.0):
             if watchlist:
                 cli_acoes.carregar_watchlist(watchlist)
             if data:
-                cli_acoes.atualizar_fundamentos(data)
+                resultado = cli_acoes.atualizar_fundamentos(data)
+                referencia = _data_resolvida(resultado, data)
+                _preparar_performance(cli_acoes, referencia)
     except OperacaoEmAndamento:
         _abortar_mcp("operacao_em_andamento", "outra operação de escrita em andamento")
     except cli_acoes.AcaoError as exc:
         _abortar_mcp(exc.motivo, exc.detalhe)
+    return referencia
+
+
+def _data_resolvida(resultado: object, fallback: date) -> date:
+    """Extrai a data resolvida devolvida por ``atualizar fundamentos``."""
+    if isinstance(resultado, dict):
+        valor = resultado.get("data")
+        if isinstance(valor, str):
+            try:
+                return date.fromisoformat(valor)
+            except ValueError:
+                return fallback
+    return fallback
+
+
+def _preparar_performance(cli_acoes: object, referencia: date) -> None:
+    """Executa a Performance na preparação, isolando falhas recuperáveis."""
+    try:
+        cli_acoes.atualizar_performance(referencia)  # type: ignore[attr-defined]
+    except cli_acoes.AcaoError:  # type: ignore[attr-defined]
+        raise
+    except Exception:
+        logger.warning(
+            "Performance falhou na preparação do MCP; seguindo sem o ramo",
+            exc_info=True,
+        )
+        print(
+            "Aviso: falha recuperável na preparação da Performance; "
+            "o servidor seguirá com o resultado disponível.",
+            file=sys.stderr,
+        )
 
 
 def _abortar_mcp(motivo: str, detalhe: str) -> None:
