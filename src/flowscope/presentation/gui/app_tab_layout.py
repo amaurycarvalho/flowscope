@@ -279,17 +279,10 @@ class TabsLayoutMixin:
             reference_date_provider=getattr(self, "_reference_date_provider", None),
             context_window_provider=documentos.context_window_provider,
         )
-        painel._performance_snapshot_provider = self._performance_snapshot_provider
-        return painel
-
-    def _performance_snapshot_provider(self: "TabsLayoutMixin") -> dict | None:
-        """Lê o snapshot de Performance do cache local para a árvore do chat."""
-        from flowscope.infrastructure.performance import (
-            JsonPerformanceSnapshotStore,
+        painel._performance_snapshot_provider = getattr(
+            self, "_performance_snapshot_provider", None
         )
-
-        base = getattr(self._adaptadores_documentos().catalogo, "base_dir", None)
-        return JsonPerformanceSnapshotStore(cache_dir=base).ler()
+        return painel
 
     def _watchlist_provider(self: "TabsLayoutMixin") -> list[str]:
         """Retorna os tickers exibidos, tolerando hosts sem lista de tickers."""

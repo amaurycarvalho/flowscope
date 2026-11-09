@@ -51,6 +51,9 @@ class WiringMixin:
         self._clipboard = ClipboardImageAdapter()
         self._llm_config = InfrastructureLLMConfig()
         self._reference_date_provider = resolver_data_referencia_seguro
+        self._performance_snapshot_provider = (
+            self._obter_nucleo().performance_snapshot_store.ler
+        )
 
     def _obter_nucleo(self: "WiringMixin") -> object:
         """Devolve o núcleo neutro, montando-o sob demanda uma única vez."""
