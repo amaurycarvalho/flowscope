@@ -130,6 +130,8 @@ class ActionsMixin(DocumentosAquisicaoMixin):
         """Atualiza os painéis que não seguem o fluxo padrão de dados filtrados."""
         if chart is getattr(self, "_correlation_network_panel", None):
             chart.update(filtered, tickers=tickers)
+        elif chart is getattr(self, "_performance_panel", None):
+            chart.update(getattr(self, "_performance_data", {}))
         elif isinstance(chart, FundamentalTablePanel):
             dados = getattr(self, "_fundamental_data", {})
             chart.update({t: dados[t] for t in tickers if t in dados})
@@ -242,6 +244,10 @@ class ActionsMixin(DocumentosAquisicaoMixin):
         atual = getattr(self, "_ticker_selecionado", None)
         if atual not in dados:
             self._ticker_selecionado = next(iter(dados), None)
+
+    def set_performance_data(self: "ActionsMixin", dados: dict) -> None:
+        """Armazena os resultados de performance por benchmark."""
+        self._performance_data = dict(dados or {})
 
     def _copy_chart(self: "ActionsMixin", figure: object) -> None:
         """Copia o gráfico: rendering no Tk e transferência em background.

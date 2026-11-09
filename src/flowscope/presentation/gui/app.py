@@ -211,6 +211,7 @@ class FlowScopeGUI(WatchlistTitleMixin, WiringMixin, TabActionsMixin, TabsLayout
         self._tickers: list[str] = []
         self._all_tickers: list[str] = []
         self._fundamental_data: dict = {}
+        self._performance_data: dict = {}
         self._ticker_selecionado: str | None = None
         self._loading_after_id = None
         self._flash_after_id = None

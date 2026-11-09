@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires OpenSpec or SpecKit directory structure.
 metadata:
   author: amaurycarvalho
-  version: "2.0"
+  version: "2.1"
   generatedBy: "1.4.1"
 ---
 
@@ -103,7 +103,7 @@ For each change assigned to any destination (release, archive, or unreleased):
    - Categorize each item using the same heuristics as the existing skill (see **Heuristics** below).
    - If no items found, the change entry will have no sub-items (just the summary heading).
 
-6.3. **Build the change entry**:
+6.3. **Build the release/archive change entry**:
    ```markdown
    ### [<change-name>](<relative-path>) <summary>
 
@@ -114,6 +114,14 @@ For each change assigned to any destination (release, archive, or unreleased):
    - item
    ```
    Only include categories that have at least one item.
+
+6.4. **Build the Unreleased change entry**: a change assigned to Unreleased
+   must contain **only the short summary heading**, with no additional sections:
+   ```markdown
+   ### [<change-name>](<relative-path>) <summary>
+   ```
+   Do not add `#### Added`, `#### Changed`, `#### Fixed` or any other subsection
+   to an Unreleased entry, even when the summary source has item bullets.
 
 ### 7. Update CHANGELOG.md
 
@@ -134,7 +142,8 @@ For each change assigned to any destination (release, archive, or unreleased):
    ```markdown
    ## [Unreleased]
    ```
-   Append all change entries assigned to Unreleased (step 5.3), ordered alphabetically by change name.
+   Append all change entries assigned to Unreleased (step 5.3), ordered alphabetically by change name,
+   **using only the short summary heading from step 6.4** (no `####` subsections).
    If no changes were assigned to Unreleased, leave the section empty (no items).
 
 7.4. **Rebuild the full CHANGELOG.md**:

@@ -12,12 +12,15 @@ class _WireHost(WiringMixin):
         self._presenter = presenter
 
 
-def _handle(*, cancelavel: bool, outcome: Outcome, reportada: bool) -> JobHandle:
+def _handle(
+    *, cancelavel: bool, outcome: Outcome, reportada: bool, substituido: bool = False
+) -> JobHandle:
     handle = JobHandle(
         id=1, grupo="g", politica=Politica.PARALLEL, cancelavel=cancelavel
     )
     handle.outcome = outcome
     handle.falha_reportada = reportada
+    handle.substituido = substituido
     return handle
 
 
@@ -45,3 +48,18 @@ class TestTerminoBackground:
 
         presenter.job_cancelavel_finalizado.assert_not_called()
         presenter.exit.assert_called_once_with(Outcome.SUCESSO, False)
+
+    def test_job_substituido_nao_reporta_cancelamento(self):
+        presenter = MagicMock()
+        host = _WireHost(presenter)
+        handle = _handle(
+            cancelavel=True,
+            outcome=Outcome.CANCELADO,
+            reportada=False,
+            substituido=True,
+        )
+
+        host._on_background_terminado(handle)
+
+        presenter.job_cancelavel_finalizado.assert_called_once()
+        presenter.exit.assert_called_once_with(None, False)

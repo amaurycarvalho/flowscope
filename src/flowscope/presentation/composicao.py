@@ -31,6 +31,7 @@ from flowscope.application.fundamental_fallback import (
 from flowscope.application.load_portfolio_use_case import LoadIndexPortfolioUseCase
 from flowscope.application.noticias.catalogo import ConsultarCatalogoNoticiasUseCase
 from flowscope.application.operation_guard import OperationGuard
+from flowscope.application.performance import AnalyzePerformanceUseCase
 from flowscope.application.renda_fixa import (
     AquisicaoTitulos,
     ConsultarTitulosUseCase,
@@ -103,6 +104,7 @@ from flowscope.infrastructure.llm.config import llm_configurada, load_llm_config
 from flowscope.infrastructure.llm.config_adapter import InfrastructureLLMConfig
 from flowscope.infrastructure.llm.factory import create_llm_provider
 from flowscope.infrastructure.logging.python_log_adapter import PythonLogAdapter
+from flowscope.infrastructure.performance import JsonPerformanceCache
 from flowscope.infrastructure.referencia import (
     registrar_last_fundamentals,
     resolver_data_referencia,
@@ -357,6 +359,8 @@ class Nucleo:
     fundamental_bdr_provider: BdrDividendProvider
     fundamental_short_interest_provider: B3ShortInterestSource
     history_store: JsonFundamentalHistoryStore
+    performance_cache: JsonPerformanceCache
+    performance_use_case: AnalyzePerformanceUseCase
     guidance_store: JsonGuidanceStore
     llm_factory: Callable[[], LLMPort]
     logger: PythonLogAdapter
@@ -390,6 +394,8 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         patrimonio_source=CvmMonthlyPatrimonioSource(),
     )
     fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
+    fundamental_dividend_provider = FundamentusDividendHistoryProvider(cache=cache)
+    performance_cache = JsonPerformanceCache(cache_dir=base)
     renda_fixa = montar_adaptadores_renda_fixa(
         base,
         cache=cache,
@@ -428,12 +434,16 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         fundamental_ffo_provider=CompositeFfoProvider(
             [FundamentusProvider(cache=cache), FFOEngineProvider()]
         ),
-        fundamental_dividend_provider=FundamentusDividendHistoryProvider(cache=cache),
+        fundamental_dividend_provider=fundamental_dividend_provider,
         fundamental_acionistas_provider=fundamental_acionistas_provider,
         fundamental_indexadores_provider=CvmIndexadoresProvider(),
         fundamental_bdr_provider=BdrDividendProvider(cache=cache),
         fundamental_short_interest_provider=B3ShortInterestSource(cache=cache),
         history_store=JsonFundamentalHistoryStore(cache_dir=base),
+        performance_cache=performance_cache,
+        performance_use_case=AnalyzePerformanceUseCase(
+            repo, dividends=fundamental_dividend_provider, business_day=lookup
+        ),
         guidance_store=JsonGuidanceStore(cache_dir=base),
         llm_factory=documentos.llm_factory,
         logger=PythonLogAdapter(logging.getLogger("flowscope")),

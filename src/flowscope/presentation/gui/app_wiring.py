@@ -75,10 +75,16 @@ class WiringMixin:
             self._presenter.job_cancelavel_iniciado()
 
     def _on_background_terminado(self: "WiringMixin", handle: "JobHandle") -> None:
-        """Reflete o término de um job, incluindo o desfecho, no apresentador."""
+        """Reflete o término de um job, incluindo o desfecho, no apresentador.
+
+        Jobs substituídos por uma submissão mais nova não reportam o desfecho
+        como cancelamento: a substituição é rotineira e não deve exibir
+        "Processamento interrompido" ao usuário.
+        """
         if handle.cancelavel:
             self._presenter.job_cancelavel_finalizado()
-        self._presenter.exit(handle.outcome, handle.falha_reportada)
+        outcome = None if handle.substituido else handle.outcome
+        self._presenter.exit(outcome, handle.falha_reportada)
 
     def _wire_controller(self: "WiringMixin") -> None:
         """Monta o grafo de dependências e conecta a lista de tickers."""
@@ -128,6 +134,8 @@ class WiringMixin:
             fundamental_mercado_factory=nucleo.mercado_factory,
             background=background,
             calendar=nucleo.calendar.service,
+            performance_use_case=nucleo.performance_use_case,
+            performance_cache=nucleo.performance_cache,
         )
         self._ticker_list.rebind(
             on_change=self._on_ticker_edit,

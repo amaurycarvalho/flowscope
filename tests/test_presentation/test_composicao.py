@@ -55,6 +55,8 @@ class TestMontarNucleo:
         assert callable(nucleo.llm_factory)
         assert callable(nucleo.deduplicar_documentos)
         assert callable(nucleo.resolver_fiagro)
+        assert nucleo.performance_cache is not None
+        assert nucleo.performance_use_case is not None
 
     def test_monta_grafo_sem_tk(self):
         resultado = subprocess.run(

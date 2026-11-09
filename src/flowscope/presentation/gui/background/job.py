@@ -94,3 +94,4 @@ class JobHandle:
     outcome: Outcome | None = None
     falha_reportada: bool = False
     termino_entregue: bool = False
+    substituido: bool = False

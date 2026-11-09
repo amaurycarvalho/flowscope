@@ -14,10 +14,11 @@ from flowscope.presentation.gui.controller_data import (
     DataLoadMixin,
 )
 from flowscope.presentation.gui.controller_fundamental import FundamentalMixin
+from flowscope.presentation.gui.controller_performance import PerformanceMixin
 from flowscope.presentation.gui.presenter import FlowScopePresenter
 
 
-class FlowScopeController(DataLoadMixin, FundamentalMixin):
+class FlowScopeController(DataLoadMixin, FundamentalMixin, PerformanceMixin):
     """Controlador que orquestra as operações de carga e análise de dados."""
 
     def __init__(
@@ -41,6 +42,8 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         fundamental_mercado_factory: object | None = None,
         background: object | None = None,
         calendar: CalendarService | None = None,
+        performance_use_case: object | None = None,
+        performance_cache: object | None = None,
     ) -> None:
         """Inicializa o controlador com as dependências da aplicação."""
         self._guard = guard
@@ -64,6 +67,8 @@ class FlowScopeController(DataLoadMixin, FundamentalMixin):
         self._fundamental_mercado_factory = fundamental_mercado_factory
         self._background = background
         self._calendar = calendar
+        self._performance_use_case = performance_use_case
+        self._performance_cache = performance_cache
 
     def on_today(self: "FlowScopeController") -> None:
         """Carrega os dados para a data atual, já resolvida quando possível."""

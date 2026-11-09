@@ -6,6 +6,7 @@ from typing import Protocol
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.domain.entities import TradeDay
+from flowscope.domain.index_history import IndexClose
 from flowscope.domain.sampling import SamplingConfig
 
 
@@ -32,4 +33,14 @@ class DataRepository(Protocol):
         cancel_token: CancellationToken | None = None,
     ) -> list[str]:
         """Retorna a lista de tickers do índice informado."""
+        ...
+
+
+class IndexHistoryRepository(Protocol):
+    """Contrato dedicado da série histórica de fechamento dos índices."""
+
+    def get_index_history(
+        self: "IndexHistoryRepository", index: str, start: date, end: date
+    ) -> list[IndexClose]:
+        """Retorna os fechamentos do índice no intervalo inclusivo."""
         ...

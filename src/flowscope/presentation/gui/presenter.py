@@ -1,5 +1,6 @@
 """Apresentador da interface gráfica, conectando a view aos casos de uso."""
 
+import logging
 import tkinter as tk
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -21,6 +22,8 @@ MENSAGEM_ABORTADO = "Processamento encerrado por inatividade."
 
 #: Mensagem de interrupção solicitada pelo usuário.
 MENSAGEM_CANCELADO = "Processamento interrompido."
+
+logger = logging.getLogger("flowscope")
 
 
 class _BusyState(Enum):
@@ -113,6 +116,10 @@ class GUIView(Protocol):
         """Armazena os resultados da análise fundamentalista por ticker."""
         ...
 
+    def set_performance_data(self: "GUIView", dados: dict) -> None:
+        """Armazena os resultados do cálculo de performance por benchmark."""
+        ...
+
 
 class FlowScopePresenter:
     """Apresentador que orquestra a interação entre casos de uso e a view."""
@@ -142,6 +149,7 @@ class FlowScopePresenter:
     def request_cancel(self: "FlowScopePresenter") -> None:
         """Solicita o cancelamento de todos os processamentos em background."""
         if self._background is not None:
+            logger.info("Cancelamento solicitado pelo usuário")
             self._background.cancel_all()
 
     def job_cancelavel_iniciado(self: "FlowScopePresenter") -> None:
@@ -370,6 +378,13 @@ class FlowScopePresenter:
     def on_fundamental_error(self: "FlowScopePresenter") -> None:
         """Exibe a falha catastrófica da análise fundamentalista."""
         self._view.set_status("Falha ao atualizar dados", "⚠")
+
+    def on_performance_result(
+        self: "FlowScopePresenter", dados: dict | None
+    ) -> None:
+        """Armazena o resultado da performance e atualiza a sub-aba."""
+        self._view.set_performance_data(dados or {})
+        self._view.on_tab_changed()
 
     @property
     def _gui(self: "FlowScopePresenter") -> GUIView:

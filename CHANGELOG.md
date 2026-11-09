@@ -13,47 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [llm-chat-rag](openspec/changes/llm-chat-rag) Recuperação vetorial como evolução da `llm-chat`, com VectorStore SQLite, embeddings e indexação de documentos consultada pela aba "Chat AI"
 
-#### Added
-
-- VectorStore em SQLite puro, com busca top-k por cosine similarity e filtro opcional por ticker.
-- Módulo de embeddings com dois provedores: `fastembed` (local, default) e liteLLM (API).
-- Porta `DocumentoIndexavel`/`DocumentSource` e fontes concretas, com extração de texto (HTML e PDF).
-- Pipeline de indexação (`IndexarDocumentosUseCase`) e consulta RAG (`ConsultarDocumentosUseCase`) consumindo a porta `LLMPort` da `llm-core`.
-- Integração da consulta RAG à aba "Chat AI" como fonte adicional de contexto, pelo ponto de extensão da `llm-chat`.
-- Chunker de texto em Python puro.
-- Configuração de embedding persistida em `llm.embedding` e presets de provedores de embedding.
-- Dependência opcional `fastembed` no grupo `[llm]`.
-- CLI `--index <TICKER>` com `--data-inicio` e `--data-fim`.
-
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
-## [1.7.0] - 2026-10-31
+## [1.8.0] - 2026-11-09
 
-### [calendario-feriados-anbima](openspec/changes/archive/2026-10-31-calendario-feriados-anbima) Calendário ANBIMA como fonte única de feriados por ano, com cache, fallback, aba `Feriados` e correção da data local no botão "Hoje"
+### [performance-vs-indice](openspec/changes/performance-vs-indice) Sub-aba "Performance" compara o retorno dos ativos com o seu índice de referência, com ingestão da série diária de IBOV, IDIV e IFIX, cache por resultado e aviso de evento societário suspeito
 
 #### Added
 
-- Adotar o calendário ANBIMA como fonte única de feriados por ano, com origem por feriado, normalização de datas/nomes, validação do dia da semana, cache em arquivo por ano, TTL por recência, cache negativo para ano futuro não publicado, fallback para cache anterior e modo degradado somente-fim-de-semana.
-- Adicionar a aba `Feriados` na GUI: árvore ano/mês/dia construída apenas do cache, textbox somente leitura, botão de atualização com `view-refresh`/`content-loading`, atualização em background e seleção preservada.
+- Adicionar a sub-aba "Performance" na "Análise Geral", entre "Dominância do Pregão" e "Rede de Correlação", com barras de excesso de retorno em pontos percentuais e o zero representando o índice.
+- Adicionar o combobox de benchmark (IFIX para FIIs; IBOV e IDIV para ações), com default pelo primeiro ticker e elegibilidade restrita ao tipo correspondente; ETF, BDR e desconhecido ficam fora.
+- Calcular retorno de preço (IBOV) e retorno total (IFIX/IDIV), com proventos reinvestidos na primeira observação alinhada igual ou posterior à data ex derivada da data-com.
+- Ingerir automaticamente a série diária de fechamento dos índices pelo endpoint B3 `indexStatisticsProxy/IndexCall/GetPortfolioDay`, com cache por índice e ano, TTL de 1 dia no ano corrente e anos anteriores imutáveis.
+- Manter cache pré-calculado dos resultados por schema, índice, data de referência, período, amostragem, conjunto de tickers e base de retorno.
+- Sinalizar no hover quando um salto de preço for compatível com split, grupamento ou bonificação, sem alterar o retorno calculado.
+- Adicionar testes de cliente, parsing, repositório, cache, aplicação, controlador e painel, além da documentação em `docs/misc/datasources.md` e `docs/misc/panels.md`.
 
 #### Changed
 
-- Recuperar e adaptar o subsistema de calendário já copiado: renomear `b3_selic_pre` para `flowscope`, corrigir caminhos de cache, usar o lock/escrita atômica existentes e manter compatibilidade com Python 3.10.
-- Garantir o calendário do ano da data de referência antes das cargas, de forma best-effort: falha do calendário não bloqueia a carga principal, que segue com cache anterior ou apenas fim de semana.
-- Resolver a data de referência para o dia útil anterior quando ela cair em fim de semana ou feriado. A amostragem existente continua avançando para o próximo dia útil, preservando o contrato de `sampling-strategy`.
-- Expor consulta e exportação: CLI com `consultar feriados`, `exportar feriados` (CSV/JSON) e `atualizar feriados`; MCP com tools `calendario_*` somente-leitura e somente-cache, sem gravar arquivos.
-- Manter 24/12 e 31/12 como recesso local da B3, complementando a ANBIMA quando caem em dia de semana e não estão na página.
-- Manter fora de escopo: a janela de evolução de 7/14/21/28 dias, por não ter consumidor no FlowScope atual.
+- Reexecutar o job de performance após a carga principal e quando a análise fundamentalista atualizar a classificação dos tickers, gravando `_performance_data` sem tocar em `_current_data`.
+- Reutilizar a `ToolbarBR` do VWAP, com "Copiar Gráfico", e respeitar os combos globais de período e amostragem, recalculando quando eles mudam.
+- Registrar em log o ciclo do job de performance e os edge cases: agendamento, cache reutilizado/inválido/falha de escrita, benchmarks calculados, tickers fora por tipo, tickers sem preço, observações insuficientes, índice indisponível, resposta vazia/JSON inválido/série vazia, dia/valor/data inválidos no parser, falha de proventos, falha isolada de benchmark e excesso inválido no painel.
+- Registrar no log o cancelamento de jobs do gerenciador de background, com grupo e identificador, e o pedido de interrupção do usuário.
 
 #### Fixed
 
-- Corrigir o botão "Hoje" e o `maxdate` do DateEntry para usarem a data local do processo, não UTC.
+- Reconhecer FIIs fora da taxonomia determinística — como o `TVRI11` — pela classificação do Fundamentus (`classificacao_exibicao`), para que apareçam corretamente na sub-aba Performance sob o IFIX.
+- Não exibir "Processamento interrompido" quando um job é substituído por uma submissão mais nova (`LATEST_WINS`), incluindo a segunda execução de performance disparada após a análise fundamentalista; a substituição e o cancelamento continuam registrados no log.
 
-#### Removed
-
-- Remover a lista estática de feriados e fiar a verificação de dia útil em uma porta de aplicação alimentada pelo cache do calendário.
-
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.7.0...HEAD
-[1.7.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.7.0
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.8.0
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.

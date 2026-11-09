@@ -78,8 +78,11 @@ class TestRegistroSubAba:
                 for i in range(host._general_notebook.index("end"))
             ]
             assert "Rede de Correlação" in textos
-            assert textos.index("Rede de Correlação") == textos.index(
+            assert textos.index("Performance") == textos.index(
                 "Dominância do Pregão"
+            ) + 1
+            assert textos.index("Rede de Correlação") == textos.index(
+                "Performance"
             ) + 1
             assert isinstance(
                 host._correlation_network_panel, CorrelationNetworkPanel

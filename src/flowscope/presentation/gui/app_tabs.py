@@ -137,6 +137,29 @@ TAB_CONTENT = {
              "Passe o mouse sobre as barras para ver detalhes do ticker."), ""),
         ]
     ),
+    ("Análise Geral", "Performance"): (
+        "Performance — Excesso de Retorno versus Índice",
+        [
+            ("Objetivo: ", "bold"),
+            ("Comparar o retorno acumulado de cada ativo com o do seu índice de referência no período carregado, exibindo o excesso de retorno em pontos percentuais.\n\n", ""),
+            ("Responde a pergunta: ", "bold"),
+            ("\"Este ativo performou melhor ou pior que o seu índice no período?\"\n\n", "italic"),
+            ("Indicadores envolvidos: ", "bold"),
+            (("• Retorno acumulado do ticker, na mesma base do benchmark;\n"
+              "• Retorno acumulado do índice de referência;\n"
+              "• Excesso de retorno em pontos percentuais (ticker − índice).\n\n"), ""),
+            ("Como interpretar: ", "bold"),
+            (("Cada barra parte do zero, que representa o índice: barras verdes para a direita indicam desempenho acima do índice e barras vermelhas para a esquerda, abaixo. "
+              "Passe o mouse sobre uma barra para ver o retorno do ticker, o retorno do índice e o excesso em pontos percentuais. "
+              "O combobox de benchmark oferece IFIX quando há FIIs na seleção e IBOV/IDIV quando há ações; o default é IFIX para o primeiro FII e IBOV para a primeira ação, "
+              "e cada benchmark exibe apenas os tickers do tipo correspondente (ETF, BDR e tipo desconhecido ficam fora). O cálculo respeita o período e a amostragem dos combos globais, "
+              "sem seletor próprio, e reaproveita resultados já calculados no cache.\n\n"
+              "Bases de retorno: o IBOV é comparado por preço; o IFIX e o IDIV, por retorno total, com os proventos reinvestidos na primeira observação alinhada igual ou posterior "
+              "à data ex derivada do próximo dia útil após a data-com. A data ex é uma aproximação baseada no calendário de dias úteis.\n\n"
+              "Limitação: o sistema NÃO ajusta preços para split, grupamento, desdobramento ou bonificação. Quando a variação de um ativo é compatível com um desses eventos, "
+              "o painel sinaliza no hover que o retorno pode estar distorcido, mas mantém o valor calculado, sem correção automática."), ""),
+        ]
+    ),
     ("Análise Geral", "Rede de Correlação"): (
         "Rede de Correlação — Topologia de Correlação e Cointegração",
         [

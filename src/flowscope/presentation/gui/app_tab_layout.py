@@ -32,6 +32,7 @@ from flowscope.presentation.gui.charts.fundamental_evolution_panel import (
 )
 from flowscope.presentation.gui.charts.fundamental_table import FundamentalTablePanel
 from flowscope.presentation.gui.charts.noticias_panel import NoticiasPanel
+from flowscope.presentation.gui.charts.performance_panel import PerformancePanel
 from flowscope.presentation.gui.charts.price_range_panel import PriceRangePanel
 from flowscope.presentation.gui.charts.quadrant_chart import QuadrantChart
 from flowscope.presentation.gui.charts.vwap_hist import VWAPHistChart
@@ -84,6 +85,15 @@ class TabsLayoutMixin:
             general_dominance_frame, copy_chart_callback=self._copy_chart,
         )
         self._dominance_ranking.frame.pack(fill=tk.BOTH, expand=True)
+
+        general_performance_frame = ttk.Frame(self._general_notebook)
+        self._general_notebook.add(
+            general_performance_frame, text="Performance"
+        )
+        self._performance_panel = PerformancePanel(
+            general_performance_frame, copy_chart_callback=self._copy_chart,
+        )
+        self._performance_panel.frame.pack(fill=tk.BOTH, expand=True)
 
         general_network_frame = ttk.Frame(self._general_notebook)
         self._general_notebook.add(

@@ -1,11 +1,22 @@
 """Parsers dos arquivos CSV de negociação e de carteiras da B3."""
 
 import csv
+import json
+import logging
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.entities import TradeDay
+from flowscope.domain.index_history import IndexClose
 from flowscope.domain.value_objects import Price, Ticker, Volume
+
+logger = logging.getLogger("flowscope")
+
+#: Versão do formato de cache da série histórica dos índices.
+INDEX_HISTORY_SCHEMA_VERSION = 1
+
+#: Meses cobertos pela grade ``rateValue1..rateValue12``.
+_MESES_GRADE = range(1, 13)
 
 _EXPECTED_HEADER = [
     "RptDt", "TckrSymb", "SgmtNm", "MinPric", "MaxPric",
@@ -99,6 +110,115 @@ def parse_index_csv(content: str) -> list[str]:
             continue
         tickers.append(ticker)
     return tickers
+
+
+def parse_index_history(payload: object, year: int) -> list[IndexClose]:
+    """Interpreta a grade dia × mês da evolução diária de um índice.
+
+    ``payload`` é o JSON decodificado do endpoint ``GetPortfolioDay``: cada
+    linha de ``results`` traz o dia e as colunas ``rateValue1..12`` com o
+    fechamento de cada mês. Valores nulos ou inválidos são ignorados; uma
+    resposta vazia ou malformada vira ausência de série (lista vazia).
+    """
+    dados = _payload_como_dict(payload)
+    if dados is None:
+        logger.warning("Grade da série do índice com payload inválido")
+        return []
+    resultados = dados.get("results")
+    if not isinstance(resultados, list):
+        logger.warning("Grade da série do índice sem a lista 'results'")
+        return []
+    fechamentos: dict[date, IndexClose] = {}
+    for linha in resultados:
+        _coletar_linha(fechamentos, linha, year)
+    return [fechamentos[data] for data in sorted(fechamentos)]
+
+
+def _payload_como_dict(payload: object) -> dict | None:
+    """Normaliza o payload JSON (texto ou dicionário) em um dicionário."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (TypeError, ValueError):
+            return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _coletar_linha(
+    fechamentos: dict[date, IndexClose], linha: object, year: int
+) -> None:
+    """Coleta os fechamentos de uma linha da grade dia × mês."""
+    if not isinstance(linha, dict):
+        return
+    dia = _parse_day(linha.get("day"))
+    if dia is None:
+        logger.warning(
+            "Grade da série do índice: dia inválido %r",
+            linha.get("day"),
+        )
+        return
+    for mes in _MESES_GRADE:
+        _coletar_celula(fechamentos, linha, dia, mes, year)
+
+
+def _coletar_celula(
+    fechamentos: dict[date, IndexClose],
+    linha: dict,
+    dia: int,
+    mes: int,
+    year: int,
+) -> None:
+    """Coleta o fechamento de uma célula, ignorando valor/data inválidos."""
+    valor = _parse_index_decimal(linha.get(f"rateValue{mes}"))
+    if valor is None:
+        return
+    try:
+        momento = date(year, mes, dia)
+    except ValueError:
+        logger.warning(
+            "Grade da série do índice: data inválida (%s-%s-%s)",
+            year,
+            mes,
+            dia,
+        )
+        return
+    fechamentos[momento] = IndexClose(date=momento, close=valor)
+
+
+def _parse_day(value: object) -> int | None:
+    """Interpreta o dia da linha da grade, rejeitando valores fora de 1..31."""
+    try:
+        dia = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return dia if 1 <= dia <= 31 else None
+
+
+def _parse_index_decimal(value: object) -> Decimal | None:
+    """Devolve um fechamento da grade como ``Decimal``, ignorando nulos/inválidos."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, Decimal)):
+        return Decimal(value)
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        texto = value.strip()
+        if not texto:
+            return None
+        try:
+            if "," in texto:
+                return Decimal(texto.replace(".", "").replace(",", "."))
+            return Decimal(texto)
+        except InvalidOperation:
+            logger.warning(
+                "Grade da série do índice: valor inválido %r", value
+            )
+            return None
+    logger.warning("Grade da série do índice: valor inválido %r", value)
+    return None
 
 
 def _parse_date(value: str, row_num: int) -> date:

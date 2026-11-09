@@ -146,6 +146,7 @@ class TabActionsMixin:
             getattr(self, "_fundamental_evolution_panel", None),
             getattr(self, "_documents_panel", None),
             getattr(self, "_noticias_panel", None),
+            getattr(self, "_performance_panel", None),
         )
 
     @staticmethod

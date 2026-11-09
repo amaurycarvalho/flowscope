@@ -198,6 +198,7 @@ class LayoutMixin:
             "VWAP": self._vwap_chart,
             "Quadrantes": self._quadrant_chart,
             "Dominância do Pregão": self._dominance_ranking,
+            "Performance": self._performance_panel,
             "Rede de Correlação": self._correlation_network_panel,
             "Fundamentos": self._fundamental_table,
             "Notícias": self._noticias_panel,

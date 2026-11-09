@@ -278,6 +278,13 @@ class DataLoadMixin:
         self._iniciar_analise_fundamental(
             resultado.tickers, resultado.ref_date, resultado.result,
         )
+        iniciar_performance = getattr(
+            self, "_iniciar_analise_performance", None
+        )
+        if iniciar_performance is not None:
+            iniciar_performance(
+                resultado.tickers, resultado.ref_date, resultado.result,
+            )
 
     def _ao_erro_carga(self: "DataLoadMixin", evento: Erro) -> None:
         """Reporta a falha da carga com a mensagem correspondente à origem."""

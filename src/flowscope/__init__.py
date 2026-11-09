@@ -1,4 +1,4 @@
 """Pacote principal do FlowScope, plataforma open source de análise de ativos da B3."""
 
-__version__ = "1.7.0"
-__release_date__ = "2026-10-31"
+__version__ = "1.8.0"
+__release_date__ = "2026-11-09"

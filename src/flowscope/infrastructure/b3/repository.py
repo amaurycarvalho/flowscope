@@ -3,20 +3,29 @@
 import logging
 from collections.abc import Callable, Iterable
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from flowscope.application.calendar.ports import (
     BusinessDayLookup,
     WeekendBusinessDayLookup,
 )
 from flowscope.application.cancellation import CancellationToken
-from flowscope.application.ports import DataRepository
+from flowscope.application.ports import DataRepository, IndexHistoryRepository
 from flowscope.domain.entities import TradeDay
+from flowscope.domain.index_history import IndexClose
 from flowscope.domain.sampling import SamplingConfig
 from flowscope.infrastructure.b3.calendar import fibonacci_dates, resolve_dates
 from flowscope.infrastructure.b3.client import B3Client
-from flowscope.infrastructure.b3.parser import ParseError, parse_csv
+from flowscope.infrastructure.b3.parser import (
+    INDEX_HISTORY_SCHEMA_VERSION,
+    ParseError,
+    parse_csv,
+)
 
 logger = logging.getLogger(__name__)
+
+#: TTL efetivamente imutável para anos anteriores ao corrente.
+_IMMUTABLE_TTL_DAYS = 36500
 
 
 def _checar(cancel_token: CancellationToken | None) -> None:
@@ -25,8 +34,8 @@ def _checar(cancel_token: CancellationToken | None) -> None:
         cancel_token.raise_if_cancelled()
 
 
-class B3DataRepository(DataRepository):
-    """Implementa o port DataRepository buscando dados na B3 com cache local."""
+class B3DataRepository(DataRepository, IndexHistoryRepository):
+    """Implementa os ports de dados e de série de índices com cache local."""
 
     def __init__(
         self: "B3DataRepository",
@@ -74,6 +83,54 @@ class B3DataRepository(DataRepository):
         data_start = 1 if not lines[0].startswith("RptDt") else 0
         return len(lines) > data_start + 1
 
+    def get_index_history(
+        self: "B3DataRepository", index: str, start: date, end: date
+    ) -> list[IndexClose]:
+        """Retorna a série de fechamentos do índice no intervalo inclusivo."""
+        if end < start:
+            return []
+        fechamentos: list[IndexClose] = []
+        for year in range(start.year, end.year + 1):
+            fechamentos.extend(self._get_index_year(index, year))
+        return [c for c in fechamentos if start <= c.date <= end]
+
+    def _get_index_year(
+        self: "B3DataRepository", index: str, year: int
+    ) -> list[IndexClose]:
+        """Obtém a série de um ano, usando o cache por ``(índice, ano)``."""
+        key = f"index_history_{index}_{year}"
+        ttl = 1 if year >= date.today().year else _IMMUTABLE_TTL_DAYS
+
+        def _fetch() -> dict[str, object]:
+            fechamentos = self._client.fetch_index_daily_history(index, year)
+            return {
+                "schema_version": INDEX_HISTORY_SCHEMA_VERSION,
+                "index": index,
+                "year": year,
+                "values": [
+                    [c.date.isoformat(), str(c.close)] for c in fechamentos
+                ],
+            }
+
+        cache = self._client._cache
+        data = cache.get_or_fetch(key, ttl_days=ttl, fetch_fn=_fetch)
+        if data.get("schema_version") != INDEX_HISTORY_SCHEMA_VERSION:
+            logger.info(
+                "Invalidando cache da série %s/%s por mudança de schema",
+                index,
+                year,
+            )
+            cache.invalidate(key)
+            data = cache.get_or_fetch(key, ttl_days=ttl, fetch_fn=_fetch)
+        fechamentos = _closes_from_values(data.get("values"))
+        if not fechamentos:
+            logger.warning(
+                "Performance: série vazia para o índice %s no ano %s",
+                index,
+                year,
+            )
+        return fechamentos
+
     def get_index_tickers(self: "B3DataRepository", index: str,
                           progress_callback: Callable[[str, bool], None] | None = None,
                           cancel_token: CancellationToken | None = None) -> list[str]:
@@ -116,3 +173,20 @@ class B3DataRepository(DataRepository):
                     progress_callback(f"{d} (erro ao baixar)", True)
                 continue
         return all_trades
+
+
+def _closes_from_values(values: object) -> list[IndexClose]:
+    """Reconstrói a série a partir do payload em cache, tolerando entradas inválidas."""
+    if not isinstance(values, list):
+        return []
+    fechamentos: list[IndexClose] = []
+    for item in values:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        try:
+            momento = date.fromisoformat(str(item[0]))
+            fechamento = IndexClose(date=momento, close=Decimal(str(item[1])))
+        except (TypeError, ValueError, InvalidOperation):
+            continue
+        fechamentos.append(fechamento)
+    return fechamentos

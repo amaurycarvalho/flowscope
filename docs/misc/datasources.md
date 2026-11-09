@@ -17,6 +17,7 @@ empréstimos da B3 e o download de PDFs do visualizador da CVM.
 | --- | --- | --- | --- | --- |
 | B3 — Arquivos | Cotações diárias do pregão | `https://arquivos.b3.com.br/api/download/...` | query string | CSV |
 | B3 — Índices | Carteira de IBOV, IDIV e IFIX | `https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/...` | JSON em Base64 | CSV em Base64 |
+| B3 — Evolução dos índices | Série diária de fechamento de IBOV, IDIV e IFIX | `https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/IndexCall/GetPortfolioDay/...` | JSON em Base64 | JSON (grade dia × mês) |
 | B3 — BDI | Ações alugadas (_short interest_) | `https://arquivos.b3.com.br/bdi/table/BTBLendingOpenPosition/...` | `POST` com JSON `{}` | JSON tabular |
 | B3 — Fundos listados | Identidade de FIIs e relatórios | `https://sistemaswebb3-listados.b3.com.br/fundsListedProxy/Search/...` | JSON em Base64 | JSON |
 | B3 — Empresas listadas | `codeCVM` e material facts | `https://sistemaswebb3-listados.b3.com.br/listedCompaniesProxy/CompanyCall/...` | JSON em Base64 | JSON |
@@ -160,7 +161,48 @@ Redutor;;;0,99999999;
 **Cache:** chave `portfolio_<ÍNDICE>` em JSON, TTL de 7 dias. Resultados vazios
 são invalidados para não congelar falhas transitórias.
 
-### 2.3 Ações alugadas / _short interest_ (`BTBLendingOpenPosition`)
+### 2.3 Evolução diária dos índices
+
+**Módulos:** `infrastructure/b3/client.py`, `infrastructure/b3/parser.py`,
+`infrastructure/b3/repository.py`
+
+```text
+GET https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/
+    IndexCall/GetPortfolioDay/{BASE64}
+```
+
+**Entrada — JSON antes do Base64**
+
+```json
+{"index": "IBOV", "language": "pt-br", "year": "2026"}
+```
+
+Índices aceitos: `IBOV`, `IDIV` e `IFIX`. Uma requisição cobre o ano inteiro.
+Índice inexistente retorna `results: []`, tratado como ausência de série.
+
+**Saída bruta — JSON**
+
+A resposta traz uma grade dia × mês em `results`; cada linha tem o dia e as
+colunas `rateValue1..rateValue12` com o fechamento de cada mês (decimal
+brasileiro). `null` indica dia sem pregão:
+
+```json
+{
+  "results": [
+    {"day": 2, "rateValue1": "125.432,10", "rateValue2": "126.000,00", "rateValue3": null}
+  ]
+}
+```
+
+**Normalização:** pares `(data, fechamento)` (`IndexClose`), ignorando valores
+`null` ou inválidos e ordenando por data.
+
+**Cache:** chave `index_history_<ÍNDICE>_<ANO>` em JSON. O ano corrente tem
+TTL de 1 dia; anos anteriores são tratados como imutáveis. Uma mudança de
+versão de schema (`INDEX_HISTORY_SCHEMA_VERSION`) invalida séries geradas por
+versões anteriores.
+
+### 2.4 Ações alugadas / _short interest_ (`BTBLendingOpenPosition`)
 
 **Módulo:** `infrastructure/b3/emprestimos.py`
 

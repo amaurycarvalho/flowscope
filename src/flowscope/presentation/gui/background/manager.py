@@ -177,6 +177,13 @@ class BackgroundManager:
             ativo = self._scheduler.ativo(handle.grupo)
             self._iniciar(handle)
             if ativo is not None:
+                ativo.substituido = True
+                logger.info(
+                    "Job %s do grupo %s substituído pelo job %s",
+                    ativo.id,
+                    ativo.grupo,
+                    handle.id,
+                )
                 self.cancel(ativo.id)
             return handle
         self._iniciar(handle)
@@ -187,6 +194,12 @@ class BackgroundManager:
         handle = self._jobs.get(job_id)
         if handle is None:
             return
+        logger.info(
+            "Job %s do grupo %s cancelado%s.",
+            handle.id,
+            handle.grupo,
+            _detalhe_atividade(handle),
+        )
         handle.token.request()
         self._finalizar(handle, Outcome.CANCELADO)
 

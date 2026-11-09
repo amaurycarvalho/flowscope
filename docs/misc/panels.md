@@ -95,6 +95,20 @@ A interface é dividida em três grandes regiões:
 - **Indicadores envolvidos:** CLV (Close Location Value) para direção/intensidade, Money Flow Volume (MFV) para capital envolvido.
 - **Como interpretar:** Barras para a direita indicam dominância compradora (CLV positivo); para a esquerda, vendedora (CLV negativo). Quanto maior o comprimento, mais intensa a dominância. O traço horizontal sobre a barra representa o volume financeiro que sustentou o movimento. Passe o mouse sobre as barras para ver detalhes do ticker.
 
+### Sub-aba: Performance
+
+- **Objetivo:** Comparar o retorno acumulado de cada ativo com o do seu índice de referência no período carregado, mostrando o excesso de retorno em pontos percentuais.
+- **Responde a pergunta:** _Este ativo performou melhor ou pior que o seu índice no período?_
+- **Indicadores envolvidos:** retorno acumulado do ticker (na mesma base do benchmark), retorno acumulado do índice e excesso de retorno em pontos percentuais (ticker − índice).
+- **Como interpretar:**
+  - Cada barra parte do zero, que representa o índice: barras verdes para a direita indicam desempenho acima do índice; barras vermelhas para a esquerda, abaixo.
+  - O combobox **Benchmark** oferece **IFIX** quando há FIIs na seleção e **IBOV**/**IDIV** quando há ações. O default é IFIX para o primeiro FII e IBOV para a primeira ação. Apenas tickers do tipo correspondente entram no gráfico; ETF, BDR e tipo desconhecido ficam fora.
+  - **Bases de retorno:** IBOV compara retorno de preço; IFIX e IDIV comparam retorno total, com os proventos reinvestidos na primeira observação alinhada igual ou posterior à data ex (próximo dia útil após a data-com). A data ex é uma aproximação baseada no calendário de dias úteis.
+  - **Uso dos combos globais:** o cálculo respeita o período e a amostragem dos combos globais, sem seletor próprio. Trocar período ou amostragem recarrega os dados e recalcula. Resultados com a mesma chave (índice, data de referência, período, amostragem, tickers e base) são reutilizados do cache.
+  - Passe o mouse sobre uma barra para ver o retorno do ticker, o retorno do índice e o excesso em pontos percentuais.
+  - **Limitação e aviso:** o sistema não ajusta preços para split, grupamento, desdobramento ou bonificação. Quando a variação de um ativo é compatível com um desses eventos, o hover avisa que o retorno pode estar distorcido, sem alterar o valor calculado.
+  - **Barra de ferramentas:** a mesma da sub-aba VWAP — Início, Voltar, Avançar, Mover, Ampliar, Salvar e "Copiar Gráfico" (copia a figura para a área de transferência como imagem).
+
 ### Sub-aba: Rede de Correlação
 
 - **Objetivo:** Revelar a topologia da carteira — quem se agrupa com quem — distinguindo o co-movimento de curto prazo (correlação) do vínculo de equilíbrio de longo prazo (cointegração do spread), em vez de uma matriz N×N ilegível.

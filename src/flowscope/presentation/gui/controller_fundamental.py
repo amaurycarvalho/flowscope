@@ -86,8 +86,15 @@ class FundamentalMixin:
         )
 
     def _ao_resultado_fundamental(self: "FundamentalMixin", evento: Resultado) -> None:
-        """Aplica o resultado do job no presenter."""
+        """Aplica o resultado do job no presenter e reexecuta a performance."""
         self._presenter.on_fundamental_result(evento.valor, evento.falhou)
+        iniciar = getattr(self, "_iniciar_analise_performance", None)
+        if iniciar is None:
+            return
+        tickers = self._presenter.get_current_tickers()
+        if tickers:
+            current = getattr(self._presenter._gui, "_current_data", {}) or {}
+            iniciar(tickers, self._presenter.get_reference_date(), current)
 
     def _ao_erro_fundamental(self: "FundamentalMixin", evento: Erro) -> None:
         """Reporta a falha catastrófica do job ao presenter."""

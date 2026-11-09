@@ -11,7 +11,11 @@ from flowscope.application.calendar.ports import (
     BusinessDayLookup,
     WeekendBusinessDayLookup,
 )
-from flowscope.infrastructure.b3.parser import parse_index_csv
+from flowscope.domain.index_history import IndexClose
+from flowscope.infrastructure.b3.parser import (
+    parse_index_csv,
+    parse_index_history,
+)
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.http_retry import executar_com_retry
 
@@ -25,6 +29,10 @@ class B3Client:
     _BASE_PORTFOLIO_URL = (
         "https://sistemaswebb3-listados.b3.com.br/indexProxy/indexCall/"
         "GetDownloadPortfolioDay/"
+    )
+    _BASE_INDEX_HISTORY_URL = (
+        "https://sistemaswebb3-listados.b3.com.br/indexStatisticsProxy/"
+        "IndexCall/GetPortfolioDay/"
     )
 
     def __init__(
@@ -125,6 +133,63 @@ class B3Client:
         payload = json.dumps({"index": index, "language": language}, separators=(",", ":"))
         b64 = base64.b64encode(payload.encode()).decode()
         return f"{self._BASE_PORTFOLIO_URL}{b64}"
+
+    def _build_index_history_url(
+        self: "B3Client", index: str, year: int, language: str = "pt-br"
+    ) -> str:
+        """Monta a URL com o token base64 da evolução diária do índice."""
+        payload = json.dumps(
+            {"index": index, "language": language, "year": str(year)},
+            separators=(",", ":"),
+        )
+        b64 = base64.b64encode(payload.encode()).decode()
+        return f"{self._BASE_INDEX_HISTORY_URL}{b64}"
+
+    def fetch_index_daily_history(
+        self: "B3Client",
+        index: str,
+        year: int,
+        language: str = "pt-br",
+    ) -> list[IndexClose]:
+        """Baixa a série diária de fechamento do índice para o ano informado.
+
+        Uma resposta vazia ou malformada é tratada como ausência de série,
+        devolvendo ``[]`` sem interromper a carga.
+        """
+        import requests
+
+        url = self._build_index_history_url(index, year, language)
+        logger.info("Fetching index history %s/%s via %s", index, year, url)
+
+        def _fazer() -> requests.Response:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp
+
+        try:
+            resp = executar_com_retry(_fazer, metodo="GET")
+        except Exception:
+            logger.exception("Failed to fetch index history %s/%s", index, year)
+            return []
+        raw = resp.text.strip()
+        if not raw:
+            logger.warning(
+                "Série histórica %s/%s: resposta vazia", index, year
+            )
+            return []
+        try:
+            payload = resp.json()
+        except ValueError:
+            logger.warning("Invalid JSON for index history %s/%s", index, year)
+            return []
+        serie = parse_index_history(payload, year)
+        if not serie:
+            logger.warning(
+                "Série histórica %s/%s: nenhum fechamento válido na resposta",
+                index,
+                year,
+            )
+        return serie
 
     def fetch_portfolio(self: "B3Client", index: str, language: str = "pt-br",
                         progress_callback: Callable[[str, bool], None] | None = None) -> list[str]:
