@@ -15,13 +15,14 @@ from dataclasses import dataclass, field, replace
 
 from flowscope.application.cancellation import CancellationToken
 from flowscope.application.chat.arvore import ArvoreConhecimento
+from flowscope.application.chat.fontes import extrair, mesclar
 from flowscope.application.chat.manifesto import montar_manifesto
 from flowscope.application.chat.protocolo import (
     ProtocoloNavegacao,
     RespostaProtocolo,
     interpretar,
 )
-from flowscope.domain.chat import ChatMessage
+from flowscope.domain.chat import ChatMessage, FonteChat
 from flowscope.domain.llm import LLMPort, LLMResposta, LLMUsage
 
 #: Teto de mensagens do diálogo enviadas à LLM.
@@ -48,8 +49,9 @@ CARACTERES_POR_TOKEN = 4
 #: Prompt de sistema do loop de navegação.
 SYSTEM_PROMPT = (
     "Você é o assistente do FlowScopeBR, uma ferramenta de análise quantitativa de "
-    "fluxo de ordens. Responda apenas com base no contexto navegado. Cite as "
-    "fontes (tickers, chaves de notícia, caminhos). Identifique o ticker referido "
+    "fluxo de ordens. Responda apenas com base no contexto navegado. Não cite nem "
+    "liste as fontes no corpo de `resposta`; declare-as no campo `fontes` do JSON, "
+    "com o caminho da árvore e, quando útil, um rótulo curto. Identifique o ticker referido "
     "na pergunta; quando for ambíguo, peça esclarecimento. Use contar/existe antes "
     "de listar ramos grandes; quando a busca semântica não estiver disponível, use "
     "a busca determinística por regex (buscar) em vez de listar. Para comentar ou "
@@ -68,9 +70,12 @@ SYSTEM_PROMPT = (
 #: Instrução do contrato de resposta e das operações.
 INSTRUCAO_FORMATO = (
     "Responda exclusivamente com um objeto JSON no formato "
-    '{"resposta": "<texto ou null>", "solicitacoes": [{"op": "...", ...}]}. '
+    '{"resposta": "<texto ou null>", "solicitacoes": [{"op": "...", ...}], '
+    '"fontes": [{"caminho": "/...", "rotulo": "..."}]}. '
     "Deixe `solicitacoes` vazio quando a resposta já for conclusiva. Caso "
-    "contrário, preencha-o com as operações de navegação necessárias."
+    "contrário, preencha-o com as operações de navegação necessárias. Não cite "
+    "nem liste as fontes no corpo de `resposta`; declare-as em `fontes` com o "
+    "caminho da árvore e, opcionalmente, um rótulo curto."
 )
 
 #: Assinatura do callback notificado com o uso de cada completion.
@@ -101,7 +106,7 @@ class RespostaChat:
     """Resposta final com as fontes e a navegação acumulada."""
 
     texto: str
-    fontes: list[str] = field(default_factory=list)
+    fontes: list[FonteChat] = field(default_factory=list)
     navegacao: list[ParNavegacao] = field(default_factory=list)
     alerta_janela: bool = False
 
@@ -207,7 +212,9 @@ class ConsultarChatUseCase:
             self._atualizar_alerta(estado, resposta)
             interpretada = interpretar(resposta.texto)
             if interpretada.final:
-                return self._resposta_final(estado, interpretada.resposta or "")
+                return self._resposta_final(
+                    estado, interpretada.resposta or "", interpretada.fontes
+                )
             self._processar_ciclo(estado, interpretada)
         return self._resumo_final(estado, cancel_token)
 
@@ -227,7 +234,7 @@ class ConsultarChatUseCase:
         else:
             _aplicar_reset(estado, interpretada)
             resultados = estado.protocolo.executar(interpretada.solicitacoes)
-            estado.fontes.extend(_fontes(resultados))
+            estado.fontes.extend(extrair(resultados))
             estado.foco = _atualizar_foco(estado.foco, resultados)
             resultado = estado.protocolo.serializar(resultados, estado.foco)
         estado.correntes.append(
@@ -256,12 +263,15 @@ class ConsultarChatUseCase:
         return self._resposta_final(estado, resposta.texto.strip())
 
     def _resposta_final(
-        self: ConsultarChatUseCase, estado: _Estado, texto: str
+        self: ConsultarChatUseCase,
+        estado: _Estado,
+        texto: str,
+        declaradas: list[FonteChat] | None = None,
     ) -> RespostaChat:
         """Monta a resposta final com fontes, navegação e alerta de janela."""
         return RespostaChat(
             texto=texto,
-            fontes=estado.fontes,
+            fontes=mesclar(estado.fontes, declaradas or [], estado.protocolo),
             navegacao=[*estado.acumulada, *estado.correntes],
             alerta_janela=estado.alerta,
         )
@@ -381,18 +391,6 @@ def _assinatura_pedido(interpretada: RespostaProtocolo) -> str:
         ensure_ascii=False,
         sort_keys=True,
     )
-
-
-def _fontes(resultados: list[dict]) -> list[str]:
-    """Extrai os caminhos citados nos resultados de navegação."""
-    fontes: list[str] = []
-    for resultado in resultados:
-        dados = resultado.get("dados")
-        if isinstance(dados, list):
-            fontes.extend(
-                item["caminho"] for item in dados if isinstance(item, dict) and "caminho" in item
-            )
-    return fontes
 
 
 def _atualizar_foco(foco: str | None, resultados: list[dict]) -> str | None:

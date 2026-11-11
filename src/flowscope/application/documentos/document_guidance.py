@@ -144,7 +144,9 @@ def agrupar_entradas(
 
 def chave_curta_guidance(chave: str) -> str:
     """Deriva a chave curta e estável de uma folha de guidance."""
-    return "g" + sha1(chave.encode("utf-8")).hexdigest()[:10]
+    # Chave curta determinística, não criptográfica.
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return "g" + sha1(chave.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
 
 
 def _chave_padrao(arquivo: DocumentoArquivo) -> str:

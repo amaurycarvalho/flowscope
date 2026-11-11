@@ -73,7 +73,7 @@ TAB_CONTENT = {
               "pedindo esclarecimento quando ela for ambígua.\n\n"), ""),
             ("Contexto enviado: ", "bold"),
             (("A I.A. recebe uma árvore de conhecimento navegável, montada somente com o cache local, e a percorre por um protocolo JSON determinístico "
-              "(listar, obter, contar, existe, buscar e buscar_semantico). Os ramos disponíveis são:\n"
+              "(listar, obter, contar, existe, buscar e buscar_semantico), declarando as fontes consultadas no campo `fontes`. Os ramos disponíveis são:\n"
               "• Conhecimento do próprio FlowScopeBR (orientações das sub-abas e informações da aba \"Sobre\") em `/flowscope`;\n"
               "• Fundamentos da watchlist carregada em `/fundamentos`;\n"
               "• Documentos em cache do ticker em `/documentos`, com as folhas de resumo (curto e longo) e o texto integral lido sob demanda; documentos pendentes de resumo ou de extração são omitidos;\n"
@@ -81,8 +81,8 @@ TAB_CONTENT = {
               "• Notícias e informações regulatórias em `/noticias`, com um índice compacto por grupo e o resumo/texto de cada item.\n\n"), ""),
             ("Como interpretar: ", "bold"),
             (("Pressione Enter para enviar (Shift+Enter quebra a linha). Enquanto a I.A. responde, o botão ao lado de \"Enviar\" cancela o envio "
-              "e a conversa guarda o histórico dos turnos anteriores (até 10 mensagens). \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
-              "texto exibido; o seletor de modelo e a \"Configuração\" abrem o mesmo diálogo de LLM da sub-aba \"Documentos\". O chat é estritamente leitor de cache: nunca "
+              "e a conversa guarda o histórico dos turnos anteriores (até 10 mensagens). As fontes consultadas são declaradas pela I.A. no campo `fontes` do JSON e exibidas, sob o rótulo \"Fontes consultadas:\", em bloco separado quando o checkbox \"Exibir fontes\" está marcado (desmarcado por padrão); as marcações \"Você:\", \"Assistente:\" e \"Fontes consultadas:\" aparecem em negrito; \"Limpar\" reinicia a conversa mediante confirmação; \"Copiar chat\" copia o "
+              "conteúdo exibido convertido para Markdown (marcações em negrito), incluindo as fontes quando o checkbox está marcado; a cópia de dados CSV usa o texto simples; o seletor de modelo e a \"Configuração\" abrem o mesmo diálogo de LLM da sub-aba \"Documentos\". O chat é estritamente leitor de cache: nunca "
               "resume documentos ou notícias nem extrai texto sob demanda, de modo que itens ainda não processados ficam de fora da resposta. "
               "Cada resposta navega a árvore em até 10 ciclos e o manifesto enviado tem teto de 4.000 tokens; turnos de navegação pesados pedem confirmação de custo. "
               "O total de tokens da sessão é exibido na barra de status enquanto a aba \"Chat AI\" está ativa."), ""),

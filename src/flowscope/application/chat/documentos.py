@@ -65,7 +65,9 @@ def _achatar(catalogo: CatalogoTicker) -> list[DocumentoArquivo]:
 
 def chave_curta_documento(chave: str) -> str:
     """Deriva a chave curta e estável do nó de um documento."""
-    return "d" + sha1(chave.encode("utf-8")).hexdigest()[:10]
+    # Chave curta determinística, não criptográfica.
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return "d" + sha1(chave.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
 
 
 def _trecho(texto: str | None, limite: int = TAMANHO_TRECHO_INDICE) -> str:

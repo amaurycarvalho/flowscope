@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from flowscope.application.chat.arvore import ArvoreConhecimento
+from flowscope.domain.chat import FonteChat
 
 if TYPE_CHECKING:
     from flowscope.application.navegacao.core import NavegacaoCore, Resultado
@@ -50,6 +51,7 @@ class RespostaProtocolo:
 
     resposta: str | None
     solicitacoes: list[Solicitacao] = field(default_factory=list)
+    fontes: list[FonteChat] = field(default_factory=list)
 
     @property
     def final(self: RespostaProtocolo) -> bool:
@@ -97,14 +99,39 @@ def _solicitacoes(itens: object) -> list[Solicitacao]:
     ]
 
 
+def _fontes_declaradas(itens: object) -> list[FonteChat]:
+    """Normaliza o campo ``fontes``, tolerando string ou objeto por item."""
+    if not isinstance(itens, list):
+        return []
+    fontes: list[FonteChat] = []
+    for item in itens:
+        if isinstance(item, str):
+            caminho = item.strip()
+            if caminho:
+                fontes.append(FonteChat(caminho=caminho))
+            continue
+        if not isinstance(item, dict):
+            continue
+        caminho = item.get("caminho")
+        if not isinstance(caminho, str) or not caminho.strip():
+            continue
+        rotulo = item.get("rotulo")
+        rotulo = rotulo.strip() if isinstance(rotulo, str) and rotulo.strip() else None
+        fontes.append(FonteChat(caminho=caminho.strip(), rotulo=rotulo))
+    return fontes
+
+
 def interpretar(texto: str) -> RespostaProtocolo:
     """Interpreta a resposta da LLM, tolerando formatos e texto puro."""
     dados = extrair_json(texto)
     if dados is None:
         return RespostaProtocolo(resposta=_texto_ou_nulo((texto or "").strip()))
+    solicitacoes = _solicitacoes(dados.get("solicitacoes"))
+    fontes = [] if solicitacoes else _fontes_declaradas(dados.get("fontes"))
     return RespostaProtocolo(
         resposta=_texto_ou_nulo(dados.get("resposta")),
-        solicitacoes=_solicitacoes(dados.get("solicitacoes")),
+        solicitacoes=solicitacoes,
+        fontes=fontes,
     )
 
 
@@ -130,6 +157,10 @@ class ProtocoloNavegacao:
     def core(self: ProtocoloNavegacao) -> NavegacaoCore:
         """Núcleo de navegação reusado pelo adaptador."""
         return self._core
+
+    def existe(self: ProtocoloNavegacao, caminho: str) -> bool:
+        """Indica se o caminho existe na árvore de conhecimento."""
+        return self._arvore.existe(caminho)
 
     def validar(self: ProtocoloNavegacao, solicitacao: Solicitacao) -> None:
         """Valida a operação, delegando ao núcleo (o reset é do chat)."""

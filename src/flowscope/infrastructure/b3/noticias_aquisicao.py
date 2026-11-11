@@ -185,7 +185,9 @@ def chave_item(item: ItemNoticia) -> str:
     """Deriva a chave estável do item a partir da URL ou da identidade base."""
     url = (item.url or "").strip()
     base = url or item.chave_base
-    return hashlib.sha1(base.encode("utf-8")).hexdigest()
+    # Chave de cache determinística, não criptográfica.
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return hashlib.sha1(base.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def fontes_noticias(
@@ -284,7 +286,9 @@ def chave_noticia(noticia: NoticiaB3) -> str:
                 noticia.titulo or "",
             ]
         )
-    return hashlib.sha1(base.encode("utf-8")).hexdigest()
+    # Chave de cache determinística, não criptográfica.
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return hashlib.sha1(base.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 def data_noticia(texto: object, fallback: date) -> date:

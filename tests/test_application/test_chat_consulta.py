@@ -1,5 +1,8 @@
 """Testes do loop de navegação do chat."""
 
+import json
+import logging
+
 from flowscope.application.chat import (
     ConsultarChatUseCase,
     ParNavegacao,
@@ -9,7 +12,7 @@ from flowscope.application.chat.arvore import (
     no_interno,
     ramo_fundamentos,
 )
-from flowscope.domain.chat import ChatMessage
+from flowscope.domain.chat import ChatMessage, FonteChat
 from flowscope.domain.llm import LLMResposta, LLMUsage
 
 
@@ -219,3 +222,217 @@ class TestPromptSistema:
         assert "offset" in SYSTEM_PROMPT
         assert "limite" in SYSTEM_PROMPT
         assert "continua" in SYSTEM_PROMPT
+
+
+def _consultar(operacoes: list[dict], final: dict | str, **kwargs):
+    llm = _FakeLLM(
+        [
+            json.dumps({"resposta": None, "solicitacoes": operacoes}),
+            final if isinstance(final, str) else json.dumps({**final, "solicitacoes": []}),
+        ]
+    )
+    return ConsultarChatUseCase(llm, **kwargs).consultar("p", _arvore())
+
+
+class TestDerivacaoFontes:
+    def test_listar_deriva_filhos(self) -> None:
+        resposta = _consultar([{"op": "listar", "caminho": "/fundamentos/valores"}], {"resposta": "ok"})
+        assert [fonte.caminho for fonte in resposta.fontes] == [
+            "/fundamentos/valores/PETR4",
+            "/fundamentos/valores/VALE3",
+        ]
+        assert all(fonte.rotulo is None for fonte in resposta.fontes)
+
+    def test_obter_deriva_o_caminho(self) -> None:
+        resposta = _consultar(
+            [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}],
+            {"resposta": "ok"},
+        )
+        assert [fonte.caminho for fonte in resposta.fontes] == [
+            "/fundamentos/valores/PETR4"
+        ]
+
+    def test_buscar_deriva_resultados(self) -> None:
+        resposta = _consultar(
+            [{"op": "buscar", "caminho": "/fundamentos/valores", "regex": "PETR4"}],
+            {"resposta": "ok"},
+        )
+        assert "/fundamentos/valores/PETR4" in [
+            fonte.caminho for fonte in resposta.fontes
+        ]
+
+    def test_buscar_semantico_deriva_resultados(self) -> None:
+        class _Backend:
+            def buscar(self, caminho, consulta, max):
+                return {
+                    "resultados": [{"caminho": "/fundamentos/valores/PETR4"}],
+                    "truncado": False,
+                }
+
+        raiz = no_interno("/", "/")
+        raiz.filho(
+            ramo_fundamentos(
+                tickers=["PETR4", "VALE3"],
+                valores={"PETR4": "[PETR4] PL=3.2", "VALE3": "[VALE3] PL=5.0"},
+            )
+        )
+        arvore = ArvoreConhecimento(raiz, assinatura="sig", backend_semantico=_Backend())
+        llm = _FakeLLM(
+            [
+                json.dumps(
+                    {
+                        "resposta": None,
+                        "solicitacoes": [
+                            {
+                                "op": "buscar_semantico",
+                                "caminho": "/fundamentos/valores",
+                                "consulta": "PETR4",
+                            }
+                        ],
+                    }
+                ),
+                '{"resposta": "ok", "solicitacoes": []}',
+            ]
+        )
+        resposta = ConsultarChatUseCase(llm).consultar("p", arvore)
+        assert "/fundamentos/valores/PETR4" in [
+            fonte.caminho for fonte in resposta.fontes
+        ]
+
+    def test_deduplica_preservando_ordem(self) -> None:
+        resposta = _consultar(
+            [
+                {"op": "obter", "caminho": "/fundamentos/valores/PETR4"},
+                {"op": "obter", "caminho": "/fundamentos/valores/VALE3"},
+                {"op": "obter", "caminho": "/fundamentos/valores/PETR4"},
+            ],
+            {"resposta": "ok"},
+        )
+        assert [fonte.caminho for fonte in resposta.fontes] == [
+            "/fundamentos/valores/PETR4",
+            "/fundamentos/valores/VALE3",
+        ]
+
+    def test_erro_nao_gera_fonte(self) -> None:
+        resposta = _consultar(
+            [{"op": "obter", "caminho": "/nao/existe"}], {"resposta": "ok"}
+        )
+        assert resposta.fontes == []
+
+    def test_contar_e_existe_nao_geram_fonte(self) -> None:
+        resposta = _consultar(
+            [
+                {"op": "contar", "caminho": "/fundamentos/valores/*"},
+                {"op": "existe", "caminho": "/fundamentos"},
+            ],
+            {"resposta": "ok"},
+        )
+        assert resposta.fontes == []
+
+
+class TestMergeFontes:
+    def test_rotulo_declarado_associa_a_derivada(self) -> None:
+        resposta = _consultar(
+            [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}],
+            {
+                "resposta": "ok",
+                "fontes": [
+                    {
+                        "caminho": "/fundamentos/valores/PETR4",
+                        "rotulo": "PL da PETR4",
+                    }
+                ],
+            },
+        )
+        assert resposta.fontes == [
+            FonteChat(caminho="/fundamentos/valores/PETR4", rotulo="PL da PETR4")
+        ]
+
+    def test_declarado_valido_nao_derivado_e_incluido(self) -> None:
+        resposta = _consultar(
+            [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}],
+            {
+                "resposta": "ok",
+                "fontes": [
+                    {"caminho": "/fundamentos/tickers/VALE3", "rotulo": "VALE3"}
+                ],
+            },
+        )
+        assert resposta.fontes == [
+            FonteChat(caminho="/fundamentos/valores/PETR4"),
+            FonteChat(caminho="/fundamentos/tickers/VALE3", rotulo="VALE3"),
+        ]
+
+    def test_declarado_inexistente_e_descartado(self, caplog) -> None:
+        with caplog.at_level(logging.WARNING, logger="flowscope"):
+            resposta = _consultar(
+                [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}],
+                {"resposta": "ok", "fontes": ["/nao/existe"]},
+            )
+        assert [fonte.caminho for fonte in resposta.fontes] == [
+            "/fundamentos/valores/PETR4"
+        ]
+        assert any("inexistente" in registro.message for registro in caplog.records)
+
+    def test_declaracao_repetida_nao_duplica(self) -> None:
+        llm = _FakeLLM(
+            [
+                json.dumps(
+                    {
+                        "resposta": "ok",
+                        "solicitacoes": [],
+                        "fontes": [
+                            "/fundamentos/tickers/PETR4",
+                            "/fundamentos/tickers/PETR4",
+                        ],
+                    }
+                )
+            ]
+        )
+        resposta = ConsultarChatUseCase(llm).consultar("p", _arvore())
+        assert resposta.fontes == [FonteChat(caminho="/fundamentos/tickers/PETR4")]
+
+    def test_sem_declaradas_usa_apenas_derivadas(self) -> None:
+        resposta = _consultar(
+            [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}],
+            {"resposta": "ok"},
+        )
+        assert resposta.fontes == [FonteChat(caminho="/fundamentos/valores/PETR4")]
+
+
+class TestFallbackFontes:
+    def test_sem_fontes_derivadas_nem_declaradas(self) -> None:
+        resposta = _consultar([], {"resposta": "ok"})
+        assert resposta.fontes == []
+
+    def test_texto_puro_usa_fontes_derivadas(self) -> None:
+        llm = _FakeLLM(
+            [
+                '{"resposta": null, "solicitacoes": [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}]}',
+                "resposta em texto puro",
+            ]
+        )
+        resposta = ConsultarChatUseCase(llm).consultar("p", _arvore())
+        assert resposta.texto == "resposta em texto puro"
+        assert resposta.fontes == [FonteChat(caminho="/fundamentos/valores/PETR4")]
+
+    def test_resumo_final_usa_fontes_derivadas(self) -> None:
+        llm = _FakeLLM(
+            [
+                '{"resposta": null, "solicitacoes": [{"op": "obter", "caminho": "/fundamentos/valores/PETR4"}]}',
+                "resumo final do navegado",
+            ]
+        )
+        resposta = ConsultarChatUseCase(llm, max_iteracoes=1).consultar("p", _arvore())
+        assert resposta.fontes == [FonteChat(caminho="/fundamentos/valores/PETR4")]
+
+
+class TestContratoFontes:
+    def test_orienta_estruturadamente_nos_dois_pontos(self) -> None:
+        from flowscope.application.chat.consultar import INSTRUCAO_FORMATO, SYSTEM_PROMPT
+        from flowscope.application.chat.manifesto import PERSONA, PROTOCOLO
+
+        for texto in (SYSTEM_PROMPT, INSTRUCAO_FORMATO, PERSONA, PROTOCOLO):
+            assert "fontes" in texto
+            assert "No corpo" in texto or "no corpo" in texto
+            assert "Cite as fontes" not in texto

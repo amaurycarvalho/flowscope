@@ -121,7 +121,13 @@ class NoticiaEscopo:
 
 def chave_curta(chave: str) -> str:
     """Deriva uma chave curta e estável a partir da chave relativa do item."""
-    return "n" + hashlib.sha1(chave.encode("utf-8")).hexdigest()[:10]
+    # Chave curta determinística, não criptográfica.
+    return (
+        "n"
+        + hashlib.sha1(  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+            chave.encode("utf-8"), usedforsecurity=False
+        ).hexdigest()[:10]
+    )
 
 
 def escopo_de(arquivo: NoticiaArquivo, chave: str) -> NoticiaEscopo:

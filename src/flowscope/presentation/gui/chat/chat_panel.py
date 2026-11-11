@@ -49,11 +49,12 @@ from flowscope.application.documentos.catalogo import (
 from flowscope.application.documentos.document_guidance import GuidanceService
 from flowscope.application.llm_config_port import LLMConfigPort
 from flowscope.application.renda_fixa import ConsultarTitulosUseCase
-from flowscope.domain.chat import ChatMessage, ChatSession
+from flowscope.domain.chat import ChatMessage, ChatSession, FonteChat
 from flowscope.domain.llm import LLMPort, LLMUnavailableError
 from flowscope.presentation.gui.app_tabs import TAB_CONTENT
 from flowscope.presentation.gui.background.events import Confirmacao
 from flowscope.presentation.gui.chat.envio import EnvioMixin
+from flowscope.presentation.gui.chat.renderizacao import markdown, renderizar
 from flowscope.presentation.gui.chat.tokens import ContadorTokens
 from flowscope.presentation.gui.llm.mensagens import mensagem_erro_llm
 from flowscope.presentation.gui.llm.model_selector import SeletorModelo
@@ -76,9 +77,6 @@ ORIENTACAO_NAO_CONFIGURADO = (
 
 #: Rótulo do cabeçalho da aba única de chat.
 TITULO_CHAT = "Chat AI — watchlist completa"
-
-#: Rótulos das mensagens exibidas na conversa.
-_ROTULOS = {"user": "Você", "assistant": "Assistente"}
 
 
 def mensagem_confirmacao_custo(tokens: int) -> str:
@@ -190,6 +188,15 @@ class ChatPanel(EnvioMixin, tk.Frame):
             cabecalho, text=TITULO_CHAT, font=("TkDefaultFont", 10, "bold")
         )
         self._titulo.pack(side=tk.LEFT, padx=4, pady=4)
+        self._exibir_fontes = tk.BooleanVar(value=False)
+        self._fontes_btn = ttk.Checkbutton(
+            cabecalho,
+            text="Exibir fontes",
+            variable=self._exibir_fontes,
+            command=self._renderizar_conversa,
+        )
+        self._fontes_btn.pack(side=tk.LEFT, padx=4, pady=4)
+        ToolTip(self._fontes_btn, "Exibir as fontes consultadas de cada resposta")
         self._model_selector = SeletorModelo(
             cabecalho,
             config_port=self._config_port,
@@ -480,10 +487,10 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self: "ChatPanel",
         role: str,
         texto: str,
-        fontes: list[str] | None = None,
+        fontes: list[FonteChat] | None = None,
         enviar_ao_modelo: bool = True,
     ) -> None:
-        """Acrescenta a mensagem à sessão e ao campo somente-leitura."""
+        """Acrescenta a mensagem à sessão e redesenha a área somente-leitura."""
         self._sessao.add_message(
             ChatMessage(
                 role=role,
@@ -492,11 +499,13 @@ class ChatPanel(EnvioMixin, tk.Frame):
                 enviar_ao_modelo=enviar_ao_modelo,
             )
         )
-        bloco = f"{_ROTULOS.get(role, role)}: {texto}"
-        if fontes:
-            bloco += "\nFontes: " + ", ".join(fontes)
-        self._respostas.insert(tk.END, bloco + "\n\n")
-        self._respostas.see(tk.END)
+        self._renderizar_conversa()
+
+    def _renderizar_conversa(self: "ChatPanel") -> None:
+        """Reconstrói a área de mensagens a partir da sessão em memória."""
+        renderizar(
+            self._respostas, self._sessao.messages, self._exibir_fontes.get()
+        )
         self._atualizar_controles()
 
     def limpar(self: "ChatPanel") -> None:
@@ -504,10 +513,9 @@ class ChatPanel(EnvioMixin, tk.Frame):
         self._sessao.clear()
         self._navegacao = []
         self._assinatura = None
-        self._respostas.delete("1.0", tk.END)
         self._tokens.zerar()
         self._publicar_tokens()
-        self._atualizar_controles()
+        self._renderizar_conversa()
 
     def _limpar_chat(self: "ChatPanel") -> None:
         """Pede confirmação e reinicia a conversa como se começasse agora."""
@@ -524,8 +532,8 @@ class ChatPanel(EnvioMixin, tk.Frame):
         return self._respostas.get("1.0", "end-1c")
 
     def _copiar_chat(self: "ChatPanel") -> None:
-        """Copia o conteúdo da sessão para a área de transferência."""
-        texto = self.conteudo_sessao()
+        """Copia o conteúdo exibido convertido para Markdown."""
+        texto = markdown(self._respostas)
         if not texto:
             return
         try:

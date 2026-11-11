@@ -24,11 +24,11 @@ A aba "Chat AI" DEVE oferecer um checkbox "Exibir fontes" no cabeçalho, desmarc
 
 ### Requirement: Exibição das fontes separada da resposta
 
-Com o checkbox marcado, as fontes consultadas DEVEM ser exibidas em bloco próprio imediatamente após a resposta do assistente, com separação visual clara do texto da resposta. Cada fonte DEVE exibir o caminho e, quando houver, o rótulo declarado. Com o checkbox desmarcado, nenhuma fonte DEVE ser exibida.
+Com o checkbox marcado, as fontes consultadas DEVEM ser exibidas em bloco próprio imediatamente após a resposta do assistente, com separação visual clara do texto da resposta. O bloco DEVE ser introduzido pelo rótulo `Fontes consultadas:`, com uma linha em branco antes e quebra de linha depois. Cada fonte DEVE exibir o caminho e, quando houver, o rótulo declarado. Com o checkbox desmarcado, nenhuma fonte DEVE ser exibida.
 
 #### Scenario: Fontes em bloco separado
 - **WHEN** o checkbox está marcado e a resposta possui fontes
-- **THEN** as fontes DEVEM aparecer após a resposta, em bloco claramente separado do texto
+- **THEN** as fontes DEVEM aparecer após a resposta, em bloco claramente separado do texto, precedidas de `Fontes consultadas:`
 
 #### Scenario: Resposta sem fontes
 - **WHEN** o checkbox está marcado e a resposta não possui fontes
@@ -42,15 +42,27 @@ Com o checkbox marcado, as fontes consultadas DEVEM ser exibidas em bloco própr
 - **WHEN** o checkbox está desmarcado
 - **THEN** nenhuma lista de fontes DEVE integrar o corpo de qualquer resposta
 
+### Requirement: Marcações exibidas em negrito
+
+As marcações de exibição `Você:`, `Assistente:` e `Fontes consultadas:` DEVEM ser exibidas em negrito no campo de mensagens, sem alterar o texto simples usado pela cópia de CSV.
+
+#### Scenario: Marcações em negrito
+- **WHEN** a conversa é renderizada
+- **THEN** `Você:`, `Assistente:` e, quando aplicável, `Fontes consultadas:` DEVEM aparecer em negrito
+
+#### Scenario: Texto simples preservado
+- **WHEN** o conteúdo é lido como texto simples para o CSV
+- **THEN** as marcações DEVEM estar presentes sem a formatação de negrito
+
 ## MODIFIED Requirements
 
 ### Requirement: Copiar chat e CSV
 
-O sistema DEVE oferecer um botão "Copiar chat" na aba, que copia para a área de transferência exatamente o conteúdo exibido na área de mensagens, respeitando o estado do checkbox "Exibir fontes". A cópia de dados CSV DEVE incluir o mesmo conteúdo exibido do chat quando a aba "Chat AI" estiver ativa.
+O sistema DEVE oferecer um botão "Copiar chat" na aba, que copia para a área de transferência o conteúdo exibido na área de mensagens convertido para Markdown (`Você:`, `Assistente:` e `Fontes consultadas:` entre `**`), respeitando o estado do checkbox "Exibir fontes". A cópia de dados CSV DEVE incluir o conteúdo exibido do chat em texto simples quando a aba "Chat AI" estiver ativa.
 
-#### Scenario: Copiar chat
+#### Scenario: Copiar chat em Markdown
 - **WHEN** o usuário clica em "Copiar chat"
-- **THEN** o conteúdo exibido na área de mensagens DEVE ser copiado para a área de transferência
+- **THEN** o conteúdo exibido na área de mensagens DEVE ser copiado para a área de transferência com as marcações em negrito convertidas para `**...**`
 
 #### Scenario: Cópia segue o checkbox marcado
 - **WHEN** o checkbox "Exibir fontes" está marcado e o usuário copia o chat
@@ -62,4 +74,4 @@ O sistema DEVE oferecer um botão "Copiar chat" na aba, que copia para a área d
 
 #### Scenario: CSV com chat ativo
 - **WHEN** a aba "Chat AI" está ativa e o usuário aciona a cópia de dados
-- **THEN** o conteúdo exibido do chat DEVE ser incluído na cópia, respeitando o checkbox
+- **THEN** o conteúdo exibido do chat DEVE ser incluído na cópia em texto simples, respeitando o checkbox

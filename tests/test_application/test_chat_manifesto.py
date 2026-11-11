@@ -373,3 +373,13 @@ class TestManifestoPerformance:
         texto = montar_manifesto(arvore)
         assert estimar_tokens(texto) < TETO_TOKENS
         assert texto == montar_manifesto(arvore)
+
+
+class TestContratoFontes:
+    def test_persona_proibe_citacao_e_exige_campo(self) -> None:
+        from flowscope.application.chat.manifesto import PERSONA, PROTOCOLO
+
+        assert "Não cite nem liste as fontes no corpo" in PERSONA
+        assert "fontes" in PERSONA
+        assert '"fontes"' in PROTOCOLO
+        assert "Não cite nem liste as fontes no corpo" in PROTOCOLO

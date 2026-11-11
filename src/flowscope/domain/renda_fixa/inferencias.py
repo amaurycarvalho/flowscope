@@ -66,7 +66,13 @@ class InferenciaTitulo:
             f"{self.chave_documento}|{self.tipo.value}|{self.papel.value}|"
             f"{self.descricao}|{self.trecho}"
         )
-        return "i" + hashlib.sha1(bruto.encode("utf-8")).hexdigest()[:10]
+        # Identificador curto determinístico, não criptográfico.
+        return (
+            "i"
+            + hashlib.sha1(  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+                bruto.encode("utf-8"), usedforsecurity=False
+            ).hexdigest()[:10]
+        )
 
 
 @dataclass(frozen=True)

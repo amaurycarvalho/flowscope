@@ -12,8 +12,11 @@ Hoje a aba "Chat AI" concatena a lista de fontes consultadas no corpo de cada re
 - A extração derivada é corrigida para cobrir `obter` e as buscas, que hoje não entram na lista.
 - A mensagem do assistente passa a guardar as fontes como itens estruturados (`caminho` + `rotulo` opcional), sem concatená-las ao texto.
 - A aba "Chat AI" ganha o checkbox "Exibir fontes" (desmarcado por padrão). Marcado, mostra as fontes de cada resposta com separação clara; desmarcado, oculta-as. A alternância re-renderiza todas as respostas anteriores.
-- "Copiar chat" e a cópia de CSV da aba passam a copiar exatamente o que está na tela, seguindo o checkbox.
+- O bloco de fontes é introduzido pelo rótulo `Fontes consultadas:`, com uma linha em branco antes e quebra de linha depois.
+- As marcações de exibição — `Você:`, `Assistente:` e `Fontes consultadas:` — aparecem em negrito no campo de mensagens.
+- "Copiar chat" copia o conteúdo exibido convertido para Markdown (marcações em negrito como `**...**`), seguindo o checkbox; a cópia de CSV da aba mantém o conteúdo exibido em texto simples.
 - A orientação da aba e a documentação do chat são atualizadas para descrever o novo contrato.
+- Os usos de SHA1 para chaves e identificadores determinísticos são marcados explicitamente como não criptográficos (`usedforsecurity=False`), sem alterar os valores gerados.
 
 ## Capabilities
 

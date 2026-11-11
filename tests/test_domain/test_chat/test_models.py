@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from flowscope.domain.chat import ChatMessage, ChatSession
+from flowscope.domain.chat import ChatMessage, ChatSession, FonteChat
 
 
 class TestChatMessage:
@@ -19,7 +19,11 @@ class TestChatMessage:
         assert msg.enviar_ao_modelo is False
 
     def test_mensagem_assistente_com_fontes(self):
-        fontes = [{"descricao": "Fato Relevante 15/07"}]
+        fontes = [
+            FonteChat(
+                caminho="/documentos/PETR4/abc/texto", rotulo="Fato Relevante 15/07"
+            )
+        ]
         msg = ChatMessage(
             role="assistant", content="O último rendimento foi...", sources=fontes
         )
@@ -28,8 +32,17 @@ class TestChatMessage:
     def test_sem_fontes_nao_compartilha_lista(self):
         primeira = ChatMessage(role="user", content="a")
         segunda = ChatMessage(role="user", content="b")
-        primeira.sources.append({"x": 1})
+        primeira.sources.append(FonteChat(caminho="/x"))
         assert segunda.sources == []
+
+
+class TestFonteChat:
+    def test_caminho_obrigatorio(self):
+        assert FonteChat(caminho="/x").caminho == "/x"
+
+    def test_rotulo_opcional(self):
+        assert FonteChat(caminho="/x").rotulo is None
+        assert FonteChat(caminho="/x", rotulo="Rótulo").rotulo == "Rótulo"
 
 
 class TestChatSession:

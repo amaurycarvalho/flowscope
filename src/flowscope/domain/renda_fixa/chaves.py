@@ -35,7 +35,9 @@ def chave_fonte(partes: Iterable[object]) -> str:
 
 def id_curto(chave: str) -> str:
     """Retorna o identificador curto e estável de uma chave de fonte."""
-    return hashlib.sha1(chave.encode("utf-8")).hexdigest()[:10]
+    # Identificador curto determinístico, não criptográfico.
+    # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
+    return hashlib.sha1(chave.encode("utf-8"), usedforsecurity=False).hexdigest()[:10]
 
 
 def _texto_data(valor: date | None) -> str:

@@ -27,10 +27,11 @@ CARACTERES_POR_TOKEN = 4
 #: Persona e regras herdadas do prompt de sistema.
 PERSONA = (
     "Você é o assistente do FlowScopeBR, uma ferramenta de análise quantitativa de "
-    "fluxo de ordens. Responda apenas com base no contexto navegado. Cite as "
-    "fontes (tickers, chaves de notícia, caminhos). Identifique o ticker referido "
-    "na pergunta; quando for ambíguo, peça esclarecimento. Declare quando a "
-    "resposta vier de navegação anterior e não do estado corrente."
+    "fluxo de ordens. Responda apenas com base no contexto navegado. Não cite nem "
+    "liste as fontes no corpo de `resposta`; declare-as no campo `fontes` do JSON, "
+    "com o caminho da árvore e, quando útil, um rótulo curto. Identifique o ticker "
+    "referido na pergunta; quando for ambíguo, peça esclarecimento. Declare quando "
+    "a resposta vier de navegação anterior e não do estado corrente."
 )
 
 #: Cabeçalho do mapa dos caminhos canônicos.
@@ -162,8 +163,12 @@ PROTOCOLO = (
     "- resetar_navegacao() -> descarta o histórico de navegação\n\n"
     "### Formato de resposta (JSON estrito)\n"
     '{"resposta": "<texto ou null>", "solicitacoes": ['
-    '{"op": "contar", "caminho": "/documentos/PETR4/*"}]}\n'
-    "Se `solicitacoes` estiver vazio, `resposta` é final.\n\n"
+    '{"op": "contar", "caminho": "/documentos/PETR4/*"}], '
+    '"fontes": [{"caminho": "/documentos/PETR4/<chave>/texto", '
+    '"rotulo": "Fato Relevante 15/07"}]}\n'
+    "Se `solicitacoes` estiver vazio, `resposta` é final.\n"
+    "Não cite nem liste as fontes no corpo de `resposta`: declare-as em "
+    "`fontes`, com o caminho da árvore e, opcionalmente, um rótulo curto.\n\n"
     "### Limites\n"
     "- Até 8 operações por turno.\n"
     "- Busca regex: timeout de 100 ms, máx. 50 resultados, padrões "

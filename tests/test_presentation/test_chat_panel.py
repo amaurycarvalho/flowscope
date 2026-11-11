@@ -13,6 +13,7 @@ from flowscope.domain.llm import (
     LLMResposta,
     LLMUnavailableError,
 )
+from flowscope.domain.chat import FonteChat
 from flowscope.infrastructure.document_catalog import DocumentCatalog
 from flowscope.presentation.gui.chat import chat_panel as chat_panel_mod
 from flowscope.presentation.gui.chat.chat_panel import (
@@ -21,6 +22,7 @@ from flowscope.presentation.gui.chat.chat_panel import (
     mensagem_confirmacao_custo,
 )
 from flowscope.presentation.gui.chat.envio import MENSAGEM_CANCELADO
+from flowscope.presentation.gui.chat.renderizacao import TAG_MARCADOR
 from flowscope.presentation.gui.llm.model_selector import SeletorModelo
 from flowscope.presentation.gui.widgets.readonly_text import ReadonlyText
 
@@ -311,14 +313,169 @@ class TestEstadoBotoes:
             root.destroy()
 
 
+@needs_display
+class TestExibirFontes:
+    def test_checkbox_desmarcado_por_padrao(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            assert painel._exibir_fontes.get() is False
+            assert painel._fontes_btn.cget("text") == "Exibir fontes"
+            assert str(painel._fontes_btn.cget("state")) == "normal"
+        finally:
+            root.destroy()
+
+    def test_checkbox_disponivel_durante_envio(self, tmp_path):
+        root = tk.Tk()
+        liberar = threading.Event()
+        llm = _LLMBloqueante(liberar, '{"resposta": "pronta", "documentos": []}')
+        try:
+            painel = _painel(
+                root,
+                tmp_path,
+                llm_available=lambda: True,
+                fundamental_data_provider=lambda: {"PETR4": {}},
+                llm_factory=lambda: llm,
+                watchlist_provider=list,
+            )
+            painel._texto_entrada_set("pergunta")
+            painel._enviar()
+            _aguardar_ate(root, lambda: llm.chamadas == 1)
+            assert str(painel._fontes_btn.cget("state")) == "normal"
+            liberar.set()
+            _aguardar(root, painel)
+        finally:
+            liberar.set()
+            root.destroy()
+
+    def test_marcar_exibe_fontes_anteriores(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar(
+                "assistant",
+                "resposta",
+                [FonteChat(caminho="/doc/texto", rotulo="Documento")],
+            )
+            assert "Fontes consultadas" not in painel.conteudo_sessao()
+            painel._fontes_btn.invoke()
+            root.update()
+            conteudo = painel.conteudo_sessao()
+            assert "Fontes consultadas:" in conteudo
+            assert "- Documento (/doc/texto)" in conteudo
+        finally:
+            root.destroy()
+
+    def test_desmarcar_oculta_fontes_anteriores(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            painel._fontes_btn.invoke()
+            root.update()
+            assert "/doc/texto" in painel.conteudo_sessao()
+            painel._fontes_btn.invoke()
+            root.update()
+            assert "/doc/texto" not in painel.conteudo_sessao()
+        finally:
+            root.destroy()
+
+    def test_fontes_em_bloco_separado(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar(
+                "assistant", "corpo da resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            painel._fontes_btn.invoke()
+            root.update()
+            conteudo = painel.conteudo_sessao()
+            assert conteudo.index("corpo da resposta") < conteudo.index(
+                "Fontes consultadas:"
+            )
+            assert "\n\nFontes consultadas:\n" in conteudo
+        finally:
+            root.destroy()
+
+    def test_marcacoes_em_negrito(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar("user", "pergunta")
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            painel._fontes_btn.invoke()
+            root.update()
+            widget = painel._respostas
+            intervalos = widget.tag_ranges(TAG_MARCADOR)
+            marcadores = [
+                widget.get(inicio, fim)
+                for inicio, fim in zip(intervalos[::2], intervalos[1::2])
+            ]
+            assert marcadores == [
+                "Você:",
+                "Assistente:",
+                "Fontes consultadas:",
+            ]
+        finally:
+            root.destroy()
+
+    def test_resposta_sem_fontes_nao_exibe_bloco(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar("assistant", "resposta sem fontes")
+            painel._fontes_btn.invoke()
+            root.update()
+            assert "Fontes consultadas" not in painel.conteudo_sessao()
+        finally:
+            root.destroy()
+
+    def test_alternar_nao_altera_sessao(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            antes = list(painel._sessao.messages)
+            painel._fontes_btn.invoke()
+            root.update()
+            assert painel._sessao.messages == antes
+        finally:
+            root.destroy()
+
+    def test_copia_segue_checkbox(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            painel._copiar_chat()
+            root.update()
+            assert "/doc/texto" not in root.clipboard_get()
+            painel._fontes_btn.invoke()
+            painel._copiar_chat()
+            root.update()
+            assert "/doc/texto" in root.clipboard_get()
+        finally:
+            root.destroy()
+
+
+@needs_display
 class TestCopiarChat:
-    @needs_display
     def test_copiar_chat(self, tmp_path):
         root = tk.Tk()
         try:
             painel = _painel(root, tmp_path, llm_available=lambda: True)
             painel._registrar("user", "pergunta")
-            painel._registrar("assistant", "resposta", ["fonte-1"])
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/fonte-1")]
+            )
             painel._copiar_chat()
             root.update()
             conteudo = root.clipboard_get()
@@ -327,7 +484,26 @@ class TestCopiarChat:
         finally:
             root.destroy()
 
-    @needs_display
+    def test_copiar_chat_converte_marcacoes_para_markdown(self, tmp_path):
+        root = tk.Tk()
+        try:
+            painel = _painel(root, tmp_path, llm_available=lambda: True)
+            painel._registrar("user", "pergunta")
+            painel._registrar(
+                "assistant", "resposta", [FonteChat(caminho="/doc/texto")]
+            )
+            painel._fontes_btn.invoke()
+            painel._copiar_chat()
+            root.update()
+            conteudo = root.clipboard_get()
+            assert "**Você:** pergunta" in conteudo
+            assert "**Assistente:** resposta" in conteudo
+            assert "**Fontes consultadas:**" in conteudo
+            assert "\n- /doc/texto" in conteudo
+            assert "**" not in painel.conteudo_sessao()
+        finally:
+            root.destroy()
+
     def test_copiar_chat_vazio_nao_falha(self, tmp_path):
         root = tk.Tk()
         try:

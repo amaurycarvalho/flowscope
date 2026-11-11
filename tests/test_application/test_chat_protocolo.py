@@ -14,6 +14,7 @@ from flowscope.application.chat.protocolo import (
     Solicitacao,
     interpretar,
 )
+from flowscope.domain.chat import FonteChat
 
 
 def _arvore() -> ArvoreConhecimento:
@@ -59,6 +60,63 @@ class TestInterpretar:
 
     def test_sem_resposta_e_vazio(self) -> None:
         assert interpretar("").resposta is None
+
+    def test_fontes_declaradas_com_rotulo(self) -> None:
+        texto = json.dumps(
+            {
+                "resposta": "ok",
+                "solicitacoes": [],
+                "fontes": [
+                    {
+                        "caminho": "/documentos/PETR4/abc/texto",
+                        "rotulo": "Fato Relevante 15/07",
+                    }
+                ],
+            }
+        )
+        resposta = interpretar(texto)
+        assert resposta.fontes == [
+            FonteChat(
+                caminho="/documentos/PETR4/abc/texto", rotulo="Fato Relevante 15/07"
+            )
+        ]
+
+    def test_fonte_declarada_como_string(self) -> None:
+        texto = json.dumps(
+            {"resposta": "ok", "solicitacoes": [], "fontes": ["/noticias/grupo/chave"]}
+        )
+        assert interpretar(texto).fontes == [FonteChat(caminho="/noticias/grupo/chave")]
+
+    def test_fonte_invalida_e_ignorada(self) -> None:
+        texto = json.dumps(
+            {
+                "resposta": "ok",
+                "solicitacoes": [],
+                "fontes": [{"rotulo": "sem caminho"}, 42, {"caminho": "/valido"}],
+            }
+        )
+        assert interpretar(texto).fontes == [FonteChat(caminho="/valido")]
+
+    def test_fontes_em_turno_intermediario_sao_ignoradas(self) -> None:
+        texto = json.dumps(
+            {
+                "resposta": None,
+                "solicitacoes": [{"op": "existe", "caminho": "/x"}],
+                "fontes": ["/x"],
+            }
+        )
+        assert interpretar(texto).fontes == []
+
+    def test_sem_fontes_declaradas(self) -> None:
+        assert interpretar('{"resposta": "ok", "solicitacoes": []}').fontes == []
+
+
+class TestExiste:
+    def test_existe_na_arvore(self) -> None:
+        assert _protocolo().existe("/fundamentos") is True
+
+    def test_nao_existe_na_arvore(self) -> None:
+        assert _protocolo().existe("/nao/existe") is False
 
 
 class TestExecucao:

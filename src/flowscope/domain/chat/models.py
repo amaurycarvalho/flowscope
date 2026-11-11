@@ -13,6 +13,18 @@ def _agora() -> datetime:
     return datetime.now(timezone.utc)
 
 
+@dataclass(frozen=True)
+class FonteChat:
+    """Fonte consultada na árvore de conhecimento.
+
+    ``caminho`` identifica o nó da árvore; ``rotulo`` é apenas uma descrição
+    legível opcional e nunca a identidade da fonte.
+    """
+
+    caminho: str
+    rotulo: str | None = None
+
+
 @dataclass
 class ChatMessage:
     """Mensagem de uma conversa, do usuário ou do assistente.
@@ -23,7 +35,7 @@ class ChatMessage:
 
     role: str
     content: str
-    sources: list[dict] = field(default_factory=list)
+    sources: list[FonteChat] = field(default_factory=list)
     timestamp: datetime = field(default_factory=_agora)
     enviar_ao_modelo: bool = True
 

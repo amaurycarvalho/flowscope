@@ -8,15 +8,15 @@ Define as entidades de conversa em memória usadas pelas sub-abas de chat do Flo
 
 ### Requirement: Entidade ChatMessage
 
-O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" ou "assistant"), `content` (str), `sources` (lista opcional com metadados dos chunks-fonte), `timestamp` (datetime) e `enviar_ao_modelo` (bool, `True` por padrão), que indica se a mensagem participa do histórico textual enviado à LLM. `sources` DEVE ser lista vazia quando não informada.
+O sistema DEVE possuir uma entidade `ChatMessage` dataclass com `role` ("user" ou "assistant"), `content` (str), `sources` (lista opcional de fontes consultadas estruturadas, cada uma com `caminho` e `rotulo` opcional), `timestamp` (datetime) e `enviar_ao_modelo` (bool, `True` por padrão), que indica se a mensagem participa do histórico textual enviado à LLM. `sources` DEVE ser lista vazia quando não informada.
 
 #### Scenario: Mensagem do usuário
 - **WHEN** `ChatMessage(role="user", content="Qual foi o último rendimento?")` é criada
 - **THEN** `role` DEVE ser "user", `content` DEVE ser preservado e `sources` DEVE ser lista vazia
 
 #### Scenario: Mensagem do assistente com fontes
-- **WHEN** `ChatMessage(role="assistant", content="O último rendimento foi...", sources=[{"descricao": "Fato Relevante 15/07"}])` é criada
-- **THEN** `sources` DEVE conter a lista de metadados para exibição na GUI
+- **WHEN** `ChatMessage(role="assistant", content="O último rendimento foi...", sources=[FonteChat(caminho="/documentos/PETR4/<chave>/texto", rotulo="Fato Relevante 15/07")])` é criada
+- **THEN** `sources` DEVE conter a lista de fontes estruturadas para exibição na GUI
 
 #### Scenario: Mensagem fora do histórico do modelo
 - **WHEN** `ChatMessage(role="assistant", content="...", enviar_ao_modelo=False)` é criada
@@ -33,3 +33,15 @@ O sistema DEVE possuir uma entidade `ChatSession` in-memory, sem persistência, 
 #### Scenario: Adicionar e limpar mensagens
 - **WHEN** três mensagens são adicionadas e `clear()` é chamado
 - **THEN** `messages` DEVE voltar a ser lista vazia
+
+### Requirement: Fonte consultada estruturada
+
+O sistema DEVE representar cada fonte consultada como um valor com `caminho` textual obrigatório, correspondente a um caminho da árvore de conhecimento, e `rotulo` textual opcional. O caminho DEVE identificar a origem do dado e o rótulo DEVE ser apenas uma descrição legível, nunca a identidade da fonte.
+
+#### Scenario: Fonte com caminho e rótulo
+- **WHEN** uma fonte consultada é representada
+- **THEN** ela DEVE conter o caminho da árvore e, quando houver, o rótulo legível
+
+#### Scenario: Fonte sem rótulo
+- **WHEN** uma fonte consultada é representada sem rótulo
+- **THEN** o caminho DEVE ser preservado e o rótulo DEVE permanecer ausente

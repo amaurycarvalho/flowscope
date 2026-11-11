@@ -74,18 +74,18 @@ Como os textos são complementares (não idênticos) e o escopo é conter a chan
 
 ### 6. Renderização dirigida pela sessão
 
-Extrair um único renderizador `_bloco(mensagem)`: `"<rótulo>: <content>"` e, se for `assistant`, o checkbox estiver marcado e houver fontes, acrescenta um bloco separado:
+Extrair um único renderizador `bloco(mensagem)`: `"<rótulo>: <content>"` e, se for `assistant`, o checkbox estiver marcado e houver fontes, acrescenta um bloco separado:
 
 ```
--- Fontes consultadas --
+Fontes consultadas:
 - <rotulo> (<caminho>)
 - <caminho>
 ```
 
-`_registrar` adiciona à sessão e chama `_renderizar_conversa()`, que limpa o `ReadonlyText` e reconstrói todas as mensagens. O toggle apenas chama o mesmo renderizador. Consequências:
+O rótulo é renderizado como `"\n\nFontes consultadas:\n"`: uma linha em branco separa a resposta do bloco, e as fontes começam na linha seguinte. `_registrar` adiciona à sessão e chama `_renderizar_conversa()`, que limpa o `ReadonlyText` e reconstrói todas as mensagens. O toggle apenas chama o mesmo renderizador. Consequências:
 
 - consistência entre append e toggle;
-- `conteudo_sessao()` continua lendo o widget, então "Copiar chat"/CSV seguem o checkbox sem mudança em `app_csv.py`;
+- `conteudo_sessao()` continua lendo o widget em texto simples, então o CSV segue o checkbox sem mudança em `app_csv.py`;
 - custo O(n²) no total de appends, irrelevante para o teto de conversa em memória.
 
 Alternativa descartada: append incremental + re-render só no toggle. Duplica a lógica de formatação e abre espaço para divergência entre o que foi anexado e o que o toggle desenha.
@@ -93,6 +93,20 @@ Alternativa descartada: append incremental + re-render só no toggle. Duplica a 
 ### 7. Checkbox no cabeçalho
 
 `tk.BooleanVar(value=False)` + `ttk.Checkbutton` no cabeçalho, com texto "Exibir fontes". Permanece habilitado durante o envio (é só visualização) e não entra no bloqueio de cabeçalho. Alternar não altera sessão, tokens nem navegação. O scroll vai para o fim após redesenhar.
+
+### 8. Marcações em negrito e cópia em Markdown
+
+O renderizador produz uma sequência de segmentos `(texto, negrito)` em vez de uma string única. As marcações `Você:`, `Assistente:` e `Fontes consultadas:` recebem uma tag Tk de negrito; o restante do texto é inserido sem tag. A fonte da tag deriva da `TkDefaultFont` com `weight="bold"`, preservando o tamanho do texto do painel.
+
+"Copiar chat" lê o texto exibido do widget e reconstrói o Markdown a partir das faixas da tag de negrito, envolvendo cada segmento com `**...**`. A conversão é feita sobre o conteúdo renderizado, então segue o checkbox sem depender da sessão. A cópia de CSV permanece em texto simples (`conteudo_sessao()`), pois o CSV não deve carregar marcação.
+
+Alternativa descartada: gerar o Markdown a partir da sessão. Duplicaria a decisão de exibição do checkbox e poderia divergir do que está na tela.
+
+### 9. Uso não criptográfico de SHA1
+
+Os SHA1 existentes derivam chaves de cache e identificadores curtos e estáveis, não assinaturas ou proteção de segredos. Marcar cada chamada com `usedforsecurity=False` deixa a intenção explícita para leitores e ferramentas de análise, sem mudar o algoritmo nem os valores gerados. Como o Semgrep não reconhece esse parâmetro, cada ponto também recebe uma supressão `# nosemgrep` da regra específica, justificada como uso determinístico não criptográfico.
+
+Alternativa descartada: trocar para SHA256. Alteraria todas as chaves estáveis (cache, ids curtos exibidos e enviados à LLM) e invalidaria dados já persistidos; fica fora do escopo desta change.
 
 ## Risks / Trade-offs
 
