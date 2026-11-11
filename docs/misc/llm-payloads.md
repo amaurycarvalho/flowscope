@@ -224,3 +224,14 @@ A árvore é montada apenas a partir do cache local e exposta por caminhos canô
 | `/noticias` | `grupos`, `<grupo>/indice`, `<grupo>/<chave>/titulo`, `<grupo>/<chave>/resumo`, `<grupo>/<chave>/texto` |
 
 A árvore **não resume, não extrai, não baixa e não consulta a B3/CVM**; nós sem dado (pendentes de resumo ou extração) são omitidos em silêncio. Os limites de tokens por nó e por operação substituem os antigos tetos em caracteres.
+
+---
+
+## 3. Catálogo de preços e janela de contexto (offline)
+
+O liteLLM carrega o catálogo `model_prices_and_context_window.json` na primeira importação. Por padrão o FlowScopeBR usa o **catálogo local** embutido no pacote: o preparo do liteLLM (`preparar_litellm`, em `src/flowscope/infrastructure/llm/__init__.py`) define `LITELLM_LOCAL_MODEL_COST_MAP=True` antes de qualquer `import litellm`. Assim, a inicialização não faz requisição ao GitHub, não emite o aviso de falha de download nem inicia retentativas em background.
+
+- **Janela e contagem offline:** a resolução de janela de contexto e a contagem de tokens usam o catálogo local; modelos ausentes caem no `context_window` do preset e a contagem cai na heurística de caracteres.
+- **Optar pelo catálogo remoto:** defina `LITELLM_LOCAL_MODEL_COST_MAP=False` no ambiente antes de iniciar o aplicativo. O preparo usa `os.environ.setdefault`, portanto um valor já definido pelo usuário é preservado e não é sobrescrito.
+- **Atualização do catálogo local:** acompanha a versão do liteLLM instalada; não há download em tempo de execução.
+

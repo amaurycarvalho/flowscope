@@ -19,6 +19,7 @@ from flowscope.domain.llm import (
     LLMUnavailableError,
     LLMUsage,
 )
+from flowscope.infrastructure.llm import preparar_litellm
 from flowscope.infrastructure.llm.rate_limiter import DEFAULT_RPM, RateLimiter
 
 #: Mensagem exibida quando a dependência opcional não está instalada.
@@ -57,6 +58,7 @@ def _import_litellm() -> object:
     Desabilita o banner de depuração do liteLLM, que de outro modo é impresso
     na saída padrão sempre que uma exceção do provedor é mapeada.
     """
+    preparar_litellm()
     try:
         import litellm
     except ImportError as exc:

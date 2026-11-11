@@ -10,6 +10,7 @@ provedor suporta cache de prompt (``cache_prompt``).
 from collections.abc import Callable
 
 from flowscope.domain.llm import LLMConfigurationError
+from flowscope.infrastructure.llm import preparar_litellm
 
 #: Provedores suportados com seus defaults de modelo, API URL, janela e cache.
 PROVIDER_PRESETS: dict[str, dict[str, object]] = {
@@ -105,6 +106,7 @@ def _import_litellm() -> object | None:
     O flag ``suppress_debug_info`` silencia esse banner nas consultas de janela e
     contagem, que não fazem chamadas de rede.
     """
+    preparar_litellm()
     try:
         import litellm
     except ImportError:
