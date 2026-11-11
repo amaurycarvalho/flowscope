@@ -40,31 +40,58 @@ class _FundosBase:
         return encode_b3_payload(payload)
 
     def _requisicao_get(
-        self: "_FundosBase", url: str, timeout: int = 30, **kwargs: object
-    ) -> requests.Response:
-        """Executa um GET serializado por host e com retry de erros transitórios."""
+        self: "_FundosBase",
+        url: str,
+        timeout: int = 30,
+        validar: Callable[[object], bool] | None = None,
+        **kwargs: object,
+    ) -> object:
+        """Executa o GET, decodifica o JSON e o valida dentro do motor de retry.
 
-        def _fazer() -> requests.Response:
+        Falhas de decodificação são convertidas em ``RequestException`` para que
+        a política central de retry trate um corpo vazio/inválido como falha
+        transitória. ``validar`` permite rejeitar semanticamente um JSON válido
+        (por exemplo, uma página de listagem vazia antes de ``totalPages``).
+        """
+
+        def _fazer() -> object:
             resposta = self._session.get(url, timeout=timeout, **kwargs)
             resposta.raise_for_status()
-            return resposta
+            try:
+                return resposta.json()
+            except ValueError as exc:
+                raise requests.RequestException(
+                    f"resposta JSON inválida de {url}"
+                ) from exc
 
         with self._serializador.serializar(url):
-            return executar_com_retry(_fazer, delays=self._retry_delays)
+            return executar_com_retry(
+                _fazer, delays=self._retry_delays, validar=validar
+            )
 
-    def _get_json(self: "_FundosBase", endpoint: str, payload: dict[str, object]) -> object:
+    def _get_json(
+        self: "_FundosBase",
+        endpoint: str,
+        payload: dict[str, object],
+        validar: Callable[[object], bool] | None = None,
+    ) -> object:
         """Executa o GET do endpoint informado com o token construído do payload."""
         token = self._build_token(payload)
         url = f"{_BASE_URL}/{endpoint}/{token}"
         logger.info("Consultando %s", url)
-        return self._requisicao_get(url).json()
+        return self._requisicao_get(url, validar=validar)
 
-    def _get_listed_json(self: "_FundosBase", endpoint: str, payload: dict[str, object]) -> object:
+    def _get_listed_json(
+        self: "_FundosBase",
+        endpoint: str,
+        payload: dict[str, object],
+        validar: Callable[[object], bool] | None = None,
+    ) -> object:
         """Executa o GET do proxy de empresas listadas com token Base64."""
         token = self._build_token(payload)
         url = f"{_LISTED_BASE_URL}/{endpoint}/{token}"
         logger.info("Consultando %s", url)
-        return self._requisicao_get(url).json()
+        return self._requisicao_get(url, validar=validar)
 
     def _cache_com_fallback(
         self: "_FundosBase",

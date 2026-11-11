@@ -73,3 +73,44 @@ class TestMontarNucleo:
 
         nucleo = montar_nucleo(CacheManager(cache_dir=tmp_path))
         assert nucleo.mercado_factory is B3MarketPriceFromResult
+
+    def test_store_de_identidade_injetado_e_compartilhado(self, tmp_path, monkeypatch):
+        from flowscope.domain.b3 import B3Fund
+        from flowscope.infrastructure.b3.fund_identity_store import (
+            JsonFundIdentityStore,
+        )
+        from flowscope.infrastructure.fii.cvm_fund_data_provider import (
+            CvmAnnualFundDataProvider,
+            CvmIndexadoresProvider,
+        )
+
+        nucleo = montar_nucleo(CacheManager(cache_dir=tmp_path))
+        assert isinstance(nucleo.b3_fund_identity_store, JsonFundIdentityStore)
+        assert nucleo.b3_fund_identity_store.caminho("ALZR11") == (
+            tmp_path / "fund_identity" / "ALZR11.json"
+        )
+        assert nucleo.b3_fund_repository._identity_store is (
+            nucleo.b3_fund_identity_store
+        )
+
+        fundo = B3Fund(
+            ticker="ALZR11",
+            fnet_id="20294",
+            primary_id="870",
+            name="ALIANZA TRUST",
+            trading_name="28.737.771/0001-85",
+        )
+        monkeypatch.setattr(
+            nucleo.b3_fund_repository, "find_by_ticker", lambda _ticker: fundo
+        )
+        annual = next(
+            provider
+            for provider in nucleo.fundamental_provider.providers
+            if isinstance(provider, CvmAnnualFundDataProvider)
+        )
+        indexadores = nucleo.fundamental_indexadores_provider
+        assert isinstance(indexadores, CvmIndexadoresProvider)
+        assert annual._resolver("ALZR11").cnpj_fundo_classe == "28737771000185"
+        assert indexadores._resolver("ALZR11").cnpj_fundo_classe == (
+            "28737771000185"
+        )

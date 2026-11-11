@@ -255,7 +255,7 @@ class TestB3FundosClient:
             "language": "pt-br",
             "typeFund": "FII",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
         }
         responses.get(
             f"{_BASE}/GetListFunds/{_token(fundos)}",
@@ -296,7 +296,7 @@ class TestB3FundosClient:
             "language": "pt-br",
             "typeFund": "FII",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
         }
         responses.get(
             f"{_BASE}/GetListFunds/{_token(fundos)}",
@@ -313,7 +313,7 @@ class TestB3FundosClient:
                 "language": "pt-br",
                 "typeFund": tipo,
                 "pageNumber": 1,
-                "pageSize": 20,
+                "pageSize": 120,
             }
             url = f"{_BASE}/GetListFunds/{_token(fundos)}"
             responses.get(
@@ -331,7 +331,7 @@ class TestB3FundosClient:
             "dataInicial": "2026-01-01",
             "dataFinal": "2026-07-29",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
             "idFNET": "20294",
             "typeFund": "FII",
             "type": 41,
@@ -359,7 +359,7 @@ class TestB3FundosClient:
                 "dataInicial": "2026-01-01",
                 "dataFinal": "2026-07-29",
                 "pageNumber": page,
-                "pageSize": 20,
+                "pageSize": 120,
                 "idFNET": "20294",
                 "typeFund": "FII",
                 "type": 41,
@@ -517,7 +517,7 @@ class TestCacheAquisicaoB3:
             "language": "pt-br",
             "typeFund": "FII",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
         }
         responses.get(
             f"{_BASE}/GetListFunds/{_token(fundos_payload)}",

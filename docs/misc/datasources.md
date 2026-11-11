@@ -278,17 +278,18 @@ GET https://sistemaswebb3-listados.b3.com.br/fundsListedProxy/Search/
   "language": "pt-br",
   "typeFund": "FII",
   "pageNumber": 1,
-  "pageSize": 20
+  "pageSize": 120
 }
 ```
 
-`typeFund` é tentado em `FII`, `FIAGRO`, `FIP` e `FIDC`.
+`typeFund` é tentado em `FII`, `FIAGRO`, `FIP` e `FIDC`. `pageSize=120` é o
+maior valor aceito pela API; acima disso a resposta vem vazia.
 
 **Saída**
 
 ```json
 {
-  "page": {"pageNumber": 1, "pageSize": 20, "totalRecords": 2, "totalPages": 1},
+  "page": {"pageNumber": 1, "pageSize": 120, "totalRecords": 2, "totalPages": 1},
   "results": [
     {"id": "870", "idMain": null, "acronym": "ALZR",
      "fundName": "ALIANZA TRUST RENDA IMOBILIÁRIA - FII",
@@ -297,8 +298,14 @@ GET https://sistemaswebb3-listados.b3.com.br/fundsListedProxy/Search/
 }
 ```
 
-O `acronym` é comparado com a raiz do ticker (sem o sufixo numérico). O
-resultado é cacheado por 30 dias (`fundos_listados_<TIPO>`).
+O `acronym` é comparado com a raiz do ticker (sem o sufixo numérico). A coleta
+percorre todas as páginas e repete, com backoff, uma página vazia retornada
+antes de `totalPages`. A listagem só é gravada no cache (30 dias) quando a
+quantidade coletada atinge `totalRecords`: uma coleta parcial mantém a última
+listagem completa já armazenada e é sinalizada como incompleta. Listas vazias
+(de um tipo sem fundos) não são cacheadas. A chave é versionada
+(`fundos_listados_<PARSER_VERSION>_<TIPO>`), de modo que listas gravadas por
+versões anteriores são ignoradas.
 
 #### `GetListClassFund`
 
@@ -329,11 +336,46 @@ GET https://sistemaswebb3-listados.b3.com.br/fundsListedProxy/Search/
 
 A aplicação prefere o registro com `idMain` não nulo. O `id` resultante é o
 `idFNET` usado nos relatórios; o `tradingName` é usado para extrair o CNPJ do
-fundo quando aplicável.
+fundo quando aplicável. Um corpo de resposta vazio é tratado como conteúdo
+inválido transitório e repetido pela política central de retry, sem ser
+interpretado como ausência de fundo.
 
 **Saída normalizada:** `B3Fund(ticker, fnet_id, primary_id, name, trading_name)`.
 
-**Cache:** candidatos e resolução de ticker por 30 dias.
+**Cache:** candidatos (`fund_classes_<PARSER_VERSION>_<id>`) e resolução de
+ticker (`fund_resolution_<PARSER_VERSION>_<TICKER>`) por 30 dias. As chaves
+legadas sem versão (`fundos_listados_<TIPO>`, `fund_resolution_<TICKER>`) não
+são mais lidas.
+
+#### Identidade persistida por ticker
+
+Cada resolução bem-sucedida grava, sem expiração, o registro
+`<cache>/fund_identity/<TICKER>.json`:
+
+```json
+{
+  "schema_version": 1,
+  "ticker": "ALZR11",
+  "id_fnet": "20294",
+  "primary_id": "870",
+  "name": "ALIANZA TRUST RENDA IMOBILIÁRIA - FII",
+  "trading_name": "28.737.771/0001-85",
+  "cnpj": "28737771000185",
+  "type_fund": "FII",
+  "updated_at": "2026-11-11T12:00:00+00:00"
+}
+```
+
+A escrita é atômica e a leitura tolera arquivo ausente, corrompido ou com
+`schema_version` anterior (tratado como ausente). Resultados negativos não são
+gravados.
+
+**Fallback:** quando a B3 falha ou a listagem de fundos vem incompleta, o
+repositório reconstrói `B3Fund` a partir desse registro (usando o CNPJ
+persistido como `trading_name`), permitindo que o fallback CVM Anual resolva os
+dados fiscais mesmo sem a B3. Quando a listagem completa é obtida e o ticker
+não está presente, a identidade persistida não é usada, para não mascarar
+fundos removidos.
 
 ### 3.2 `codeCVM` e nome de empresas listadas
 

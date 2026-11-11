@@ -46,7 +46,7 @@ def _payload(
         "dataInicial": "2026-01-01",
         "dataFinal": "2026-07-29",
         "pageNumber": page,
-        "pageSize": 20,
+        "pageSize": 120,
         "idFNET": id_fnet,
         "typeFund": "FII",
         "category": category,

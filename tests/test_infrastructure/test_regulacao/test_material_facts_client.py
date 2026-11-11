@@ -27,7 +27,7 @@ def _pagina(pagina: int, total_paginas: int, itens: list[dict]) -> dict:
     return {
         "page": {
             "pageNumber": pagina,
-            "pageSize": 20,
+            "pageSize": 120,
             "totalRecords": len(itens),
             "totalPages": total_paginas,
         },
@@ -65,7 +65,7 @@ def _registrar_pagina(itens: list[dict], pagina: int = 1, total_paginas: int = 1
         "dateFinal": "2026-12-31",
         "category": "4",
         "pageNumber": pagina,
-        "pageSize": 20,
+        "pageSize": 120,
     }
     responses.get(
         f"{_LISTED}/GetMaterialFacts/{_token(payload)}",
@@ -112,7 +112,7 @@ class TestListarFatosRelevantes:
             "dateFinal": "2026-12-31",
             "category": "1",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
         }
         responses.get(
             f"{_LISTED}/GetMaterialFacts/{_token(payload)}",
@@ -197,7 +197,7 @@ class TestListarFatosRelevantes:
             "dateFinal": "2026-12-31",
             "category": "4",
             "pageNumber": 1,
-            "pageSize": 20,
+            "pageSize": 120,
         }
         responses.get(
             f"{_LISTED}/GetMaterialFacts/{_token(payload)}", status=500

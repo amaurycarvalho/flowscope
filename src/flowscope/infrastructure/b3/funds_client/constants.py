@@ -23,7 +23,7 @@ _PROGRAMAS_URL = (
 )
 _PROGRAMAS_PAGE_SIZE = 60
 _TIPO_PROVENTOS = 41
-_PAGE_SIZE = 20
+_PAGE_SIZE = 120
 _AGENCIA_PADRAO = "18"
 
 #: URL do documento binário (PDF) no visualizador do FundosNet.

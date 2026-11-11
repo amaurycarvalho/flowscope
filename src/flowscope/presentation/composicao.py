@@ -38,6 +38,7 @@ from flowscope.application.renda_fixa import (
     InferirDireitosObrigacoesUseCase,
 )
 from flowscope.application.use_cases import AnalyzeTickersUseCase
+from flowscope.domain.cvm import FundIdentity
 from flowscope.domain.documents import DocumentoArquivo
 from flowscope.domain.llm import LLMPort
 from flowscope.infrastructure.action_lock import ActionLock, OperacaoEmAndamento
@@ -45,6 +46,7 @@ from flowscope.infrastructure.b3.bdr import BdrDividendProvider
 from flowscope.infrastructure.b3.client import B3Client
 from flowscope.infrastructure.b3.documentos_aquisicao import AquisicaoDocumentos
 from flowscope.infrastructure.b3.emprestimos import B3ShortInterestSource
+from flowscope.infrastructure.b3.fund_identity_store import JsonFundIdentityStore
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.funds_client import B3FundosClient
 from flowscope.infrastructure.b3.noticias_carga import AquisicaoNoticias
@@ -284,7 +286,9 @@ def montar_adaptadores_renda_fixa(
         )
     )
     acionistas = acionistas or CvmAcionistasSource(cache=gerenciador)
-    fundos = fund_repository or B3FundRepository()
+    fundos = fund_repository or B3FundRepository(
+        identity_store=JsonFundIdentityStore(base)
+    )
 
     def resolver(ticker: str, reference_date: date) -> tuple[str, str] | None:
         """Resolve o CNPJ e o tipo do ativo do ticker."""
@@ -353,6 +357,7 @@ class Nucleo:
     load_portfolio: LoadIndexPortfolioUseCase
     analyze: AnalyzeTickersUseCase
     b3_fund_repository: B3FundRepository
+    b3_fund_identity_store: JsonFundIdentityStore
     fundamental_repo: B3FundamentalRepository
     fundamental_provider: CompositeFundamentalProvider
     fundamental_ffo_provider: CompositeFfoProvider
@@ -392,7 +397,15 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         B3Client(business_day=lookup),
         business_day=lookup,
     )
-    b3_fund_repository = B3FundRepository()
+    b3_fund_identity_store = JsonFundIdentityStore(base)
+    b3_fund_repository = B3FundRepository(
+        identity_store=b3_fund_identity_store
+    )
+
+    def resolver_identidade_fundo(ticker: str) -> FundIdentity | None:
+        """Resolve a identidade CVM com o repositório B3 compartilhado."""
+        return resolver_identidade(ticker, b3_fund_repository)
+
     fundamental_repo = B3FundamentalRepository(
         fund_repository=b3_fund_repository,
         patrimonio_source=CvmMonthlyPatrimonioSource(),
@@ -412,7 +425,7 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         [
             FundamentusFundamentalDataProvider(FundamentusProvider(cache=cache)),
             B3FundamentalDataProvider(fundamental_repo),
-            CvmAnnualFundDataProvider(),
+            CvmAnnualFundDataProvider(resolver=resolver_identidade_fundo),
             CvmPapelCnpjProvider(fundamental_acionistas_provider.obter_cnpj),
         ]
     )
@@ -434,6 +447,7 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         load_portfolio=LoadIndexPortfolioUseCase(repo),
         analyze=AnalyzeTickersUseCase(repo, business_day=lookup),
         b3_fund_repository=b3_fund_repository,
+        b3_fund_identity_store=b3_fund_identity_store,
         fundamental_repo=fundamental_repo,
         fundamental_provider=fundamental_provider,
         fundamental_ffo_provider=CompositeFfoProvider(
@@ -441,7 +455,9 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         ),
         fundamental_dividend_provider=fundamental_dividend_provider,
         fundamental_acionistas_provider=fundamental_acionistas_provider,
-        fundamental_indexadores_provider=CvmIndexadoresProvider(),
+        fundamental_indexadores_provider=CvmIndexadoresProvider(
+            resolver=resolver_identidade_fundo
+        ),
         fundamental_bdr_provider=BdrDividendProvider(cache=cache),
         fundamental_short_interest_provider=B3ShortInterestSource(cache=cache),
         history_store=JsonFundamentalHistoryStore(cache_dir=base),

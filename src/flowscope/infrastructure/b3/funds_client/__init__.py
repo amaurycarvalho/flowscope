@@ -47,7 +47,11 @@ from flowscope.infrastructure.b3.funds_client.documentos import FundosDocumentos
 from flowscope.infrastructure.b3.funds_client.documentos_relevantes import (
     FundosDocumentosRelevantesMixin,
 )
-from flowscope.infrastructure.b3.funds_client.fundos import FundosListagemMixin
+from flowscope.infrastructure.b3.funds_client.fundos import (
+    FundosListagemMixin,
+    ListagemFundos,
+    ResolucaoCandidato,
+)
 from flowscope.infrastructure.b3.funds_client.fundos_helpers import (
     _fund_root,
     _selecionar_fund,
@@ -129,6 +133,8 @@ __all__ = [
     "_URL_DOCUMENTO_PDF",
     "B3FundosClient",
     "FundosDocumentosRelevantesMixin",
+    "ListagemFundos",
+    "ResolucaoCandidato",
     "_chave_cache",
     "_classe_material_fact",
     "_codigo_categoria",
