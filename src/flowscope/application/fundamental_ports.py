@@ -58,6 +58,7 @@ CAMPO_ROIC = "roic"
 CAMPO_CAP_RATE = "cap_rate"
 CAMPO_VACANCIA_MEDIA = "vacancia_media"
 CAMPO_CNPJ = "cnpj"
+CAMPO_RAZAO_SOCIAL = "razao_social"
 CAMPO_ADMINISTRADOR = "administrador"
 CAMPO_CNPJ_ADMINISTRADOR = "cnpj_administrador"
 CAMPO_GESTOR = "gestor"
@@ -101,6 +102,7 @@ CAMPOS_FUNDAMENTAIS = frozenset(
         CAMPO_CAP_RATE,
         CAMPO_VACANCIA_MEDIA,
         CAMPO_CNPJ,
+        CAMPO_RAZAO_SOCIAL,
         CAMPO_ADMINISTRADOR,
         CAMPO_CNPJ_ADMINISTRADOR,
         CAMPO_GESTOR,

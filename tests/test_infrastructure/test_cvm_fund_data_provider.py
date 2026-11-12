@@ -99,6 +99,27 @@ class TestCvmPapelCnpjProvider:
         assert campos["cnpj"].valor == "33000167000101"
         assert campos["cnpj"].fonte == "CVM"
 
+    def test_emite_cnpj_e_razao_social(self):
+        provider = CvmPapelCnpjProvider(
+            resolver_identidade=lambda ticker, ref: (
+                "33000167000101",
+                "PETROLEO BRASILEIRO S.A. PETROBRAS",
+            )
+        )
+        campos = provider.obter("PETR4", REFERENCIA)
+        assert campos["cnpj"].valor == "33000167000101"
+        assert campos["razao_social"].valor == "PETROLEO BRASILEIRO S.A. PETROBRAS"
+        assert campos["cnpj"].fonte == "CVM"
+        assert campos["razao_social"].fonte == "CVM"
+
+    def test_identidade_sem_razao_social_emite_apenas_cnpj(self):
+        provider = CvmPapelCnpjProvider(
+            resolver_identidade=lambda ticker, ref: ("33000167000101", None)
+        )
+        campos = provider.obter("PETR4", REFERENCIA)
+        assert "cnpj" in campos
+        assert "razao_social" not in campos
+
     def test_sem_cnpj_retorna_vazio(self):
         provider = CvmPapelCnpjProvider(resolver=lambda ticker, ref: None)
         assert provider.obter("PETR4", REFERENCIA) == {}

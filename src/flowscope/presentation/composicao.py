@@ -410,7 +410,10 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
         fund_repository=b3_fund_repository,
         patrimonio_source=CvmMonthlyPatrimonioSource(),
     )
-    fundamental_acionistas_provider = CvmAcionistasSource(cache=cache)
+    fundamental_acionistas_provider = CvmAcionistasSource(
+        cache=cache,
+        resolver_code_cvm=b3_fund_repository.resolver_code_cvm,
+    )
     fundamental_dividend_provider = FundamentusDividendHistoryProvider(cache=cache)
     performance_cache = JsonPerformanceCache(cache_dir=base)
     performance_snapshot_store = JsonPerformanceSnapshotStore(cache_dir=base)
@@ -426,7 +429,11 @@ def montar_nucleo(cache: CacheManager | None = None) -> Nucleo:
             FundamentusFundamentalDataProvider(FundamentusProvider(cache=cache)),
             B3FundamentalDataProvider(fundamental_repo),
             CvmAnnualFundDataProvider(resolver=resolver_identidade_fundo),
-            CvmPapelCnpjProvider(fundamental_acionistas_provider.obter_cnpj),
+            CvmPapelCnpjProvider(
+                resolver_identidade=(
+                    fundamental_acionistas_provider.obter_identidade_papel
+                )
+            ),
         ]
     )
     return Nucleo(

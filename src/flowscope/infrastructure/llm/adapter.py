@@ -100,6 +100,11 @@ class LiteLLMChatAdapter:
         self._sleeper = sleeper or time.sleep
         self._jitter = jitter or random.random
 
+    @property
+    def modelo(self: "LiteLLMChatAdapter") -> str:
+        """Retorna o identificador do modelo configurado no adaptador."""
+        return self._model
+
     def complete(
         self: "LiteLLMChatAdapter",
         messages: list[dict],

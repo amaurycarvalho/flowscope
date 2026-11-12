@@ -5,7 +5,8 @@ Define a resolução de ticker para o código CVM de empresas listadas via API `
 ## Requirements
 
 ### Requirement: Resolução de ticker para codeCVM
-O sistema DEVE resolver um ticker da B3 para seu código CVM correspondente exclusivamente via API `listedCompaniesProxy`, consultando `GetInitialCompanies` com o filtro `company` pela raiz do ticker (ticker sem o sufixo numérico) e casando o registro cujo `issuingCompany` é igual a essa raiz. O sistema NÃO DEVE depender do cadastro `empresas-listadas.csv`, cuja URL foi desativada pela B3. Uma resolução bem-sucedida DEVE ser cacheada com TTL de 30 dias sob uma chave versionada. Para tickers sem código CVM — quando a API respondeu e não houve correspondência — o sistema DEVE retornar `None` e cachear esse `None` por 30 dias. Uma **falha de resolução** (erro de rede/HTTP não recuperado após as retentativas) NÃO DEVE ser cacheada como ausência: o sistema DEVE retornar `None` sem gravar o resultado no cache, de modo que uma nova tentativa futura possa resolver o ticker.
+
+O sistema DEVE resolver um ticker da B3 para seu código CVM correspondente exclusivamente via API `listedCompaniesProxy`, consultando `GetInitialCompanies` com o filtro `company` pela raiz do ticker (ticker sem o sufixo numérico) e casando o registro cujo `issuingCompany` é igual a essa raiz. O sistema NÃO DEVE depender do cadastro `empresas-listadas.csv`, cuja URL foi desativada pela B3. Uma resolução bem-sucedida DEVE ser cacheada com TTL de 30 dias sob uma chave versionada. Para tickers sem código CVM — quando a API respondeu e não houve correspondência — o sistema DEVE retornar `None` e cachear esse `None` por 30 dias. Em falha de resolução (erro de rede/HTTP não recuperado após as retentativas), o sistema DEVE servir o último valor persistido da chave, quando existir, sem gravá-lo novamente; sem valor persistido, DEVE retornar `None` sem gravar o resultado.
 
 #### Scenario: Ticker de empresa listada retorna codeCVM
 - **WHEN** `resolver_code_cvm("PETR4")` é chamado
@@ -28,8 +29,16 @@ O sistema DEVE resolver um ticker da B3 para seu código CVM correspondente excl
 - **THEN** o valor `None` DEVE ser cacheado para evitar requisições repetidas ao mesmo ticker inválido
 
 #### Scenario: Falha de resolução não é cacheada
-- **WHEN** a API `GetInitialCompanies` fica indisponível e a resolução falha após as retentativas
+- **WHEN** a API `GetInitialCompanies` fica indisponível, a resolução falha após as retentativas e não existe valor persistido para o ticker
 - **THEN** o sistema DEVE retornar `None` sem gravar `None` no cache, de modo que uma nova tentativa futura volte a consultar a API
+
+#### Scenario: Falha de resolução serve cache persistido
+- **WHEN** a API `GetInitialCompanies` falha após as retentativas e existe um `codeCVM` persistido para o ticker, mesmo com TTL expirado
+- **THEN** o sistema DEVE retornar o valor persistido sem realizar nova gravação no cache
+
+#### Scenario: Falha de resolução sem cache persistido
+- **WHEN** a API `GetInitialCompanies` falha após as retentativas e não existe valor persistido para o ticker
+- **THEN** o sistema DEVE retornar `None` sem gravar resultado negativo
 
 #### Scenario: Cadastro CSV não é usado
 - **WHEN** a API `GetInitialCompanies` está indisponível

@@ -8,7 +8,7 @@ método usado e o resultado (guidance ou ausência avaliada).
 """
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 #: Método de avaliação por IA.
@@ -42,6 +42,9 @@ class AvaliacaoGuidance:
     data_relatorio: date
     caminho_pdf: str | None = None
     guidance: Guidance | None = None
+    avaliado_em: datetime | None = None
+    prompt_version: str | None = None
+    modelo: str | None = None
 
     @property
     def tem_guidance(self: "AvaliacaoGuidance") -> bool:

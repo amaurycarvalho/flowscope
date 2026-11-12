@@ -14,12 +14,13 @@ import json
 import logging
 import re
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from flowscope.domain.fii.guidance import (
     METODO_DETERMINISTICO,
+    METODO_IA,
     AvaliacaoGuidance,
     Guidance,
 )
@@ -125,14 +126,41 @@ class JsonGuidanceStore:
 
 
 def _corrente(entradas: dict[str, AvaliacaoGuidance]) -> Guidance | None:
-    """Deriva o guidance corrente: maior data de relatório entre as entradas."""
+    """Deriva o guidance corrente com desempate por método e avaliação.
+
+    A data do relatório é o critério primário. Em empate, a avaliação por IA
+    prevalece sobre a determinística; no mesmo método, a avaliação mais recente
+    (`avaliado_em`) prevalece. Entradas sem momento de avaliação ficam atrás das
+    que possuem o campo, mantendo ordem estável entre si.
+    """
     com_guidance = [
         avaliacao for avaliacao in entradas.values() if avaliacao.guidance is not None
     ]
     if not com_guidance:
         return None
-    mais_recente = max(com_guidance, key=lambda a: a.data_relatorio)
+    mais_recente = max(
+        com_guidance,
+        key=lambda avaliacao: (
+            avaliacao.data_relatorio,
+            _prioridade_metodo(avaliacao.metodo),
+            _momento(avaliacao.avaliado_em),
+        ),
+    )
     return mais_recente.guidance
+
+
+def _prioridade_metodo(metodo: str) -> int:
+    """Retorna a prioridade do método na derivação do guidance corrente."""
+    return 1 if metodo == METODO_IA else 0
+
+
+def _momento(valor: datetime | None) -> datetime:
+    """Normaliza o momento da avaliação para comparação, com piso estável."""
+    if valor is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if valor.tzinfo is None:
+        return valor.replace(tzinfo=timezone.utc)
+    return valor.astimezone(timezone.utc)
 
 
 def _entradas_de(dados: object) -> dict[str, AvaliacaoGuidance]:
@@ -165,7 +193,7 @@ def _entradas_legadas(dados: dict) -> dict[str, AvaliacaoGuidance]:
 
 
 def _avaliacao_para_dict(avaliacao: AvaliacaoGuidance) -> dict:
-    """Serializa uma avaliação preservando a precisão, a data e o resultado."""
+    """Serializa uma avaliação preservando precisão, data, resultado e origem."""
     return {
         "metodo": avaliacao.metodo,
         "data_relatorio": avaliacao.data_relatorio.isoformat(),
@@ -175,6 +203,13 @@ def _avaliacao_para_dict(avaliacao: AvaliacaoGuidance) -> dict:
             if avaliacao.guidance is not None
             else None
         ),
+        "avaliado_em": (
+            avaliacao.avaliado_em.isoformat()
+            if avaliacao.avaliado_em is not None
+            else None
+        ),
+        "prompt_version": avaliacao.prompt_version,
+        "modelo": avaliacao.modelo,
     }
 
 
@@ -194,23 +229,38 @@ def _para_avaliacao(dados: object) -> AvaliacaoGuidance | None:
     data_relatorio = _data_de(dados.get("data_relatorio"))
     if data_relatorio is None:
         return None
-    metodo = dados.get("metodo")
-    caminho = dados.get("caminho_pdf")
+    caminho = _texto_opcional(dados.get("caminho_pdf"))
+    valido, guidance = _guidance_persistido(dados, data_relatorio, caminho)
+    if not valido:
+        return None
+    metodo = _texto_opcional(dados.get("metodo"))
+    return AvaliacaoGuidance(
+        metodo=metodo or METODO_DETERMINISTICO,
+        data_relatorio=data_relatorio,
+        caminho_pdf=caminho,
+        guidance=guidance,
+        avaliado_em=_datetime_de(dados.get("avaliado_em")),
+        prompt_version=_texto_opcional(dados.get("prompt_version")),
+        modelo=_texto_opcional(dados.get("modelo")),
+    )
+
+
+def _guidance_persistido(
+    dados: dict, data_relatorio: date, caminho_pdf: str | None
+) -> tuple[bool, Guidance | None]:
+    """Lê o guidance persistido, distinguindo ausência de registro inválido."""
     bruto = dados.get("guidance")
     if bruto is None:
-        guidance = None
-    elif isinstance(bruto, dict):
-        guidance = _para_guidance_resultado(bruto, data_relatorio, caminho)
-        if guidance is None:
-            return None
-    else:
-        return None
-    return AvaliacaoGuidance(
-        metodo=metodo if isinstance(metodo, str) and metodo else METODO_DETERMINISTICO,
-        data_relatorio=data_relatorio,
-        caminho_pdf=caminho if isinstance(caminho, str) else None,
-        guidance=guidance,
-    )
+        return True, None
+    if not isinstance(bruto, dict):
+        return False, None
+    guidance = _para_guidance_resultado(bruto, data_relatorio, caminho_pdf)
+    return (guidance is not None), guidance
+
+
+def _texto_opcional(valor: object) -> str | None:
+    """Retorna o texto persistido, ou ``None`` quando ausente/inválido."""
+    return valor if isinstance(valor, str) else None
 
 
 def _para_guidance_resultado(
@@ -269,3 +319,16 @@ def _data_de(valor: object) -> date | None:
         return date.fromisoformat(str(valor))
     except ValueError:
         return None
+
+
+def _datetime_de(valor: object) -> datetime | None:
+    """Retorna o ``datetime`` de um instante ISO persistido, ou ``None``."""
+    if not valor:
+        return None
+    try:
+        momento = datetime.fromisoformat(str(valor))
+    except ValueError:
+        return None
+    return momento if momento.tzinfo is not None else momento.replace(
+        tzinfo=timezone.utc
+    )

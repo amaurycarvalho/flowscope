@@ -17,6 +17,7 @@ from flowscope.domain.b3 import (
 )
 from flowscope.domain.fii.analysis import PatrimonioFii
 from flowscope.infrastructure.b3.encoder import encode_b3_payload
+from flowscope.infrastructure.b3.fund_identity_store import JsonFundIdentityStore
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
 from flowscope.infrastructure.b3.funds_client import (
     B3FundosClient,
@@ -262,6 +263,28 @@ class TestFundRepository:
         assert repo.find_by_ticker("XPTO11") is None
 
 
+class TestFundRepositoryCodeCvm:
+    def test_delega_ao_cliente(self):
+        class _Cliente:
+            def resolver_code_cvm(self, ticker):
+                return {"BPAC11": "22616"}.get(ticker)
+
+        repo = B3FundRepository(client=_Cliente())
+        assert repo.resolver_code_cvm("bpac11") == "22616"
+
+    def test_cliente_sem_metodo_retorna_none(self):
+        repo = B3FundRepository(client=object())
+        assert repo.resolver_code_cvm("BPAC11") is None
+
+    def test_falha_do_cliente_retorna_none(self):
+        class _Cliente:
+            def resolver_code_cvm(self, ticker):
+                raise RuntimeError("indisponível")
+
+        repo = B3FundRepository(client=_Cliente())
+        assert repo.resolver_code_cvm("BPAC11") is None
+
+
 class TestReportsRepository:
     def test_get_distributions_converte_referencias(self):
         documentos = _fixture("distributions_alzr.json")["results"]
@@ -400,6 +423,70 @@ class TestB3FundamentalRepository:
             fund_repository=_FundosSemFundo(), reports_repository=_Relatorios()
         )
         assert repo.obter_nome("XPTO4") is None
+
+    def test_obter_cnpj_usa_identidade_persistida(self, tmp_path):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        store = JsonFundIdentityStore(cache_dir=tmp_path)
+        store.salvar(
+            "KNCA11",
+            id_fnet="21549",
+            primary_id="6627",
+            name="KINEA CRÉDITO AGRO FIAGRO",
+            trading_name="41.745.701/0001-37",
+            cnpj="41745701000137",
+            type_fund="FIAGRO",
+        )
+
+        class _ClienteIndisponivel:
+            def obter_candidato(self, ticker):
+                raise requests.ConnectionError("fora do ar")
+
+        repo = B3FundamentalRepository(
+            fund_repository=B3FundRepository(
+                client=_ClienteIndisponivel(), identity_store=store
+            )
+        )
+        assert repo.obter_cnpj("KNCA11") == "41745701000137"
+        identidade = repo.obter_identidade("KNCA11")
+        assert identidade is not None
+        assert identidade.fnet_id == "21549"
+
+    def test_obter_informe_usa_idfnet_persistido(self, tmp_path):
+        from flowscope.infrastructure.fii.b3_fundamental_repository import (
+            B3FundamentalRepository,
+        )
+
+        store = JsonFundIdentityStore(cache_dir=tmp_path)
+        store.salvar(
+            "KNCA11",
+            id_fnet="21549",
+            name="KINEA CRÉDITO AGRO FIAGRO",
+            trading_name="41.745.701/0001-37",
+            cnpj="41745701000137",
+            type_fund="FIAGRO",
+        )
+        chamadas: list[str] = []
+
+        class _ClienteIndisponivel:
+            def obter_candidato(self, ticker):
+                raise requests.ConnectionError("fora do ar")
+
+        class _Relatorios:
+            def extrair_informe(self, id_fnet, inicio, fim, reference_date):
+                chamadas.append(id_fnet)
+                return None
+
+        repo = B3FundamentalRepository(
+            fund_repository=B3FundRepository(
+                client=_ClienteIndisponivel(), identity_store=store
+            ),
+            reports_repository=_Relatorios(),
+        )
+        assert repo.obter_informe("KNCA11", REFERENCIA) is None
+        assert chamadas == ["21549"]
 
     def test_obter_proventos(self):
         from flowscope.domain.structured import ISIN, Provento, ValorProvento
@@ -547,6 +634,59 @@ class TestListarFundos:
         assert client.resolver_ticker("ALZR11") is None
         assert client.resolver_ticker("ALZR11") == "20294"
 
+    def test_listagem_de_documentos_vazia_intermitente_e_repetida(self, tmp_path):
+        vazia = {"page": {"totalPages": 0, "totalRecords": 0}, "results": []}
+        cheia = {
+            "page": {"totalPages": 1, "totalRecords": 1},
+            "results": [
+                {
+                    "urlViewerFundosNet": "https://fnet?id=1350966",
+                    "referenceDate": "2026-09-01T00:00:00-03:00",
+                }
+            ],
+        }
+        sessao = _SessaoFake([vazia, cheia])
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path),
+            session=sessao,
+            retry_delays=(0,),
+        )
+        documentos = client.listar_documentos(
+            "21549", date(2024, 11, 12), date(2026, 11, 12), 40, tolerante=False
+        )
+        assert len(documentos) == 1
+        assert len(sessao.urls) == 2
+
+        documentos = client.listar_documentos(
+            "21549", date(2024, 11, 12), date(2026, 11, 12), 40, tolerante=False
+        )
+        assert len(documentos) == 1
+        assert len(sessao.urls) == 2
+
+    def test_listagem_de_documentos_sempre_vazia_nao_e_cacheada(self, tmp_path):
+        vazia = {"page": {"totalPages": 0, "totalRecords": 0}, "results": []}
+        sessao = _SessaoFake([vazia])
+        client = B3FundosClient(
+            cache=CacheManager(cache_dir=tmp_path),
+            session=sessao,
+            retry_delays=(0,),
+        )
+        assert (
+            client.listar_documentos(
+                "21549", date(2024, 11, 12), date(2026, 11, 12), 40, tolerante=False
+            )
+            == []
+        )
+        assert len(sessao.urls) == 2
+
+        assert (
+            client.listar_documentos(
+                "21549", date(2024, 11, 12), date(2026, 11, 12), 40, tolerante=False
+            )
+            == []
+        )
+        assert len(sessao.urls) == 4
+
 
 class TestResolucaoMultiTipo:
     def _client(self, tmp_path, respostas):
@@ -643,6 +783,8 @@ class TestInformeMensalParser:
         assert informe.cnpj is None
         assert informe.nome_administrador is None
         assert informe.cnpj_administrador is None
+        assert informe.nome_gestor is None
+        assert informe.cnpj_gestor is None
 
     def test_extrai_identidade_fiscal(self):
         html = (_FIXTURES / "informe_cycr.html").read_text(encoding="utf-8")
@@ -650,6 +792,18 @@ class TestInformeMensalParser:
         assert informe.cnpj == "36.501.233/0001-15"
         assert informe.nome_administrador == "BANCO GENIAL S.A."
         assert informe.cnpj_administrador == "45.246.410/0001-55"
+
+    def test_extrai_identidade_fiscal_fiagro(self):
+        html = (_FIXTURES / "informe_fiagro.html").read_text(encoding="utf-8")
+        informe = extrair_informe_mensal(html, document_id=1350966)
+        assert informe.cnpj == "41745701000137"
+        assert informe.nome_administrador == "INTRAG DTVM LTDA."
+        assert informe.cnpj_administrador == "62418140000131"
+        assert informe.nome_gestor == "KINEA INVESTIMENTOS LTDA"
+        assert informe.cnpj_gestor == "08604187000144"
+        assert informe.cotistas == 92355
+        assert informe.patrimonio_liquido == Decimal("2164726036.54")
+        assert informe.cotas_emitidas == Decimal("21599919.0000")
 
     def test_extrai_classificacao_autorregulacao(self):
         html = (_FIXTURES / "informe_cycr.html").read_text(encoding="utf-8")
@@ -671,7 +825,7 @@ class TestInformeMensalParser:
 
 
 class TestB3FundamentalDataProvider:
-    def _provider(self, informe, patrimonio=None):
+    def _provider(self, informe, patrimonio=None, cnpj_persistido=None):
         class _Repo:
             def obter_nome(self, ticker):
                 return "CYRELA CRÉDITO"
@@ -681,6 +835,9 @@ class TestB3FundamentalDataProvider:
 
             def obter_patrimonio(self, ticker, reference_date):
                 return patrimonio
+
+            def obter_cnpj(self, ticker):
+                return cnpj_persistido
 
         from flowscope.infrastructure.fii.b3_fundamental_provider import (
             B3FundamentalDataProvider,
@@ -706,6 +863,55 @@ class TestB3FundamentalDataProvider:
         assert campos["administrador"].valor == "BANCO GENIAL S.A."
         assert campos["cnpj_administrador"].valor == "45.246.410/0001-55"
         assert campos["cnpj"].fonte == "B3"
+
+    def test_emite_gestor(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 9, 1),
+            reference_month="09/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+            nome_gestor="KINEA INVESTIMENTOS LTDA",
+            cnpj_gestor="08604187000144",
+        )
+        campos = self._provider(informe).obter("KNCA11", REFERENCIA)
+        assert campos["gestor"].valor == "KINEA INVESTIMENTOS LTDA"
+        assert campos["cnpj_gestor"].valor == "08604187000144"
+        assert campos["gestor"].fonte == "B3"
+
+    def test_emite_cnpj_da_identidade_persistida(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 9, 1),
+            reference_month="09/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+        )
+        campos = self._provider(
+            informe, cnpj_persistido="41745701000137"
+        ).obter("KNCA11", REFERENCIA)
+        assert campos["cnpj"].valor == "41745701000137"
+        assert campos["cnpj"].fonte == "B3"
+
+    def test_informe_prevalece_sobre_cnpj_persistido(self):
+        informe = B3InformeMensal(
+            document_id=1,
+            reference_date=date(2026, 9, 1),
+            reference_month="09/2026",
+            cotistas=None,
+            patrimonio_liquido=None,
+            cotas_emitidas=None,
+            valor_patrimonial_cota=None,
+            cnpj="11111111000111",
+        )
+        campos = self._provider(
+            informe, cnpj_persistido="41745701000137"
+        ).obter("KNCA11", REFERENCIA)
+        assert campos["cnpj"].valor == "11111111000111"
 
     def test_emite_classificacao_autorregulacao(self):
         informe = B3InformeMensal(

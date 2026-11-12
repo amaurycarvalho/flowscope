@@ -567,6 +567,18 @@ class TestDadosFiscais:
             "CNPJ 12.345.678/0001-90 | Gestor (11.222.333/0001-44)"
         )
 
+    def test_papel_exibe_razao_social_apos_cnpj(self):
+        analise = replace(
+            _analise_acao(),
+            cnpj="33.000.167/0001-01",
+            razao_social="PETROLEO BRASILEIRO S.A. PETROBRAS",
+        )
+        colunas = montar_linhas({"PETR4": analise})[0]
+        assert colunas[33] == (
+            "CNPJ 33.000.167/0001-01 | "
+            "Razão social PETROLEO BRASILEIRO S.A. PETROBRAS"
+        )
+
     def test_papel_exibe_apenas_cnpj(self):
         analise = replace(
             _analise_acao(),

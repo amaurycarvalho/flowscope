@@ -10,6 +10,7 @@ from calendar import monthrange
 from datetime import date
 
 from flowscope.domain.b3 import B3Fund, B3InformeMensal
+from flowscope.domain.cvm import normalizar_cnpj
 from flowscope.domain.fii.analysis import PatrimonioFii
 from flowscope.domain.structured import Provento
 from flowscope.infrastructure.b3.fund_repository import B3FundRepository
@@ -18,6 +19,8 @@ from flowscope.infrastructure.b3.reports_repository import B3ReportsRepository
 logger = logging.getLogger("flowscope")
 
 _MESES_JANELA = 24
+
+_DIGITOS_CNPJ = 14
 
 
 class B3FundamentalRepository:
@@ -38,6 +41,22 @@ class B3FundamentalRepository:
         self._patrimonio_cache: dict[
             tuple[str, date], PatrimonioFii | None
         ] = {}
+
+    def obter_identidade(
+        self: "B3FundamentalRepository", ticker: str
+    ) -> B3Fund | None:
+        """Retorna a identidade B3 do ticker, usando o store persistido se preciso."""
+        return self._resolver(ticker)
+
+    def obter_cnpj(
+        self: "B3FundamentalRepository", ticker: str
+    ) -> str | None:
+        """Retorna o CNPJ da identidade B3 persistida, ou ``None`` sem dados."""
+        fundo = self._resolver(ticker)
+        if fundo is None:
+            return None
+        cnpj = normalizar_cnpj(fundo.trading_name)
+        return cnpj if len(cnpj) == _DIGITOS_CNPJ else None
 
     def obter_nome(self: "B3FundamentalRepository", ticker: str) -> str | None:
         """Retorna o nome do ativo a partir da identidade B3.

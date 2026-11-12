@@ -117,6 +117,7 @@ class AnaliseFundamental:
     pct_preco_tipico: Decimal | None = None
     indexadores: dict[str, Decimal] = field(default_factory=dict)
     cnpj: str | None = None
+    razao_social: str | None = None
     nome_administrador: str | None = None
     cnpj_administrador: str | None = None
     nome_gestor: str | None = None

@@ -47,6 +47,21 @@ def _total_paginas(dados: object) -> int:
     return int(pagina.get("totalPages", 1) or 1) if pagina else 1
 
 
+def _identidade_de(dados: dict) -> dict[str, object]:
+    """Normaliza ``codeCVM``/``nome`` de um payload persistido ou remoto."""
+    codigo = dados.get("codeCVM")
+    codigo = (
+        _normalizar_code_cvm(str(codigo))
+        if codigo is not None and str(codigo).strip()
+        else None
+    )
+    nome = dados.get("nome")
+    return {
+        "codeCVM": codigo,
+        "nome": nome if isinstance(nome, str) else None,
+    }
+
+
 class FundosCodeCvmMixin:
     """Mixin com resolução de ticker→codeCVM e nome, exclusivamente via API."""
 
@@ -54,9 +69,10 @@ class FundosCodeCvmMixin:
         """Resolve o ticker para o ``codeCVM`` na B3, exclusivamente via API.
 
         Consulta ``GetInitialCompanies`` pela raiz do ticker e retorna ``None``
-        para tickers sem código CVM. Uma falha de resolução (rede/HTTP após as
-        retentativas) retorna ``None`` sem cachear o resultado, de modo que uma
-        nova tentativa futura volte a consultar a API.
+        para tickers sem código CVM. Em falha de resolução (rede/HTTP após as
+        retentativas), serve o último valor persistido quando existir; sem ele,
+        retorna ``None`` sem cachear o resultado, de modo que uma nova tentativa
+        futura volte a consultar a API.
         """
         return self._identidade_empresa(ticker).get("codeCVM")
 
@@ -76,8 +92,8 @@ class FundosCodeCvmMixin:
         """Obtém ``{"codeCVM", "nome"}`` da API, cacheando por 30 dias.
 
         O resultado só é gravado no cache quando a API respondeu (com ou sem
-        correspondência). Uma falha de rede/HTTP NÃO é cacheada: a exceção é
-        propagada por ``get_or_fetch`` sem gravar nada e tratada aqui.
+        correspondência). Uma falha de rede/HTTP NÃO é cacheada; se houver valor
+        persistido, ele é servido como fallback sem nova gravação.
         """
         key = self._chave_cache("codecvm", ticker.strip().upper())
 
@@ -89,14 +105,20 @@ class FundosCodeCvmMixin:
                 key, ttl_days=TTL_CODIGO_CVM_DIAS, fetch_fn=_fetch
             )
         except requests.RequestException:
+            persistido = self._cache.read_meta(key)
+            if persistido is not None:
+                logger.warning(
+                    "Falha ao resolver identidade do ticker %s; "
+                    "servindo cache persistido",
+                    ticker,
+                    exc_info=True,
+                )
+                return _identidade_de(persistido)
             logger.warning(
                 "Falha ao resolver identidade do ticker %s", ticker, exc_info=True
             )
             return {"codeCVM": None, "nome": None}
-        return {
-            "codeCVM": payload.get("codeCVM"),
-            "nome": payload.get("nome"),
-        }
+        return _identidade_de(payload)
 
     def _consultar_empresa_por_api(
         self: "FundosCodeCvmMixin", ticker: str

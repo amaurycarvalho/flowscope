@@ -1,9 +1,12 @@
 """Testes da avaliação do guidance de um Relatório Gerencial."""
 
+import logging
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
 from flowscope.application.avaliar_guidance import (
+    PROMPT_VERSION,
     SYSTEM_PROMPT,
     AvaliarGuidanceUseCase,
 )
@@ -33,6 +36,7 @@ EXISTENTE_IA = AvaliacaoGuidance(
         data_relatorio=DATA,
         caminho_pdf=CAMINHO,
     ),
+    prompt_version=PROMPT_VERSION,
 )
 
 EXISTENTE_DET = AvaliacaoGuidance(
@@ -58,9 +62,15 @@ EXTRAIDO = Guidance(
 
 
 class _LLMFake:
-    def __init__(self, resposta: str = "", erro: Exception | None = None) -> None:
+    def __init__(
+        self,
+        resposta: str = "",
+        erro: Exception | None = None,
+        modelo: str | None = None,
+    ) -> None:
         self.resposta = resposta
         self.erro = erro
+        self.modelo = modelo
         self.chamadas: list[tuple[list[dict], str | None]] = []
 
     def complete(self, messages, system_prompt=None):
@@ -315,3 +325,171 @@ class TestFalhaPosteriorNaoDescarta:
         assert resultado.metodo == METODO_DETERMINISTICO
         assert resultado.guidance == EXTRAIDO
         assert llm.chamadas == 1
+
+
+class TestInterpretacaoTolerante:
+    def _avaliar(self, resposta: str):
+        caso = _caso(_StoreFake(), _ExtratorFake(), llm=_LLMFake(resposta))
+        return caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+
+    def test_simbolo_de_moeda_e_tolerado(self):
+        resultado = self._avaliar(
+            "GUIDANCE: SIM\nVALOR_MIN: R$ 0,85\nVALOR_MAX: R$ 0,90"
+        )
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance.valor_min == Decimal("0.85")
+        assert resultado.guidance.valor_max == Decimal("0.90")
+
+    def test_faixa_na_mesma_linha_e_tolerada(self):
+        resultado = self._avaliar(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,85 a 0,90\nVALOR_MAX:"
+        )
+        assert resultado.guidance.valor_min == Decimal("0.85")
+        assert resultado.guidance.valor_max == Decimal("0.90")
+
+    def test_separador_de_milhar_e_tolerado(self):
+        resultado = self._avaliar(
+            "GUIDANCE: SIM\nVALOR_MIN: 1.234,56\nVALOR_MAX: 1.234,56"
+        )
+        assert resultado.guidance.valor_min == Decimal("1234.56")
+
+    def test_periodo_vago_e_normalizado(self):
+        resultado = self._avaliar(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,85\nVALOR_MAX: 0,85\n"
+            "PERIODO: não especificado"
+        )
+        assert resultado.guidance.periodo == ""
+
+    def test_periodo_reconhecido_e_preservado(self):
+        resultado = self._avaliar(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,85\nVALOR_MAX: 0,85\n"
+            "PERIODO: 2S26"
+        )
+        assert resultado.guidance.periodo == "2S26"
+
+
+class TestRespostaInvalida:
+    def test_sim_sem_valores_recorre_ao_deterministico(self):
+        extrator = _ExtratorFake(EXTRAIDO)
+        caso = _caso(
+            _StoreFake(),
+            extrator,
+            llm=_LLMFake("GUIDANCE: SIM\nVALOR_MIN:\nVALOR_MAX:"),
+        )
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.metodo == METODO_DETERMINISTICO
+        assert resultado.guidance == EXTRAIDO
+        assert extrator.chamadas == ["texto"]
+
+    def test_sim_sem_valores_sem_deterministico_nao_registra_ia(self):
+        caso = _caso(
+            _StoreFake(),
+            _ExtratorFake(None),
+            llm=_LLMFake("GUIDANCE: SIM\nVALOR_MIN:\nVALOR_MAX:"),
+        )
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.metodo == METODO_DETERMINISTICO
+        assert resultado.guidance is None
+
+
+class TestReavaliacaoPorVersao:
+    def test_avaliacao_ia_grava_proveniencia(self):
+        store = _StoreFake()
+        llm = _LLMFake(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99",
+            modelo="modelo-x",
+        )
+        caso = _caso(store, _ExtratorFake(), llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.prompt_version == PROMPT_VERSION
+        assert resultado.modelo == "modelo-x"
+        assert resultado.avaliado_em is not None
+
+    def test_ia_versao_anterior_e_reavaliada(self):
+        antiga = replace(EXISTENTE_IA, prompt_version="0")
+        store = _StoreFake({("ALZR11", "k1"): antiga})
+        llm = _LLMFake(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99"
+        )
+        caso = _caso(store, _ExtratorFake(), llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.metodo == METODO_IA
+        assert resultado.prompt_version == PROMPT_VERSION
+        assert resultado.guidance.valor_min == Decimal("0.99")
+        assert store.salvos[-1][1] == "k1"
+
+    def test_ia_sem_versao_e_reavaliada(self):
+        antiga = replace(EXISTENTE_IA, prompt_version=None)
+        store = _StoreFake({("ALZR11", "k1"): antiga})
+        llm = _LLMFake("GUIDANCE: NAO")
+        caso = _caso(store, _ExtratorFake(), llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.prompt_version == PROMPT_VERSION
+        assert resultado.guidance is None
+        assert store.salvos
+
+    def test_modelo_diferente_reavalia(self):
+        antiga = replace(EXISTENTE_IA, modelo="modelo-antigo")
+        store = _StoreFake({("ALZR11", "k1"): antiga})
+        llm = _LLMFake(
+            "GUIDANCE: SIM\nVALOR_MIN: 0,99\nVALOR_MAX: 0,99",
+            modelo="modelo-novo",
+        )
+        caso = _caso(store, _ExtratorFake(), llm=llm)
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado.modelo == "modelo-novo"
+        assert resultado.guidance.valor_min == Decimal("0.99")
+
+    def test_falha_na_reavaliacao_preserva_entrada(self):
+        antiga = replace(EXISTENTE_IA, prompt_version="0")
+        store = _StoreFake({("ALZR11", "k1"): antiga})
+        caso = _caso(
+            store,
+            _ExtratorFake(),
+            llm=_LLMFake(erro=LLMCommunicationError("x")),
+        )
+        resultado = caso.avaliar_rg(
+            "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+        )
+        assert resultado == antiga
+        assert store.salvos == []
+
+
+class TestConflitoDeterministico:
+    def test_conflito_registrado_sem_sobrescrever(self, caplog):
+        store = _StoreFake()
+        caso = _caso(store, _ExtratorFake(EXTRAIDO), llm=_LLMFake("GUIDANCE: NAO"))
+        with caplog.at_level(logging.WARNING):
+            resultado = caso.avaliar_rg(
+                "ALZR11", "k1", DATA, CAMINHO, ("texto",)
+            )
+        assert resultado.metodo == METODO_IA
+        assert resultado.guidance is None
+        assert any(
+            "Conflito de guidance" in registro.message
+            for registro in caplog.records
+        )
+        assert store.salvos[-1][2].guidance is None
+
+    def test_sem_conflito_nao_registra_warning(self, caplog):
+        caso = _caso(
+            _StoreFake(), _ExtratorFake(None), llm=_LLMFake("GUIDANCE: NAO")
+        )
+        with caplog.at_level(logging.WARNING):
+            caso.avaliar_rg("ALZR11", "k1", DATA, CAMINHO, ("texto",))
+        assert not any(
+            "Conflito de guidance" in registro.message
+            for registro in caplog.records
+        )

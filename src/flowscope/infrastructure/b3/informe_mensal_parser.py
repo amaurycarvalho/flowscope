@@ -21,9 +21,11 @@ _ROTULOS_COTISTAS = ("numerodecotistas",)
 _ROTULOS_PATRIMONIO = ("patrimonioliquido", "patrimonioliquidor")
 _ROTULOS_COTAS = ("numerodecotasemitidas",)
 _ROTULOS_VP_COTA = ("valorpatrimonialdascotas", "valorpatrimonialdascotasr")
-_ROTULOS_CNPJ = ("cnpjdofundoclasse",)
+_ROTULOS_CNPJ = ("cnpjdofundoclasse", "cnpjdofundo")
 _ROTULOS_NOME_ADMINISTRADOR = ("nomedoadministrador",)
 _ROTULOS_CNPJ_ADMINISTRADOR = ("cnpjdoadministrador",)
+_ROTULOS_NOME_GESTOR = ("nomedogestor",)
+_ROTULOS_CNPJ_GESTOR = ("cnpjdogestor",)
 _ROTULOS_CLASSIFICACAO = ("classificacaoautorregulacao",)
 
 _PADRAO_CAMPOS_CLASSIFICACAO = re.compile(
@@ -72,6 +74,8 @@ def extrair_informe_mensal(
         cnpj=_texto(_valor(pares, _ROTULOS_CNPJ)),
         nome_administrador=_texto(_valor(pares, _ROTULOS_NOME_ADMINISTRADOR)),
         cnpj_administrador=_texto(_valor(pares, _ROTULOS_CNPJ_ADMINISTRADOR)),
+        nome_gestor=_texto(_valor(pares, _ROTULOS_NOME_GESTOR)),
+        cnpj_gestor=_texto(_valor(pares, _ROTULOS_CNPJ_GESTOR)),
         classificacao=classificacao.get("classificacao"),
         subclassificacao=classificacao.get("subclassificacao"),
         gestao=classificacao.get("gestao"),

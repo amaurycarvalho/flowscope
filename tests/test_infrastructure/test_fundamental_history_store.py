@@ -133,6 +133,7 @@ def _analise_completa() -> AnaliseFundamental:
         pct_preco_tipico=Decimal("0.04"),
         indexadores={"IPCA": Decimal("0.22"), "INCC": Decimal("0.05")},
         cnpj="12.345.678/0001-90",
+        razao_social="COMPANHIA EXEMPLO S.A.",
         nome_administrador="ADM",
         cnpj_administrador="11",
         nome_gestor="GES",
@@ -190,6 +191,10 @@ class TestCodec:
     def test_dict_inclui_data_referencia(self):
         dados = analise_para_dict(_analise_completa())
         assert dados["data_referencia"] == "2026-09-04"
+
+    def test_dict_inclui_razao_social(self):
+        dados = analise_para_dict(_analise_completa())
+        assert dados["razao_social"] == "COMPANHIA EXEMPLO S.A."
 
     def test_dict_inclui_short_interest(self):
         dados = analise_para_dict(_analise_completa())

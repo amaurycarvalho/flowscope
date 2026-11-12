@@ -1,5 +1,6 @@
 """Repositório de identidade de fundos na B3 (RFC-008 §3)."""
 
+import logging
 from dataclasses import dataclass
 
 from flowscope.domain.b3 import B3Fund
@@ -14,6 +15,8 @@ from flowscope.infrastructure.b3.funds_client import (
 )
 
 _DIGITOS_CNPJ = 14
+
+logger = logging.getLogger("flowscope")
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,21 @@ class B3FundRepository:
         if resolucao.completa:
             return None
         return self._identidade_persistida(chave)
+
+    def resolver_code_cvm(
+        self: "B3FundRepository", ticker: str
+    ) -> str | None:
+        """Resolve o ``codeCVM`` do ticker pelo cliente B3, de forma tolerante."""
+        obter = getattr(self._client, "resolver_code_cvm", None)
+        if not callable(obter):
+            return None
+        try:
+            return obter(ticker.strip().upper())
+        except Exception:  # resolução tolerante
+            logger.warning(
+                "Falha ao resolver codeCVM de %s", ticker, exc_info=True
+            )
+            return None
 
     def obter_nome_negociacao(
         self: "B3FundRepository", ticker: str

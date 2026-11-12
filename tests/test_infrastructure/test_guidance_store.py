@@ -2,7 +2,7 @@
 
 import json
 import threading
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from flowscope.domain.fii import (
@@ -84,6 +84,50 @@ class TestRoundTrip:
         assert dados["schema_version"] == 2
         assert "a1b2" in dados["avaliacoes"]
 
+    def test_proveniencia_da_avaliacao_round_trip(self, tmp_path):
+        store = JsonGuidanceStore(cache_dir=tmp_path)
+        momento = datetime(2026, 8, 2, 12, 30, tzinfo=timezone.utc)
+        avaliacao = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            caminho_pdf=GUIDANCE.caminho_pdf,
+            guidance=GUIDANCE,
+            avaliado_em=momento,
+            prompt_version="v1",
+            modelo="modelo-x",
+        )
+        store.salvar_avaliacao("ALZR11", "a1b2", avaliacao)
+        recuperada = store.obter_avaliacao("ALZR11", "a1b2")
+        assert recuperada == avaliacao
+        assert recuperada.avaliado_em == momento
+        assert recuperada.prompt_version == "v1"
+        assert recuperada.modelo == "modelo-x"
+
+    def test_entrada_antiga_sem_proveniencia(self, tmp_path):
+        _escrever(
+            tmp_path,
+            {
+                "schema_version": 2,
+                "avaliacoes": {
+                    "a1b2": {
+                        "metodo": "ia",
+                        "data_relatorio": "2026-08-01",
+                        "guidance": {
+                            "valor_min": "0.74",
+                            "valor_max": "0.78",
+                            "periodo": "2S26",
+                        },
+                    }
+                },
+            },
+        )
+        store = JsonGuidanceStore(cache_dir=tmp_path)
+        recuperada = store.obter_avaliacao("ALZR11", "a1b2")
+        assert recuperada is not None
+        assert recuperada.avaliado_em is None
+        assert recuperada.prompt_version is None
+        assert recuperada.modelo is None
+
 
 class TestDerivacao:
     def test_guidance_corrente_e_o_de_maior_data(self, tmp_path):
@@ -112,6 +156,66 @@ class TestDerivacao:
         store = JsonGuidanceStore(cache_dir=tmp_path)
         store.salvar_avaliacao("ALZR11", "c3d4", AVALIACAO_AUSENTE)
         assert store.obter("ALZR11") is None
+
+    def test_mesma_data_ia_prevalece_sobre_deterministico(self, tmp_path):
+        store = JsonGuidanceStore(cache_dir=tmp_path)
+        deterministica = AvaliacaoGuidance(
+            metodo=METODO_DETERMINISTICO,
+            data_relatorio=date(2026, 8, 1),
+            guidance=Guidance(
+                valor_min=Decimal("1.05"),
+                valor_max=Decimal("1.05"),
+                periodo="",
+                data_relatorio=date(2026, 8, 1),
+            ),
+            avaliado_em=datetime(2026, 11, 1, tzinfo=timezone.utc),
+        )
+        por_ia = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=Guidance(
+                valor_min=Decimal("1.00"),
+                valor_max=Decimal("1.10"),
+                periodo="próximo trimestre",
+                data_relatorio=date(2026, 8, 1),
+            ),
+            avaliado_em=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        )
+        store.salvar_avaliacao("RZAK11", "det", deterministica)
+        store.salvar_avaliacao("RZAK11", "ia", por_ia)
+        guidance = store.obter("RZAK11")
+        assert guidance is not None
+        assert guidance.valor_min == Decimal("1.00")
+        assert guidance.valor_max == Decimal("1.10")
+        assert guidance.periodo == "próximo trimestre"
+
+    def test_mesmo_metodo_avaliacao_mais_recente_prevalece(self, tmp_path):
+        store = JsonGuidanceStore(cache_dir=tmp_path)
+        antiga = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=Guidance(
+                valor_min=Decimal("0.80"),
+                valor_max=Decimal("0.80"),
+                periodo="antigo",
+                data_relatorio=date(2026, 8, 1),
+            ),
+            avaliado_em=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        )
+        nova = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=Guidance(
+                valor_min=Decimal("0.90"),
+                valor_max=Decimal("0.90"),
+                periodo="novo",
+                data_relatorio=date(2026, 8, 1),
+            ),
+            avaliado_em=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        )
+        store.salvar_avaliacao("ALZR11", "antiga", antiga)
+        store.salvar_avaliacao("ALZR11", "nova", nova)
+        assert store.obter("ALZR11").periodo == "novo"
 
 
 class TestMigracaoV1:

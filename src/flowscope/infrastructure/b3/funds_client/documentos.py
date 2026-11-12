@@ -1,6 +1,7 @@
 """Listagem de relatórios estruturados e download do HTML dos documentos."""
 
 import logging
+from collections.abc import Callable
 from datetime import date
 
 import requests
@@ -65,10 +66,15 @@ class FundosDocumentosMixin:
         page_number: int,
         tolerante: bool = True,
     ) -> dict[str, object]:
-        """Busca uma página da listagem de relatórios, com cache de 1 dia."""
-        key = (
-            f"fund_docs_{id_fnet}_{tipo}_{data_inicio.isoformat()}_"
-            f"{data_fim.isoformat()}_{page_number}"
+        """Busca uma página da listagem de relatórios, com cache de 1 dia.
+
+        A B3 responde intermitentemente com lista vazia mesmo havendo documentos
+        no período. Um vazio na primeira página é tratado como suspeito: a chave
+        é descartada e a consulta repetida uma vez, e um vazio persistente não é
+        mantido em cache.
+        """
+        key = self._chave_cache(
+            "fund_docs", id_fnet, tipo, data_inicio, data_fim, page_number
         )
 
         def _fetch() -> dict[str, object]:
@@ -86,8 +92,31 @@ class FundosDocumentosMixin:
                 },
             )
 
+        pagina = self._pagina_do_cache(key, _fetch, id_fnet, page_number, tolerante)
+        if page_number == 1 and _pagina_vazia(pagina):
+            self._cache.invalidate(key)
+            pagina = self._pagina_do_cache(
+                key, _fetch, id_fnet, page_number, tolerante
+            )
+            if _pagina_vazia(pagina):
+                self._cache.invalidate(key)
+        return pagina
+
+    def _pagina_do_cache(
+        self: "FundosDocumentosMixin",
+        key: str,
+        fetch_fn: Callable[[], dict[str, object]],
+        id_fnet: str,
+        page_number: int,
+        tolerante: bool,
+    ) -> dict[str, object]:
+        """Obtém a página do cache, tolerando indisponibilidade conforme o chamador."""
         try:
-            return self._cache.get_or_fetch(key, ttl_days=TTL_DOCUMENTOS_LISTA_DIAS, fetch_fn=_fetch)
+            return self._cache.get_or_fetch(
+                key,
+                ttl_days=TTL_DOCUMENTOS_LISTA_DIAS,
+                fetch_fn=fetch_fn,
+            )
         except requests.RequestException:
             if not tolerante:
                 raise
@@ -132,3 +161,9 @@ class FundosDocumentosMixin:
             chave, TTL_DOCUMENTO_HTML_DIAS, _fetch
         )
         return str(payload.get("html") or "")
+
+
+def _pagina_vazia(pagina: dict[str, object]) -> bool:
+    """Indica se a página veio sem resultados utilizáveis."""
+    resultados = pagina.get("results")
+    return not isinstance(resultados, list) or not resultados

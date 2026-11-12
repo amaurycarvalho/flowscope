@@ -15,59 +15,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### [participation-negociacoes](openspec/changes/participation-negociacoes) Painel "Participação nas Negociações" renomeado, com gauge de concentração, card informativo e timeline AFT
 
-## [1.8.1] - 2026-11-11
+## [1.8.2] - 2026-11-12
 
-### [chat-fontes-estruturadas](openspec/changes/archive/2026-11-11-chat-fontes-estruturadas) Fontes consultadas pelo Chat AI separadas da resposta em campo estruturado, com checkbox "Exibir fontes" e cópia seguindo a tela
+### [corrigir-cnpj-papel-por-codecvm](openspec/changes/archive/2026-11-12-corrigir-cnpj-papel-por-codecvm) CNPJ de Papel resolvido pelo casamento no FCA e, como fallback, pelo `codeCVM` da B3 com o cadastro de companhias abertas da CVM
 
 #### Added
 
-- Adicionar campo opcional `fontes` ao JSON de resposta do protocolo de navegação, com entradas `{caminho, rotulo}` declaradas pela LLM no turno final.
-- Adicionar o checkbox "Exibir fontes" (desmarcado por padrão) na aba "Chat AI", que mostra as fontes de cada resposta e re-renderiza todas as respostas ao alternar.
-- Introduzir o bloco de fontes pelo rótulo `Fontes consultadas:`, com uma linha em branco antes e quebra de linha depois.
+- Adicionar a aquisição e o cache do dataset `CIA_ABERTA/CAD/DADOS/cad_cia_aberta.csv`, com parser `CD_CVM → CNPJ_CIA`, hash do arquivo e versão do parser.
+- Expor a resolução `ticker → codeCVM` do `B3FundRepository` e injetá-la no `CvmAcionistasSource`, reutilizando o cache de 30 dias já existente.
+- Cobrir os quatro casos da watchlist com testes de regressão (`BPAC11`, `CMIN3`, `MBRF3`, `CSNA3`) e casos sintéticos de FCA literal e de fallback.
 
 #### Changed
 
-- Deixar de instruir a LLM a citar fontes no corpo de `resposta`; as fontes passam a ser declaradas no campo estruturado.
-- Derivar as fontes exibidas da árvore, a partir dos caminhos efetivamente navegados (`listar`, `obter`, `buscar`, `buscar_semantico`), deduplicando e usando os rótulos declarados pela LLM; caminhos declarados inexistentes são descartados.
-- Guardar as fontes da mensagem do assistente como itens estruturados (`caminho` + `rotulo` opcional), sem concatená-las ao texto.
-- Exibir as marcações `Você:`, `Assistente:` e `Fontes consultadas:` em negrito no campo de mensagens.
-- Fazer "Copiar chat" copiar o conteúdo exibido convertido para Markdown (marcações em negrito como `**...**`), seguindo o checkbox; a cópia de CSV da aba mantém o texto simples.
-- Atualizar a orientação da aba e a documentação do chat para descrever o novo contrato.
-- Marcar explicitamente os usos de SHA1 para chaves e identificadores determinísticos como não criptográficos (`usedforsecurity=False`), sem alterar os valores gerados.
+- Servir o último `codeCVM` persistido quando a B3 estiver indisponível e o cache estiver expirado, evitando que uma falha transitória derrube o CNPJ de Papel.
+- Exibir a razão social do Papel imediatamente após o CNPJ em `Dados fiscais`, usando `DENOM_SOCIAL` do cadastro de companhias; FIIs e BDRs mantêm o formato atual.
+- Manter a resolução atual como primeira tentativa e preservar a tolerância a falhas: ausência de codeCVM, cadastro indisponível ou CNPJ inválido não devem impedir a análise dos demais tickers.
+- Versionar o parser do cadastro e tolerar mapas normalizados em formato anterior, para que um cache antigo (valor string em vez de identidade) não faça o CNPJ do Papel desaparecer.
 
 #### Fixed
 
-- Corrigir a extração derivada de fontes para cobrir `obter` e as buscas, que hoje não entram na lista.
+- Resolver o CNPJ de Papel em duas etapas: primeiro pelo casamento exato de `Codigo_Negociacao` no FCA; se não houver correspondência, resolver o `codeCVM` via B3 e usá-lo como chave no cadastro de companhias abertas da CVM.
 
-### [litellm-model-cost-map-offline](openspec/changes/archive/2026-11-11-litellm-model-cost-map-offline) Primeira importação do `litellm` usa o catálogo local de model cost map, sem busca externa automática em máquinas offline
-
-#### Added
-
-- Definir `LITELLM_LOCAL_MODEL_COST_MAP=True` antes do primeiro `import litellm`, preservando um override explícito do usuário (`setdefault`).
-- Cobrir com teste que o import do adaptador/presets usa a fonte local e não dispara a busca remota.
-
-#### Changed
-
-- Centralizar o preparo em um helper compartilhado, em vez de duplicar em `presets.py` e `adapter.py`.
-- Garantir que a primeira importação do liteLLM não realize busca externa do model cost map, mantendo `get_model_cost_map_source_info()["source"] == "local"`.
-- Manter `litellm.suppress_debug_info = True` e o comportamento de contagem de tokens/janela de contexto.
-
-### [resiliencia-resolucao-fundos-b3](openspec/changes/archive/2026-11-11-resiliencia-resolucao-fundos-b3) Listagem de fundos da B3 completa e resiliente a páginas vazias, com chaves de cache versionadas e identidade persistida por ticker como fallback dos dados fiscais dos FIIs
+### [corrigir-dados-fiscais-fiagro](openspec/changes/archive/2026-11-12-corrigir-dados-fiscais-fiagro) `Dados fiscais` de FIAGROs completos com CNPJ e gestor extraídos do Informe Mensal da B3, usando a identidade persistida como fallback
 
 #### Added
 
-- Adicionar cache persistente ticker → `idFNET` → CNPJ, com nome e tipo do fundo, escrito a cada resolução bem-sucedida e consultado como fallback quando a B3 estiver indisponível ou a listagem vier incompleta.
+- Extrair o CNPJ do fundo do Informe Mensal aceitando os rótulos `CNPJ do Fundo/Classe` e `CNPJ do Fundo`, sem invalidar os demais campos quando o rótulo variar.
+- Extrair do Informe Mensal do FundosNet o gestor (nome e CNPJ), ao lado do administrador já suportado, ampliando o modelo normalizado do informe e o provider fundamentalista da B3.
 
 #### Changed
 
-- Tornar a listagem de fundos da B3 completa e resistente a respostas vazias intermitentes: `pageSize=120` (máximo aceito), repetição de páginas vazias com backoff e cache somente quando `len(results) == totalRecords`.
-- Preservar a última listagem completa em caso de atualização parcial/indisponível, em vez de sobrescrever o cache com uma lista truncada.
-- Invalidar as chaves de cache legadas de listagem e de resolução (versionar as chaves) para descartar listas parciais e ausências já gravadas.
-- Tratar corpo vazio intermitente do `GetListClassFund` como conteúdo inválido repetível, usando o validador do motor de retry central.
-- Não persistir resultados negativos (ticker sem correspondência) para não congelar falhas transitórias.
-- Garantir que a identidade persistida esteja versionada, com escrita atômica e tolerância a corrupção, e que o CNPJ alimente o fallback CVM Anual mesmo quando a B3 falhar.
+- Passar o gestor do FII/FIAGRO a ser resolvido primeiro pelo Informe Mensal da B3, mantendo o Informe Anual da CVM (`INF_ANUAL`) como fallback quando a B3 não fornecer o dado.
+- Reutilizar a identidade persistida `ticker → idFNET → CNPJ` (já gravada pela solução de resiliência da resolução de fundos) como fonte do `idFNET` na leitura do Informe Mensal e como fallback do CNPJ fiscal quando o informe não o trouxer ou a B3 estiver indisponível, sem criar um segundo cache.
+- Tornar a listagem de documentos do `GetStructuredReports` resistente a respostas vazias intermitentes: repetir uma vez a primeira página vazia, versionar a chave de cache e não persistir vazio persistente, para que administrador e gestor não desapareçam por um cache envenenado.
+- Manter a proveniência (`B3`/`CVM`) por campo e a omissão de itens sem valor em nenhuma fonte.
 
-[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.8.1...HEAD
-[1.8.1]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.8.1
+### [fortalecer-captura-guidance-fiis](openspec/changes/archive/2026-11-12-fortalecer-captura-guidance-fiis) Guidance corrente de FIIs desempatado por método e momento da avaliação, com proveniência no ledger, leitura tolerante da resposta da IA e normalização de período
+
+#### Added
+
+- Registrar no ledger a proveniência da avaliação (`avaliado_em`, versão do prompt e, quando disponível, modelo) e reavaliar entradas `ia` quando a versão do prompt/modelo mudar, tratando entradas antigas sem versão como desatualizadas.
+- Registrar em log o conflito em que a IA conclui ausência em todas as fontes, mas o extrator determinístico encontra guidance, sem sobrescrever automaticamente a decisão da IA.
+
+#### Changed
+
+- Derivar o guidance corrente com desempate explícito: entre entradas com a mesma data de relatório, `ia` prevalece sobre `deterministico`; persistir o momento da avaliação para desempatar avaliações do mesmo método.
+- Tornar a interpretação da resposta da IA tolerante a formato (`R$`, separador de milhar, faixa, “por cota”) e tratar `GUIDANCE: SIM` sem valores interpretáveis como falha da IA, recorrendo à extração determinística em vez de gravar ausência indevida.
+- Normalizar o período retornado pela IA, convertendo valores vagos (`não especificado`, `sem período`, `N/A`) em ausência de período e preservando períodos reconhecidos.
+
+[Unreleased]: https://github.com/amaurycarvalho/flowscope/compare/v1.8.2...HEAD
+[1.8.2]: https://github.com/amaurycarvalho/flowscope/releases/tag/v1.8.2
 
 See [CHANGELOG Archive](CHANGELOG-ARCHIVE.md) for older releases.

@@ -27,6 +27,7 @@ from flowscope.application.fundamental.formatters import (
     rotulo_tendencia,
 )
 from flowscope.domain.fii import (
+    SUBTIPO_EXIBICAO_BDR,
     TIPO_EXIBICAO_FII,
     AnaliseFundamental,
     ClassificacaoExibicao,
@@ -256,6 +257,12 @@ def _itens_fiscais(
     itens: list[str] = []
     if analise.cnpj:
         itens.append(f"CNPJ {formatar_cnpj(analise.cnpj)}")
+    if (
+        analise.razao_social
+        and exibicao.tipo != TIPO_EXIBICAO_FII
+        and exibicao.sub_tipo != SUBTIPO_EXIBICAO_BDR
+    ):
+        itens.append(f"Razão social {analise.razao_social}")
     if exibicao.tipo == TIPO_EXIBICAO_FII:
         itens.extend(_itens_administracao(analise))
     if not _tem_dados_fiscais(analise):
@@ -279,7 +286,12 @@ def _itens_administracao(analise: AnaliseFundamental) -> list[str]:
 
 def _tem_dados_fiscais(analise: AnaliseFundamental) -> bool:
     """Indica se há dados fiscais de FII/ação preenchidos."""
-    return bool(analise.cnpj or analise.nome_administrador or analise.nome_gestor)
+    return bool(
+        analise.cnpj
+        or analise.razao_social
+        or analise.nome_administrador
+        or analise.nome_gestor
+    )
 
 
 def _itens_identidade_bdr(analise: AnaliseFundamental) -> list[str]:

@@ -13,8 +13,10 @@ from flowscope.application.fundamental_ports import (
     CAMPO_CLASSIFICACAO_FII,
     CAMPO_CNPJ,
     CAMPO_CNPJ_ADMINISTRADOR,
+    CAMPO_CNPJ_GESTOR,
     CAMPO_DISCRIMINADOR,
     CAMPO_GESTAO,
+    CAMPO_GESTOR,
     CAMPO_NOME,
     CAMPO_SEGMENTO,
     CAMPO_VP_COTA,
@@ -52,9 +54,20 @@ class B3FundamentalDataProvider:
         informe = self._repository.obter_informe(ticker, reference_date)
         if informe is not None:
             _adicionar_classificacao(campos, informe)
+        if CAMPO_CNPJ not in campos:
+            _adicionar(campos, CAMPO_CNPJ, self._obter_cnpj_persistido(ticker))
         patrimonio = self._obter_patrimonio(ticker, reference_date)
         _adicionar(campos, CAMPO_VP_COTA, _vp_cota(patrimonio))
         return campos
+
+    def _obter_cnpj_persistido(
+        self: "B3FundamentalDataProvider", ticker: str
+    ) -> str | None:
+        """Obtém o CNPJ da identidade persistida, tolerando repositórios mínimos."""
+        obter = getattr(self._repository, "obter_cnpj", None)
+        if not callable(obter):
+            return None
+        return obter(ticker)
 
     def _obter_patrimonio(
         self: "B3FundamentalDataProvider", ticker: str, reference_date: date
@@ -73,6 +86,8 @@ def _adicionar_classificacao(
     _adicionar(campos, CAMPO_CNPJ, informe.cnpj)
     _adicionar(campos, CAMPO_ADMINISTRADOR, informe.nome_administrador)
     _adicionar(campos, CAMPO_CNPJ_ADMINISTRADOR, informe.cnpj_administrador)
+    _adicionar(campos, CAMPO_GESTOR, informe.nome_gestor)
+    _adicionar(campos, CAMPO_CNPJ_GESTOR, informe.cnpj_gestor)
     campos[CAMPO_DISCRIMINADOR] = CampoFundamental(DISCRIMINADOR_FII, FONTE_B3)
     if informe.classificacao:
         campos[CAMPO_CLASSIFICACAO_FII] = CampoFundamental(

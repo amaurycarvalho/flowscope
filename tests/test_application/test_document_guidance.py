@@ -5,7 +5,10 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from flowscope.application.avaliar_guidance import AvaliarGuidanceUseCase
+from flowscope.application.avaliar_guidance import (
+    PROMPT_VERSION,
+    AvaliarGuidanceUseCase,
+)
 from flowscope.application.documentos.document_guidance import (
     GuidanceService,
     conteudo_arvore_guidance,
@@ -240,6 +243,7 @@ class TestPendentesGuidance:
             metodo=METODO_IA,
             data_relatorio=date(2026, 8, 1),
             guidance=GUIDANCE,
+            prompt_version=PROMPT_VERSION,
         )
         store = _StoreFake({("HGBS11", "10.pdf"): existente})
         assert _servico_com_ia(store).pendente(_arquivo()) is False
@@ -257,6 +261,50 @@ class TestPendentesGuidance:
         servico = _servico_com_ia(_StoreFake(), disponivel=False)
         assert servico.pendente(_arquivo()) is False
         assert servico.pendentes([_arquivo()]) == []
+
+    def test_entrada_ia_com_versao_antiga_e_pendente(self):
+        existente = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+            prompt_version="0",
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        assert _servico_com_ia(store).pendente(_arquivo()) is True
+
+    def test_entrada_ia_sem_versao_e_pendente(self):
+        existente = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+            prompt_version=None,
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+        assert _servico_com_ia(store).pendente(_arquivo()) is True
+
+    def test_falha_na_reavaliacao_de_ia_antiga_nao_mantem_pendente(self):
+        existente = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=date(2026, 8, 1),
+            guidance=GUIDANCE,
+            prompt_version="0",
+        )
+        store = _StoreFake({("HGBS11", "10.pdf"): existente})
+
+        class _LLMFalha:
+            def complete(self, messages, system_prompt=None):
+                raise LLMCommunicationError("cota esgotada")
+
+        servico = GuidanceService(
+            store,
+            extrator=_ExtratorFake(GUIDANCE),
+            llm_factory=lambda: _LLMFalha(),
+            llm_available=lambda: True,
+        )
+        assert servico.pendente(_arquivo()) is True
+        resultado = servico.avaliar(_arquivo(), "texto")
+        assert resultado == existente
+        assert servico.pendente(_arquivo()) is False
 
     def test_outra_categoria_nao_e_pendente(self):
         servico = _servico_com_ia(_StoreFake())
@@ -370,6 +418,7 @@ class TestEntradasArvore:
             data_relatorio=date(2026, 8, 1),
             caminho_pdf=caminho,
             guidance=guidance,
+            prompt_version=PROMPT_VERSION,
         )
 
     def test_disponibiliza_entradas_com_valor(self):

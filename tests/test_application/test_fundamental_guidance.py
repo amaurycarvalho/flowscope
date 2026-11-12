@@ -1,17 +1,22 @@
 """Testes da leitura do guidance pela análise fundamentalista, sem cálculo."""
 
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from flowscope.application.avaliar_guidance import PROMPT_VERSION
 from flowscope.application.fundamental_analysis import FundamentalAnalysisUseCase
 from flowscope.domain.fii import (
+    METODO_DETERMINISTICO,
+    METODO_IA,
     AnaliseFundamental,
+    AvaliacaoGuidance,
     ClassificacaoExibicao,
     Guidance,
     UltimoDividendo,
     classificar_exibicao,
     classificar_ticker,
 )
+from flowscope.infrastructure.guidance_store import JsonGuidanceStore
 
 REFERENCIA = date(2026, 9, 4)
 GUIDANCE = Guidance(
@@ -119,3 +124,42 @@ class TestClassificacaoExibicao:
         )
         assert isinstance(exibicao, ClassificacaoExibicao)
         assert exibicao.tipo == "FII"
+
+
+class TestDerivacaoIntegrada:
+    def test_ledger_sintetico_expoe_guidance_da_ia(self, tmp_path):
+        store = JsonGuidanceStore(cache_dir=tmp_path)
+        data_relatorio = date(2026, 8, 1)
+        deterministica = AvaliacaoGuidance(
+            metodo=METODO_DETERMINISTICO,
+            data_relatorio=data_relatorio,
+            guidance=Guidance(
+                valor_min=Decimal("1.05"),
+                valor_max=Decimal("1.05"),
+                periodo="",
+                data_relatorio=data_relatorio,
+            ),
+            avaliado_em=datetime(2026, 11, 1, tzinfo=timezone.utc),
+        )
+        por_ia = AvaliacaoGuidance(
+            metodo=METODO_IA,
+            data_relatorio=data_relatorio,
+            guidance=Guidance(
+                valor_min=Decimal("1.00"),
+                valor_max=Decimal("1.10"),
+                periodo="próximo trimestre",
+                data_relatorio=data_relatorio,
+            ),
+            avaliado_em=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            prompt_version=PROMPT_VERSION,
+        )
+        store.salvar_avaliacao("HGBS11", "det", deterministica)
+        store.salvar_avaliacao("HGBS11", "ia", por_ia)
+
+        caso = FundamentalAnalysisUseCase(_RepoFake(), guidance_store=store)
+        resultado = caso.execute(["HGBS11"], REFERENCIA)[0]
+
+        assert resultado.guidance is not None
+        assert resultado.guidance.valor_min == Decimal("1.00")
+        assert resultado.guidance.valor_max == Decimal("1.10")
+        assert resultado.guidance.periodo == "próximo trimestre"

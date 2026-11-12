@@ -17,6 +17,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from flowscope.domain.cvm import normalizar_cnpj
+from flowscope.domain.renda_fixa import cnpj_valido
 from flowscope.infrastructure.cache import CacheManager
 from flowscope.infrastructure.cvm.datasets import CvmDatasetDownloader, hash_sha256
 
@@ -28,14 +29,17 @@ FONTE_CVM_ACIONISTAS = "CVM"
 #: Diretórios oficiais dos dados abertos da CVM.
 FRE_BASE_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FRE/DADOS"
 FCA_BASE_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FCA/DADOS"
+CAD_BASE_URL = "https://dados.cvm.gov.br/dados/CIA_ABERTA/CAD/DADOS"
 
 #: Versão do parser, usada para invalidar o cache normalizado.
-PARSER_VERSION = "cvm-acionistas-v2"
+PARSER_VERSION = "cvm-acionistas-v3"
 
 #: Prefixo do CSV de distribuição de capital no ZIP do FRE.
 _ARQUIVO_FRE = "fre_cia_aberta_distribuicao_capital"
 #: Prefixo do CSV de valores mobiliários no ZIP do FCA.
 _ARQUIVO_FCA = "fca_cia_aberta_valor_mobiliario"
+#: Nome do CSV do cadastro de companhias abertas da CVM.
+_ARQUIVO_CAD = "cad_cia_aberta.csv"
 
 #: Quantidade de anos consultados para trás a partir da referência.
 _ANOS_JANELA = 2
@@ -60,6 +64,31 @@ def parse_valor_mobiliario(conteudo: bytes) -> dict[str, str]:
         if ticker and cnpj:
             mapa.setdefault(ticker.strip().upper(), cnpj)
     return mapa
+
+
+def parse_cadastro_cia(conteudo: bytes) -> dict[str, dict[str, str]]:
+    """Mapeia o código CVM para o CNPJ normalizado e a razão social."""
+    mapa: dict[str, dict[str, str]] = {}
+    for linha in _ler_csv(conteudo):
+        codigo = _normalizar_codigo_cvm(_texto(linha.get("CD_CVM")))
+        cnpj = normalizar_cnpj(linha.get("CNPJ_CIA"))
+        if codigo and cnpj_valido(cnpj):
+            mapa.setdefault(
+                codigo,
+                {
+                    "cnpj": cnpj,
+                    "razao_social": _texto(linha.get("DENOM_SOCIAL")) or "",
+                },
+            )
+    return mapa
+
+
+def _normalizar_codigo_cvm(valor: str | None) -> str | None:
+    """Remove zeros à esquerda de um código CVM, tolerando vazio."""
+    if not valor:
+        return None
+    normalizado = valor.strip().lstrip("0")
+    return normalizado or "0"
 
 
 def parse_distribuicao_capital(conteudo: bytes) -> dict[str, int]:
@@ -156,16 +185,20 @@ class CvmAcionistasSource:
         self: "CvmAcionistasSource",
         downloader_fre: CvmDatasetDownloader | None = None,
         downloader_fca: CvmDatasetDownloader | None = None,
+        downloader_cad: CvmDatasetDownloader | None = None,
         cache: CacheManager | None = None,
         parser_version: str = PARSER_VERSION,
         anos_janela: int = _ANOS_JANELA,
+        resolver_code_cvm: Callable[[str], str | None] | None = None,
     ) -> None:
-        """Inicializa a fonte com downloaders, cache e versão do parser."""
+        """Inicializa a fonte com downloaders, cache e resolvedor de codeCVM."""
         self._downloader_fre = downloader_fre or _criar_downloader_fre()
         self._downloader_fca = downloader_fca or _criar_downloader_fca()
+        self._downloader_cad = downloader_cad or _criar_downloader_cad()
         self._cache = cache or CacheManager()
         self._parser_version = parser_version
         self._anos_janela = anos_janela
+        self._resolver_code_cvm = resolver_code_cvm
 
     def obter_acionistas(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
@@ -183,12 +216,36 @@ class CvmAcionistasSource:
     def obter_cnpj(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
     ) -> str | None:
-        """Retorna o CNPJ da companhia resolvido no FCA, ou ``None``."""
+        """Retorna o CNPJ da companhia resolvido no FCA/cadastro, ou ``None``."""
         try:
             return self._resolver_cnpj(ticker, reference_date)
         except Exception:  # aquisição tolerante por ticker
             logger.warning("Falha ao resolver CNPJ de %s", ticker, exc_info=True)
             return None
+
+    def obter_identidade_papel(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> tuple[str | None, str | None]:
+        """Retorna ``(CNPJ, razão social)`` do Papel, tolerando indisponibilidade."""
+        try:
+            chave = ticker.strip().upper()
+            cnpj = self._cnpj_fca(chave, reference_date)
+            if cnpj is not None:
+                return cnpj, self._razao_social(chave, reference_date)
+            identidade = self._identidade_cadastro(chave, reference_date)
+            if identidade is None:
+                return None, None
+            return (
+                identidade.get("cnpj"),
+                identidade.get("razao_social") or None,
+            )
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao resolver identidade de Papel de %s",
+                ticker,
+                exc_info=True,
+            )
+            return None, None
 
     def obter_free_float(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
@@ -208,16 +265,76 @@ class CvmAcionistasSource:
     def _resolver_cnpj(
         self: "CvmAcionistasSource", ticker: str, reference_date: date
     ) -> str | None:
-        """Resolve o CNPJ do ticker no FCA, do ano mais recente para o mais antigo."""
+        """Resolve o CNPJ pelo FCA e, sem correspondência, pelo codeCVM."""
         chave = ticker.strip().upper()
+        cnpj = self._cnpj_fca(chave, reference_date)
+        if cnpj is not None:
+            return cnpj
+        identidade = self._identidade_cadastro(chave, reference_date)
+        return identidade.get("cnpj") if identidade is not None else None
+
+    def _cnpj_fca(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> str | None:
+        """Resolve o CNPJ pelo casamento exato de ``Codigo_Negociacao`` no FCA."""
         for ano in self._anos(reference_date):
             mapa = self._mapa(
                 self._downloader_fca, _ARQUIVO_FCA, "fca", ano, parse_valor_mobiliario
             )
-            cnpj = mapa.get(chave)
+            cnpj = mapa.get(ticker)
             if cnpj is not None:
                 return cnpj
         return None
+
+    def _identidade_cadastro(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> dict[str, str] | None:
+        """Resolve CNPJ e razão social pelo codeCVM no cadastro de companhias."""
+        codigo = self._codigo_cvm(ticker)
+        if codigo is None:
+            return None
+        cadastro = self._mapa(
+            self._downloader_cad,
+            _ARQUIVO_CAD,
+            "cad",
+            reference_date.year,
+            parse_cadastro_cia,
+        )
+        identidade = cadastro.get(codigo)
+        if isinstance(identidade, dict):
+            return identidade
+        if isinstance(identidade, str):
+            return {"cnpj": identidade, "razao_social": ""}
+        return None
+
+    def _razao_social(
+        self: "CvmAcionistasSource", ticker: str, reference_date: date
+    ) -> str | None:
+        """Retorna a razão social do cadastro, tolerando falha na consulta."""
+        try:
+            identidade = self._identidade_cadastro(ticker, reference_date)
+        except Exception:  # razão social é complementar ao CNPJ
+            logger.warning(
+                "Falha ao obter razão social de %s", ticker, exc_info=True
+            )
+            return None
+        if identidade is None:
+            return None
+        razao = identidade.get("razao_social")
+        return razao or None
+
+    def _codigo_cvm(self: "CvmAcionistasSource", ticker: str) -> str | None:
+        """Resolve e normaliza o codeCVM do ticker, tolerando indisponibilidade."""
+        if self._resolver_code_cvm is None:
+            return None
+        try:
+            codigo = self._resolver_code_cvm(ticker)
+        except Exception:  # resolução tolerante
+            logger.warning(
+                "Falha ao resolver codeCVM de %s", ticker, exc_info=True
+            )
+            return None
+        return _normalizar_codigo_cvm(codigo)
 
     def _quantidade(
         self: "CvmAcionistasSource", cnpj: str, reference_date: date
@@ -327,4 +444,15 @@ def _criar_downloader_fca() -> CvmDatasetDownloader:
         arquivo=_arquivo_fca,
         dataset="fca",
         parser_version=PARSER_VERSION,
+    )
+
+
+def _criar_downloader_cad() -> CvmDatasetDownloader:
+    """Cria o downloader do cadastro de companhias abertas (CSV direto)."""
+    return CvmDatasetDownloader(
+        base_url=CAD_BASE_URL,
+        arquivo=lambda _ano: _ARQUIVO_CAD,
+        dataset="cad",
+        parser_version=PARSER_VERSION,
+        zipado=False,
     )

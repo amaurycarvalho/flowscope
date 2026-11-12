@@ -47,6 +47,8 @@ class B3InformeMensal:
     cnpj: str | None = None
     nome_administrador: str | None = None
     cnpj_administrador: str | None = None
+    nome_gestor: str | None = None
+    cnpj_gestor: str | None = None
     classificacao: str | None = None
     subclassificacao: str | None = None
     gestao: str | None = None

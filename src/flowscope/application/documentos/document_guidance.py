@@ -231,7 +231,10 @@ class GuidanceService:
         falhou e permanece registrado para não manter a pendência acionável.
         """
         if resultado is not None and resultado.metodo == METODO_IA:
-            self._falhas_ia.discard((ticker, chave))
+            if self._avaliador.avaliacao_atual(resultado):
+                self._falhas_ia.discard((ticker, chave))
+            elif self.ia_disponivel():
+                self._falhas_ia.add((ticker, chave))
             return
         if (
             self.ia_disponivel()
@@ -249,6 +252,7 @@ class GuidanceService:
     def limpar_falhas(self: "GuidanceService") -> None:
         """Reabilita todas as avaliações por IA registradas como falhas."""
         self._falhas_ia.clear()
+        self._avaliador.limpar_cache_modelo()
 
     def ia_disponivel(self: "GuidanceService") -> bool:
         """Indica se a avaliação de guidance pela IA está disponível."""
@@ -304,7 +308,9 @@ class GuidanceService:
         if avaliacao is None:
             return True
         if avaliacao.metodo == METODO_IA:
-            return False
+            if self._avaliador.avaliacao_atual(avaliacao):
+                return False
+            return (ticker, chave) not in self._falhas_ia
         return (ticker, chave) not in self._falhas_ia
 
     def entradas_arvore(

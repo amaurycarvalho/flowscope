@@ -11,6 +11,7 @@ from flowscope.infrastructure.cvm import acionistas as mod
 from flowscope.infrastructure.cvm.acionistas import (
     CvmAcionistasSource,
     parse_acoes_circulacao,
+    parse_cadastro_cia,
     parse_distribuicao_capital,
     parse_valor_mobiliario,
 )
@@ -52,6 +53,81 @@ def _downloader(
         dataset="teste",
         cache_dir=tmp_path,
         fetch=fetch,
+    )
+
+
+def _downloader_csv(
+    tmp_path: Path,
+    nome_csv: str,
+    conteudo: bytes,
+    contador: list[int] | None = None,
+) -> CvmDatasetDownloader:
+    def fetch(ano: int) -> bytes:
+        if contador is not None:
+            contador.append(ano)
+        return conteudo
+
+    return CvmDatasetDownloader(
+        base_url="https://example.invalid",
+        arquivo=lambda _ano: nome_csv,
+        dataset="cad_teste",
+        cache_dir=tmp_path,
+        fetch=fetch,
+        zipado=False,
+    )
+
+
+def _source_fallback(
+    tmp_path: Path,
+    *,
+    resolver=None,
+    cad_conteudo: bytes | None = None,
+    cad_erro: bool = False,
+    parser_version: str = "cvm-acionistas-v2",
+) -> CvmAcionistasSource:
+    fre = _downloader(
+        tmp_path,
+        "fre_cia_aberta_distribuicao_capital_2026.csv",
+        _fixture("fre_cia_aberta_distribuicao_capital_fallback_2026.csv"),
+        "fre_cia_aberta_2026.zip",
+    )
+    fca = _downloader(
+        tmp_path,
+        "fca_cia_aberta_valor_mobiliario_2026.csv",
+        _fixture("fca_cia_aberta_valor_mobiliario_fallback_2026.csv"),
+        "fca_cia_aberta_2026.zip",
+    )
+    if cad_erro:
+        def fetch(_ano: int) -> bytes:
+            raise RuntimeError("cadastro indisponível")
+        cad = CvmDatasetDownloader(
+            base_url="https://example.invalid",
+            arquivo=lambda _ano: "cad_cia_aberta.csv",
+            dataset="cad_teste",
+            cache_dir=tmp_path,
+            fetch=fetch,
+            zipado=False,
+        )
+    else:
+        cad = _downloader_csv(
+            tmp_path,
+            "cad_cia_aberta.csv",
+            cad_conteudo or _fixture("cad_cia_aberta_2026.csv"),
+        )
+
+    codigos = {
+        "BPAC11": "22616",
+        "CMIN3": "25585",
+        "MBRF3": "20788",
+        "CSNA3": "4030",
+    }
+    return CvmAcionistasSource(
+        downloader_fre=fre,
+        downloader_fca=fca,
+        downloader_cad=cad,
+        cache=CacheManager(cache_dir=tmp_path),
+        parser_version=parser_version,
+        resolver_code_cvm=resolver or (lambda ticker: codigos.get(ticker)),
     )
 
 
@@ -215,4 +291,115 @@ class TestCacheNormalizado:
             downloader_fre=fre, downloader_fca=fca, cache=cache, parser_version="p2"
         )
         assert p2.obter_acionistas("PETR4", REFERENCIA) == 1183775
+        assert chamadas["n"] == 2
+
+
+class TestParseCadastro:
+    def test_normaliza_codigo_e_cnpj(self):
+        mapa = parse_cadastro_cia(_fixture("cad_cia_aberta_2026.csv"))
+        assert mapa["22616"]["cnpj"] == "30306294000145"
+        assert mapa["25585"]["cnpj"] == "08902291000115"
+        assert mapa["20788"]["cnpj"] == "03853896000140"
+        assert mapa["4030"]["cnpj"] == "33042730000104"
+
+    def test_inclui_razao_social(self):
+        mapa = parse_cadastro_cia(_fixture("cad_cia_aberta_2026.csv"))
+        assert mapa["22616"]["razao_social"] == "BANCO BTG PACTUAL S/A"
+        assert mapa["4030"]["razao_social"] == "CIA SIDERURGICA NACIONAL"
+
+    def test_ignora_registro_sem_cnpj_valido(self):
+        mapa = parse_cadastro_cia(
+            b"CNPJ_CIA;CD_CVM\n;123\n00000000000000;456\n"
+        )
+        assert mapa == {}
+
+
+class TestFallbackCodeCvm:
+    def test_watchlist_resolve_por_codecvm(self, tmp_path):
+        source = _source_fallback(tmp_path)
+        esperado = {
+            "BPAC11": "30306294000145",
+            "CMIN3": "08902291000115",
+            "MBRF3": "03853896000140",
+            "CSNA3": "33042730000104",
+        }
+        for ticker, cnpj in esperado.items():
+            assert source.obter_cnpj(ticker, REFERENCIA) == cnpj
+
+    def test_identidade_papel_inclui_razao_social(self, tmp_path):
+        source = _source_fallback(tmp_path)
+        esperado = {
+            "BPAC11": ("30306294000145", "BANCO BTG PACTUAL S/A"),
+            "CMIN3": ("08902291000115", "CSN MINERAÇÃO S.A."),
+            "MBRF3": ("03853896000140", "MARFRIG GLOBAL FOODS SA"),
+            "CSNA3": ("33042730000104", "CIA SIDERURGICA NACIONAL"),
+        }
+        for ticker, identidade in esperado.items():
+            assert source.obter_identidade_papel(ticker, REFERENCIA) == identidade
+
+    def test_identidade_papel_fca_sem_codecvm_mantem_cnpj(self, tmp_path):
+        source = _source(tmp_path)
+        assert source.obter_identidade_papel("PETR4", REFERENCIA) == (
+            CNPJ_PETR,
+            None,
+        )
+
+    def test_acionistas_e_free_float_usam_cnpj_do_fallback(self, tmp_path):
+        source = _source_fallback(tmp_path)
+        assert source.obter_acionistas("BPAC11", REFERENCIA) == 125
+        assert source.obter_free_float("BPAC11", REFERENCIA) == Decimal(
+            "1000000"
+        )
+
+    def test_sem_codecvm_retorna_none(self, tmp_path):
+        source = _source_fallback(tmp_path, resolver=lambda _ticker: None)
+        assert source.obter_cnpj("BPAC11", REFERENCIA) is None
+        assert source.obter_cnpj("XPTO3", REFERENCIA) is None
+
+    def test_cadastro_indisponivel_retorna_none(self, tmp_path):
+        source = _source_fallback(tmp_path, cad_erro=True)
+        assert source.obter_cnpj("BPAC11", REFERENCIA) is None
+
+    def test_cache_legado_em_string_preserva_cnpj(self, tmp_path, monkeypatch):
+        source = _source_fallback(tmp_path)
+        monkeypatch.setattr(source, "_codigo_cvm", lambda ticker: "22616")
+        monkeypatch.setattr(
+            source,
+            "_mapa",
+            lambda *args, **kwargs: {"22616": "30306294000145"},
+        )
+        assert source.obter_identidade_papel("BPAC11", REFERENCIA) == (
+            "30306294000145",
+            None,
+        )
+
+    def test_cadastro_reaproveitado(self, tmp_path, monkeypatch):
+        chamadas = {"n": 0}
+        original = mod.parse_cadastro_cia
+
+        def contando(conteudo):
+            chamadas["n"] += 1
+            return original(conteudo)
+
+        monkeypatch.setattr(mod, "parse_cadastro_cia", contando)
+        source = _source_fallback(tmp_path)
+        assert source.obter_cnpj("BPAC11", REFERENCIA) == "30306294000145"
+        assert source.obter_cnpj("CMIN3", REFERENCIA) == "08902291000115"
+        assert chamadas["n"] == 1
+
+    def test_mudanca_de_parser_invalida_cache_do_cadastro(
+        self, tmp_path, monkeypatch
+    ):
+        chamadas = {"n": 0}
+        original = mod.parse_cadastro_cia
+
+        def contando(conteudo):
+            chamadas["n"] += 1
+            return original(conteudo)
+
+        monkeypatch.setattr(mod, "parse_cadastro_cia", contando)
+        p1 = _source_fallback(tmp_path, parser_version="p1")
+        assert p1.obter_cnpj("BPAC11", REFERENCIA) == "30306294000145"
+        p2 = _source_fallback(tmp_path, parser_version="p2")
+        assert p2.obter_cnpj("BPAC11", REFERENCIA) == "30306294000145"
         assert chamadas["n"] == 2

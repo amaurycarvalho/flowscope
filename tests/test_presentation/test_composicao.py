@@ -68,6 +68,12 @@ class TestMontarNucleo:
         assert resultado.returncode == 0, resultado.stderr
         assert resultado.stdout.strip().endswith("OK")
 
+    def test_resolvedor_code_cvm_injetado_no_acionistas(self, tmp_path):
+        nucleo = montar_nucleo(CacheManager(cache_dir=tmp_path))
+        resolvedor = nucleo.fundamental_acionistas_provider._resolver_code_cvm
+        assert resolvedor is not None
+        assert resolvedor.__self__ is nucleo.b3_fund_repository
+
     def test_mercado_factory(self, tmp_path):
         from flowscope.infrastructure.fii.b3_price import B3MarketPriceFromResult
 

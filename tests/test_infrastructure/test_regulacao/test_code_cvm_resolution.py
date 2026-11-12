@@ -147,6 +147,36 @@ class TestResolverCodeCvm:
         assert len(responses.calls) == 2
 
     @responses.activate
+    def test_falha_usa_cache_persistido_expirado(self, tmp_path):
+        cache = CacheManager(cache_dir=tmp_path)
+        client = B3FundosClient(cache=cache, retry_delays=(0,))
+        responses.get(
+            _url_empresas("VALE"),
+            json={
+                "page": {"totalPages": 1},
+                "results": [
+                    {
+                        "codeCVM": "4170",
+                        "issuingCompany": "VALE",
+                        "tradingName": "VALE",
+                    }
+                ],
+            },
+            status=200,
+        )
+        assert client.resolver_code_cvm("VALE3") == "4170"
+        chave = client._chave_cache("codecvm", "VALE3")
+        dados = cache.read_meta(chave)
+        assert dados is not None
+        dados["cached_at"] = "2020-01-01T00:00:00+00:00"
+        cache.write_meta(chave, dados)
+
+        responses.get(_url_empresas("VALE"), status=500)
+        assert client.resolver_code_cvm("VALE3") == "4170"
+        assert client.obter_nome_negociacao("VALE3") == "VALE"
+        assert len(responses.calls) == 3
+
+    @responses.activate
     def test_nome_de_negociacao_reaproveita_cache(self, tmp_path):
         client = B3FundosClient(cache=CacheManager(cache_dir=tmp_path))
         responses.get(

@@ -17,6 +17,7 @@ from flowscope.application.fundamental_ports import (
     CAMPO_CNPJ_ADMINISTRADOR,
     CAMPO_CNPJ_GESTOR,
     CAMPO_GESTOR,
+    CAMPO_RAZAO_SOCIAL,
     CampoFundamental,
 )
 from flowscope.domain.cvm import AnnualReport, FundIdentity
@@ -78,19 +79,25 @@ class CvmAnnualFundDataProvider:
 
 
 class CvmPapelCnpjProvider:
-    """Emite o CNPJ de companhias abertas (Papel) resolvido no FCA."""
+    """Emite CNPJ e razão social de companhias abertas (Papel)."""
 
     def __init__(
         self: "CvmPapelCnpjProvider",
         resolver: Callable[[str, date], str | None] | None = None,
+        resolver_identidade: (
+            Callable[[str, date], tuple[str | None, str | None]] | None
+        ) = None,
     ) -> None:
-        """Inicializa o provedor com o resolvedor de CNPJ por ticker."""
+        """Inicializa o provedor com o resolvedor de CNPJ/identidade por ticker."""
         self._resolver = resolver
+        self._resolver_identidade = resolver_identidade
 
     def obter(
         self: "CvmPapelCnpjProvider", ticker: str, reference_date: date
     ) -> dict[str, CampoFundamental]:
-        """Retorna o CNPJ do Papel, ou vazio quando indisponível."""
+        """Retorna CNPJ e razão social do Papel, ou vazio quando indisponível."""
+        if self._resolver_identidade is not None:
+            return self._obter_identidade(ticker, reference_date)
         if self._resolver is None:
             return {}
         try:
@@ -103,6 +110,22 @@ class CvmPapelCnpjProvider:
         if not cnpj:
             return {}
         return {CAMPO_CNPJ: CampoFundamental(cnpj, FONTE_CVM)}
+
+    def _obter_identidade(
+        self: "CvmPapelCnpjProvider", ticker: str, reference_date: date
+    ) -> dict[str, CampoFundamental]:
+        """Retorna CNPJ e razão social pela identidade de Papel da CVM."""
+        try:
+            cnpj, razao_social = self._resolver_identidade(ticker, reference_date)
+        except Exception:  # aquisição tolerante por ticker
+            logger.warning(
+                "Falha ao resolver identidade CVM de %s", ticker, exc_info=True
+            )
+            return {}
+        campos: dict[str, CampoFundamental] = {}
+        _adicionar(campos, CAMPO_CNPJ, cnpj)
+        _adicionar(campos, CAMPO_RAZAO_SOCIAL, razao_social)
+        return campos
 
 
 class CvmIndexadoresProvider:

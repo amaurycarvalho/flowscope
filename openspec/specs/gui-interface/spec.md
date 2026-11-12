@@ -653,7 +653,7 @@ A tabela DEVE exibir, ao final, as colunas `Informações adicionais` e `Dados f
 
 Para ativos do tipo Papel, `Informações adicionais` DEVE conter `LPA`, `ROE` e `ROIC`. Para FIIs, DEVE conter `Qtd Imóveis`, `Cap Rate`, `Vacância Média` e os percentuais por indexador; quando `Qtd imóveis` for zero ou desconhecido, `Qtd Imóveis`, `Cap Rate` e `Vacância Média` DEVEM ser omitidos. Para FIIs, `Informações adicionais` DEVE conter também, quando houver guidance no cache do FII, um item com label `Guidance`, o valor ou a faixa por cota e o período de validade, seguido do mês e ano do relatório que apontou o guidance, no formato `Guidance R$ 0,74 a R$ 0,78/cota (restante do ano de 2026, ago/26)`. A exibição DEVE ler apenas o cache de guidance: NÃO DEVE calcular nem disparar extração de guidance na carga de dados nem na renderização da tabela. Quando não houver guidance em cache, o item DEVE ser omitido, sem impedir os demais itens.
 
-Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`; Papel DEVE exibir apenas `CNPJ`. CNPJs DEVEM ser exibidos no formato `99.999.999/9999-99`.
+Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`; Papel DEVE exibir `CNPJ` e, quando disponível, `Razão social <razão social>` imediatamente após o CNPJ. CNPJs DEVEM ser exibidos no formato `99.999.999/9999-99`.
 
 #### Scenario: Preço Típico e P / PT calculados
 - **WHEN** o ativo possui cotação, mínima e máxima de 52 semanas
@@ -692,7 +692,11 @@ Em `Dados fiscais`, FIIs DEVEM exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e 
 - **THEN** a coluna DEVE exibir `CNPJ`, `Administrador <nome> (<CNPJ>)` e `Gestor <nome> (<CNPJ>)`, separados por ` | `
 
 #### Scenario: Dados fiscais de Papel
-- **WHEN** o ativo é do tipo Papel e a CVM resolve o CNPJ
+- **WHEN** o ativo é do tipo Papel e a CVM resolve o CNPJ e a razão social
+- **THEN** a coluna DEVE exibir `CNPJ` seguido de `Razão social <razão social>`, separados por ` | `
+
+#### Scenario: Dados fiscais de Papel sem razão social
+- **WHEN** o ativo é do tipo Papel, a CVM resolve o CNPJ e a razão social está ausente
 - **THEN** a coluna DEVE exibir apenas o `CNPJ`
 
 #### Scenario: Item indisponível
